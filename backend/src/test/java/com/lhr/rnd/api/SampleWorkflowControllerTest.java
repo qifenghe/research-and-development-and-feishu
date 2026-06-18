@@ -9,6 +9,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -269,6 +272,10 @@ class SampleWorkflowControllerTest {
         assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "file_path"))
                 .isEqualTo(archivedSampleNo + "/A0/核价/500g香卤大肠头-核价原料清单-A0-V1.xlsx");
         assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "file_status")).isEqualTo("ARCHIVED");
+        var archivedPath = Path.of("target/rnd-archive")
+                .resolve(valueByColumn("archive_file", "business_id", pricingFileId, "file_path"));
+        assertThat(Files.exists(archivedPath)).isTrue();
+        assertThat(Files.size(archivedPath)).isEqualTo(Long.parseLong(valueById("pricing_file", pricingFileId, "content_length")));
 
         var financeNotificationId = mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
                         .contentType(MediaType.APPLICATION_JSON)

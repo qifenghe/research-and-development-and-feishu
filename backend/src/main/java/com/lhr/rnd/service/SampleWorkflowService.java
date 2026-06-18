@@ -64,6 +64,7 @@ import java.util.Map;
 public class SampleWorkflowService {
     private final Clock clock;
     private final PricingFileService pricingFileService = new PricingFileService();
+    private final LocalArchiveStorageService archiveStorageService;
     private final SampleRequestRepository sampleRequestRepository;
     private final SampleProjectRepository sampleProjectRepository;
     private final SampleVersionRepository sampleVersionRepository;
@@ -100,15 +101,16 @@ public class SampleWorkflowService {
     private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
-        this(Clock.systemDefaultZone(), null, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(Clock.systemDefaultZone(), new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     SampleWorkflowService(Clock clock) {
-        this(clock, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(clock, new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Autowired
     public SampleWorkflowService(
+            LocalArchiveStorageService archiveStorageService,
             SampleRequestRepository sampleRequestRepository,
             SampleProjectRepository sampleProjectRepository,
             SampleVersionRepository sampleVersionRepository,
@@ -125,6 +127,7 @@ public class SampleWorkflowService {
     ) {
         this(
                 Clock.systemDefaultZone(),
+                archiveStorageService,
                 sampleRequestRepository,
                 sampleProjectRepository,
                 sampleVersionRepository,
@@ -143,6 +146,7 @@ public class SampleWorkflowService {
 
     private SampleWorkflowService(
             Clock clock,
+            LocalArchiveStorageService archiveStorageService,
             SampleRequestRepository sampleRequestRepository,
             SampleProjectRepository sampleProjectRepository,
             SampleVersionRepository sampleVersionRepository,
@@ -158,6 +162,7 @@ public class SampleWorkflowService {
             ArchiveFileRepository archiveFileRepository
     ) {
         this.clock = clock;
+        this.archiveStorageService = archiveStorageService;
         this.sampleRequestRepository = sampleRequestRepository;
         this.sampleProjectRepository = sampleProjectRepository;
         this.sampleVersionRepository = sampleVersionRepository;
@@ -535,7 +540,7 @@ public class SampleWorkflowService {
                 now()
         );
         pricingFiles.put(record.id(), record);
-        persistPricingFile(record);
+        persistPricingFile(record, generated.content());
         return record;
     }
 
@@ -857,7 +862,7 @@ public class SampleWorkflowService {
         ));
     }
 
-    private void persistPricingFile(PricingFileRecord pricingFile) {
+    private void persistPricingFile(PricingFileRecord pricingFile, byte[] content) {
         if (pricingFileRepository == null) {
             return;
         }
@@ -873,20 +878,26 @@ public class SampleWorkflowService {
                 pricingFile.contentLength(),
                 pricingFile.generatedAt()
         ));
-        persistPricingArchive(pricingFile);
+        persistPricingArchive(pricingFile, content);
     }
 
-    private void persistPricingArchive(PricingFileRecord pricingFile) {
+    private void persistPricingArchive(PricingFileRecord pricingFile, byte[] content) {
         if (archiveFileRepository == null) {
             return;
         }
+        var relativePath = "%s/%s/核价/%s".formatted(
+                pricingFile.sampleNo(),
+                pricingFile.versionCode(),
+                pricingFile.fileName()
+        );
+        archiveStorageService.store(relativePath, content);
         archiveFileRepository.save(new ArchiveFileEntity(
                 "ARCH-" + pricingFile.id(),
                 "PRICING_FILE",
                 pricingFile.id(),
                 pricingFile.versionId(),
                 pricingFile.fileName(),
-                "%s/%s/核价/%s".formatted(pricingFile.sampleNo(), pricingFile.versionCode(), pricingFile.fileName()),
+                relativePath,
                 null,
                 "ARCHIVED",
                 pricingFile.generatedAt()
