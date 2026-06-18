@@ -187,6 +187,7 @@ public class SampleWorkflowService {
                 .toList();
     }
 
+    @Transactional
     public synchronized RndTask assignTask(String taskId, String assigneeName, LocalDate dueDate) {
         var task = tasks.get(taskId);
         if (task == null) {
@@ -197,9 +198,11 @@ public class SampleWorkflowService {
         }
         var assigned = task.assign(assigneeName, dueDate, now());
         tasks.put(taskId, assigned);
+        persistAssignedTask(assigned);
         return assigned;
     }
 
+    @Transactional
     public synchronized RndTask acceptTask(String taskId, String acceptedBy) {
         var task = tasks.get(taskId);
         if (task == null) {
@@ -211,8 +214,10 @@ public class SampleWorkflowService {
         if (!acceptedBy.equals(task.assigneeName())) {
             throw new BusinessException("RND_TASK_ASSIGNEE_MISMATCH", "只能由被分发的研发人员接受任务");
         }
-        var accepted = task.accept(now());
+        var acceptedAt = now();
+        var accepted = task.accept(acceptedAt);
         tasks.put(taskId, accepted);
+        persistAcceptedTask(accepted, acceptedAt);
         return accepted;
     }
 
@@ -542,6 +547,26 @@ public class SampleWorkflowService {
                 task.assignedAt(),
                 null
         ));
+    }
+
+    private void persistAssignedTask(RndTask task) {
+        if (rndTaskRepository == null) {
+            return;
+        }
+        var taskEntity = rndTaskRepository.findById(task.id())
+                .orElseThrow(() -> new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在"));
+        taskEntity.assign(task.assigneeName(), task.dueDate(), task.assignedAt());
+        rndTaskRepository.save(taskEntity);
+    }
+
+    private void persistAcceptedTask(RndTask task, LocalDateTime acceptedAt) {
+        if (rndTaskRepository == null) {
+            return;
+        }
+        var taskEntity = rndTaskRepository.findById(task.id())
+                .orElseThrow(() -> new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在"));
+        taskEntity.accept(acceptedAt);
+        rndTaskRepository.save(taskEntity);
     }
 
     private SampleVersion requiredVersion(String versionId) {

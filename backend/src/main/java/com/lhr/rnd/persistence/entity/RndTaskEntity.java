@@ -77,4 +77,17 @@ public class RndTaskEntity {
         this.assignedAt = assignedAt;
         this.acceptedAt = acceptedAt;
     }
+
+    public void assign(String assigneeName, LocalDate dueDate, LocalDateTime assignedAt) {
+        this.status = "PENDING_ACCEPTANCE";
+        this.assigneeName = assigneeName;
+        this.dueDate = dueDate;
+        this.assignedAt = assignedAt;
+        this.acceptedAt = null;
+    }
+
+    public void accept(LocalDateTime acceptedAt) {
+        this.status = "SAMPLING";
+        this.acceptedAt = acceptedAt;
+    }
 }

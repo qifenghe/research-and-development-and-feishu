@@ -62,6 +62,21 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void assigningAndAcceptingTaskPersistsTaskStatusToDatabase() throws Exception {
+        var taskId = createApprovedRequest();
+
+        assignTask(taskId);
+        assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("PENDING_ACCEPTANCE");
+        assertThat(valueById("rnd_task", taskId, "assignee_name")).isEqualTo("张研发");
+        assertThat(valueById("rnd_task", taskId, "due_date")).isEqualTo("2026-06-25");
+        assertThat(valueById("rnd_task", taskId, "assigned_at")).isNotBlank();
+
+        acceptTask(taskId);
+        assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("SAMPLING");
+        assertThat(valueById("rnd_task", taskId, "accepted_at")).isNotBlank();
+    }
+
+    @Test
     void acceptsTaskSavesExperimentDraftAndSubmitsInternalTest() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);
