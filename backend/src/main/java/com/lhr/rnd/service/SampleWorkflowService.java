@@ -22,6 +22,7 @@ import com.lhr.rnd.model.ShipmentStatus;
 import com.lhr.rnd.model.TestAssignment;
 import com.lhr.rnd.model.TestAssignmentStatus;
 import com.lhr.rnd.model.TestRecord;
+import com.lhr.rnd.persistence.entity.ArchiveFileEntity;
 import com.lhr.rnd.persistence.entity.CustomerFeedbackEntity;
 import com.lhr.rnd.persistence.entity.ExperimentFormEntity;
 import com.lhr.rnd.persistence.entity.ExperimentMaterialEntity;
@@ -34,6 +35,7 @@ import com.lhr.rnd.persistence.entity.SampleVersionEntity;
 import com.lhr.rnd.persistence.entity.ShipmentRecordEntity;
 import com.lhr.rnd.persistence.entity.TestAssignmentEntity;
 import com.lhr.rnd.persistence.entity.TestRecordEntity;
+import com.lhr.rnd.persistence.repository.ArchiveFileRepository;
 import com.lhr.rnd.persistence.repository.CustomerFeedbackRepository;
 import com.lhr.rnd.persistence.repository.ExperimentFormRepository;
 import com.lhr.rnd.persistence.repository.ExperimentMaterialRepository;
@@ -74,6 +76,7 @@ public class SampleWorkflowService {
     private final CustomerFeedbackRepository customerFeedbackRepository;
     private final PricingFileRepository pricingFileRepository;
     private final FinanceNotificationRepository financeNotificationRepository;
+    private final ArchiveFileRepository archiveFileRepository;
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
     private final Map<String, SampleProject> projects = new LinkedHashMap<>();
     private final Map<String, SampleVersion> versions = new LinkedHashMap<>();
@@ -97,11 +100,11 @@ public class SampleWorkflowService {
     private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
-        this(Clock.systemDefaultZone(), null, null, null, null, null, null, null, null, null, null, null, null);
+        this(Clock.systemDefaultZone(), null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     SampleWorkflowService(Clock clock) {
-        this(clock, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(clock, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -117,7 +120,8 @@ public class SampleWorkflowService {
             ShipmentRecordRepository shipmentRecordRepository,
             CustomerFeedbackRepository customerFeedbackRepository,
             PricingFileRepository pricingFileRepository,
-            FinanceNotificationRepository financeNotificationRepository
+            FinanceNotificationRepository financeNotificationRepository,
+            ArchiveFileRepository archiveFileRepository
     ) {
         this(
                 Clock.systemDefaultZone(),
@@ -132,7 +136,8 @@ public class SampleWorkflowService {
                 shipmentRecordRepository,
                 customerFeedbackRepository,
                 pricingFileRepository,
-                financeNotificationRepository
+                financeNotificationRepository,
+                archiveFileRepository
         );
     }
 
@@ -149,7 +154,8 @@ public class SampleWorkflowService {
             ShipmentRecordRepository shipmentRecordRepository,
             CustomerFeedbackRepository customerFeedbackRepository,
             PricingFileRepository pricingFileRepository,
-            FinanceNotificationRepository financeNotificationRepository
+            FinanceNotificationRepository financeNotificationRepository,
+            ArchiveFileRepository archiveFileRepository
     ) {
         this.clock = clock;
         this.sampleRequestRepository = sampleRequestRepository;
@@ -164,6 +170,7 @@ public class SampleWorkflowService {
         this.customerFeedbackRepository = customerFeedbackRepository;
         this.pricingFileRepository = pricingFileRepository;
         this.financeNotificationRepository = financeNotificationRepository;
+        this.archiveFileRepository = archiveFileRepository;
     }
 
     @Transactional
@@ -864,6 +871,24 @@ public class SampleWorkflowService {
                 pricingFile.fileName(),
                 pricingFile.status().name(),
                 pricingFile.contentLength(),
+                pricingFile.generatedAt()
+        ));
+        persistPricingArchive(pricingFile);
+    }
+
+    private void persistPricingArchive(PricingFileRecord pricingFile) {
+        if (archiveFileRepository == null) {
+            return;
+        }
+        archiveFileRepository.save(new ArchiveFileEntity(
+                "ARCH-" + pricingFile.id(),
+                "PRICING_FILE",
+                pricingFile.id(),
+                pricingFile.versionId(),
+                pricingFile.fileName(),
+                "%s/%s/核价/%s".formatted(pricingFile.sampleNo(), pricingFile.versionCode(), pricingFile.fileName()),
+                null,
+                "ARCHIVED",
                 pricingFile.generatedAt()
         ));
     }

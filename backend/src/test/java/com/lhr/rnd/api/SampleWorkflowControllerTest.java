@@ -260,6 +260,15 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("pricing_file", pricingFileId, "pricing_version")).isEqualTo("A0-核价V1");
         assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("GENERATED");
         assertThat(valueById("pricing_file", pricingFileId, "file_name")).isEqualTo("500g香卤大肠头-核价原料清单-A0-V1.xlsx");
+        assertThat(countByColumn("archive_file", "business_id", pricingFileId)).isEqualTo(1);
+        assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "business_type")).isEqualTo("PRICING_FILE");
+        assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "version_id")).isEqualTo(versionId);
+        assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "file_name"))
+                .isEqualTo("500g香卤大肠头-核价原料清单-A0-V1.xlsx");
+        var archivedSampleNo = valueById("pricing_file", pricingFileId, "sample_no");
+        assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "file_path"))
+                .isEqualTo(archivedSampleNo + "/A0/核价/500g香卤大肠头-核价原料清单-A0-V1.xlsx");
+        assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "file_status")).isEqualTo("ARCHIVED");
 
         var financeNotificationId = mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
                         .contentType(MediaType.APPLICATION_JSON)
