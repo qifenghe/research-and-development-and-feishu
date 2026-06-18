@@ -42,13 +42,56 @@ class SampleWorkflowControllerTest {
     void acceptsTaskSavesExperimentDraftAndSubmitsInternalTest() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);
+        acceptTask(taskId);
 
+        var experimentFormId = saveExperimentDraft(taskId);
+        submitExperimentForTest(experimentFormId);
+    }
+
+    @Test
+    void passingInternalTestLocksExperimentVersion() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+        var testAssignmentId = submitExperimentForTest(experimentFormId);
+
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"口味和复热状态通过\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.experimentForm.status").value("LOCKED"))
+                .andExpect(jsonPath("$.data.testAssignment.status").value("PASSED"))
+                .andExpect(jsonPath("$.data.task.status").value("COMPLETED"));
+    }
+
+    @Test
+    void failedInternalTestCreatesNextSampleVersionAndResamplingTask() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+        var testAssignmentId = submitExperimentForTest(experimentFormId);
+
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/fail-resample", testAssignmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"口感偏硬，需调整卤制时间\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.testAssignment.status").value("FAILED_RESAMPLE"))
+                .andExpect(jsonPath("$.data.nextVersion.versionCode").value("A1"))
+                .andExpect(jsonPath("$.data.nextTask.status").value("PENDING_ACCEPTANCE"))
+                .andExpect(jsonPath("$.data.nextTask.versionCode").value("A1"));
+    }
+
+    private void acceptTask(String taskId) throws Exception {
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/accept", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"acceptedBy\":\"张研发\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("SAMPLING"));
+    }
 
+    private String saveExperimentDraft(String taskId) throws Exception {
         var draftJson = """
                 {
                   "operatorName": "张研发",
@@ -67,24 +110,34 @@ class SampleWorkflowControllerTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+        return mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(draftJson))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.id").value("EXP-0001"))
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.versionCode").value("A0"))
                 .andExpect(jsonPath("$.data.materials", hasSize(1)))
-                .andExpect(jsonPath("$.data.materials[0].materialName").value("冻猪大肠头（预煮）"));
+                .andExpect(jsonPath("$.data.materials[0].materialName").value("冻猪大肠头（预煮）"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\"id\":\"")[1]
+                .split("\"")[0];
+    }
 
-        mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", "EXP-0001")
+    private String submitExperimentForTest(String experimentFormId) throws Exception {
+        return mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", experimentFormId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"testerName\":\"内部测试员\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.experimentForm.status").value("SUBMITTED_FOR_TEST"))
-                .andExpect(jsonPath("$.data.testAssignment.id").value("TEST-0001"))
                 .andExpect(jsonPath("$.data.testAssignment.testerName").value("内部测试员"))
-                .andExpect(jsonPath("$.data.testAssignment.status").value("PENDING_TEST"));
+                .andExpect(jsonPath("$.data.testAssignment.status").value("PENDING_TEST"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\\\"testAssignment\\\":\\{\\\"id\\\":\\\"")[1]
+                .split("\"")[0];
     }
 
     @Test

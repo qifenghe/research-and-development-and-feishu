@@ -47,4 +47,20 @@ public record RndTask(
                 acceptedAt
         );
     }
+
+    public RndTask withStatus(RndTaskStatus status) {
+        return new RndTask(
+                id,
+                projectId,
+                versionId,
+                sampleNo,
+                productName,
+                versionCode,
+                status,
+                assigneeName,
+                dueDate,
+                createdAt,
+                assignedAt
+        );
+    }
 }

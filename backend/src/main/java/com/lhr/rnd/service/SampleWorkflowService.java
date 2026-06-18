@@ -13,6 +13,7 @@ import com.lhr.rnd.model.SampleRequest;
 import com.lhr.rnd.model.SampleVersion;
 import com.lhr.rnd.model.TestAssignment;
 import com.lhr.rnd.model.TestAssignmentStatus;
+import com.lhr.rnd.model.TestRecord;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -32,11 +33,13 @@ public class SampleWorkflowService {
     private final Map<String, RndTask> tasks = new LinkedHashMap<>();
     private final Map<String, ExperimentForm> experimentForms = new LinkedHashMap<>();
     private final Map<String, TestAssignment> testAssignments = new LinkedHashMap<>();
+    private final Map<String, TestRecord> testRecords = new LinkedHashMap<>();
 
     private int requestSequence = 1;
     private int taskSequence = 1;
     private int experimentSequence = 1;
     private int testAssignmentSequence = 1;
+    private int testRecordSequence = 1;
 
     public SampleWorkflowService() {
         this(Clock.systemDefaultZone());
@@ -227,12 +230,110 @@ public class SampleWorkflowService {
         return new SubmitExperimentForTestResult(submitted, assignment);
     }
 
+    public synchronized PassInternalTestResult passInternalTest(String testAssignmentId, String testerName, String comment) {
+        var assignment = pendingTestAssignment(testAssignmentId, testerName);
+        var form = experimentForms.get(assignment.experimentFormId());
+        if (form == null) {
+            throw new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在");
+        }
+        var locked = form.lock();
+        experimentForms.put(locked.id(), locked);
+
+        var passed = assignment.withStatus(TestAssignmentStatus.PASSED);
+        testAssignments.put(passed.id(), passed);
+        var record = testRecord(passed, testerName, TestAssignmentStatus.PASSED, comment);
+
+        var task = tasks.get(assignment.taskId());
+        var completedTask = task == null ? null : task.withStatus(RndTaskStatus.COMPLETED);
+        if (completedTask != null) {
+            tasks.put(completedTask.id(), completedTask);
+        }
+        return new PassInternalTestResult(locked, passed, record, completedTask);
+    }
+
+    public synchronized FailInternalTestResult failInternalTestForResample(String testAssignmentId, String testerName, String comment) {
+        var assignment = pendingTestAssignment(testAssignmentId, testerName);
+        var failed = assignment.withStatus(TestAssignmentStatus.FAILED_RESAMPLE);
+        testAssignments.put(failed.id(), failed);
+        var record = testRecord(failed, testerName, TestAssignmentStatus.FAILED_RESAMPLE, comment);
+
+        var currentVersion = versions.get(assignment.versionId());
+        if (currentVersion == null) {
+            throw new BusinessException("SAMPLE_VERSION_NOT_FOUND", "样品版本不存在");
+        }
+        var nextNumber = currentVersion.versionNumber() == null ? 1 : currentVersion.versionNumber() + 1;
+        var nextCode = SampleVersionCode.fromNumber(nextNumber).code();
+        var nextVersion = SampleVersion.builder()
+                .id("VER-%04d".formatted(versions.size() + 1))
+                .projectId(currentVersion.projectId())
+                .sampleNo(currentVersion.sampleNo())
+                .productName(currentVersion.productName())
+                .productType(currentVersion.productType())
+                .specification(currentVersion.specification())
+                .versionNo(nextCode)
+                .versionNumber(nextNumber)
+                .versionCode(nextCode)
+                .ownerName(currentVersion.ownerName())
+                .authorName(currentVersion.authorName())
+                .createdAt(now())
+                .build();
+        versions.put(nextVersion.id(), nextVersion);
+
+        var previousTask = tasks.get(assignment.taskId());
+        if (previousTask != null) {
+            tasks.put(previousTask.id(), previousTask.withStatus(RndTaskStatus.COMPLETED));
+        }
+        var nextTask = new RndTask(
+                "TASK-%04d".formatted(taskSequence++),
+                nextVersion.projectId(),
+                nextVersion.id(),
+                nextVersion.sampleNo(),
+                nextVersion.productName(),
+                nextVersion.versionCode(),
+                RndTaskStatus.PENDING_ACCEPTANCE,
+                previousTask == null ? null : previousTask.assigneeName(),
+                previousTask == null ? null : previousTask.dueDate(),
+                now(),
+                null
+        );
+        tasks.put(nextTask.id(), nextTask);
+        return new FailInternalTestResult(failed, record, nextVersion, nextTask);
+    }
+
     public synchronized List<SampleRequest> requests() {
         return new ArrayList<>(requests.values());
     }
 
     private LocalDateTime now() {
         return LocalDateTime.now(clock);
+    }
+
+    private TestAssignment pendingTestAssignment(String testAssignmentId, String testerName) {
+        var assignment = testAssignments.get(testAssignmentId);
+        if (assignment == null) {
+            throw new BusinessException("TEST_ASSIGNMENT_NOT_FOUND", "内部测试任务不存在");
+        }
+        if (assignment.status() != TestAssignmentStatus.PENDING_TEST) {
+            throw new BusinessException("TEST_ASSIGNMENT_STATUS_ILLEGAL", "当前测试任务状态不可确认");
+        }
+        if (!testerName.equals(assignment.testerName())) {
+            throw new BusinessException("TEST_ASSIGNMENT_TESTER_MISMATCH", "只能由被配置的测试人员确认");
+        }
+        return assignment;
+    }
+
+    private TestRecord testRecord(TestAssignment assignment, String testerName, TestAssignmentStatus result, String comment) {
+        var record = new TestRecord(
+                "TREC-%04d".formatted(testRecordSequence++),
+                assignment.id(),
+                assignment.experimentFormId(),
+                testerName,
+                result,
+                comment,
+                now()
+        );
+        testRecords.put(record.id(), record);
+        return record;
     }
 
     public record CreateSampleRequestCommand(

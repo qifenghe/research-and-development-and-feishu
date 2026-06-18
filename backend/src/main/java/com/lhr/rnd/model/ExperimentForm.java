@@ -35,4 +35,22 @@ public record ExperimentForm(
                 submittedAt
         );
     }
+
+    public ExperimentForm lock() {
+        return new ExperimentForm(
+                id,
+                taskId,
+                projectId,
+                versionId,
+                sampleNo,
+                productName,
+                versionCode,
+                ExperimentFormStatus.LOCKED,
+                operatorName,
+                summary,
+                materials,
+                savedAt,
+                submittedAt
+        );
+    }
 }

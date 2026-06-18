@@ -11,4 +11,15 @@ public record TestAssignment(
         TestAssignmentStatus status,
         LocalDateTime assignedAt
 ) {
+    public TestAssignment withStatus(TestAssignmentStatus status) {
+        return new TestAssignment(
+                id,
+                experimentFormId,
+                taskId,
+                versionId,
+                testerName,
+                status,
+                assignedAt
+        );
+    }
 }

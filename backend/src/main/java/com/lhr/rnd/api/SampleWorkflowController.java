@@ -4,6 +4,8 @@ import com.lhr.rnd.model.RndTask;
 import com.lhr.rnd.model.ExperimentForm;
 import com.lhr.rnd.model.SampleRequest;
 import com.lhr.rnd.service.ApproveSampleRequestResult;
+import com.lhr.rnd.service.FailInternalTestResult;
+import com.lhr.rnd.service.PassInternalTestResult;
 import com.lhr.rnd.service.SampleWorkflowService;
 import com.lhr.rnd.service.SubmitExperimentForTestResult;
 import jakarta.validation.Valid;
@@ -90,5 +92,21 @@ public class SampleWorkflowController {
             @Valid @RequestBody SubmitExperimentForTestRequest request
     ) {
         return ApiResponse.success(workflowService.submitExperimentForTest(id, request.testerName()));
+    }
+
+    @PostMapping("/test-assignments/{id}/pass")
+    public ApiResponse<PassInternalTestResult> passInternalTest(
+            @PathVariable String id,
+            @Valid @RequestBody InternalTestDecisionRequest request
+    ) {
+        return ApiResponse.success(workflowService.passInternalTest(id, request.testerName(), request.comment()));
+    }
+
+    @PostMapping("/test-assignments/{id}/fail-resample")
+    public ApiResponse<FailInternalTestResult> failInternalTestForResample(
+            @PathVariable String id,
+            @Valid @RequestBody InternalTestDecisionRequest request
+    ) {
+        return ApiResponse.success(workflowService.failInternalTestForResample(id, request.testerName(), request.comment()));
     }
 }
