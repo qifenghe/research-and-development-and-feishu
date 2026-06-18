@@ -214,7 +214,12 @@ class SampleWorkflowControllerTest {
                 .split("\"id\":\"")[1]
                 .split("\"")[0];
 
-        mockMvc.perform(post("/api/v1/shipments/{id}/feedback", shipmentId)
+        assertThat(countById("shipment_record", shipmentId)).isEqualTo(1);
+        assertThat(valueById("shipment_record", shipmentId, "version_id")).isEqualTo(versionId);
+        assertThat(valueById("shipment_record", shipmentId, "status")).isEqualTo("SHIPPED");
+        assertThat(valueById("shipment_record", shipmentId, "tracking_no")).isEqualTo("SF202606180001");
+
+        var feedbackId = mockMvc.perform(post("/api/v1/shipments/{id}/feedback", shipmentId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -225,7 +230,18 @@ class SampleWorkflowControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.shipment.status").value("FEEDBACK_PASSED"))
-                .andExpect(jsonPath("$.data.feedback.result").value("PASSED"));
+                .andExpect(jsonPath("$.data.feedback.result").value("PASSED"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\\\"feedback\\\":\\{\\\"id\\\":\\\"")[1]
+                .split("\"")[0];
+
+        assertThat(valueById("shipment_record", shipmentId, "status")).isEqualTo("FEEDBACK_PASSED");
+        assertThat(countById("customer_feedback", feedbackId)).isEqualTo(1);
+        assertThat(valueById("customer_feedback", feedbackId, "shipment_id")).isEqualTo(shipmentId);
+        assertThat(valueById("customer_feedback", feedbackId, "result")).isEqualTo("PASSED");
+        assertThat(valueById("customer_feedback", feedbackId, "comment")).isEqualTo("客户确认通过，可以进入核价");
 
         var pricingFileId = mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files", versionId))
                 .andExpect(status().isOk())

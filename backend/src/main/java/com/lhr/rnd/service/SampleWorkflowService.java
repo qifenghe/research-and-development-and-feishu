@@ -22,20 +22,24 @@ import com.lhr.rnd.model.ShipmentStatus;
 import com.lhr.rnd.model.TestAssignment;
 import com.lhr.rnd.model.TestAssignmentStatus;
 import com.lhr.rnd.model.TestRecord;
+import com.lhr.rnd.persistence.entity.CustomerFeedbackEntity;
 import com.lhr.rnd.persistence.entity.ExperimentFormEntity;
 import com.lhr.rnd.persistence.entity.ExperimentMaterialEntity;
 import com.lhr.rnd.persistence.entity.RndTaskEntity;
 import com.lhr.rnd.persistence.entity.SampleProjectEntity;
 import com.lhr.rnd.persistence.entity.SampleRequestEntity;
 import com.lhr.rnd.persistence.entity.SampleVersionEntity;
+import com.lhr.rnd.persistence.entity.ShipmentRecordEntity;
 import com.lhr.rnd.persistence.entity.TestAssignmentEntity;
 import com.lhr.rnd.persistence.entity.TestRecordEntity;
+import com.lhr.rnd.persistence.repository.CustomerFeedbackRepository;
 import com.lhr.rnd.persistence.repository.ExperimentFormRepository;
 import com.lhr.rnd.persistence.repository.ExperimentMaterialRepository;
 import com.lhr.rnd.persistence.repository.RndTaskRepository;
 import com.lhr.rnd.persistence.repository.SampleProjectRepository;
 import com.lhr.rnd.persistence.repository.SampleRequestRepository;
 import com.lhr.rnd.persistence.repository.SampleVersionRepository;
+import com.lhr.rnd.persistence.repository.ShipmentRecordRepository;
 import com.lhr.rnd.persistence.repository.TestAssignmentRepository;
 import com.lhr.rnd.persistence.repository.TestRecordRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +66,8 @@ public class SampleWorkflowService {
     private final ExperimentMaterialRepository experimentMaterialRepository;
     private final TestAssignmentRepository testAssignmentRepository;
     private final TestRecordRepository testRecordRepository;
+    private final ShipmentRecordRepository shipmentRecordRepository;
+    private final CustomerFeedbackRepository customerFeedbackRepository;
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
     private final Map<String, SampleProject> projects = new LinkedHashMap<>();
     private final Map<String, SampleVersion> versions = new LinkedHashMap<>();
@@ -85,11 +91,11 @@ public class SampleWorkflowService {
     private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
-        this(Clock.systemDefaultZone(), null, null, null, null, null, null, null, null);
+        this(Clock.systemDefaultZone(), null, null, null, null, null, null, null, null, null, null);
     }
 
     SampleWorkflowService(Clock clock) {
-        this(clock, null, null, null, null, null, null, null, null);
+        this(clock, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -101,7 +107,9 @@ public class SampleWorkflowService {
             ExperimentFormRepository experimentFormRepository,
             ExperimentMaterialRepository experimentMaterialRepository,
             TestAssignmentRepository testAssignmentRepository,
-            TestRecordRepository testRecordRepository
+            TestRecordRepository testRecordRepository,
+            ShipmentRecordRepository shipmentRecordRepository,
+            CustomerFeedbackRepository customerFeedbackRepository
     ) {
         this(
                 Clock.systemDefaultZone(),
@@ -112,7 +120,9 @@ public class SampleWorkflowService {
                 experimentFormRepository,
                 experimentMaterialRepository,
                 testAssignmentRepository,
-                testRecordRepository
+                testRecordRepository,
+                shipmentRecordRepository,
+                customerFeedbackRepository
         );
     }
 
@@ -125,7 +135,9 @@ public class SampleWorkflowService {
             ExperimentFormRepository experimentFormRepository,
             ExperimentMaterialRepository experimentMaterialRepository,
             TestAssignmentRepository testAssignmentRepository,
-            TestRecordRepository testRecordRepository
+            TestRecordRepository testRecordRepository,
+            ShipmentRecordRepository shipmentRecordRepository,
+            CustomerFeedbackRepository customerFeedbackRepository
     ) {
         this.clock = clock;
         this.sampleRequestRepository = sampleRequestRepository;
@@ -136,6 +148,8 @@ public class SampleWorkflowService {
         this.experimentMaterialRepository = experimentMaterialRepository;
         this.testAssignmentRepository = testAssignmentRepository;
         this.testRecordRepository = testRecordRepository;
+        this.shipmentRecordRepository = shipmentRecordRepository;
+        this.customerFeedbackRepository = customerFeedbackRepository;
     }
 
     @Transactional
@@ -410,6 +424,7 @@ public class SampleWorkflowService {
         return new ArrayList<>(requests.values());
     }
 
+    @Transactional
     public synchronized ShipmentRecord createShipment(CreateShipmentCommand command) {
         var version = requiredVersion(command.versionId());
         ensureReadyForShipment(command.versionId());
@@ -427,9 +442,11 @@ public class SampleWorkflowService {
                 now()
         );
         shipments.put(shipment.id(), shipment);
+        persistShipment(shipment);
         return shipment;
     }
 
+    @Transactional
     public synchronized ShipmentFeedbackResult submitCustomerFeedback(SubmitCustomerFeedbackCommand command) {
         var shipment = shipments.get(command.shipmentId());
         if (shipment == null) {
@@ -456,6 +473,7 @@ public class SampleWorkflowService {
                 now()
         );
         customerFeedbacks.put(feedback.id(), feedback);
+        persistCustomerFeedback(updatedShipment, feedback);
         return new ShipmentFeedbackResult(updatedShipment, feedback);
     }
 
@@ -773,6 +791,44 @@ public class SampleWorkflowService {
                 nextTask.createdAt(),
                 nextTask.assignedAt(),
                 null
+        ));
+    }
+
+    private void persistShipment(ShipmentRecord shipment) {
+        if (shipmentRecordRepository == null) {
+            return;
+        }
+        shipmentRecordRepository.save(new ShipmentRecordEntity(
+                shipment.id(),
+                shipment.versionId(),
+                shipment.sampleNo(),
+                shipment.productName(),
+                shipment.versionCode(),
+                shipment.quantity(),
+                shipment.receiverName(),
+                shipment.trackingNo(),
+                shipment.remark(),
+                shipment.status().name(),
+                shipment.shippedAt()
+        ));
+    }
+
+    private void persistCustomerFeedback(ShipmentRecord updatedShipment, CustomerFeedback feedback) {
+        if (shipmentRecordRepository == null || customerFeedbackRepository == null) {
+            return;
+        }
+        var shipmentEntity = shipmentRecordRepository.findById(updatedShipment.id())
+                .orElseThrow(() -> new BusinessException("SHIPMENT_NOT_FOUND", "寄样记录不存在"));
+        shipmentEntity.updateStatus(updatedShipment.status().name());
+        shipmentRecordRepository.save(shipmentEntity);
+
+        customerFeedbackRepository.save(new CustomerFeedbackEntity(
+                feedback.id(),
+                feedback.shipmentId(),
+                feedback.feedbackBy(),
+                feedback.result().name(),
+                feedback.comment(),
+                feedback.feedbackAt()
         ));
     }
 
