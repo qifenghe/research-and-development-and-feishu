@@ -1,0 +1,351 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1280" viewBox="0 0 2200 1280">
+<defs>
+<filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#64748B" flood-opacity="0.18"/></filter>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#475569"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#FFFFFF"/>
+<text x="1100.0" y="46" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="34" font-weight="700" fill="#111827">研发样品管理飞书自建应用 - 技术系统架构图 v1.0</text>
+<text x="1100.0" y="78" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="400" fill="#64748B">手机/平板现场录入 + Excel核价文件生成 + 样品版本归档 + 飞书协同通知</text>
+<rect x="52" y="116" width="260" height="500" rx="18" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="2"/>
+<text x="182" y="150" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="23" font-weight="700" fill="#0F172A">用户与终端</text>
+<rect x="350" y="116" width="1510" height="880" rx="18" fill="#F8FBFF" stroke="#A8C7FA" stroke-width="2"/>
+<text x="1105" y="150" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="24" font-weight="700" fill="#0F172A">公司内网 / 云主机部署区</text>
+<rect x="1890" y="116" width="250" height="880" rx="18" fill="#FAFAF9" stroke="#D6D3D1" stroke-width="2"/>
+<text x="2015" y="150" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="23" font-weight="700" fill="#0F172A">外部平台</text>
+<rect x="350" y="1020" width="1510" height="160" rx="18" fill="#FFF7ED" stroke="#FDBA74" stroke-width="2"/>
+<text x="1105" y="1054" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="24" font-weight="700" fill="#9A3412">运维、安全与备份</text>
+<g filter="url(#shadow)">
+<rect x="82" y="185" width="200" height="96" rx="14" fill="#E0F2FE" stroke="#7DD3FC" stroke-width="2"/>
+</g>
+<text x="108" y="220" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="24" font-weight="700" fill="#0F172A">👥</text>
+<text x="194.0" y="218" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">飞书工作台</text>
+<text x="182.0" y="251" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="182.0" dy="0">销售内勤/研发总监</tspan>
+<tspan x="182.0" dy="22">研发/测试/财务</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="82" y="322" width="200" height="96" rx="14" fill="#DCFCE7" stroke="#86EFAC" stroke-width="2"/>
+</g>
+<text x="108" y="357" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="24" font-weight="700" fill="#0F172A">📱</text>
+<text x="194.0" y="355" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">手机/平板</text>
+<text x="182.0" y="388" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="182.0" dy="0">实验现场录入</tspan>
+<tspan x="182.0" dy="22">拍照/附件上传</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="82" y="459" width="200" height="96" rx="14" fill="#EDE9FE" stroke="#C4B5FD" stroke-width="2"/>
+</g>
+<text x="108" y="494" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="24" font-weight="700" fill="#0F172A">💻</text>
+<text x="194.0" y="492" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">PC浏览器</text>
+<text x="182.0" y="525" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="182.0" dy="0">管理端查看</tspan>
+<tspan x="182.0" dy="22">导出/审核/归档</tspan>
+</text>
+<rect x="390" y="180" width="1430" height="132" rx="16" fill="#EFF6FF" stroke="#93C5FD" stroke-width="2"/>
+<text x="1105" y="212" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#1D4ED8">1. 接入层</text>
+<g filter="url(#shadow)">
+<rect x="420" y="232" width="235" height="58" rx="14" fill="#DBEAFE" stroke="#60A5FA" stroke-width="2"/>
+</g>
+<text x="537.5" y="265" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">Nginx</text>
+<text x="537.5" y="298" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="537.5" dy="0">HTTPS反向代理</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="690" y="232" width="260" height="58" rx="14" fill="#DBEAFE" stroke="#60A5FA" stroke-width="2"/>
+</g>
+<text x="820.0" y="265" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">飞书免登/OAuth</text>
+<text x="820.0" y="298" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="820.0" dy="0">Feishu OAuth + 用户身份</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="985" y="232" width="245" height="58" rx="14" fill="#DBEAFE" stroke="#60A5FA" stroke-width="2"/>
+</g>
+<text x="1107.5" y="265" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">API网关</text>
+<text x="1107.5" y="298" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1107.5" dy="0">REST API / RBAC权限</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1265" y="232" width="245" height="58" rx="14" fill="#DBEAFE" stroke="#60A5FA" stroke-width="2"/>
+</g>
+<text x="1387.5" y="265" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">前端静态资源</text>
+<text x="1387.5" y="298" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1387.5" dy="0">Vue3 H5 / PC管理端</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1545" y="232" width="245" height="58" rx="14" fill="#DBEAFE" stroke="#60A5FA" stroke-width="2"/>
+</g>
+<text x="1667.5" y="265" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">内网访问控制</text>
+<text x="1667.5" y="298" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1667.5" dy="0">公司网络/VPN/白名单</tspan>
+</text>
+<rect x="390" y="340" width="1430" height="162" rx="16" fill="#ECFDF5" stroke="#86EFAC" stroke-width="2"/>
+<text x="1105" y="372" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#047857">2. 应用层</text>
+<g filter="url(#shadow)">
+<rect x="420" y="395" width="260" height="78" rx="14" fill="#DCFCE7" stroke="#4ADE80" stroke-width="2"/>
+</g>
+<text x="550.0" y="428" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">移动端H5</text>
+<text x="550.0" y="461" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="550.0" dy="0">Vue3 + Vant</tspan>
+<tspan x="550.0" dy="22">现场打样/拍照上传</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="715" y="395" width="260" height="78" rx="14" fill="#DCFCE7" stroke="#4ADE80" stroke-width="2"/>
+</g>
+<text x="845.0" y="428" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">PC管理端</text>
+<text x="845.0" y="461" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="845.0" dy="0">Vue3 + Ant Design Vue</tspan>
+<tspan x="845.0" dy="22">审核/看板/文件归档</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1010" y="395" width="260" height="78" rx="14" fill="#DCFCE7" stroke="#4ADE80" stroke-width="2"/>
+</g>
+<text x="1140.0" y="428" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">飞书应用壳</text>
+<text x="1140.0" y="461" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1140.0" dy="0">自建应用菜单</tspan>
+<tspan x="1140.0" dy="22">消息卡片跳转</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1305" y="395" width="220" height="78" rx="14" fill="#DCFCE7" stroke="#4ADE80" stroke-width="2"/>
+</g>
+<text x="1415.0" y="428" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">权限视图</text>
+<text x="1415.0" y="461" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1415.0" dy="0">按角色显示菜单</tspan>
+<tspan x="1415.0" dy="22">待办/任务过滤</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1555" y="395" width="235" height="78" rx="14" fill="#DCFCE7" stroke="#4ADE80" stroke-width="2"/>
+</g>
+<text x="1672.5" y="428" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">文件预览下载</text>
+<text x="1672.5" y="461" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1672.5" dy="0">Excel/PDF/图片</tspan>
+<tspan x="1672.5" dy="22">飞书云盘链接</tspan>
+</text>
+<rect x="390" y="530" width="1430" height="208" rx="16" fill="#FFF7ED" stroke="#FDBA74" stroke-width="2"/>
+<text x="1105" y="562" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#C2410C">3. 服务层</text>
+<g filter="url(#shadow)">
+<rect x="420" y="585" width="205" height="92" rx="14" fill="#FFEDD5" stroke="#FB923C" stroke-width="2"/>
+</g>
+<text x="522.5" y="618" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">后端API服务</text>
+<text x="522.5" y="651" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="522.5" dy="0">Java + Spring Boot</tspan>
+<tspan x="522.5" dy="22">REST接口/权限校验</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="650" y="585" width="205" height="92" rx="14" fill="#FFEDD5" stroke="#FB923C" stroke-width="2"/>
+</g>
+<text x="752.5" y="618" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">流程状态机</text>
+<text x="752.5" y="651" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="752.5" dy="0">样品需求-&gt;打样</tspan>
+<tspan x="752.5" dy="22">测试-&gt;寄样-&gt;转单</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="880" y="585" width="205" height="92" rx="14" fill="#FFEDD5" stroke="#FB923C" stroke-width="2"/>
+</g>
+<text x="982.5" y="618" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">打样实验服务</text>
+<text x="982.5" y="651" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="982.5" dy="0">配方/工序/损耗</tspan>
+<tspan x="982.5" dy="22">版本锁定</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1110" y="585" width="205" height="92" rx="14" fill="#FFEDD5" stroke="#FB923C" stroke-width="2"/>
+</g>
+<text x="1212.5" y="618" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">Excel生成服务</text>
+<text x="1212.5" y="651" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1212.5" dy="0">EasyExcel/Apache POI</tspan>
+<tspan x="1212.5" dy="22">核价文件版本</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1340" y="585" width="205" height="92" rx="14" fill="#FFEDD5" stroke="#FB923C" stroke-width="2"/>
+</g>
+<text x="1442.5" y="618" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">文件归档服务</text>
+<text x="1442.5" y="651" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1442.5" dy="0">照片/附件/Excel</tspan>
+<tspan x="1442.5" dy="22">产品档案目录</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1570" y="585" width="205" height="92" rx="14" fill="#FFEDD5" stroke="#FB923C" stroke-width="2"/>
+</g>
+<text x="1672.5" y="618" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">异步任务服务</text>
+<text x="1672.5" y="651" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1672.5" dy="0">Spring Task + Redis</tspan>
+<tspan x="1672.5" dy="22">通知/上传/导出</tspan>
+</text>
+<rect x="390" y="765" width="1430" height="180" rx="16" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="2"/>
+<text x="1105" y="797" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="700" fill="#6D28D9">4. 数据层</text>
+<g filter="url(#shadow)">
+<rect x="420" y="825" width="230" height="82" rx="14" fill="#EDE9FE" stroke="#A78BFA" stroke-width="2"/>
+</g>
+<text x="535.0" y="858" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">PostgreSQL</text>
+<text x="535.0" y="891" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="535.0" dy="0">样品/任务/实验单</tspan>
+<tspan x="535.0" dy="22">版本/状态/权限</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="690" y="825" width="230" height="82" rx="14" fill="#EDE9FE" stroke="#A78BFA" stroke-width="2"/>
+</g>
+<text x="805.0" y="858" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">Redis</text>
+<text x="805.0" y="891" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="805.0" dy="0">缓存/验证码</tspan>
+<tspan x="805.0" dy="22">异步队列Broker</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="960" y="825" width="230" height="82" rx="14" fill="#EDE9FE" stroke="#A78BFA" stroke-width="2"/>
+</g>
+<text x="1075.0" y="858" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">MinIO 或 NAS</text>
+<text x="1075.0" y="891" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1075.0" dy="0">照片/附件/Excel</tspan>
+<tspan x="1075.0" dy="22">工艺/BOM文件</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1230" y="825" width="230" height="82" rx="14" fill="#EDE9FE" stroke="#A78BFA" stroke-width="2"/>
+</g>
+<text x="1345.0" y="858" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">归档索引</text>
+<text x="1345.0" y="891" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1345.0" dy="0">产品档案</tspan>
+<tspan x="1345.0" dy="22">版本文件关系</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1500" y="825" width="290" height="82" rx="14" fill="#EDE9FE" stroke="#A78BFA" stroke-width="2"/>
+</g>
+<text x="1645.0" y="858" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">Excel模板库</text>
+<text x="1645.0" y="891" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1645.0" dy="0">现有核价表模板</tspan>
+<tspan x="1645.0" dy="22">按产品类型维护</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1918" y="190" width="194" height="86" rx="14" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
+</g>
+<text x="2015.0" y="223" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">飞书开放平台</text>
+<text x="2015.0" y="256" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="2015.0" dy="0">登录/通讯录</tspan>
+<tspan x="2015.0" dy="22">消息/审批/云盘</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1918" y="320" width="194" height="86" rx="14" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
+</g>
+<text x="2015.0" y="353" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">飞书消息</text>
+<text x="2015.0" y="386" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="2015.0" dy="0">任务通知</tspan>
+<tspan x="2015.0" dy="22">按钮跳转</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1918" y="450" width="194" height="86" rx="14" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
+</g>
+<text x="2015.0" y="483" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">飞书审批</text>
+<text x="2015.0" y="516" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="2015.0" dy="0">需求审核</tspan>
+<tspan x="2015.0" dy="22">测试/停止确认</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1918" y="580" width="194" height="86" rx="14" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
+</g>
+<text x="2015.0" y="613" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">飞书云盘</text>
+<text x="2015.0" y="646" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="2015.0" dy="0">文件同步</tspan>
+<tspan x="2015.0" dy="22">Excel链接</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1918" y="710" width="194" height="86" rx="14" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
+</g>
+<text x="2015.0" y="743" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">多维表格</text>
+<text x="2015.0" y="776" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="2015.0" dy="0">进度看板</tspan>
+<tspan x="2015.0" dy="22">统计展示 可选</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1918" y="840" width="194" height="86" rx="14" fill="#F1F5F9" stroke="#94A3B8" stroke-width="2"/>
+</g>
+<text x="2015.0" y="873" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">预留系统</text>
+<text x="2015.0" y="906" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="2015.0" dy="0">ERP/财务</tspan>
+<tspan x="2015.0" dy="22">电子秤/生产</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="405" y="1080" width="230" height="70" rx="14" fill="#FED7AA" stroke="#FB923C" stroke-width="2"/>
+</g>
+<text x="520.0" y="1113" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">Docker Compose</text>
+<text x="520.0" y="1146" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="520.0" dy="0">前端/后端/Worker部署</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="665" y="1080" width="230" height="70" rx="14" fill="#FED7AA" stroke="#FB923C" stroke-width="2"/>
+</g>
+<text x="780.0" y="1113" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">HTTPS/TLS</text>
+<text x="780.0" y="1146" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="780.0" dy="0">证书/内网域名</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="925" y="1080" width="230" height="70" rx="14" fill="#FED7AA" stroke="#FB923C" stroke-width="2"/>
+</g>
+<text x="1040.0" y="1113" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">日志监控</text>
+<text x="1040.0" y="1146" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1040.0" dy="0">应用日志</tspan>
+<tspan x="1040.0" dy="22">Prometheus/Grafana可选</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1185" y="1080" width="230" height="70" rx="14" fill="#FED7AA" stroke="#FB923C" stroke-width="2"/>
+</g>
+<text x="1300.0" y="1113" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">定时备份</text>
+<text x="1300.0" y="1146" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1300.0" dy="0">数据库备份</tspan>
+<tspan x="1300.0" dy="22">文件增量备份</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1445" y="1080" width="230" height="70" rx="14" fill="#FED7AA" stroke="#FB923C" stroke-width="2"/>
+</g>
+<text x="1560.0" y="1113" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">审计追踪</text>
+<text x="1560.0" y="1146" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1560.0" dy="0">谁改了什么</tspan>
+<tspan x="1560.0" dy="22">版本不可覆盖</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1705" y="1080" width="110" height="70" rx="14" fill="#FED7AA" stroke="#FB923C" stroke-width="2"/>
+</g>
+<text x="1760.0" y="1113" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="19" font-weight="700" fill="#0F172A">权限</text>
+<text x="1760.0" y="1146" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="1760.0" dy="0">RBAC</tspan>
+</text>
+<path d="M282,233 C351.0,233 351.0,261 420,261" fill="none" stroke="#2563EB" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="351.0" y="237.0" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#2563EB">飞书入口</text>
+<path d="M282,370 C351.0,370 351.0,420 420,420" fill="none" stroke="#16A34A" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="351.0" y="385.0" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#16A34A">现场录入</text>
+<path d="M282,507 C351.0,507 351.0,420 420,420" fill="none" stroke="#7C3AED" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="351.0" y="453.5" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#7C3AED">管理查看</text>
+<path d="M1790,260 C1854.0,260 1854.0,233 1918,233" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="1854.0" y="236.5" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#475569">API调用</text>
+<path d="M1775,632 C1846.5,632 1846.5,363 1918,363" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="1846.5" y="487.5" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#475569">消息/审批</text>
+<path d="M1448,632 C1683.0,632 1683.0,623 1918,623" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="1683.0" y="617.5" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#475569">文件上传</text>
+<path d="M1080,677 C1080.0,677 1080.0,825 1080,825" fill="none" stroke="#C2410C" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M1442,677 C1258.5,677 1258.5,825 1075,825" fill="none" stroke="#C2410C" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M1670,677 C1237.5,677 1237.5,825 805,825" fill="none" stroke="#C2410C" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 8"/>
+<path d="M1125,473 C1125.0,473 1125.0,585 1125,585" fill="none" stroke="#047857" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M1110,290 C1110.0,290 1110.0,395 1110,395" fill="none" stroke="#1D4ED8" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M1125,907 C1212.5,907 1212.5,1080 1300,1080" fill="none" stroke="#6D28D9" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="1212.5" y="983.5" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#6D28D9">备份/审计</text>
+<path d="M2112,884 C1963.5,884 1963.5,1115 1815,1115" fill="none" stroke="#64748B" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 8"/>
+<text x="1963.5" y="989.5" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#64748B">后续扩展</text>
+<rect x="64" y="656" width="248" height="224" rx="14" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+<text x="188" y="690" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#0F172A">推荐第一版技术栈</text>
+<text x="188" y="728" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="188" dy="0">前端：Vue3 + Vant</tspan>
+<tspan x="188" dy="25">PC端：Ant Design Vue</tspan>
+<tspan x="188" dy="25">后端：Spring Boot</tspan>
+<tspan x="188" dy="25">数据库：PostgreSQL</tspan>
+<tspan x="188" dy="25">缓存队列：Redis</tspan>
+<tspan x="188" dy="25">文件：MinIO/NAS</tspan>
+<tspan x="188" dy="25">部署：Nginx + Docker</tspan>
+</text>
+<rect x="64" y="910" width="248" height="206" rx="14" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+<text x="188" y="944" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="700" fill="#0F172A">核心设计原则</text>
+<text x="188" y="982" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="500" fill="#334155">
+<tspan x="188" dy="0">飞书：入口与协同</tspan>
+<tspan x="188" dy="25">系统：主数据和流程</tspan>
+<tspan x="188" dy="25">Excel：核价交付物</tspan>
+<tspan x="188" dy="25">版本：提交后锁定</tspan>
+<tspan x="188" dy="25">归档：产品/版本维度</tspan>
+<tspan x="188" dy="25">扩展：预留ERP接口</tspan>
+</text>
+<text x="2140" y="1246" text-anchor="end" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="400" fill="#64748B">版本：v1.0 | 面向飞书自建应用研发样品管理系统</text>
+</svg>

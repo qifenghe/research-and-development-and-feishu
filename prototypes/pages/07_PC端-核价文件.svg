@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="860" viewBox="0 0 1280 860">
+<defs>
+<filter id="shadow" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#334155" flood-opacity="0.16"/></filter>
+</defs>
+<rect width="100%" height="100%" fill="#F6F8FB"/>
+<text x="640.0" y="50" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="32" font-weight="800" fill="#111827">核价文件</text>
+<g filter="url(#shadow)">
+<rect x="64" y="96" width="1152" height="700" rx="22" fill="#FFFFFF" stroke="#D5DFEC" stroke-width="2"/>
+</g>
+<rect x="64" y="96" width="1152" height="72" rx="22" fill="#F8FBFF" stroke="#D5DFEC" stroke-width="2"/>
+<text x="94" y="142" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="26" font-weight="800" fill="#111827">核价文件</text>
+<text x="1080" y="142" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="600" fill="#64748B">研发总监 · 赵新武</text>
+<rect x="64" y="168" width="200" height="628" rx="0" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="88" y="205" width="152" height="42" rx="12" fill="#F8FAFC" stroke="none" stroke-width="0"/>
+<text x="112" y="233" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="600" fill="#64748B">首页看板</text>
+<rect x="88" y="263" width="152" height="42" rx="12" fill="#F8FAFC" stroke="none" stroke-width="0"/>
+<text x="112" y="291" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="600" fill="#64748B">样品需求</text>
+<rect x="88" y="321" width="152" height="42" rx="12" fill="#F8FAFC" stroke="none" stroke-width="0"/>
+<text x="112" y="349" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="600" fill="#64748B">研发任务</text>
+<rect x="88" y="379" width="152" height="42" rx="12" fill="#F8FAFC" stroke="none" stroke-width="0"/>
+<text x="112" y="407" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="600" fill="#64748B">待测试</text>
+<rect x="88" y="437" width="152" height="42" rx="12" fill="#EAF2FF" stroke="none" stroke-width="0"/>
+<text x="112" y="465" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#246BFE">核价文件</text>
+<rect x="88" y="495" width="152" height="42" rx="12" fill="#F8FAFC" stroke="none" stroke-width="0"/>
+<text x="112" y="523" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="600" fill="#64748B">产品档案</text>
+<rect x="88" y="553" width="152" height="42" rx="12" fill="#F8FAFC" stroke="none" stroke-width="0"/>
+<text x="112" y="581" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="600" fill="#64748B">系统配置</text>
+<text x="300" y="230" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="24" font-weight="800" fill="#111827">核价文件版本</text>
+<rect x="300" y="260" width="860" height="420" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="330" y="310" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="800" fill="#64748B">产品</text>
+<text x="540" y="310" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="800" fill="#64748B">样品版本</text>
+<text x="660" y="310" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="800" fill="#64748B">核价版本</text>
+<text x="800" y="310" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="800" fill="#64748B">生成时间</text>
+<text x="960" y="310" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="800" fill="#64748B">状态</text>
+<text x="1080" y="310" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="800" fill="#64748B">操作</text>
+<line x1="320" y1="328" x2="1140" y2="328" stroke="#D8E0EA" stroke-width="2"/>
+<text x="330" y="372" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="800" fill="#111827">500g香卤大肠头</text>
+<text x="540" y="372" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="500" fill="#111827">A1</text>
+<text x="660" y="372" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="500" fill="#111827">A1-核价V1</text>
+<text x="800" y="372" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="500" fill="#111827">06-17 15:20</text>
+<text x="960" y="372" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="800" fill="#111827">已提交财务</text>
+<text x="1080" y="372" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="800" fill="#246BFE">下载</text>
+<line x1="320" y1="392" x2="1140" y2="392" stroke="#EDF2F7" stroke-width="1"/>
+<text x="330" y="434" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="800" fill="#111827">黑椒鸡柳料理包</text>
+<text x="540" y="434" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="500" fill="#111827">A1</text>
+<text x="660" y="434" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="500" fill="#111827">A1-核价V2</text>
+<text x="800" y="434" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="500" fill="#111827">06-16 11:10</text>
+<text x="960" y="434" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="800" fill="#111827">已报价</text>
+<text x="1080" y="434" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="800" fill="#246BFE">下载</text>
+<line x1="320" y1="454" x2="1140" y2="454" stroke="#EDF2F7" stroke-width="1"/>
+<text x="330" y="496" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="800" fill="#111827">调理鸡排</text>
+<text x="540" y="496" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="500" fill="#111827">A2</text>
+<text x="660" y="496" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="500" fill="#111827">A2-核价V1</text>
+<text x="800" y="496" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="500" fill="#111827">06-15 17:35</text>
+<text x="960" y="496" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="800" fill="#111827">待提交</text>
+<text x="1080" y="496" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="800" fill="#246BFE">生成</text>
+<line x1="320" y1="516" x2="1140" y2="516" stroke="#EDF2F7" stroke-width="1"/>
+<rect x="300" y="590" width="220" height="50" rx="14" fill="#246BFE" stroke="#246BFE" stroke-width="2"/>
+<text x="410" y="623" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#FFFFFF">按模板生成Excel</text>
+</svg>

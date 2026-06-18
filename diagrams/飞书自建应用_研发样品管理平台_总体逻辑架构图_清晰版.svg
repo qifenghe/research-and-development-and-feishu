@@ -1,0 +1,464 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1320" viewBox="0 0 2400 1320">
+<defs>
+<filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#64748B" flood-opacity="0.18"/></filter>
+
+    <marker id="arrow_demand" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2F6FED" />
+    </marker>
+
+    <marker id="arrow_dispatch" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#6D5BD0" />
+    </marker>
+
+    <marker id="arrow_sample" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#0E9F6E" />
+    </marker>
+
+    <marker id="arrow_test" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#008577" />
+    </marker>
+
+    <marker id="arrow_pricing" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#E64694" />
+    </marker>
+
+    <marker id="arrow_shipment" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#D97706" />
+    </marker>
+
+    <marker id="arrow_archive" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#64748B" />
+    </marker>
+</defs>
+<rect width="100%" height="100%" fill="#FFFFFF"/>
+<text x="1200.0" y="44" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="34" font-weight="700" fill="#111827">预制食品研发样品管理平台 v1.0 - 飞书自建应用总体逻辑架构图（清晰版）</text>
+<text x="1200.0" y="76" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="400" fill="#475569">飞书做入口与协同，自研系统负责流程、版本、Excel核价文件和归档</text>
+<rect x="400" y="96" width="1640" height="130" rx="18" fill="#EAF3FF" stroke="#8AB8F5" stroke-width="2"/>
+<text x="1220.0" y="124" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="600" fill="#111827">1. 用户层：谁发起和处理业务</text>
+<g filter="url(#shadow)">
+<rect x="422.0" y="144" width="212.57142857142858" height="66" rx="14" fill="#D8ECFF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="528.2857142857143" y="168" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="528.2857142857143" dy="0">销售内勤</tspan>
+<tspan x="528.2857142857143" dy="20">样品需求/寄样/反馈</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="652.5714285714286" y="144" width="212.57142857142858" height="66" rx="14" fill="#D8ECFF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="758.8571428571429" y="168" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="758.8571428571429" dy="0">研发总监</tspan>
+<tspan x="758.8571428571429" dy="20">审核/分发/停止确认</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="883.1428571428571" y="144" width="212.57142857142858" height="66" rx="14" fill="#D8ECFF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="989.4285714285714" y="168" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="989.4285714285714" dy="0">研发人员</tspan>
+<tspan x="989.4285714285714" dy="20">接受任务/现场打样</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1113.7142857142858" y="144" width="212.57142857142858" height="66" rx="14" fill="#D8ECFF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1220.0" y="168" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1220.0" dy="0">测试/品控</tspan>
+<tspan x="1220.0" dy="20">试吃/检测/结果确认</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1344.2857142857142" y="144" width="212.57142857142858" height="66" rx="14" fill="#D8ECFF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1450.5714285714284" y="168" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1450.5714285714284" dy="0">财务</tspan>
+<tspan x="1450.5714285714284" dy="20">核价/报价反馈</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1574.857142857143" y="144" width="212.57142857142858" height="66" rx="14" fill="#D8ECFF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1681.142857142857" y="168" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1681.142857142857" dy="0">业务员/管理层</tspan>
+<tspan x="1681.142857142857" dy="20">客户反馈/下单决策</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1805.4285714285716" y="144" width="212.57142857142858" height="66" rx="14" fill="#D8ECFF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1911.7142857142858" y="168" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1911.7142857142858" dy="0">系统管理员</tspan>
+<tspan x="1911.7142857142858" dy="20">权限/模板/归档策略</tspan>
+</text>
+<rect x="400" y="245" width="1640" height="130" rx="18" fill="#E9FBF6" stroke="#67DCC2" stroke-width="2"/>
+<text x="1220.0" y="273" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="600" fill="#111827">2. 统一入口层：通过飞书进入研发平台</text>
+<g filter="url(#shadow)">
+<rect x="422.0" y="293" width="212.57142857142858" height="66" rx="14" fill="#D7F7EE" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="528.2857142857143" y="317" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="528.2857142857143" dy="0">飞书工作台</tspan>
+<tspan x="528.2857142857143" dy="20">研发样品管理入口</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="652.5714285714286" y="293" width="212.57142857142858" height="66" rx="14" fill="#D7F7EE" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="758.8571428571429" y="317" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="758.8571428571429" dy="0">任务待办卡片</tspan>
+<tspan x="758.8571428571429" dy="20">分发/接受/转派</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="883.1428571428571" y="293" width="212.57142857142858" height="66" rx="14" fill="#D7F7EE" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="989.4285714285714" y="317" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="989.4285714285714" dy="0">移动端H5</tspan>
+<tspan x="989.4285714285714" dy="20">手机/平板现场录入</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1113.7142857142858" y="293" width="212.57142857142858" height="66" rx="14" fill="#D7F7EE" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1220.0" y="317" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1220.0" dy="0">飞书审批确认</tspan>
+<tspan x="1220.0" dy="20">审核/测试/停止</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1344.2857142857142" y="293" width="212.57142857142858" height="66" rx="14" fill="#D7F7EE" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1450.5714285714284" y="317" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1450.5714285714284" dy="0">PC管理端</tspan>
+<tspan x="1450.5714285714284" dy="20">总监/内勤/财务查看</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1574.857142857143" y="293" width="212.57142857142858" height="66" rx="14" fill="#D7F7EE" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1681.142857142857" y="317" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1681.142857142857" dy="0">飞书消息卡片</tspan>
+<tspan x="1681.142857142857" dy="20">寄样/反馈/报价提醒</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1805.4285714285716" y="293" width="212.57142857142858" height="66" rx="14" fill="#D7F7EE" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1911.7142857142858" y="317" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1911.7142857142858" dy="0">飞书云盘/看板</tspan>
+<tspan x="1911.7142857142858" dy="20">文件链接/进度看板</tspan>
+</text>
+<rect x="400" y="394" width="1640" height="130" rx="18" fill="#FFF0F7" stroke="#F5A3C8" stroke-width="2"/>
+<text x="1220.0" y="422" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="600" fill="#111827">3. 平台控制层：入口请求落到哪些控制服务</text>
+<g filter="url(#shadow)">
+<rect x="422.0" y="442" width="212.57142857142858" height="66" rx="14" fill="#F8D5E7" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="528.2857142857143" y="466" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="528.2857142857143" dy="0">API网关 + RBAC</tspan>
+<tspan x="528.2857142857143" dy="20">飞书身份/权限/菜单</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="652.5714285714286" y="442" width="212.57142857142858" height="66" rx="14" fill="#F8D5E7" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="758.8571428571429" y="466" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="758.8571428571429" dy="0">任务分发服务</tspan>
+<tspan x="758.8571428571429" dy="20">指派/接受/转派</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="883.1428571428571" y="442" width="212.57142857142858" height="66" rx="14" fill="#F8D5E7" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="989.4285714285714" y="466" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="989.4285714285714" dy="0">流程引擎 + 状态机</tspan>
+<tspan x="989.4285714285714" dy="20">需求/打样/测试/寄样</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1113.7142857142858" y="442" width="212.57142857142858" height="66" rx="14" fill="#F8D5E7" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1220.0" y="466" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1220.0" dy="0">测试审批服务</tspan>
+<tspan x="1220.0" dy="20">结果/复打样/停止</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1344.2857142857142" y="442" width="212.57142857142858" height="66" rx="14" fill="#F8D5E7" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1450.5714285714284" y="466" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1450.5714285714284" dy="0">版本锁定服务</tspan>
+<tspan x="1450.5714285714284" dy="20">A0/A1/核价V1</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1574.857142857143" y="442" width="212.57142857142858" height="66" rx="14" fill="#F8D5E7" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1681.142857142857" y="466" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1681.142857142857" dy="0">客户反馈服务</tspan>
+<tspan x="1681.142857142857" dy="20">通过/调整/取消</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1805.4285714285716" y="442" width="212.57142857142858" height="66" rx="14" fill="#F8D5E7" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1911.7142857142858" y="466" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1911.7142857142858" dy="0">文件归档服务</tspan>
+<tspan x="1911.7142857142858" dy="20">照片/附件/Excel</tspan>
+</text>
+<rect x="400" y="543" width="1640" height="130" rx="18" fill="#EBFFF0" stroke="#79E79A" stroke-width="2"/>
+<text x="1220.0" y="571" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="600" fill="#111827">4. 业务服务层：研发样品全生命周期</text>
+<g filter="url(#shadow)">
+<rect x="422.0" y="591" width="212.57142857142858" height="66" rx="14" fill="#CFF7DC" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="528.2857142857143" y="615" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="528.2857142857143" dy="0">样品需求服务</tspan>
+<tspan x="528.2857142857143" dy="20">录入/退回/补充</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="652.5714285714286" y="591" width="212.57142857142858" height="66" rx="14" fill="#CFF7DC" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="758.8571428571429" y="615" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="758.8571428571429" dy="0">研发任务服务</tspan>
+<tspan x="758.8571428571429" dy="20">分发/接受/进度</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="883.1428571428571" y="591" width="212.57142857142858" height="66" rx="14" fill="#CFF7DC" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="989.4285714285714" y="615" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="989.4285714285714" dy="0">打样实验单服务</tspan>
+<tspan x="989.4285714285714" dy="20">配方/工序/损耗/得率</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1113.7142857142858" y="591" width="212.57142857142858" height="66" rx="14" fill="#CFF7DC" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1220.0" y="615" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1220.0" dy="0">测试确认服务</tspan>
+<tspan x="1220.0" dy="20">通过/复打样/停止</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1344.2857142857142" y="591" width="212.57142857142858" height="66" rx="14" fill="#CFF7DC" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1450.5714285714284" y="615" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1450.5714285714284" dy="0">核价文件服务</tspan>
+<tspan x="1450.5714285714284" dy="20">Excel生成/版本提交</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1574.857142857143" y="591" width="212.57142857142858" height="66" rx="14" fill="#CFF7DC" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1681.142857142857" y="615" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1681.142857142857" dy="0">寄样反馈服务</tspan>
+<tspan x="1681.142857142857" dy="20">快递/客户反馈/待下单</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1805.4285714285716" y="591" width="212.57142857142858" height="66" rx="14" fill="#CFF7DC" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1911.7142857142858" y="615" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1911.7142857142858" dy="0">工艺BOM准备</tspan>
+<tspan x="1911.7142857142858" dy="20">通过后生成任务</tspan>
+</text>
+<rect x="400" y="692" width="1640" height="130" rx="18" fill="#FFF9E8" stroke="#F6D783" stroke-width="2"/>
+<text x="1220.0" y="720" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="600" fill="#111827">5. 工具与模板层：业务服务调用哪些工具</text>
+<g filter="url(#shadow)">
+<rect x="422.0" y="740" width="212.57142857142858" height="66" rx="14" fill="#FFF0BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="528.2857142857143" y="764" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="528.2857142857143" dy="0">需求表单模板</tspan>
+<tspan x="528.2857142857143" dy="20">客户/规格/要求/时间</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="652.5714285714286" y="740" width="212.57142857142858" height="66" rx="14" fill="#FFF0BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="758.8571428571429" y="764" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="758.8571428571429" dy="0">任务规则工具</tspan>
+<tspan x="758.8571428571429" dy="20">人员/优先级/期限</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="883.1428571428571" y="740" width="212.57142857142858" height="66" rx="14" fill="#FFF0BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="989.4285714285714" y="764" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="989.4285714285714" dy="0">计算工具</tspan>
+<tspan x="989.4285714285714" dy="20">领料/损耗/得率/包数</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1113.7142857142858" y="740" width="212.57142857142858" height="66" rx="14" fill="#FFF0BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1220.0" y="764" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1220.0" dy="0">测试记录模板</tspan>
+<tspan x="1220.0" dy="20">口味/复热/检测/结论</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1344.2857142857142" y="740" width="212.57142857142858" height="66" rx="14" fill="#FFF0BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1450.5714285714284" y="764" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1450.5714285714284" dy="0">Excel模板引擎</tspan>
+<tspan x="1450.5714285714284" dy="20">按现有核价表生成</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1574.857142857143" y="740" width="212.57142857142858" height="66" rx="14" fill="#FFF0BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1681.142857142857" y="764" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1681.142857142857" dy="0">看板工具</tspan>
+<tspan x="1681.142857142857" dy="20">进度/逾期/统计</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1805.4285714285716" y="740" width="212.57142857142858" height="66" rx="14" fill="#FFF0BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1911.7142857142858" y="764" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1911.7142857142858" dy="0">文件预览下载</tspan>
+<tspan x="1911.7142857142858" dy="20">Excel/PDF/图片</tspan>
+</text>
+<rect x="400" y="841" width="1640" height="130" rx="18" fill="#F1EFFF" stroke="#B8A7FF" stroke-width="2"/>
+<text x="1220.0" y="869" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="600" fill="#111827">6. 数据归档层：沉淀哪些数据资产</text>
+<g filter="url(#shadow)">
+<rect x="422.0" y="889" width="212.57142857142858" height="66" rx="14" fill="#DED9FF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="528.2857142857143" y="913" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="528.2857142857143" dy="0">样品需求库</tspan>
+<tspan x="528.2857142857143" dy="20">客户/规格/要求/时间</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="652.5714285714286" y="889" width="212.57142857142858" height="66" rx="14" fill="#DED9FF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="758.8571428571429" y="913" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="758.8571428571429" dy="0">研发任务库</tspan>
+<tspan x="758.8571428571429" dy="20">负责人/期限/状态</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="883.1428571428571" y="889" width="212.57142857142858" height="66" rx="14" fill="#DED9FF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="989.4285714285714" y="913" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="989.4285714285714" dy="0">实验单配方库</tspan>
+<tspan x="989.4285714285714" dy="20">原料/工序/称重</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1113.7142857142858" y="889" width="212.57142857142858" height="66" rx="14" fill="#DED9FF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1220.0" y="913" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1220.0" dy="0">测试记录库</tspan>
+<tspan x="1220.0" dy="20">测试/结论/附件</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1344.2857142857142" y="889" width="212.57142857142858" height="66" rx="14" fill="#DED9FF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1450.5714285714284" y="913" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1450.5714285714284" dy="0">核价文件库</tspan>
+<tspan x="1450.5714285714284" dy="20">A0-V1/A1-V1</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1574.857142857143" y="889" width="212.57142857142858" height="66" rx="14" fill="#DED9FF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1681.142857142857" y="913" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1681.142857142857" dy="0">寄样反馈库</tspan>
+<tspan x="1681.142857142857" dy="20">快递/客户结果</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1805.4285714285716" y="889" width="212.57142857142858" height="66" rx="14" fill="#DED9FF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1911.7142857142858" y="913" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1911.7142857142858" dy="0">产品档案库</tspan>
+<tspan x="1911.7142857142858" dy="20">版本/附件/工艺/BOM</tspan>
+</text>
+<rect x="400" y="990" width="1640" height="130" rx="18" fill="#FFF2E5" stroke="#F5B475" stroke-width="2"/>
+<text x="1220.0" y="1018" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="600" fill="#111827">7. 基础设施层：数据、文件和接口由哪些资源承载</text>
+<g filter="url(#shadow)">
+<rect x="422.0" y="1038" width="212.57142857142858" height="66" rx="14" fill="#FFE1BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="528.2857142857143" y="1062" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="528.2857142857143" dy="0">公司主机/内网</tspan>
+<tspan x="528.2857142857143" dy="20">部署前端和后端</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="652.5714285714286" y="1038" width="212.57142857142858" height="66" rx="14" fill="#FFE1BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="758.8571428571429" y="1062" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="758.8571428571429" dy="0">PostgreSQL</tspan>
+<tspan x="758.8571428571429" dy="20">业务数据库</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="883.1428571428571" y="1038" width="212.57142857142858" height="66" rx="14" fill="#FFE1BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="989.4285714285714" y="1062" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="989.4285714285714" dy="0">NAS/对象存储</tspan>
+<tspan x="989.4285714285714" dy="20">照片和附件文件</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1113.7142857142858" y="1038" width="212.57142857142858" height="66" rx="14" fill="#FFE1BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1220.0" y="1062" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1220.0" dy="0">飞书开放平台</tspan>
+<tspan x="1220.0" dy="20">登录/消息/审批</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1344.2857142857142" y="1038" width="212.57142857142858" height="66" rx="14" fill="#FFE1BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1450.5714285714284" y="1062" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1450.5714285714284" dy="0">Excel生成服务</tspan>
+<tspan x="1450.5714285714284" dy="20">模板填充/导出</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1574.857142857143" y="1038" width="212.57142857142858" height="66" rx="14" fill="#FFE1BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1681.142857142857" y="1062" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1681.142857142857" dy="0">预留接口</tspan>
+<tspan x="1681.142857142857" dy="20">ERP/财务/电子秤</tspan>
+</text>
+<g filter="url(#shadow)">
+<rect x="1805.4285714285716" y="1038" width="212.57142857142858" height="66" rx="14" fill="#FFE1BF" stroke="#64748B" stroke-width="2"/>
+</g>
+<text x="1911.7142857142858" y="1062" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="600" fill="#0F172A">
+<tspan x="1911.7142857142858" dy="0">定时备份</tspan>
+<tspan x="1911.7142857142858" dy="20">数据库/文件备份</tspan>
+</text>
+<path d="M528.2857142857143,206.0 L528.2857142857143,301.0" fill="none" stroke="#2F6FED" stroke-width="4" marker-end="url(#arrow_demand)"/>
+<path d="M528.2857142857143,355.0 L528.2857142857143,450.0" fill="none" stroke="#2F6FED" stroke-width="4" marker-end="url(#arrow_demand)"/>
+<path d="M528.2857142857143,504.0 L528.2857142857143,599.0" fill="none" stroke="#2F6FED" stroke-width="4" marker-end="url(#arrow_demand)"/>
+<path d="M528.2857142857143,653.0 L528.2857142857143,748.0" fill="none" stroke="#2F6FED" stroke-width="4" marker-end="url(#arrow_demand)"/>
+<path d="M528.2857142857143,802.0 L528.2857142857143,897.0" fill="none" stroke="#2F6FED" stroke-width="4" marker-end="url(#arrow_demand)"/>
+<path d="M528.2857142857143,951.0 L528.2857142857143,1046.0" fill="none" stroke="#2F6FED" stroke-width="4" marker-end="url(#arrow_demand)"/>
+<text x="528.2857142857143" y="234.0" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#2F6FED">需求链路</text>
+<path d="M758.8571428571429,206.0 L758.8571428571429,301.0" fill="none" stroke="#6D5BD0" stroke-width="4" marker-end="url(#arrow_dispatch)"/>
+<path d="M758.8571428571429,355.0 L758.8571428571429,450.0" fill="none" stroke="#6D5BD0" stroke-width="4" marker-end="url(#arrow_dispatch)"/>
+<path d="M758.8571428571429,504.0 L758.8571428571429,599.0" fill="none" stroke="#6D5BD0" stroke-width="4" marker-end="url(#arrow_dispatch)"/>
+<path d="M758.8571428571429,653.0 L758.8571428571429,748.0" fill="none" stroke="#6D5BD0" stroke-width="4" marker-end="url(#arrow_dispatch)"/>
+<path d="M758.8571428571429,802.0 L758.8571428571429,897.0" fill="none" stroke="#6D5BD0" stroke-width="4" marker-end="url(#arrow_dispatch)"/>
+<path d="M758.8571428571429,951.0 L758.8571428571429,1046.0" fill="none" stroke="#6D5BD0" stroke-width="4" marker-end="url(#arrow_dispatch)"/>
+<text x="758.8571428571429" y="234.0" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#6D5BD0">任务链路</text>
+<path d="M989.4285714285714,206.0 L989.4285714285714,301.0" fill="none" stroke="#0E9F6E" stroke-width="4" marker-end="url(#arrow_sample)"/>
+<path d="M989.4285714285714,355.0 L989.4285714285714,450.0" fill="none" stroke="#0E9F6E" stroke-width="4" marker-end="url(#arrow_sample)"/>
+<path d="M989.4285714285714,504.0 L989.4285714285714,599.0" fill="none" stroke="#0E9F6E" stroke-width="4" marker-end="url(#arrow_sample)"/>
+<path d="M989.4285714285714,653.0 L989.4285714285714,748.0" fill="none" stroke="#0E9F6E" stroke-width="4" marker-end="url(#arrow_sample)"/>
+<path d="M989.4285714285714,802.0 L989.4285714285714,897.0" fill="none" stroke="#0E9F6E" stroke-width="4" marker-end="url(#arrow_sample)"/>
+<path d="M989.4285714285714,951.0 L989.4285714285714,1046.0" fill="none" stroke="#0E9F6E" stroke-width="4" marker-end="url(#arrow_sample)"/>
+<text x="989.4285714285714" y="234.0" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#0E9F6E">打样链路</text>
+<path d="M1220.0,206.0 L1220.0,301.0" fill="none" stroke="#008577" stroke-width="4" marker-end="url(#arrow_test)"/>
+<path d="M1220.0,355.0 L1220.0,450.0" fill="none" stroke="#008577" stroke-width="4" marker-end="url(#arrow_test)"/>
+<path d="M1220.0,504.0 L1220.0,599.0" fill="none" stroke="#008577" stroke-width="4" marker-end="url(#arrow_test)"/>
+<path d="M1220.0,653.0 L1220.0,748.0" fill="none" stroke="#008577" stroke-width="4" marker-end="url(#arrow_test)"/>
+<path d="M1220.0,802.0 L1220.0,897.0" fill="none" stroke="#008577" stroke-width="4" marker-end="url(#arrow_test)"/>
+<path d="M1220.0,951.0 L1220.0,1046.0" fill="none" stroke="#008577" stroke-width="4" marker-end="url(#arrow_test)"/>
+<text x="1220.0" y="234.0" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#008577">测试链路</text>
+<path d="M1450.5714285714284,206.0 L1450.5714285714284,301.0" fill="none" stroke="#E64694" stroke-width="4" marker-end="url(#arrow_pricing)"/>
+<path d="M1450.5714285714284,355.0 L1450.5714285714284,450.0" fill="none" stroke="#E64694" stroke-width="4" marker-end="url(#arrow_pricing)"/>
+<path d="M1450.5714285714284,504.0 L1450.5714285714284,599.0" fill="none" stroke="#E64694" stroke-width="4" marker-end="url(#arrow_pricing)"/>
+<path d="M1450.5714285714284,653.0 L1450.5714285714284,748.0" fill="none" stroke="#E64694" stroke-width="4" marker-end="url(#arrow_pricing)"/>
+<path d="M1450.5714285714284,802.0 L1450.5714285714284,897.0" fill="none" stroke="#E64694" stroke-width="4" marker-end="url(#arrow_pricing)"/>
+<path d="M1450.5714285714284,951.0 L1450.5714285714284,1046.0" fill="none" stroke="#E64694" stroke-width="4" marker-end="url(#arrow_pricing)"/>
+<text x="1450.5714285714284" y="234.0" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#E64694">核价链路</text>
+<path d="M1681.142857142857,206.0 L1681.142857142857,301.0" fill="none" stroke="#D97706" stroke-width="4" marker-end="url(#arrow_shipment)"/>
+<path d="M1681.142857142857,355.0 L1681.142857142857,450.0" fill="none" stroke="#D97706" stroke-width="4" marker-end="url(#arrow_shipment)"/>
+<path d="M1681.142857142857,504.0 L1681.142857142857,599.0" fill="none" stroke="#D97706" stroke-width="4" marker-end="url(#arrow_shipment)"/>
+<path d="M1681.142857142857,653.0 L1681.142857142857,748.0" fill="none" stroke="#D97706" stroke-width="4" marker-end="url(#arrow_shipment)"/>
+<path d="M1681.142857142857,802.0 L1681.142857142857,897.0" fill="none" stroke="#D97706" stroke-width="4" marker-end="url(#arrow_shipment)"/>
+<path d="M1681.142857142857,951.0 L1681.142857142857,1046.0" fill="none" stroke="#D97706" stroke-width="4" marker-end="url(#arrow_shipment)"/>
+<text x="1681.142857142857" y="234.0" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#D97706">寄样/转单链路</text>
+<path d="M1911.7142857142858,206.0 L1911.7142857142858,301.0" fill="none" stroke="#64748B" stroke-width="4" marker-end="url(#arrow_archive)"/>
+<path d="M1911.7142857142858,355.0 L1911.7142857142858,450.0" fill="none" stroke="#64748B" stroke-width="4" marker-end="url(#arrow_archive)"/>
+<path d="M1911.7142857142858,504.0 L1911.7142857142858,599.0" fill="none" stroke="#64748B" stroke-width="4" marker-end="url(#arrow_archive)"/>
+<path d="M1911.7142857142858,653.0 L1911.7142857142858,748.0" fill="none" stroke="#64748B" stroke-width="4" marker-end="url(#arrow_archive)"/>
+<path d="M1911.7142857142858,802.0 L1911.7142857142858,897.0" fill="none" stroke="#64748B" stroke-width="4" marker-end="url(#arrow_archive)"/>
+<path d="M1911.7142857142858,951.0 L1911.7142857142858,1046.0" fill="none" stroke="#64748B" stroke-width="4" marker-end="url(#arrow_archive)"/>
+<text x="1911.7142857142858" y="234.0" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#64748B">归档链路</text>
+<path d="M1238.0,666.0 C1280.0,760 1029.4285714285716,760 989.4285714285714,666.0" fill="none" stroke="#0E9F6E" stroke-width="3" stroke-dasharray="9 8" marker-end="url(#arrow_sample)"/>
+<text x="1060" y="754" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#0E9F6E">测试不通过 -&gt; 复打样</text>
+<path d="M1701.142857142857,666.0 C1850,770 1760,875 1039.4285714285716,666.0" fill="none" stroke="#D97706" stroke-width="3" stroke-dasharray="9 8" marker-end="url(#arrow_shipment)"/>
+<text x="1828" y="780" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#D97706">客户不通过 -&gt; 新版本打样</text>
+<path d="M1290.0,624.0 C1910,620 2025,725 1990,880" fill="none" stroke="#64748B" stroke-width="3" stroke-dasharray="9 8" marker-end="url(#arrow_archive)"/>
+<text x="2018" y="718" text-anchor="end" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#64748B">停止打样 -&gt; 废弃池归档</text>
+<rect x="38" y="1198" width="1560" height="58" rx="0" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="58" y="1213" width="22" height="22" fill="#2F6FED" opacity="0.86"/>
+<text x="90" y="1230" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#111827">需求链路</text>
+<rect x="273" y="1213" width="22" height="22" fill="#6D5BD0" opacity="0.86"/>
+<text x="305" y="1230" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#111827">任务链路</text>
+<rect x="488" y="1213" width="22" height="22" fill="#0E9F6E" opacity="0.86"/>
+<text x="520" y="1230" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#111827">打样链路</text>
+<rect x="703" y="1213" width="22" height="22" fill="#008577" opacity="0.86"/>
+<text x="735" y="1230" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#111827">测试链路</text>
+<rect x="918" y="1213" width="22" height="22" fill="#E64694" opacity="0.86"/>
+<text x="950" y="1230" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#111827">核价链路</text>
+<rect x="1133" y="1213" width="22" height="22" fill="#D97706" opacity="0.86"/>
+<text x="1165" y="1230" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#111827">寄样/转单链路</text>
+<rect x="1348" y="1213" width="22" height="22" fill="#64748B" opacity="0.86"/>
+<text x="1380" y="1230" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#111827">归档链路</text>
+<text x="2338" y="1286" text-anchor="end" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="400" fill="#64748B">版本：v1.0  |  适用：研发样品管理飞书自建应用方案</text>
+</svg>

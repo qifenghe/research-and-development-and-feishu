@@ -1,0 +1,14 @@
+package com.lhr.rnd.domain;
+
+public enum SampleStatus {
+    PENDING_REVIEW,
+    PENDING_ASSIGNMENT,
+    PENDING_ACCEPTANCE,
+    SAMPLING,
+    PENDING_TEST,
+    SAMPLE_COMPLETED,
+    RESAMPLING_REQUIRED,
+    PRICING_FILE_GENERATED,
+    FINANCE_NOTIFIED,
+    ARCHIVED
+}

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="980" viewBox="0 0 520 980">
+<defs>
+<filter id="shadow" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#334155" flood-opacity="0.16"/></filter>
+</defs>
+<rect width="100%" height="100%" fill="#F6F8FB"/>
+<text x="260.0" y="50" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="32" font-weight="800" fill="#111827">研发样品管理</text>
+<g filter="url(#shadow)">
+<rect x="52" y="92" width="416" height="820" rx="42" fill="#101828" stroke="#101828" stroke-width="0"/>
+<rect x="68" y="110" width="384" height="784" rx="32" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>
+</g>
+<rect x="202" y="124" width="116" height="14" rx="7" fill="#0F172A" stroke="#0F172A" stroke-width="0"/>
+<text x="92" y="176" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="27" font-weight="800" fill="#111827">研发样品管理</text>
+<text x="92" y="208" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="500" fill="#64748B">飞书工作台入口 · 张丽 / 销售内勤</text>
+<rect x="92" y="232" width="126" height="36" rx="18" fill="#EAF2FF" stroke="none" stroke-width="0"/><text x="155.0" y="257" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#246BFE">今日待办 6</text>
+<rect x="232" y="232" width="90" height="36" rx="18" fill="#FFF4E5" stroke="none" stroke-width="0"/><text x="277.0" y="257" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#F59E0B">逾期 1</text>
+<rect x="92" y="288" width="336" height="98" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="114" y="322" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="800" fill="#111827">新样品需求</text>
+<text x="114" y="350" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#64748B">500g香卤大肠头 · 客户A</text>
+<text x="114" y="372" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="400" fill="#64748B">期望完成：06-25  样品：6袋</text>
+<rect x="332" y="310" width="72" height="36" rx="18" fill="#FFF7ED" stroke="none" stroke-width="0"/><text x="368.0" y="335" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#F59E0B">待审核</text>
+<rect x="92" y="406" width="336" height="98" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="114" y="440" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="800" fill="#111827">待寄样</text>
+<text x="114" y="468" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#64748B">黑椒鸡柳料理包 A1</text>
+<text x="114" y="490" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="400" fill="#64748B">快递信息未登记</text>
+<rect x="332" y="428" width="72" height="36" rx="18" fill="#ECFDF5" stroke="none" stroke-width="0"/><text x="368.0" y="453" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#16A34A">寄样</text>
+<rect x="92" y="524" width="336" height="98" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="114" y="558" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="800" fill="#111827">待财务核价</text>
+<text x="114" y="586" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#64748B">调理鸡排 A2</text>
+<text x="114" y="608" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="400" fill="#64748B">Excel已生成，待财务确认</text>
+<rect x="332" y="546" width="72" height="36" rx="18" fill="#EAF2FF" stroke="none" stroke-width="0"/><text x="368.0" y="571" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#246BFE">核价</text>
+<text x="92" y="670" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="800" fill="#111827">快捷入口</text>
+<rect x="92" y="700" width="158" height="48" rx="14" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<circle cx="120" cy="724" r="12" fill="#246BFE"/>
+<text x="144" y="731" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#111827">录需求</text>
+<rect x="268" y="700" width="158" height="48" rx="14" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<circle cx="296" cy="724" r="12" fill="#16A34A"/>
+<text x="320" y="731" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#111827">我的任务</text>
+<rect x="92" y="762" width="158" height="48" rx="14" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<circle cx="120" cy="786" r="12" fill="#0F9F9A"/>
+<text x="144" y="793" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#111827">待测试</text>
+<rect x="268" y="762" width="158" height="48" rx="14" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<circle cx="296" cy="786" r="12" fill="#F59E0B"/>
+<text x="320" y="793" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#111827">核价文件</text>
+<rect x="68" y="822" width="384" height="72" rx="0" fill="#FFFFFF" stroke="#E5EAF2" stroke-width="1"/>
+<circle cx="122" cy="850" r="10" fill="#246BFE"/>
+<text x="122" y="878" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#246BFE">首页</text>
+<circle cx="210" cy="850" r="10" fill="#64748B"/>
+<text x="210" y="878" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#64748B">任务</text>
+<circle cx="298" cy="850" r="10" fill="#64748B"/>
+<text x="298" y="878" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#64748B">档案</text>
+<circle cx="386" cy="850" r="10" fill="#64748B"/>
+<text x="386" y="878" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#64748B">我的</text>
+</svg>

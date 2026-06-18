@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1650" viewBox="0 0 2200 1650">
+<defs>
+<filter id="shadow" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#334155" flood-opacity="0.16"/></filter>
+</defs>
+<rect width="100%" height="100%" fill="#F6F8FB"/>
+<text x="1100.0" y="50" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="32" font-weight="800" fill="#111827">研发样品管理系统 - 页面总览</text>
+<rect x="60" y="110" width="500" height="700" rx="20" fill="#FFFFFF" stroke="#D8E0EA" stroke-width="2"/>
+<text x="84" y="152" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="800" fill="#111827">01_手机端_飞书首页</text>
+<image href="01_手机端_飞书首页.svg" x="92" y="180" width="420" height="720" preserveAspectRatio="xMidYMid meet"/>
+<rect x="610" y="110" width="500" height="700" rx="20" fill="#FFFFFF" stroke="#D8E0EA" stroke-width="2"/>
+<text x="634" y="152" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="800" fill="#111827">02_手机端_样品需求录入</text>
+<image href="02_手机端_样品需求录入.svg" x="642" y="180" width="420" height="720" preserveAspectRatio="xMidYMid meet"/>
+<rect x="1160" y="110" width="500" height="700" rx="20" fill="#FFFFFF" stroke="#D8E0EA" stroke-width="2"/>
+<text x="1184" y="152" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="800" fill="#111827">03_手机端_打样实验单</text>
+<image href="03_手机端_打样实验单.svg" x="1192" y="180" width="420" height="720" preserveAspectRatio="xMidYMid meet"/>
+<rect x="1710" y="110" width="500" height="700" rx="20" fill="#FFFFFF" stroke="#D8E0EA" stroke-width="2"/>
+<text x="1734" y="152" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="800" fill="#111827">04_手机端_测试确认</text>
+<image href="04_手机端_测试确认.svg" x="1742" y="180" width="420" height="720" preserveAspectRatio="xMidYMid meet"/>
+<rect x="60" y="860" width="500" height="700" rx="20" fill="#FFFFFF" stroke="#D8E0EA" stroke-width="2"/>
+<text x="84" y="902" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="800" fill="#111827">05_PC端-首页看板</text>
+<image href="05_PC端-首页看板.svg" x="92" y="930" width="460" height="310" preserveAspectRatio="xMidYMid meet"/>
+<rect x="610" y="860" width="500" height="700" rx="20" fill="#FFFFFF" stroke="#D8E0EA" stroke-width="2"/>
+<text x="634" y="902" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="800" fill="#111827">06_PC端-研发任务分发</text>
+<image href="06_PC端-研发任务分发.svg" x="642" y="930" width="460" height="310" preserveAspectRatio="xMidYMid meet"/>
+<rect x="1160" y="860" width="500" height="700" rx="20" fill="#FFFFFF" stroke="#D8E0EA" stroke-width="2"/>
+<text x="1184" y="902" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="800" fill="#111827">07_PC端-核价文件</text>
+<image href="07_PC端-核价文件.svg" x="1192" y="930" width="460" height="310" preserveAspectRatio="xMidYMid meet"/>
+<rect x="1710" y="860" width="500" height="700" rx="20" fill="#FFFFFF" stroke="#D8E0EA" stroke-width="2"/>
+<text x="1734" y="902" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="800" fill="#111827">08_PC端-产品档案</text>
+<image href="08_PC端-产品档案.svg" x="1742" y="930" width="460" height="310" preserveAspectRatio="xMidYMid meet"/>
+<text x="1100.0" y="1614" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="600" fill="#64748B">每张页面已单独导出 PNG，可用于评审、飞书沟通或放入方案文档。</text>
+</svg>

@@ -1,0 +1,14 @@
+package com.lhr.rnd.domain;
+
+public enum SampleAction {
+    APPROVE_REQUEST,
+    ASSIGN_TASK,
+    ACCEPT_TASK,
+    SUBMIT_EXPERIMENT,
+    TEST_PASS,
+    TEST_FAIL_RESAMPLE,
+    CREATE_NEXT_VERSION,
+    REQUEST_PRICING,
+    NOTIFY_FINANCE,
+    ARCHIVE
+}
