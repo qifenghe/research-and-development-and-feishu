@@ -83,6 +83,99 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.nextTask.versionCode").value("A1"));
     }
 
+    @Test
+    void passedSampleCanRecordShipmentGeneratePricingFileAndNotifyFinance() throws Exception {
+        var versionId = createLockedSampleVersion();
+
+        var shipmentId = mockMvc.perform(post("/api/v1/sample-versions/{id}/shipments", versionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "quantity": 6,
+                                  "receiverName": "销售内勤",
+                                  "trackingNo": "SF202606180001",
+                                  "remark": "寄客户确认复热效果"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.versionId").value(versionId))
+                .andExpect(jsonPath("$.data.status").value("SHIPPED"))
+                .andExpect(jsonPath("$.data.trackingNo").value("SF202606180001"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\"id\":\"")[1]
+                .split("\"")[0];
+
+        mockMvc.perform(post("/api/v1/shipments/{id}/feedback", shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "feedbackBy": "业务员",
+                                  "result": "PASSED",
+                                  "comment": "客户确认通过，可以进入核价"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.shipment.status").value("FEEDBACK_PASSED"))
+                .andExpect(jsonPath("$.data.feedback.result").value("PASSED"));
+
+        var pricingFileId = mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files", versionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.versionId").value(versionId))
+                .andExpect(jsonPath("$.data.pricingVersion").value("A0-核价V1"))
+                .andExpect(jsonPath("$.data.status").value("GENERATED"))
+                .andExpect(jsonPath("$.data.fileName").value("500g香卤大肠头-核价原料清单-A0-V1.xlsx"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\"id\":\"")[1]
+                .split("\"")[0];
+
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recipientName\":\"财务核价员\",\"remark\":\"请按研发核价清单核算报价\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pricingFile.status").value("FINANCE_NOTIFIED"))
+                .andExpect(jsonPath("$.data.notification.recipientName").value("财务核价员"))
+                .andExpect(jsonPath("$.data.notification.status").value("SENT"));
+    }
+
+    @Test
+    void rejectsPricingFileBeforeExperimentVersionIsLocked() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        saveExperimentDraft(taskId);
+        var versionId = taskId.replace("TASK", "VER");
+
+        mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files", versionId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SAMPLE_VERSION_NOT_READY_FOR_PRICING"));
+    }
+
+    @Test
+    void rejectsShipmentBeforeExperimentVersionIsLocked() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        saveExperimentDraft(taskId);
+        var versionId = taskId.replace("TASK", "VER");
+
+        mockMvc.perform(post("/api/v1/sample-versions/{id}/shipments", versionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "quantity": 6,
+                                  "receiverName": "销售内勤",
+                                  "trackingNo": "SF202606180002",
+                                  "remark": "未锁版寄样"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SAMPLE_VERSION_NOT_READY_FOR_SHIPMENT"));
+    }
+
     private void acceptTask(String taskId) throws Exception {
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/accept", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -201,5 +294,24 @@ class SampleWorkflowControllerTest {
                         .content("{\"assigneeName\":\"张研发\",\"dueDate\":\"2026-06-25\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PENDING_ACCEPTANCE"));
+    }
+
+    private String createLockedSampleVersion() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+        var testAssignmentId = submitExperimentForTest(experimentFormId);
+        return mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"口味和复热状态通过\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.experimentForm.status").value("LOCKED"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\\\"experimentForm\\\":\\{")[1]
+                .split("\\\"versionId\\\":\\\"")[1]
+                .split("\"")[0];
     }
 }

@@ -3,14 +3,22 @@ package com.lhr.rnd.service;
 import com.lhr.rnd.api.BusinessException;
 import com.lhr.rnd.domain.SampleStatus;
 import com.lhr.rnd.domain.SampleVersionCode;
+import com.lhr.rnd.model.CustomerFeedback;
+import com.lhr.rnd.model.CustomerFeedbackResult;
+import com.lhr.rnd.model.FinanceNotification;
+import com.lhr.rnd.model.FinanceNotificationStatus;
 import com.lhr.rnd.model.RndTask;
 import com.lhr.rnd.model.RndTaskStatus;
 import com.lhr.rnd.model.ExperimentForm;
 import com.lhr.rnd.model.ExperimentFormStatus;
 import com.lhr.rnd.model.ExperimentMaterial;
+import com.lhr.rnd.model.PricingFileRecord;
+import com.lhr.rnd.model.PricingFileStatus;
 import com.lhr.rnd.model.SampleProject;
 import com.lhr.rnd.model.SampleRequest;
 import com.lhr.rnd.model.SampleVersion;
+import com.lhr.rnd.model.ShipmentRecord;
+import com.lhr.rnd.model.ShipmentStatus;
 import com.lhr.rnd.model.TestAssignment;
 import com.lhr.rnd.model.TestAssignmentStatus;
 import com.lhr.rnd.model.TestRecord;
@@ -27,6 +35,7 @@ import java.util.Map;
 @Service
 public class SampleWorkflowService {
     private final Clock clock;
+    private final PricingFileService pricingFileService = new PricingFileService();
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
     private final Map<String, SampleProject> projects = new LinkedHashMap<>();
     private final Map<String, SampleVersion> versions = new LinkedHashMap<>();
@@ -34,12 +43,20 @@ public class SampleWorkflowService {
     private final Map<String, ExperimentForm> experimentForms = new LinkedHashMap<>();
     private final Map<String, TestAssignment> testAssignments = new LinkedHashMap<>();
     private final Map<String, TestRecord> testRecords = new LinkedHashMap<>();
+    private final Map<String, ShipmentRecord> shipments = new LinkedHashMap<>();
+    private final Map<String, CustomerFeedback> customerFeedbacks = new LinkedHashMap<>();
+    private final Map<String, PricingFileRecord> pricingFiles = new LinkedHashMap<>();
+    private final Map<String, FinanceNotification> financeNotifications = new LinkedHashMap<>();
 
     private int requestSequence = 1;
     private int taskSequence = 1;
     private int experimentSequence = 1;
     private int testAssignmentSequence = 1;
     private int testRecordSequence = 1;
+    private int shipmentSequence = 1;
+    private int customerFeedbackSequence = 1;
+    private int pricingFileSequence = 1;
+    private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
         this(Clock.systemDefaultZone());
@@ -304,8 +321,145 @@ public class SampleWorkflowService {
         return new ArrayList<>(requests.values());
     }
 
+    public synchronized ShipmentRecord createShipment(CreateShipmentCommand command) {
+        var version = requiredVersion(command.versionId());
+        ensureReadyForShipment(command.versionId());
+        var shipment = new ShipmentRecord(
+                "SHIP-%04d".formatted(shipmentSequence++),
+                version.id(),
+                version.sampleNo(),
+                version.productName(),
+                version.versionCode(),
+                command.quantity(),
+                command.receiverName(),
+                command.trackingNo(),
+                command.remark(),
+                ShipmentStatus.SHIPPED,
+                now()
+        );
+        shipments.put(shipment.id(), shipment);
+        return shipment;
+    }
+
+    public synchronized ShipmentFeedbackResult submitCustomerFeedback(SubmitCustomerFeedbackCommand command) {
+        var shipment = shipments.get(command.shipmentId());
+        if (shipment == null) {
+            throw new BusinessException("SHIPMENT_NOT_FOUND", "寄样记录不存在");
+        }
+        if (shipment.status() != ShipmentStatus.SHIPPED) {
+            throw new BusinessException("SHIPMENT_STATUS_ILLEGAL", "当前寄样状态不可反馈");
+        }
+
+        var nextStatus = switch (command.result()) {
+            case PASSED -> ShipmentStatus.FEEDBACK_PASSED;
+            case FAILED_RESAMPLE -> ShipmentStatus.FEEDBACK_FAILED_RESAMPLE;
+            case STOPPED -> ShipmentStatus.STOPPED;
+        };
+        var updatedShipment = shipment.withStatus(nextStatus);
+        shipments.put(updatedShipment.id(), updatedShipment);
+
+        var feedback = new CustomerFeedback(
+                "CFB-%04d".formatted(customerFeedbackSequence++),
+                shipment.id(),
+                command.feedbackBy(),
+                command.result(),
+                command.comment(),
+                now()
+        );
+        customerFeedbacks.put(feedback.id(), feedback);
+        return new ShipmentFeedbackResult(updatedShipment, feedback);
+    }
+
+    public synchronized PricingFileRecord generatePricingFile(String versionId) {
+        var version = requiredVersion(versionId);
+        var lockedForm = lockedExperimentForm(versionId);
+        var pricingVersionNo = "V" + nextPricingVersionNumber(versionId);
+        var versionWithMaterials = SampleVersion.builder()
+                .id(version.id())
+                .projectId(version.projectId())
+                .sampleNo(version.sampleNo())
+                .productName(version.productName())
+                .productType(version.productType())
+                .specification(version.specification())
+                .versionNo(version.versionNo())
+                .versionNumber(version.versionNumber())
+                .versionCode(version.versionCode())
+                .ownerName(version.ownerName())
+                .authorName(lockedForm.operatorName())
+                .effectiveDate(version.effectiveDate())
+                .referenceOutputKg(version.referenceOutputKg())
+                .unitWeightKg(version.unitWeightKg())
+                .materials(lockedForm.materials())
+                .createdAt(version.createdAt())
+                .build();
+        var generated = pricingFileService.generate(versionWithMaterials, pricingVersionNo);
+        var record = new PricingFileRecord(
+                "PRICE-%04d".formatted(pricingFileSequence++),
+                version.id(),
+                version.sampleNo(),
+                version.productName(),
+                version.versionCode(),
+                generated.pricingVersion(),
+                generated.fileName(),
+                PricingFileStatus.GENERATED,
+                generated.content().length,
+                now()
+        );
+        pricingFiles.put(record.id(), record);
+        return record;
+    }
+
+    public synchronized NotifyFinanceResult notifyFinance(String pricingFileId, String recipientName, String remark) {
+        var pricingFile = pricingFiles.get(pricingFileId);
+        if (pricingFile == null) {
+            throw new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在");
+        }
+        var notifiedPricingFile = pricingFile.withStatus(PricingFileStatus.FINANCE_NOTIFIED);
+        pricingFiles.put(notifiedPricingFile.id(), notifiedPricingFile);
+        var notification = new FinanceNotification(
+                "FIN-%04d".formatted(financeNotificationSequence++),
+                pricingFile.id(),
+                recipientName,
+                remark,
+                FinanceNotificationStatus.SENT,
+                now()
+        );
+        financeNotifications.put(notification.id(), notification);
+        return new NotifyFinanceResult(notifiedPricingFile, notification);
+    }
+
     private LocalDateTime now() {
         return LocalDateTime.now(clock);
+    }
+
+    private SampleVersion requiredVersion(String versionId) {
+        var version = versions.get(versionId);
+        if (version == null) {
+            throw new BusinessException("SAMPLE_VERSION_NOT_FOUND", "样品版本不存在");
+        }
+        return version;
+    }
+
+    private ExperimentForm lockedExperimentForm(String versionId) {
+        return experimentForms.values().stream()
+                .filter(form -> form.versionId().equals(versionId))
+                .filter(form -> form.status() == ExperimentFormStatus.LOCKED)
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("SAMPLE_VERSION_NOT_READY_FOR_PRICING", "实验单锁定后才能生成核价文件"));
+    }
+
+    private void ensureReadyForShipment(String versionId) {
+        var hasLockedExperimentForm = experimentForms.values().stream()
+                .anyMatch(form -> form.versionId().equals(versionId) && form.status() == ExperimentFormStatus.LOCKED);
+        if (!hasLockedExperimentForm) {
+            throw new BusinessException("SAMPLE_VERSION_NOT_READY_FOR_SHIPMENT", "实验单锁定后才能寄样");
+        }
+    }
+
+    private long nextPricingVersionNumber(String versionId) {
+        return pricingFiles.values().stream()
+                .filter(file -> file.versionId().equals(versionId))
+                .count() + 1;
     }
 
     private TestAssignment pendingTestAssignment(String testAssignmentId, String testerName) {
@@ -350,6 +504,23 @@ public class SampleWorkflowService {
             String operatorName,
             String summary,
             List<ExperimentMaterial> materials
+    ) {
+    }
+
+    public record CreateShipmentCommand(
+            String versionId,
+            Integer quantity,
+            String receiverName,
+            String trackingNo,
+            String remark
+    ) {
+    }
+
+    public record SubmitCustomerFeedbackCommand(
+            String shipmentId,
+            String feedbackBy,
+            CustomerFeedbackResult result,
+            String comment
     ) {
     }
 }

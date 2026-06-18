@@ -2,11 +2,15 @@ package com.lhr.rnd.api;
 
 import com.lhr.rnd.model.RndTask;
 import com.lhr.rnd.model.ExperimentForm;
+import com.lhr.rnd.model.PricingFileRecord;
 import com.lhr.rnd.model.SampleRequest;
+import com.lhr.rnd.model.ShipmentRecord;
 import com.lhr.rnd.service.ApproveSampleRequestResult;
 import com.lhr.rnd.service.FailInternalTestResult;
+import com.lhr.rnd.service.NotifyFinanceResult;
 import com.lhr.rnd.service.PassInternalTestResult;
 import com.lhr.rnd.service.SampleWorkflowService;
+import com.lhr.rnd.service.ShipmentFeedbackResult;
 import com.lhr.rnd.service.SubmitExperimentForTestResult;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -108,5 +112,45 @@ public class SampleWorkflowController {
             @Valid @RequestBody InternalTestDecisionRequest request
     ) {
         return ApiResponse.success(workflowService.failInternalTestForResample(id, request.testerName(), request.comment()));
+    }
+
+    @PostMapping("/sample-versions/{id}/shipments")
+    public ApiResponse<ShipmentRecord> createShipment(
+            @PathVariable String id,
+            @Valid @RequestBody CreateShipmentRequest request
+    ) {
+        return ApiResponse.success(workflowService.createShipment(new SampleWorkflowService.CreateShipmentCommand(
+                id,
+                request.quantity(),
+                request.receiverName(),
+                request.trackingNo(),
+                request.remark()
+        )));
+    }
+
+    @PostMapping("/shipments/{id}/feedback")
+    public ApiResponse<ShipmentFeedbackResult> submitCustomerFeedback(
+            @PathVariable String id,
+            @Valid @RequestBody SubmitCustomerFeedbackRequest request
+    ) {
+        return ApiResponse.success(workflowService.submitCustomerFeedback(new SampleWorkflowService.SubmitCustomerFeedbackCommand(
+                id,
+                request.feedbackBy(),
+                request.result(),
+                request.comment()
+        )));
+    }
+
+    @PostMapping("/sample-versions/{id}/pricing-files")
+    public ApiResponse<PricingFileRecord> generatePricingFile(@PathVariable String id) {
+        return ApiResponse.success(workflowService.generatePricingFile(id));
+    }
+
+    @PostMapping("/pricing-files/{id}/notify-finance")
+    public ApiResponse<NotifyFinanceResult> notifyFinance(
+            @PathVariable String id,
+            @Valid @RequestBody NotifyFinanceRequest request
+    ) {
+        return ApiResponse.success(workflowService.notifyFinance(id, request.recipientName(), request.remark()));
     }
 }
