@@ -2,20 +2,26 @@ package com.lhr.rnd.model;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public record SampleVersion(
+        String id,
+        String projectId,
         String sampleNo,
         String productName,
         String productType,
         String specification,
         String versionNo,
+        Integer versionNumber,
+        String versionCode,
         String ownerName,
         String authorName,
         LocalDate effectiveDate,
         BigDecimal referenceOutputKg,
         BigDecimal unitWeightKg,
-        List<ExperimentMaterial> materials
+        List<ExperimentMaterial> materials,
+        LocalDateTime createdAt
 ) {
     public static Builder builder() {
         return new Builder();
@@ -23,16 +29,31 @@ public record SampleVersion(
 
     public static final class Builder {
         private String sampleNo;
+        private String id;
+        private String projectId;
         private String productName;
         private String productType;
         private String specification;
         private String versionNo;
+        private Integer versionNumber;
+        private String versionCode;
         private String ownerName;
         private String authorName;
         private LocalDate effectiveDate;
         private BigDecimal referenceOutputKg;
         private BigDecimal unitWeightKg;
         private List<ExperimentMaterial> materials = List.of();
+        private LocalDateTime createdAt;
+
+        public Builder id(String id) {
+            this.id = id;
+            return this;
+        }
+
+        public Builder projectId(String projectId) {
+            this.projectId = projectId;
+            return this;
+        }
 
         public Builder sampleNo(String sampleNo) {
             this.sampleNo = sampleNo;
@@ -56,6 +77,16 @@ public record SampleVersion(
 
         public Builder versionNo(String versionNo) {
             this.versionNo = versionNo;
+            return this;
+        }
+
+        public Builder versionNumber(Integer versionNumber) {
+            this.versionNumber = versionNumber;
+            return this;
+        }
+
+        public Builder versionCode(String versionCode) {
+            this.versionCode = versionCode;
             return this;
         }
 
@@ -89,19 +120,29 @@ public record SampleVersion(
             return this;
         }
 
+        public Builder createdAt(LocalDateTime createdAt) {
+            this.createdAt = createdAt;
+            return this;
+        }
+
         public SampleVersion build() {
             return new SampleVersion(
+                    id,
+                    projectId,
                     sampleNo,
                     productName,
                     productType,
                     specification,
                     versionNo,
+                    versionNumber,
+                    versionCode == null ? versionNo : versionCode,
                     ownerName,
                     authorName,
                     effectiveDate,
                     referenceOutputKg,
                     unitWeightKg,
-                    materials
+                    materials,
+                    createdAt
             );
         }
     }
