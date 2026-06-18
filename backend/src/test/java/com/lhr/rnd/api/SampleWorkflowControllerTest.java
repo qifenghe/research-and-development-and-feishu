@@ -131,13 +131,26 @@ class SampleWorkflowControllerTest {
         var experimentFormId = saveExperimentDraft(taskId);
         var testAssignmentId = submitExperimentForTest(experimentFormId);
 
-        mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)
+        var testRecordId = mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"testerName\":\"内部测试员\",\"comment\":\"口味和复热状态通过\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.experimentForm.status").value("LOCKED"))
                 .andExpect(jsonPath("$.data.testAssignment.status").value("PASSED"))
-                .andExpect(jsonPath("$.data.task.status").value("COMPLETED"));
+                .andExpect(jsonPath("$.data.task.status").value("COMPLETED"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\\\"testRecord\\\":\\{\\\"id\\\":\\\"")[1]
+                .split("\"")[0];
+
+        assertThat(valueById("experiment_form", experimentFormId, "status")).isEqualTo("LOCKED");
+        assertThat(valueById("test_assignment", testAssignmentId, "status")).isEqualTo("PASSED");
+        assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("COMPLETED");
+        assertThat(countById("test_record", testRecordId)).isEqualTo(1);
+        assertThat(valueById("test_record", testRecordId, "test_assignment_id")).isEqualTo(testAssignmentId);
+        assertThat(valueById("test_record", testRecordId, "result")).isEqualTo("PASSED");
+        assertThat(valueById("test_record", testRecordId, "comment")).isEqualTo("口味和复热状态通过");
     }
 
     @Test
@@ -148,14 +161,33 @@ class SampleWorkflowControllerTest {
         var experimentFormId = saveExperimentDraft(taskId);
         var testAssignmentId = submitExperimentForTest(experimentFormId);
 
-        mockMvc.perform(post("/api/v1/test-assignments/{id}/fail-resample", testAssignmentId)
+        var response = mockMvc.perform(post("/api/v1/test-assignments/{id}/fail-resample", testAssignmentId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"testerName\":\"内部测试员\",\"comment\":\"口感偏硬，需调整卤制时间\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.testAssignment.status").value("FAILED_RESAMPLE"))
                 .andExpect(jsonPath("$.data.nextVersion.versionCode").value("A1"))
                 .andExpect(jsonPath("$.data.nextTask.status").value("PENDING_ACCEPTANCE"))
-                .andExpect(jsonPath("$.data.nextTask.versionCode").value("A1"));
+                .andExpect(jsonPath("$.data.nextTask.versionCode").value("A1"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        var testRecordId = response.split("\\\"testRecord\\\":\\{\\\"id\\\":\\\"")[1].split("\"")[0];
+        var nextVersionId = response.split("\\\"nextVersion\\\":\\{\\\"id\\\":\\\"")[1].split("\"")[0];
+        var nextTaskId = response.split("\\\"nextTask\\\":\\{\\\"id\\\":\\\"")[1].split("\"")[0];
+
+        assertThat(valueById("test_assignment", testAssignmentId, "status")).isEqualTo("FAILED_RESAMPLE");
+        assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("COMPLETED");
+        assertThat(countById("test_record", testRecordId)).isEqualTo(1);
+        assertThat(valueById("test_record", testRecordId, "result")).isEqualTo("FAILED_RESAMPLE");
+        assertThat(valueById("test_record", testRecordId, "comment")).isEqualTo("口感偏硬，需调整卤制时间");
+        assertThat(countById("sample_version", nextVersionId)).isEqualTo(1);
+        assertThat(valueById("sample_version", nextVersionId, "version_code")).isEqualTo("A1");
+        assertThat(valueById("sample_version", nextVersionId, "version_number")).isEqualTo("1");
+        assertThat(countById("rnd_task", nextTaskId)).isEqualTo(1);
+        assertThat(valueById("rnd_task", nextTaskId, "status")).isEqualTo("PENDING_ACCEPTANCE");
+        assertThat(valueById("rnd_task", nextTaskId, "version_code")).isEqualTo("A1");
     }
 
     @Test

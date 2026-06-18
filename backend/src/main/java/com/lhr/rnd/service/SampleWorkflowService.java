@@ -29,6 +29,7 @@ import com.lhr.rnd.persistence.entity.SampleProjectEntity;
 import com.lhr.rnd.persistence.entity.SampleRequestEntity;
 import com.lhr.rnd.persistence.entity.SampleVersionEntity;
 import com.lhr.rnd.persistence.entity.TestAssignmentEntity;
+import com.lhr.rnd.persistence.entity.TestRecordEntity;
 import com.lhr.rnd.persistence.repository.ExperimentFormRepository;
 import com.lhr.rnd.persistence.repository.ExperimentMaterialRepository;
 import com.lhr.rnd.persistence.repository.RndTaskRepository;
@@ -36,6 +37,7 @@ import com.lhr.rnd.persistence.repository.SampleProjectRepository;
 import com.lhr.rnd.persistence.repository.SampleRequestRepository;
 import com.lhr.rnd.persistence.repository.SampleVersionRepository;
 import com.lhr.rnd.persistence.repository.TestAssignmentRepository;
+import com.lhr.rnd.persistence.repository.TestRecordRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +61,7 @@ public class SampleWorkflowService {
     private final ExperimentFormRepository experimentFormRepository;
     private final ExperimentMaterialRepository experimentMaterialRepository;
     private final TestAssignmentRepository testAssignmentRepository;
+    private final TestRecordRepository testRecordRepository;
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
     private final Map<String, SampleProject> projects = new LinkedHashMap<>();
     private final Map<String, SampleVersion> versions = new LinkedHashMap<>();
@@ -82,11 +85,11 @@ public class SampleWorkflowService {
     private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
-        this(Clock.systemDefaultZone(), null, null, null, null, null, null, null);
+        this(Clock.systemDefaultZone(), null, null, null, null, null, null, null, null);
     }
 
     SampleWorkflowService(Clock clock) {
-        this(clock, null, null, null, null, null, null, null);
+        this(clock, null, null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -97,7 +100,8 @@ public class SampleWorkflowService {
             RndTaskRepository rndTaskRepository,
             ExperimentFormRepository experimentFormRepository,
             ExperimentMaterialRepository experimentMaterialRepository,
-            TestAssignmentRepository testAssignmentRepository
+            TestAssignmentRepository testAssignmentRepository,
+            TestRecordRepository testRecordRepository
     ) {
         this(
                 Clock.systemDefaultZone(),
@@ -107,7 +111,8 @@ public class SampleWorkflowService {
                 rndTaskRepository,
                 experimentFormRepository,
                 experimentMaterialRepository,
-                testAssignmentRepository
+                testAssignmentRepository,
+                testRecordRepository
         );
     }
 
@@ -119,7 +124,8 @@ public class SampleWorkflowService {
             RndTaskRepository rndTaskRepository,
             ExperimentFormRepository experimentFormRepository,
             ExperimentMaterialRepository experimentMaterialRepository,
-            TestAssignmentRepository testAssignmentRepository
+            TestAssignmentRepository testAssignmentRepository,
+            TestRecordRepository testRecordRepository
     ) {
         this.clock = clock;
         this.sampleRequestRepository = sampleRequestRepository;
@@ -129,6 +135,7 @@ public class SampleWorkflowService {
         this.experimentFormRepository = experimentFormRepository;
         this.experimentMaterialRepository = experimentMaterialRepository;
         this.testAssignmentRepository = testAssignmentRepository;
+        this.testRecordRepository = testRecordRepository;
     }
 
     @Transactional
@@ -325,6 +332,7 @@ public class SampleWorkflowService {
         return new SubmitExperimentForTestResult(submitted, assignment);
     }
 
+    @Transactional
     public synchronized PassInternalTestResult passInternalTest(String testAssignmentId, String testerName, String comment) {
         var assignment = pendingTestAssignment(testAssignmentId, testerName);
         var form = experimentForms.get(assignment.experimentFormId());
@@ -343,9 +351,11 @@ public class SampleWorkflowService {
         if (completedTask != null) {
             tasks.put(completedTask.id(), completedTask);
         }
+        persistPassedInternalTest(locked, passed, record, completedTask);
         return new PassInternalTestResult(locked, passed, record, completedTask);
     }
 
+    @Transactional
     public synchronized FailInternalTestResult failInternalTestForResample(String testAssignmentId, String testerName, String comment) {
         var assignment = pendingTestAssignment(testAssignmentId, testerName);
         var failed = assignment.withStatus(TestAssignmentStatus.FAILED_RESAMPLE);
@@ -392,6 +402,7 @@ public class SampleWorkflowService {
                 null
         );
         tasks.put(nextTask.id(), nextTask);
+        persistFailedInternalTest(failed, record, nextVersion, previousTask, nextTask);
         return new FailInternalTestResult(failed, record, nextVersion, nextTask);
     }
 
@@ -658,6 +669,110 @@ public class SampleWorkflowService {
                 assignment.testerName(),
                 assignment.status().name(),
                 assignment.assignedAt()
+        ));
+    }
+
+    private void persistPassedInternalTest(
+            ExperimentForm locked,
+            TestAssignment passed,
+            TestRecord record,
+            RndTask completedTask
+    ) {
+        if (experimentFormRepository == null || testAssignmentRepository == null || testRecordRepository == null) {
+            return;
+        }
+        var formEntity = experimentFormRepository.findById(locked.id())
+                .orElseThrow(() -> new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在"));
+        formEntity.lock();
+        experimentFormRepository.save(formEntity);
+
+        var assignmentEntity = testAssignmentRepository.findById(passed.id())
+                .orElseThrow(() -> new BusinessException("TEST_ASSIGNMENT_NOT_FOUND", "内部测试任务不存在"));
+        assignmentEntity.pass();
+        testAssignmentRepository.save(assignmentEntity);
+
+        testRecordRepository.save(new TestRecordEntity(
+                record.id(),
+                record.testAssignmentId(),
+                record.experimentFormId(),
+                record.testerName(),
+                record.result().name(),
+                record.comment(),
+                record.testedAt()
+        ));
+
+        if (completedTask != null && rndTaskRepository != null) {
+            var taskEntity = rndTaskRepository.findById(completedTask.id())
+                    .orElseThrow(() -> new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在"));
+            taskEntity.complete();
+            rndTaskRepository.save(taskEntity);
+        }
+    }
+
+    private void persistFailedInternalTest(
+            TestAssignment failed,
+            TestRecord record,
+            SampleVersion nextVersion,
+            RndTask previousTask,
+            RndTask nextTask
+    ) {
+        if (testAssignmentRepository == null || testRecordRepository == null
+                || sampleVersionRepository == null || rndTaskRepository == null) {
+            return;
+        }
+        var assignmentEntity = testAssignmentRepository.findById(failed.id())
+                .orElseThrow(() -> new BusinessException("TEST_ASSIGNMENT_NOT_FOUND", "内部测试任务不存在"));
+        assignmentEntity.failForResample();
+        testAssignmentRepository.save(assignmentEntity);
+
+        testRecordRepository.save(new TestRecordEntity(
+                record.id(),
+                record.testAssignmentId(),
+                record.experimentFormId(),
+                record.testerName(),
+                record.result().name(),
+                record.comment(),
+                record.testedAt()
+        ));
+
+        sampleVersionRepository.save(new SampleVersionEntity(
+                nextVersion.id(),
+                nextVersion.projectId(),
+                nextVersion.sampleNo(),
+                nextVersion.productName(),
+                nextVersion.productType(),
+                nextVersion.specification(),
+                nextVersion.versionNo(),
+                nextVersion.versionNumber(),
+                nextVersion.versionCode(),
+                nextVersion.ownerName(),
+                nextVersion.authorName(),
+                nextVersion.effectiveDate(),
+                nextVersion.referenceOutputKg(),
+                nextVersion.unitWeightKg(),
+                nextVersion.createdAt()
+        ));
+
+        if (previousTask != null) {
+            var previousTaskEntity = rndTaskRepository.findById(previousTask.id())
+                    .orElseThrow(() -> new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在"));
+            previousTaskEntity.complete();
+            rndTaskRepository.save(previousTaskEntity);
+        }
+
+        rndTaskRepository.save(new RndTaskEntity(
+                nextTask.id(),
+                nextTask.projectId(),
+                nextTask.versionId(),
+                nextTask.sampleNo(),
+                nextTask.productName(),
+                nextTask.versionCode(),
+                nextTask.status().name(),
+                nextTask.assigneeName(),
+                nextTask.dueDate(),
+                nextTask.createdAt(),
+                nextTask.assignedAt(),
+                null
         ));
     }
 

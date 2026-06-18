@@ -51,4 +51,12 @@ public class TestAssignmentEntity {
         this.status = status;
         this.assignedAt = assignedAt;
     }
+
+    public void pass() {
+        this.status = "PASSED";
+    }
+
+    public void failForResample() {
+        this.status = "FAILED_RESAMPLE";
+    }
 }

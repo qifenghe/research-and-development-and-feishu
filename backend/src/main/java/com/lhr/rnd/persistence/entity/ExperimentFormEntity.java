@@ -81,4 +81,8 @@ public class ExperimentFormEntity {
         this.status = "SUBMITTED_FOR_TEST";
         this.submittedAt = submittedAt;
     }
+
+    public void lock() {
+        this.status = "LOCKED";
+    }
 }

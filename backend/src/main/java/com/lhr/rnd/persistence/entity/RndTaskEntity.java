@@ -94,4 +94,8 @@ public class RndTaskEntity {
     public void markPendingTest() {
         this.status = "PENDING_TEST";
     }
+
+    public void complete() {
+        this.status = "COMPLETED";
+    }
 }
