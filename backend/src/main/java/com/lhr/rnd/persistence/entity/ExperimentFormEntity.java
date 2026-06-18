@@ -76,4 +76,9 @@ public class ExperimentFormEntity {
         this.savedAt = savedAt;
         this.submittedAt = submittedAt;
     }
+
+    public void submit(LocalDateTime submittedAt) {
+        this.status = "SUBMITTED_FOR_TEST";
+        this.submittedAt = submittedAt;
+    }
 }

@@ -106,6 +106,24 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void submittingExperimentForTestPersistsFormTaskAndAssignmentToDatabase() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+
+        var testAssignmentId = submitExperimentForTest(experimentFormId);
+
+        assertThat(valueById("experiment_form", experimentFormId, "status")).isEqualTo("SUBMITTED_FOR_TEST");
+        assertThat(valueById("experiment_form", experimentFormId, "submitted_at")).isNotBlank();
+        assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("PENDING_TEST");
+        assertThat(countById("test_assignment", testAssignmentId)).isEqualTo(1);
+        assertThat(valueById("test_assignment", testAssignmentId, "experiment_form_id")).isEqualTo(experimentFormId);
+        assertThat(valueById("test_assignment", testAssignmentId, "tester_name")).isEqualTo("内部测试员");
+        assertThat(valueById("test_assignment", testAssignmentId, "status")).isEqualTo("PENDING_TEST");
+    }
+
+    @Test
     void passingInternalTestLocksExperimentVersion() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);

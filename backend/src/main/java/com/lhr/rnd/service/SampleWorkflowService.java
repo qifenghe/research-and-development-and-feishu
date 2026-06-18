@@ -28,12 +28,14 @@ import com.lhr.rnd.persistence.entity.RndTaskEntity;
 import com.lhr.rnd.persistence.entity.SampleProjectEntity;
 import com.lhr.rnd.persistence.entity.SampleRequestEntity;
 import com.lhr.rnd.persistence.entity.SampleVersionEntity;
+import com.lhr.rnd.persistence.entity.TestAssignmentEntity;
 import com.lhr.rnd.persistence.repository.ExperimentFormRepository;
 import com.lhr.rnd.persistence.repository.ExperimentMaterialRepository;
 import com.lhr.rnd.persistence.repository.RndTaskRepository;
 import com.lhr.rnd.persistence.repository.SampleProjectRepository;
 import com.lhr.rnd.persistence.repository.SampleRequestRepository;
 import com.lhr.rnd.persistence.repository.SampleVersionRepository;
+import com.lhr.rnd.persistence.repository.TestAssignmentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,6 +58,7 @@ public class SampleWorkflowService {
     private final RndTaskRepository rndTaskRepository;
     private final ExperimentFormRepository experimentFormRepository;
     private final ExperimentMaterialRepository experimentMaterialRepository;
+    private final TestAssignmentRepository testAssignmentRepository;
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
     private final Map<String, SampleProject> projects = new LinkedHashMap<>();
     private final Map<String, SampleVersion> versions = new LinkedHashMap<>();
@@ -79,11 +82,11 @@ public class SampleWorkflowService {
     private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
-        this(Clock.systemDefaultZone(), null, null, null, null, null, null);
+        this(Clock.systemDefaultZone(), null, null, null, null, null, null, null);
     }
 
     SampleWorkflowService(Clock clock) {
-        this(clock, null, null, null, null, null, null);
+        this(clock, null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -93,7 +96,8 @@ public class SampleWorkflowService {
             SampleVersionRepository sampleVersionRepository,
             RndTaskRepository rndTaskRepository,
             ExperimentFormRepository experimentFormRepository,
-            ExperimentMaterialRepository experimentMaterialRepository
+            ExperimentMaterialRepository experimentMaterialRepository,
+            TestAssignmentRepository testAssignmentRepository
     ) {
         this(
                 Clock.systemDefaultZone(),
@@ -102,7 +106,8 @@ public class SampleWorkflowService {
                 sampleVersionRepository,
                 rndTaskRepository,
                 experimentFormRepository,
-                experimentMaterialRepository
+                experimentMaterialRepository,
+                testAssignmentRepository
         );
     }
 
@@ -113,7 +118,8 @@ public class SampleWorkflowService {
             SampleVersionRepository sampleVersionRepository,
             RndTaskRepository rndTaskRepository,
             ExperimentFormRepository experimentFormRepository,
-            ExperimentMaterialRepository experimentMaterialRepository
+            ExperimentMaterialRepository experimentMaterialRepository,
+            TestAssignmentRepository testAssignmentRepository
     ) {
         this.clock = clock;
         this.sampleRequestRepository = sampleRequestRepository;
@@ -122,6 +128,7 @@ public class SampleWorkflowService {
         this.rndTaskRepository = rndTaskRepository;
         this.experimentFormRepository = experimentFormRepository;
         this.experimentMaterialRepository = experimentMaterialRepository;
+        this.testAssignmentRepository = testAssignmentRepository;
     }
 
     @Transactional
@@ -275,6 +282,7 @@ public class SampleWorkflowService {
         return draft;
     }
 
+    @Transactional
     public synchronized SubmitExperimentForTestResult submitExperimentForTest(String experimentFormId, String testerName) {
         var form = experimentForms.get(experimentFormId);
         if (form == null) {
@@ -313,6 +321,7 @@ public class SampleWorkflowService {
                 now()
         );
         testAssignments.put(assignment.id(), assignment);
+        persistSubmittedExperiment(submitted, assignment);
         return new SubmitExperimentForTestResult(submitted, assignment);
     }
 
@@ -625,6 +634,31 @@ public class SampleWorkflowService {
             ));
         }
         experimentMaterialRepository.saveAll(materialEntities);
+    }
+
+    private void persistSubmittedExperiment(ExperimentForm submitted, TestAssignment assignment) {
+        if (experimentFormRepository == null || rndTaskRepository == null || testAssignmentRepository == null) {
+            return;
+        }
+        var formEntity = experimentFormRepository.findById(submitted.id())
+                .orElseThrow(() -> new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在"));
+        formEntity.submit(submitted.submittedAt());
+        experimentFormRepository.save(formEntity);
+
+        var taskEntity = rndTaskRepository.findById(submitted.taskId())
+                .orElseThrow(() -> new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在"));
+        taskEntity.markPendingTest();
+        rndTaskRepository.save(taskEntity);
+
+        testAssignmentRepository.save(new TestAssignmentEntity(
+                assignment.id(),
+                assignment.experimentFormId(),
+                assignment.taskId(),
+                assignment.versionId(),
+                assignment.testerName(),
+                assignment.status().name(),
+                assignment.assignedAt()
+        ));
     }
 
     private SampleVersion requiredVersion(String versionId) {

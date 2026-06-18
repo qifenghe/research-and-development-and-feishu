@@ -90,4 +90,8 @@ public class RndTaskEntity {
         this.status = "SAMPLING";
         this.acceptedAt = acceptedAt;
     }
+
+    public void markPendingTest() {
+        this.status = "PENDING_TEST";
+    }
 }
