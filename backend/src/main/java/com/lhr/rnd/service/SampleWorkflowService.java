@@ -25,6 +25,8 @@ import com.lhr.rnd.model.TestRecord;
 import com.lhr.rnd.persistence.entity.CustomerFeedbackEntity;
 import com.lhr.rnd.persistence.entity.ExperimentFormEntity;
 import com.lhr.rnd.persistence.entity.ExperimentMaterialEntity;
+import com.lhr.rnd.persistence.entity.FinanceNotificationEntity;
+import com.lhr.rnd.persistence.entity.PricingFileEntity;
 import com.lhr.rnd.persistence.entity.RndTaskEntity;
 import com.lhr.rnd.persistence.entity.SampleProjectEntity;
 import com.lhr.rnd.persistence.entity.SampleRequestEntity;
@@ -35,6 +37,8 @@ import com.lhr.rnd.persistence.entity.TestRecordEntity;
 import com.lhr.rnd.persistence.repository.CustomerFeedbackRepository;
 import com.lhr.rnd.persistence.repository.ExperimentFormRepository;
 import com.lhr.rnd.persistence.repository.ExperimentMaterialRepository;
+import com.lhr.rnd.persistence.repository.FinanceNotificationRepository;
+import com.lhr.rnd.persistence.repository.PricingFileRepository;
 import com.lhr.rnd.persistence.repository.RndTaskRepository;
 import com.lhr.rnd.persistence.repository.SampleProjectRepository;
 import com.lhr.rnd.persistence.repository.SampleRequestRepository;
@@ -68,6 +72,8 @@ public class SampleWorkflowService {
     private final TestRecordRepository testRecordRepository;
     private final ShipmentRecordRepository shipmentRecordRepository;
     private final CustomerFeedbackRepository customerFeedbackRepository;
+    private final PricingFileRepository pricingFileRepository;
+    private final FinanceNotificationRepository financeNotificationRepository;
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
     private final Map<String, SampleProject> projects = new LinkedHashMap<>();
     private final Map<String, SampleVersion> versions = new LinkedHashMap<>();
@@ -91,11 +97,11 @@ public class SampleWorkflowService {
     private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
-        this(Clock.systemDefaultZone(), null, null, null, null, null, null, null, null, null, null);
+        this(Clock.systemDefaultZone(), null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     SampleWorkflowService(Clock clock) {
-        this(clock, null, null, null, null, null, null, null, null, null, null);
+        this(clock, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -109,7 +115,9 @@ public class SampleWorkflowService {
             TestAssignmentRepository testAssignmentRepository,
             TestRecordRepository testRecordRepository,
             ShipmentRecordRepository shipmentRecordRepository,
-            CustomerFeedbackRepository customerFeedbackRepository
+            CustomerFeedbackRepository customerFeedbackRepository,
+            PricingFileRepository pricingFileRepository,
+            FinanceNotificationRepository financeNotificationRepository
     ) {
         this(
                 Clock.systemDefaultZone(),
@@ -122,7 +130,9 @@ public class SampleWorkflowService {
                 testAssignmentRepository,
                 testRecordRepository,
                 shipmentRecordRepository,
-                customerFeedbackRepository
+                customerFeedbackRepository,
+                pricingFileRepository,
+                financeNotificationRepository
         );
     }
 
@@ -137,7 +147,9 @@ public class SampleWorkflowService {
             TestAssignmentRepository testAssignmentRepository,
             TestRecordRepository testRecordRepository,
             ShipmentRecordRepository shipmentRecordRepository,
-            CustomerFeedbackRepository customerFeedbackRepository
+            CustomerFeedbackRepository customerFeedbackRepository,
+            PricingFileRepository pricingFileRepository,
+            FinanceNotificationRepository financeNotificationRepository
     ) {
         this.clock = clock;
         this.sampleRequestRepository = sampleRequestRepository;
@@ -150,6 +162,8 @@ public class SampleWorkflowService {
         this.testRecordRepository = testRecordRepository;
         this.shipmentRecordRepository = shipmentRecordRepository;
         this.customerFeedbackRepository = customerFeedbackRepository;
+        this.pricingFileRepository = pricingFileRepository;
+        this.financeNotificationRepository = financeNotificationRepository;
     }
 
     @Transactional
@@ -477,6 +491,7 @@ public class SampleWorkflowService {
         return new ShipmentFeedbackResult(updatedShipment, feedback);
     }
 
+    @Transactional
     public synchronized PricingFileRecord generatePricingFile(String versionId) {
         var version = requiredVersion(versionId);
         var lockedForm = lockedExperimentForm(versionId);
@@ -513,9 +528,11 @@ public class SampleWorkflowService {
                 now()
         );
         pricingFiles.put(record.id(), record);
+        persistPricingFile(record);
         return record;
     }
 
+    @Transactional
     public synchronized NotifyFinanceResult notifyFinance(String pricingFileId, String recipientName, String remark) {
         var pricingFile = pricingFiles.get(pricingFileId);
         if (pricingFile == null) {
@@ -532,6 +549,7 @@ public class SampleWorkflowService {
                 now()
         );
         financeNotifications.put(notification.id(), notification);
+        persistFinanceNotification(notifiedPricingFile, notification);
         return new NotifyFinanceResult(notifiedPricingFile, notification);
     }
 
@@ -829,6 +847,43 @@ public class SampleWorkflowService {
                 feedback.result().name(),
                 feedback.comment(),
                 feedback.feedbackAt()
+        ));
+    }
+
+    private void persistPricingFile(PricingFileRecord pricingFile) {
+        if (pricingFileRepository == null) {
+            return;
+        }
+        pricingFileRepository.save(new PricingFileEntity(
+                pricingFile.id(),
+                pricingFile.versionId(),
+                pricingFile.sampleNo(),
+                pricingFile.productName(),
+                pricingFile.versionCode(),
+                pricingFile.pricingVersion(),
+                pricingFile.fileName(),
+                pricingFile.status().name(),
+                pricingFile.contentLength(),
+                pricingFile.generatedAt()
+        ));
+    }
+
+    private void persistFinanceNotification(PricingFileRecord notifiedPricingFile, FinanceNotification notification) {
+        if (pricingFileRepository == null || financeNotificationRepository == null) {
+            return;
+        }
+        var pricingFileEntity = pricingFileRepository.findById(notifiedPricingFile.id())
+                .orElseThrow(() -> new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在"));
+        pricingFileEntity.markFinanceNotified();
+        pricingFileRepository.save(pricingFileEntity);
+
+        financeNotificationRepository.save(new FinanceNotificationEntity(
+                notification.id(),
+                notification.pricingFileId(),
+                notification.recipientName(),
+                notification.remark(),
+                notification.status().name(),
+                notification.notifiedAt()
         ));
     }
 

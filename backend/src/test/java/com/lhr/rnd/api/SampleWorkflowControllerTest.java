@@ -255,13 +255,30 @@ class SampleWorkflowControllerTest {
                 .split("\"id\":\"")[1]
                 .split("\"")[0];
 
-        mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
+        assertThat(countById("pricing_file", pricingFileId)).isEqualTo(1);
+        assertThat(valueById("pricing_file", pricingFileId, "version_id")).isEqualTo(versionId);
+        assertThat(valueById("pricing_file", pricingFileId, "pricing_version")).isEqualTo("A0-核价V1");
+        assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("GENERATED");
+        assertThat(valueById("pricing_file", pricingFileId, "file_name")).isEqualTo("500g香卤大肠头-核价原料清单-A0-V1.xlsx");
+
+        var financeNotificationId = mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"recipientName\":\"财务核价员\",\"remark\":\"请按研发核价清单核算报价\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pricingFile.status").value("FINANCE_NOTIFIED"))
                 .andExpect(jsonPath("$.data.notification.recipientName").value("财务核价员"))
-                .andExpect(jsonPath("$.data.notification.status").value("SENT"));
+                .andExpect(jsonPath("$.data.notification.status").value("SENT"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\\\"notification\\\":\\{\\\"id\\\":\\\"")[1]
+                .split("\"")[0];
+
+        assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("FINANCE_NOTIFIED");
+        assertThat(countById("finance_notification", financeNotificationId)).isEqualTo(1);
+        assertThat(valueById("finance_notification", financeNotificationId, "pricing_file_id")).isEqualTo(pricingFileId);
+        assertThat(valueById("finance_notification", financeNotificationId, "recipient_name")).isEqualTo("财务核价员");
+        assertThat(valueById("finance_notification", financeNotificationId, "status")).isEqualTo("SENT");
     }
 
     @Test
