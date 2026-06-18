@@ -31,4 +31,20 @@ public record RndTask(
                 assignedAt
         );
     }
+
+    public RndTask accept(LocalDateTime acceptedAt) {
+        return new RndTask(
+                id,
+                projectId,
+                versionId,
+                sampleNo,
+                productName,
+                versionCode,
+                RndTaskStatus.SAMPLING,
+                assigneeName,
+                dueDate,
+                createdAt,
+                acceptedAt
+        );
+    }
 }

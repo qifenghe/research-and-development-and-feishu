@@ -1,9 +1,11 @@
 package com.lhr.rnd.api;
 
 import com.lhr.rnd.model.RndTask;
+import com.lhr.rnd.model.ExperimentForm;
 import com.lhr.rnd.model.SampleRequest;
 import com.lhr.rnd.service.ApproveSampleRequestResult;
 import com.lhr.rnd.service.SampleWorkflowService;
+import com.lhr.rnd.service.SubmitExperimentForTestResult;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -59,5 +61,34 @@ public class SampleWorkflowController {
             @Valid @RequestBody AssignRndTaskRequest request
     ) {
         return ApiResponse.success(workflowService.assignTask(id, request.assigneeName(), request.dueDate()));
+    }
+
+    @PostMapping("/rnd-tasks/{id}/accept")
+    public ApiResponse<RndTask> acceptTask(
+            @PathVariable String id,
+            @Valid @RequestBody AcceptRndTaskRequest request
+    ) {
+        return ApiResponse.success(workflowService.acceptTask(id, request.acceptedBy()));
+    }
+
+    @PostMapping("/rnd-tasks/{id}/experiment-form/draft")
+    public ApiResponse<ExperimentForm> saveExperimentDraft(
+            @PathVariable String id,
+            @Valid @RequestBody SaveExperimentDraftRequest request
+    ) {
+        return ApiResponse.success(workflowService.saveExperimentDraft(new SampleWorkflowService.SaveExperimentDraftCommand(
+                id,
+                request.operatorName(),
+                request.summary(),
+                request.materials()
+        )));
+    }
+
+    @PostMapping("/experiment-forms/{id}/submit-test")
+    public ApiResponse<SubmitExperimentForTestResult> submitExperimentForTest(
+            @PathVariable String id,
+            @Valid @RequestBody SubmitExperimentForTestRequest request
+    ) {
+        return ApiResponse.success(workflowService.submitExperimentForTest(id, request.testerName()));
     }
 }
