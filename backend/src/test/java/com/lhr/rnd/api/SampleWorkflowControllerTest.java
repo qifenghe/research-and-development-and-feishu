@@ -5,9 +5,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -21,6 +23,9 @@ class SampleWorkflowControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void createsRequestApprovesToProjectAndAssignsTask() throws Exception {
@@ -38,6 +43,22 @@ class SampleWorkflowControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PENDING_ACCEPTANCE"))
                 .andExpect(jsonPath("$.data.assigneeName").value("张研发"));
+    }
+
+    @Test
+    void approvingRequestPersistsProjectVersionAndTaskToDatabase() throws Exception {
+        var taskId = createApprovedRequest();
+
+        assertThat(countById("rnd_task", taskId)).isEqualTo(1);
+        var versionId = valueById("rnd_task", taskId, "version_id");
+        var projectId = valueById("rnd_task", taskId, "project_id");
+        var sampleNo = valueById("rnd_task", taskId, "sample_no");
+
+        assertThat(countById("sample_project", projectId)).isEqualTo(1);
+        assertThat(countById("sample_version", versionId)).isEqualTo(1);
+        assertThat(countBySampleNo("sample_request", sampleNo)).isEqualTo(1);
+        assertThat(valueById("sample_version", versionId, "version_code")).isEqualTo("A0");
+        assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("PENDING_ASSIGNMENT");
     }
 
     @Test
@@ -296,6 +317,18 @@ class SampleWorkflowControllerTest {
                         .content("{\"assigneeName\":\"张研发\",\"dueDate\":\"2026-06-25\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PENDING_ACCEPTANCE"));
+    }
+
+    private int countById(String tableName, String id) {
+        return jdbcTemplate.queryForObject("select count(*) from " + tableName + " where id = ?", Integer.class, id);
+    }
+
+    private int countBySampleNo(String tableName, String sampleNo) {
+        return jdbcTemplate.queryForObject("select count(*) from " + tableName + " where sample_no = ?", Integer.class, sampleNo);
+    }
+
+    private String valueById(String tableName, String id, String columnName) {
+        return jdbcTemplate.queryForObject("select " + columnName + " from " + tableName + " where id = ?", String.class, id);
     }
 
     private String createLockedSampleVersion() throws Exception {

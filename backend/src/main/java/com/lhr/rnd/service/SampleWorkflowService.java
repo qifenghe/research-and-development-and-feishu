@@ -22,7 +22,17 @@ import com.lhr.rnd.model.ShipmentStatus;
 import com.lhr.rnd.model.TestAssignment;
 import com.lhr.rnd.model.TestAssignmentStatus;
 import com.lhr.rnd.model.TestRecord;
+import com.lhr.rnd.persistence.entity.RndTaskEntity;
+import com.lhr.rnd.persistence.entity.SampleProjectEntity;
+import com.lhr.rnd.persistence.entity.SampleRequestEntity;
+import com.lhr.rnd.persistence.entity.SampleVersionEntity;
+import com.lhr.rnd.persistence.repository.RndTaskRepository;
+import com.lhr.rnd.persistence.repository.SampleProjectRepository;
+import com.lhr.rnd.persistence.repository.SampleRequestRepository;
+import com.lhr.rnd.persistence.repository.SampleVersionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
@@ -36,6 +46,10 @@ import java.util.Map;
 public class SampleWorkflowService {
     private final Clock clock;
     private final PricingFileService pricingFileService = new PricingFileService();
+    private final SampleRequestRepository sampleRequestRepository;
+    private final SampleProjectRepository sampleProjectRepository;
+    private final SampleVersionRepository sampleVersionRepository;
+    private final RndTaskRepository rndTaskRepository;
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
     private final Map<String, SampleProject> projects = new LinkedHashMap<>();
     private final Map<String, SampleVersion> versions = new LinkedHashMap<>();
@@ -59,13 +73,38 @@ public class SampleWorkflowService {
     private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
-        this(Clock.systemDefaultZone());
+        this(Clock.systemDefaultZone(), null, null, null, null);
     }
 
     SampleWorkflowService(Clock clock) {
-        this.clock = clock;
+        this(clock, null, null, null, null);
     }
 
+    @Autowired
+    public SampleWorkflowService(
+            SampleRequestRepository sampleRequestRepository,
+            SampleProjectRepository sampleProjectRepository,
+            SampleVersionRepository sampleVersionRepository,
+            RndTaskRepository rndTaskRepository
+    ) {
+        this(Clock.systemDefaultZone(), sampleRequestRepository, sampleProjectRepository, sampleVersionRepository, rndTaskRepository);
+    }
+
+    private SampleWorkflowService(
+            Clock clock,
+            SampleRequestRepository sampleRequestRepository,
+            SampleProjectRepository sampleProjectRepository,
+            SampleVersionRepository sampleVersionRepository,
+            RndTaskRepository rndTaskRepository
+    ) {
+        this.clock = clock;
+        this.sampleRequestRepository = sampleRequestRepository;
+        this.sampleProjectRepository = sampleProjectRepository;
+        this.sampleVersionRepository = sampleVersionRepository;
+        this.rndTaskRepository = rndTaskRepository;
+    }
+
+    @Transactional
     public synchronized SampleRequest createRequest(CreateSampleRequestCommand command) {
         var sampleNo = "YP20260618" + "%04d".formatted(requestSequence);
         var request = new SampleRequest(
@@ -81,9 +120,11 @@ public class SampleWorkflowService {
         );
         requestSequence++;
         requests.put(request.id(), request);
+        persistRequest(request);
         return request;
     }
 
+    @Transactional
     public synchronized ApproveSampleRequestResult approveRequest(String requestId, String reviewerName) {
         var request = requests.get(requestId);
         if (request == null) {
@@ -136,6 +177,7 @@ public class SampleWorkflowService {
         projects.put(project.id(), project);
         versions.put(version.id(), version);
         tasks.put(task.id(), task);
+        persistApprovedWorkflow(request, project, version, task);
         return new ApproveSampleRequestResult(project, version, task);
     }
 
@@ -430,6 +472,76 @@ public class SampleWorkflowService {
 
     private LocalDateTime now() {
         return LocalDateTime.now(clock);
+    }
+
+    private void persistRequest(SampleRequest request) {
+        if (sampleRequestRepository == null) {
+            return;
+        }
+        sampleRequestRepository.save(new SampleRequestEntity(
+                request.id(),
+                request.sampleNo(),
+                request.productName(),
+                request.productType(),
+                request.customerName(),
+                request.specification(),
+                request.creatorName(),
+                request.status().name(),
+                request.createdAt()
+        ));
+    }
+
+    private void persistApprovedWorkflow(
+            SampleRequest request,
+            SampleProject project,
+            SampleVersion version,
+            RndTask task
+    ) {
+        if (sampleProjectRepository == null || sampleVersionRepository == null || rndTaskRepository == null) {
+            return;
+        }
+        sampleProjectRepository.save(new SampleProjectEntity(
+                project.id(),
+                request.id(),
+                project.sampleNo(),
+                project.productName(),
+                project.productType(),
+                project.customerName(),
+                project.specification(),
+                project.status().name(),
+                project.createdAt()
+        ));
+        sampleVersionRepository.save(new SampleVersionEntity(
+                version.id(),
+                version.projectId(),
+                version.sampleNo(),
+                version.productName(),
+                version.productType(),
+                version.specification(),
+                version.versionNo(),
+                version.versionNumber(),
+                version.versionCode(),
+                version.ownerName(),
+                version.authorName(),
+                version.effectiveDate(),
+                version.referenceOutputKg(),
+                version.unitWeightKg(),
+                version.createdAt()
+        ));
+        rndTaskRepository.save(new RndTaskEntity(
+                task.id(),
+                task.projectId(),
+                task.versionId(),
+                task.sampleNo(),
+                task.productName(),
+                task.versionCode(),
+                task.status().name(),
+                task.assigneeName(),
+                task.dueDate(),
+                task.createdAt(),
+                task.assignedAt(),
+                null
+        ));
     }
 
     private SampleVersion requiredVersion(String versionId) {
