@@ -22,10 +22,14 @@ import com.lhr.rnd.model.ShipmentStatus;
 import com.lhr.rnd.model.TestAssignment;
 import com.lhr.rnd.model.TestAssignmentStatus;
 import com.lhr.rnd.model.TestRecord;
+import com.lhr.rnd.persistence.entity.ExperimentFormEntity;
+import com.lhr.rnd.persistence.entity.ExperimentMaterialEntity;
 import com.lhr.rnd.persistence.entity.RndTaskEntity;
 import com.lhr.rnd.persistence.entity.SampleProjectEntity;
 import com.lhr.rnd.persistence.entity.SampleRequestEntity;
 import com.lhr.rnd.persistence.entity.SampleVersionEntity;
+import com.lhr.rnd.persistence.repository.ExperimentFormRepository;
+import com.lhr.rnd.persistence.repository.ExperimentMaterialRepository;
 import com.lhr.rnd.persistence.repository.RndTaskRepository;
 import com.lhr.rnd.persistence.repository.SampleProjectRepository;
 import com.lhr.rnd.persistence.repository.SampleRequestRepository;
@@ -50,6 +54,8 @@ public class SampleWorkflowService {
     private final SampleProjectRepository sampleProjectRepository;
     private final SampleVersionRepository sampleVersionRepository;
     private final RndTaskRepository rndTaskRepository;
+    private final ExperimentFormRepository experimentFormRepository;
+    private final ExperimentMaterialRepository experimentMaterialRepository;
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
     private final Map<String, SampleProject> projects = new LinkedHashMap<>();
     private final Map<String, SampleVersion> versions = new LinkedHashMap<>();
@@ -73,11 +79,11 @@ public class SampleWorkflowService {
     private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
-        this(Clock.systemDefaultZone(), null, null, null, null);
+        this(Clock.systemDefaultZone(), null, null, null, null, null, null);
     }
 
     SampleWorkflowService(Clock clock) {
-        this(clock, null, null, null, null);
+        this(clock, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -85,9 +91,19 @@ public class SampleWorkflowService {
             SampleRequestRepository sampleRequestRepository,
             SampleProjectRepository sampleProjectRepository,
             SampleVersionRepository sampleVersionRepository,
-            RndTaskRepository rndTaskRepository
+            RndTaskRepository rndTaskRepository,
+            ExperimentFormRepository experimentFormRepository,
+            ExperimentMaterialRepository experimentMaterialRepository
     ) {
-        this(Clock.systemDefaultZone(), sampleRequestRepository, sampleProjectRepository, sampleVersionRepository, rndTaskRepository);
+        this(
+                Clock.systemDefaultZone(),
+                sampleRequestRepository,
+                sampleProjectRepository,
+                sampleVersionRepository,
+                rndTaskRepository,
+                experimentFormRepository,
+                experimentMaterialRepository
+        );
     }
 
     private SampleWorkflowService(
@@ -95,13 +111,17 @@ public class SampleWorkflowService {
             SampleRequestRepository sampleRequestRepository,
             SampleProjectRepository sampleProjectRepository,
             SampleVersionRepository sampleVersionRepository,
-            RndTaskRepository rndTaskRepository
+            RndTaskRepository rndTaskRepository,
+            ExperimentFormRepository experimentFormRepository,
+            ExperimentMaterialRepository experimentMaterialRepository
     ) {
         this.clock = clock;
         this.sampleRequestRepository = sampleRequestRepository;
         this.sampleProjectRepository = sampleProjectRepository;
         this.sampleVersionRepository = sampleVersionRepository;
         this.rndTaskRepository = rndTaskRepository;
+        this.experimentFormRepository = experimentFormRepository;
+        this.experimentMaterialRepository = experimentMaterialRepository;
     }
 
     @Transactional
@@ -221,6 +241,7 @@ public class SampleWorkflowService {
         return accepted;
     }
 
+    @Transactional
     public synchronized ExperimentForm saveExperimentDraft(SaveExperimentDraftCommand command) {
         var task = tasks.get(command.taskId());
         if (task == null) {
@@ -250,6 +271,7 @@ public class SampleWorkflowService {
                 null
         );
         experimentForms.put(draft.id(), draft);
+        persistExperimentDraft(draft);
         return draft;
     }
 
@@ -567,6 +589,42 @@ public class SampleWorkflowService {
                 .orElseThrow(() -> new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在"));
         taskEntity.accept(acceptedAt);
         rndTaskRepository.save(taskEntity);
+    }
+
+    private void persistExperimentDraft(ExperimentForm draft) {
+        if (experimentFormRepository == null || experimentMaterialRepository == null) {
+            return;
+        }
+        experimentFormRepository.save(new ExperimentFormEntity(
+                draft.id(),
+                draft.taskId(),
+                draft.projectId(),
+                draft.versionId(),
+                draft.sampleNo(),
+                draft.productName(),
+                draft.versionCode(),
+                draft.status().name(),
+                draft.operatorName(),
+                draft.summary(),
+                draft.savedAt(),
+                draft.submittedAt()
+        ));
+        experimentMaterialRepository.deleteByExperimentFormId(draft.id());
+        var materialEntities = new ArrayList<ExperimentMaterialEntity>();
+        for (var material : draft.materials()) {
+            materialEntities.add(new ExperimentMaterialEntity(
+                    "%s-M%04d".formatted(draft.id(), material.sequence()),
+                    draft.id(),
+                    material.stage(),
+                    material.sequence(),
+                    material.materialCode(),
+                    material.materialName(),
+                    material.weightKg(),
+                    material.utilizationRate(),
+                    material.remark()
+            ));
+        }
+        experimentMaterialRepository.saveAll(materialEntities);
     }
 
     private SampleVersion requiredVersion(String versionId) {

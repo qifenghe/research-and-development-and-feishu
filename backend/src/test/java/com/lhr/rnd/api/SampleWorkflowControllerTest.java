@@ -87,6 +87,25 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void savingExperimentDraftPersistsFormAndMaterialDetailsToDatabase() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        var experimentFormId = saveExperimentDraft(taskId);
+
+        assertThat(countById("experiment_form", experimentFormId)).isEqualTo(1);
+        assertThat(valueById("experiment_form", experimentFormId, "status")).isEqualTo("DRAFT");
+        assertThat(valueById("experiment_form", experimentFormId, "operator_name")).isEqualTo("张研发");
+        assertThat(valueById("experiment_form", experimentFormId, "version_code")).isEqualTo("A0");
+        assertThat(countByColumn("experiment_material", "experiment_form_id", experimentFormId)).isEqualTo(1);
+        assertThat(valueByColumn("experiment_material", "experiment_form_id", experimentFormId, "material_name"))
+                .isEqualTo("冻猪大肠头（预煮）");
+        assertThat(valueByColumn("experiment_material", "experiment_form_id", experimentFormId, "weight_kg"))
+                .isEqualTo("100.0000");
+    }
+
+    @Test
     void passingInternalTestLocksExperimentVersion() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);
@@ -342,8 +361,20 @@ class SampleWorkflowControllerTest {
         return jdbcTemplate.queryForObject("select count(*) from " + tableName + " where sample_no = ?", Integer.class, sampleNo);
     }
 
+    private int countByColumn(String tableName, String columnName, String value) {
+        return jdbcTemplate.queryForObject("select count(*) from " + tableName + " where " + columnName + " = ?", Integer.class, value);
+    }
+
     private String valueById(String tableName, String id, String columnName) {
         return jdbcTemplate.queryForObject("select " + columnName + " from " + tableName + " where id = ?", String.class, id);
+    }
+
+    private String valueByColumn(String tableName, String lookupColumnName, String value, String columnName) {
+        return jdbcTemplate.queryForObject(
+                "select " + columnName + " from " + tableName + " where " + lookupColumnName + " = ?",
+                String.class,
+                value
+        );
     }
 
     private String createLockedSampleVersion() throws Exception {
