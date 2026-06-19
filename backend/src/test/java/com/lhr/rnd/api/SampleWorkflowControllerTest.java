@@ -14,6 +14,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 
+import org.junit.jupiter.api.BeforeEach;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -37,6 +39,11 @@ class SampleWorkflowControllerTest {
     @Autowired
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
+    @BeforeEach
+    void clearWorkflowRuleConfig() {
+        jdbcTemplate.update("delete from workflow_rule_config");
+    }
+
     @Test
     void createsRequestApprovesToProjectAndAssignsTask() throws Exception {
         createApprovedRequest();
@@ -53,6 +60,39 @@ class SampleWorkflowControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PENDING_ACCEPTANCE"))
                 .andExpect(jsonPath("$.data.assigneeName").value("张研发"));
+    }
+
+    @Test
+    void approvingRequestUsesConfiguredWorkflowTransitionForProjectStatus() throws Exception {
+        jdbcTemplate.update(
+                """
+                        insert into workflow_rule_config (
+                            id, workflow_code, current_status, action_code, action_label, next_status,
+                            enabled, notify_feishu, notify_role, sort_order, remark, updated_at
+                        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)
+                        """,
+                "FLOW-APPROVE-001",
+                "SAMPLE_RND_FLOW",
+                "PENDING_REVIEW",
+                "APPROVE_REQUEST",
+                "审核通过直接归档",
+                "ARCHIVED",
+                true,
+                false,
+                null,
+                10,
+                "测试业务服务读取配置"
+        );
+
+        var requestId = createPendingSampleRequest();
+
+        mockMvc.perform(post("/api/v1/sample-requests/{id}/approve", requestId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reviewerName\":\"研发总监\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.project.status").value("ARCHIVED"));
+
+        assertThat(countByColumn("sample_project", "status", "ARCHIVED")).isGreaterThan(0);
     }
 
     @Test
@@ -768,6 +808,23 @@ class SampleWorkflowControllerTest {
     }
 
     private String createApprovedRequest() throws Exception {
+        var requestId = createPendingSampleRequest();
+
+        return mockMvc.perform(post("/api/v1/sample-requests/{id}/approve", requestId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reviewerName\":\"研发总监\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.project.status").value("PENDING_ASSIGNMENT"))
+                .andExpect(jsonPath("$.data.version.versionCode").value("A0"))
+                .andExpect(jsonPath("$.data.task.status").value("PENDING_ASSIGNMENT"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\\\"task\\\":\\{\\\"id\\\":\\\"")[1]
+                .split("\"")[0];
+    }
+
+    private String createPendingSampleRequest() throws Exception {
         var createRequestJson = """
                 {
                   "productName": "500g香卤大肠头",
@@ -789,19 +846,7 @@ class SampleWorkflowControllerTest {
                 .getContentAsString()
                 .split("\"id\":\"")[1]
                 .split("\"")[0];
-
-        return mockMvc.perform(post("/api/v1/sample-requests/{id}/approve", requestId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reviewerName\":\"研发总监\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.project.status").value("PENDING_ASSIGNMENT"))
-                .andExpect(jsonPath("$.data.version.versionCode").value("A0"))
-                .andExpect(jsonPath("$.data.task.status").value("PENDING_ASSIGNMENT"))
-                .andReturn()
-                .getResponse()
-                .getContentAsString()
-                .split("\\\"task\\\":\\{\\\"id\\\":\\\"")[1]
-                .split("\"")[0];
+        return requestId;
     }
 
     private void assignTask(String taskId) throws Exception {

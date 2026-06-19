@@ -94,4 +94,12 @@ public class WorkflowRuleConfigEntity {
                 updatedAt
         );
     }
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public String getNextStatus() {
+        return nextStatus;
+    }
 }

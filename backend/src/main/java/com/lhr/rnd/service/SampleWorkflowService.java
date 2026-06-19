@@ -1,7 +1,9 @@
 package com.lhr.rnd.service;
 
 import com.lhr.rnd.api.BusinessException;
+import com.lhr.rnd.domain.SampleAction;
 import com.lhr.rnd.domain.SampleStatus;
+import com.lhr.rnd.domain.SampleStatusMachine;
 import com.lhr.rnd.domain.SampleVersionCode;
 import com.lhr.rnd.model.CustomerFeedback;
 import com.lhr.rnd.model.CustomerFeedbackResult;
@@ -79,6 +81,7 @@ public class SampleWorkflowService {
     private final PricingFileService pricingFileService = new PricingFileService();
     private final LocalArchiveStorageService archiveStorageService;
     private final FeishuIntegrationService feishuIntegrationService;
+    private final WorkflowDrivenSampleStatusMachine workflowStatusMachine;
     private final SampleRequestRepository sampleRequestRepository;
     private final SampleProjectRepository sampleProjectRepository;
     private final SampleVersionRepository sampleVersionRepository;
@@ -115,17 +118,18 @@ public class SampleWorkflowService {
     private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
-        this(Clock.systemDefaultZone(), new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(Clock.systemDefaultZone(), new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     SampleWorkflowService(Clock clock) {
-        this(clock, new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(clock, new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Autowired
     public SampleWorkflowService(
             LocalArchiveStorageService archiveStorageService,
             FeishuIntegrationService feishuIntegrationService,
+            WorkflowDrivenSampleStatusMachine workflowStatusMachine,
             SampleRequestRepository sampleRequestRepository,
             SampleProjectRepository sampleProjectRepository,
             SampleVersionRepository sampleVersionRepository,
@@ -144,6 +148,7 @@ public class SampleWorkflowService {
                 Clock.systemDefaultZone(),
                 archiveStorageService,
                 feishuIntegrationService,
+                workflowStatusMachine,
                 sampleRequestRepository,
                 sampleProjectRepository,
                 sampleVersionRepository,
@@ -164,6 +169,7 @@ public class SampleWorkflowService {
             Clock clock,
             LocalArchiveStorageService archiveStorageService,
             FeishuIntegrationService feishuIntegrationService,
+            WorkflowDrivenSampleStatusMachine workflowStatusMachine,
             SampleRequestRepository sampleRequestRepository,
             SampleProjectRepository sampleProjectRepository,
             SampleVersionRepository sampleVersionRepository,
@@ -181,6 +187,7 @@ public class SampleWorkflowService {
         this.clock = clock;
         this.archiveStorageService = archiveStorageService;
         this.feishuIntegrationService = feishuIntegrationService;
+        this.workflowStatusMachine = workflowStatusMachine;
         this.sampleRequestRepository = sampleRequestRepository;
         this.sampleProjectRepository = sampleProjectRepository;
         this.sampleVersionRepository = sampleVersionRepository;
@@ -226,6 +233,7 @@ public class SampleWorkflowService {
             throw new BusinessException("SAMPLE_REQUEST_STATUS_ILLEGAL", "当前需求状态不可审核");
         }
 
+        var projectStatus = transitionSampleStatus(request.status(), SampleAction.APPROVE_REQUEST);
         var project = new SampleProject(
                 "PROJ-%04d".formatted(projects.size() + 1),
                 request.sampleNo(),
@@ -233,7 +241,7 @@ public class SampleWorkflowService {
                 request.productType(),
                 request.customerName(),
                 request.specification(),
-                SampleStatus.PENDING_ASSIGNMENT,
+                projectStatus,
                 now()
         );
         var versionCode = SampleVersionCode.fromNumber(0).code();
@@ -660,6 +668,13 @@ public class SampleWorkflowService {
 
     private LocalDateTime now() {
         return LocalDateTime.now(clock);
+    }
+
+    private SampleStatus transitionSampleStatus(SampleStatus current, SampleAction action) {
+        if (workflowStatusMachine != null) {
+            return workflowStatusMachine.transition(current, action);
+        }
+        return new SampleStatusMachine().transition(current, action);
     }
 
     private void persistRequest(SampleRequest request) {
