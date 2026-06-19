@@ -21,6 +21,7 @@ import java.util.UUID;
 public class FeishuIntegrationService {
     private final Clock clock;
     private final FeishuProperties feishuProperties;
+    private final SessionTokenService sessionTokenService;
     private final UserAccountRepository userAccountRepository;
     private final FeishuNotificationRepository feishuNotificationRepository;
     private final FeishuIdentityClientProvider feishuIdentityClientProvider;
@@ -30,9 +31,17 @@ public class FeishuIntegrationService {
             UserAccountRepository userAccountRepository,
             FeishuNotificationRepository feishuNotificationRepository,
             FeishuIdentityClientProvider feishuIdentityClientProvider,
-            FeishuProperties feishuProperties
+            FeishuProperties feishuProperties,
+            SessionTokenService sessionTokenService
     ) {
-        this(Clock.systemDefaultZone(), userAccountRepository, feishuNotificationRepository, feishuIdentityClientProvider, feishuProperties);
+        this(
+                Clock.systemDefaultZone(),
+                userAccountRepository,
+                feishuNotificationRepository,
+                feishuIdentityClientProvider,
+                feishuProperties,
+                sessionTokenService
+        );
     }
 
     FeishuIntegrationService(
@@ -40,10 +49,12 @@ public class FeishuIntegrationService {
             UserAccountRepository userAccountRepository,
             FeishuNotificationRepository feishuNotificationRepository,
             FeishuIdentityClientProvider feishuIdentityClientProvider,
-            FeishuProperties feishuProperties
+            FeishuProperties feishuProperties,
+            SessionTokenService sessionTokenService
     ) {
         this.clock = clock;
         this.feishuProperties = feishuProperties;
+        this.sessionTokenService = sessionTokenService;
         this.userAccountRepository = userAccountRepository;
         this.feishuNotificationRepository = feishuNotificationRepository;
         this.feishuIdentityClientProvider = feishuIdentityClientProvider;
@@ -102,7 +113,7 @@ public class FeishuIntegrationService {
         var user = userAccountRepository.findByFeishuUserId(feishuUserId)
                 .filter(existing -> "ACTIVE".equals(existing.toModel().status()))
                 .orElseThrow(() -> new BusinessException("FEISHU_USER_NOT_BOUND", "飞书用户未绑定系统账号"));
-        return new FeishuLoginResult(feishuUserId, user.toModel(), "mock-token-" + feishuUserId);
+        return new FeishuLoginResult(feishuUserId, user.toModel(), sessionTokenService.issue(user.toModel()));
     }
 
     public UserAccount activeUserByFeishuUserId(String feishuUserId) {

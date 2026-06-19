@@ -34,6 +34,9 @@ class SampleWorkflowControllerTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+
     @Test
     void createsRequestApprovesToProjectAndAssignsTask() throws Exception {
         createApprovedRequest();
@@ -194,7 +197,7 @@ class SampleWorkflowControllerTest {
     void feishuOauthCallbackReturnsBoundSystemUser() throws Exception {
         bindFeishuUser("免登研发", "ou_oauth_001");
 
-        mockMvc.perform(post("/api/v1/feishu/oauth/callback")
+        var response = mockMvc.perform(post("/api/v1/feishu/oauth/callback")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -206,7 +209,22 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.user.name").value("免登研发"))
                 .andExpect(jsonPath("$.data.user.role").value("RND_ENGINEER"))
                 .andExpect(jsonPath("$.data.user.status").value("ACTIVE"))
-                .andExpect(jsonPath("$.data.accessToken").value("mock-token-ou_oauth_001"));
+                .andExpect(jsonPath("$.data.accessToken").isString())
+                .andExpect(jsonPath("$.data.accessToken").value(org.hamcrest.Matchers.not("mock-token-ou_oauth_001")))
+                .andReturn();
+
+        var accessToken = objectMapper.readTree(response.getResponse().getContentAsString())
+                .path("data")
+                .path("accessToken")
+                .asText();
+
+        mockMvc.perform(get("/api/v1/session/me")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.userId").isString())
+                .andExpect(jsonPath("$.data.name").value("免登研发"))
+                .andExpect(jsonPath("$.data.feishuUserId").value("ou_oauth_001"))
+                .andExpect(jsonPath("$.data.role").value("RND_ENGINEER"));
     }
 
     @Test
