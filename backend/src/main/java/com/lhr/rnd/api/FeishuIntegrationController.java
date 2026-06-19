@@ -2,6 +2,7 @@ package com.lhr.rnd.api;
 
 import com.lhr.rnd.model.FeishuNotification;
 import com.lhr.rnd.model.UserAccount;
+import com.lhr.rnd.service.FeishuDispatchResult;
 import com.lhr.rnd.service.FeishuIntegrationService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,5 +35,10 @@ public class FeishuIntegrationController {
     @GetMapping("/notifications/pending")
     public ApiResponse<List<FeishuNotification>> pendingNotifications() {
         return ApiResponse.success(feishuIntegrationService.pendingNotifications());
+    }
+
+    @PostMapping("/notifications/dispatch")
+    public ApiResponse<FeishuDispatchResult> dispatchPendingNotifications() {
+        return ApiResponse.success(feishuIntegrationService.dispatchPendingNotifications());
     }
 }

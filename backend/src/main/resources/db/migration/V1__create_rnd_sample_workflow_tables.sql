@@ -187,6 +187,8 @@ create table feishu_notification (
     title varchar(200) not null,
     content varchar(1000),
     status varchar(50) not null,
+    send_attempts integer not null default 0,
+    last_error varchar(500),
     created_at timestamp not null,
     sent_at timestamp,
     constraint fk_feishu_notification_user foreign key (recipient_user_id) references user_account(id)

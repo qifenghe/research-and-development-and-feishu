@@ -38,6 +38,12 @@ public class FeishuNotificationEntity {
     @Column(name = "status", nullable = false)
     private String status;
 
+    @Column(name = "send_attempts", nullable = false)
+    private int sendAttempts;
+
+    @Column(name = "last_error")
+    private String lastError;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -69,8 +75,28 @@ public class FeishuNotificationEntity {
         this.title = title;
         this.content = content;
         this.status = status;
+        this.sendAttempts = 0;
+        this.lastError = null;
         this.createdAt = createdAt;
         this.sentAt = sentAt;
+    }
+
+    public String getRecipientFeishuUserId() {
+        return recipientFeishuUserId;
+    }
+
+    public void markSent(LocalDateTime sentAt) {
+        this.status = "SENT";
+        this.sendAttempts++;
+        this.lastError = null;
+        this.sentAt = sentAt;
+    }
+
+    public void markFailed(String errorMessage) {
+        this.status = "FAILED";
+        this.sendAttempts++;
+        this.lastError = errorMessage;
+        this.sentAt = null;
     }
 
     public FeishuNotification toModel() {
@@ -84,6 +110,8 @@ public class FeishuNotificationEntity {
                 title,
                 content,
                 status,
+                sendAttempts,
+                lastError,
                 createdAt,
                 sentAt
         );

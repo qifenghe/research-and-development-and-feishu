@@ -50,6 +50,8 @@ class SchemaMigrationTest {
         assertColumnExists("archive_file", "remark");
         assertColumnExists("archive_file", "content_type");
         assertColumnExists("archive_file", "file_size");
+        assertColumnExists("feishu_notification", "send_attempts");
+        assertColumnExists("feishu_notification", "last_error");
     }
 
     private void assertTableExists(String tableName) {

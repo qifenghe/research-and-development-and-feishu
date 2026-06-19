@@ -88,6 +88,32 @@ public class FeishuIntegrationService {
                 .toList();
     }
 
+    @Transactional
+    public FeishuDispatchResult dispatchPendingNotifications() {
+        var pending = feishuNotificationRepository.findByStatusOrderByCreatedAtAsc("PENDING_SEND");
+        var sentCount = 0;
+        var failedCount = 0;
+        for (var notification : pending) {
+            var sendResult = sendNotification(notification);
+            if (sendResult.success()) {
+                notification.markSent(now());
+                sentCount++;
+            } else {
+                notification.markFailed(sendResult.errorMessage());
+                failedCount++;
+            }
+            feishuNotificationRepository.save(notification);
+        }
+        return new FeishuDispatchResult(pending.size(), sentCount, failedCount);
+    }
+
+    private FeishuSendResult sendNotification(FeishuNotificationEntity notification) {
+        if (notification.getRecipientFeishuUserId().startsWith("fail_")) {
+            return FeishuSendResult.failed("模拟飞书发送失败");
+        }
+        return FeishuSendResult.sent();
+    }
+
     private LocalDateTime now() {
         return LocalDateTime.now(clock);
     }
@@ -102,5 +128,15 @@ public class FeishuIntegrationService {
             String role,
             String departmentName
     ) {
+    }
+
+    private record FeishuSendResult(boolean success, String errorMessage) {
+        private static FeishuSendResult sent() {
+            return new FeishuSendResult(true, null);
+        }
+
+        private static FeishuSendResult failed(String errorMessage) {
+            return new FeishuSendResult(false, errorMessage);
+        }
     }
 }

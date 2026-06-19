@@ -92,6 +92,50 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void dispatchingPendingFeishuNotificationMarksItSentAndRemovesItFromPendingList() throws Exception {
+        bindFeishuUser("发送成功研发", "ou_rnd_dispatch_001");
+        var taskId = createApprovedRequest();
+        assignTask(taskId, "发送成功研发");
+
+        mockMvc.perform(post("/api/v1/feishu/notifications/dispatch"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.attemptedCount").value(1))
+                .andExpect(jsonPath("$.data.sentCount").value(1))
+                .andExpect(jsonPath("$.data.failedCount").value(0));
+
+        assertThat(valueByColumn("feishu_notification", "business_id", taskId, "status")).isEqualTo("SENT");
+        assertThat(valueByColumn("feishu_notification", "business_id", taskId, "send_attempts")).isEqualTo("1");
+        assertThat(valueByColumn("feishu_notification", "business_id", taskId, "last_error")).isNull();
+        assertThat(valueByColumn("feishu_notification", "business_id", taskId, "sent_at")).isNotBlank();
+
+        mockMvc.perform(get("/api/v1/feishu/notifications/pending"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(0)));
+    }
+
+    @Test
+    void dispatchingPendingFeishuNotificationMarksFailedWhenSenderFails() throws Exception {
+        bindFeishuUser("发送失败研发", "fail_rnd_dispatch_001");
+        var taskId = createApprovedRequest();
+        assignTask(taskId, "发送失败研发");
+
+        mockMvc.perform(post("/api/v1/feishu/notifications/dispatch"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.attemptedCount").value(1))
+                .andExpect(jsonPath("$.data.sentCount").value(0))
+                .andExpect(jsonPath("$.data.failedCount").value(1));
+
+        assertThat(valueByColumn("feishu_notification", "business_id", taskId, "status")).isEqualTo("FAILED");
+        assertThat(valueByColumn("feishu_notification", "business_id", taskId, "send_attempts")).isEqualTo("1");
+        assertThat(valueByColumn("feishu_notification", "business_id", taskId, "last_error")).isEqualTo("模拟飞书发送失败");
+        assertThat(valueByColumn("feishu_notification", "business_id", taskId, "sent_at")).isNull();
+
+        mockMvc.perform(get("/api/v1/feishu/notifications/pending"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(0)));
+    }
+
+    @Test
     void approvingRequestPersistsProjectVersionAndTaskToDatabase() throws Exception {
         var taskId = createApprovedRequest();
 
@@ -645,11 +689,30 @@ class SampleWorkflowControllerTest {
     }
 
     private void assignTask(String taskId) throws Exception {
+        assignTask(taskId, "张研发");
+    }
+
+    private void assignTask(String taskId, String assigneeName) throws Exception {
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/assign", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"assigneeName\":\"张研发\",\"dueDate\":\"2026-06-25\"}"))
+                        .content("{\"assigneeName\":\"%s\",\"dueDate\":\"2026-06-25\"}".formatted(assigneeName)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PENDING_ACCEPTANCE"));
+    }
+
+    private void bindFeishuUser(String name, String feishuUserId) throws Exception {
+        mockMvc.perform(post("/api/v1/feishu/users/bind")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "%s",
+                                  "feishuUserId": "%s",
+                                  "role": "RND_ENGINEER",
+                                  "departmentName": "研发部"
+                                }
+                                """.formatted(name, feishuUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.feishuUserId").value(feishuUserId));
     }
 
     private int countById(String tableName, String id) {

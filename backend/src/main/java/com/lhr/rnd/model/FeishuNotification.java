@@ -12,6 +12,8 @@ public record FeishuNotification(
         String title,
         String content,
         String status,
+        int sendAttempts,
+        String lastError,
         LocalDateTime createdAt,
         LocalDateTime sentAt
 ) {
