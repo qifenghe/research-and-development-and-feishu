@@ -20,6 +20,7 @@ import java.util.UUID;
 @Service
 public class FeishuIntegrationService {
     private final Clock clock;
+    private final FeishuProperties feishuProperties;
     private final UserAccountRepository userAccountRepository;
     private final FeishuNotificationRepository feishuNotificationRepository;
     private final FeishuIdentityClientProvider feishuIdentityClientProvider;
@@ -28,18 +29,21 @@ public class FeishuIntegrationService {
     public FeishuIntegrationService(
             UserAccountRepository userAccountRepository,
             FeishuNotificationRepository feishuNotificationRepository,
-            FeishuIdentityClientProvider feishuIdentityClientProvider
+            FeishuIdentityClientProvider feishuIdentityClientProvider,
+            FeishuProperties feishuProperties
     ) {
-        this(Clock.systemDefaultZone(), userAccountRepository, feishuNotificationRepository, feishuIdentityClientProvider);
+        this(Clock.systemDefaultZone(), userAccountRepository, feishuNotificationRepository, feishuIdentityClientProvider, feishuProperties);
     }
 
     FeishuIntegrationService(
             Clock clock,
             UserAccountRepository userAccountRepository,
             FeishuNotificationRepository feishuNotificationRepository,
-            FeishuIdentityClientProvider feishuIdentityClientProvider
+            FeishuIdentityClientProvider feishuIdentityClientProvider,
+            FeishuProperties feishuProperties
     ) {
         this.clock = clock;
+        this.feishuProperties = feishuProperties;
         this.userAccountRepository = userAccountRepository;
         this.feishuNotificationRepository = feishuNotificationRepository;
         this.feishuIdentityClientProvider = feishuIdentityClientProvider;
@@ -106,6 +110,15 @@ public class FeishuIntegrationService {
                 .map(UserAccountEntity::toModel)
                 .filter(user -> "ACTIVE".equals(user.status()))
                 .orElseThrow(() -> new BusinessException("FEISHU_USER_NOT_BOUND", "飞书用户未绑定系统账号"));
+    }
+
+    public void verifyCardActionSecret(String providedSecret) {
+        if (!feishuProperties.cardActionSecretConfigured()) {
+            return;
+        }
+        if (!feishuProperties.getCardActionSecret().equals(providedSecret)) {
+            throw new BusinessException("FEISHU_CARD_ACTION_UNAUTHORIZED", "飞书卡片回调密钥不正确");
+        }
     }
 
     public FeishuIntegrationStatus integrationStatus() {

@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -64,7 +65,11 @@ public class FeishuIntegrationController {
     }
 
     @PostMapping("/card-actions")
-    public ApiResponse<FeishuCardActionResult> cardAction(@Valid @RequestBody FeishuCardActionRequest request) {
+    public ApiResponse<FeishuCardActionResult> cardAction(
+            @RequestHeader(value = "X-Feishu-Card-Secret", required = false) String cardSecret,
+            @Valid @RequestBody FeishuCardActionRequest request
+    ) {
+        feishuIntegrationService.verifyCardActionSecret(cardSecret);
         if (!"ACCEPT_RND_TASK".equals(request.action()) || !"RND_TASK".equals(request.businessType())) {
             throw new BusinessException("FEISHU_CARD_ACTION_UNSUPPORTED", "暂不支持该飞书卡片动作");
         }

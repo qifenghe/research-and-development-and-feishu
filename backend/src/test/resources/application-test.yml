@@ -16,5 +16,6 @@ rnd:
   feishu:
     mode: MOCK
     base-url: https://open.feishu.cn
+    card-action-secret: test-card-secret
     app-id:
     app-secret:

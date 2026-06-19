@@ -7,6 +7,7 @@ public class FeishuProperties {
     private String mode = "MOCK";
     private String baseUrl = "https://open.feishu.cn";
     private String appUrl = "http://127.0.0.1:4174/";
+    private String cardActionSecret;
     private String appId;
     private String appSecret;
 
@@ -32,6 +33,18 @@ public class FeishuProperties {
 
     public void setAppUrl(String appUrl) {
         this.appUrl = appUrl;
+    }
+
+    public String getCardActionSecret() {
+        return cardActionSecret;
+    }
+
+    public void setCardActionSecret(String cardActionSecret) {
+        this.cardActionSecret = cardActionSecret;
+    }
+
+    public boolean cardActionSecretConfigured() {
+        return cardActionSecret != null && !cardActionSecret.isBlank();
     }
 
     public String getAppId() {

@@ -16,5 +16,6 @@ rnd:
     mode: ${FEISHU_MODE:MOCK}
     base-url: ${FEISHU_BASE_URL:https://open.feishu.cn}
     app-url: ${FEISHU_APP_URL:http://127.0.0.1:4174/}
+    card-action-secret: ${FEISHU_CARD_ACTION_SECRET:}
     app-id: ${FEISHU_APP_ID:}
     app-secret: ${FEISHU_APP_SECRET:}
