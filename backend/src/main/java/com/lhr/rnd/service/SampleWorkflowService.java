@@ -60,11 +60,20 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class SampleWorkflowService {
     private static final int MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
+    private static final Set<String> ALLOWED_ATTACHMENT_CONTENT_TYPES = Set.of(
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "application/pdf",
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
 
     private final Clock clock;
     private final PricingFileService pricingFileService = new PricingFileService();
@@ -609,6 +618,10 @@ public class SampleWorkflowService {
         if (content.length > MAX_ATTACHMENT_SIZE_BYTES) {
             throw new BusinessException("ARCHIVE_FILE_TOO_LARGE", "上传文件不能超过10MB");
         }
+        var normalizedContentType = normalizeOptional(contentType);
+        if (normalizedContentType == null || !ALLOWED_ATTACHMENT_CONTENT_TYPES.contains(normalizedContentType)) {
+            throw new BusinessException("ARCHIVE_FILE_TYPE_NOT_ALLOWED", "上传文件类型不允许");
+        }
         var form = experimentFormArchiveContext(experimentFormId);
         var cleanFileName = cleanArchiveFileName(fileName);
         var archiveId = "ARCH-" + UUID.randomUUID().toString().replace("-", "").substring(0, 27);
@@ -630,7 +643,7 @@ public class SampleWorkflowService {
                 normalizeOptional(category),
                 normalizeOptional(uploadedBy),
                 normalizeOptional(remark),
-                normalizeOptional(contentType),
+                normalizedContentType,
                 (long) content.length,
                 "ARCHIVED",
                 now()

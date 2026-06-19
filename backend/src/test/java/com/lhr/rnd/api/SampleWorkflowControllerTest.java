@@ -226,6 +226,54 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void validatesExperimentAttachmentContentTypeWhitelist() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+
+        mockMvc.perform(multipart("/api/v1/experiment-forms/{id}/attachments", experimentFormId)
+                        .file(new MockMultipartFile(
+                                "file",
+                                "测试记录.pdf",
+                                "application/pdf",
+                                "pdf内容".getBytes(StandardCharsets.UTF_8)
+                        ))
+                        .param("fileName", "测试记录.pdf")
+                        .param("category", "TEST_ATTACHMENT")
+                        .param("uploadedBy", "内部测试员"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contentType").value("application/pdf"));
+
+        mockMvc.perform(multipart("/api/v1/experiment-forms/{id}/attachments", experimentFormId)
+                        .file(new MockMultipartFile(
+                                "file",
+                                "核价附件.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                "excel内容".getBytes(StandardCharsets.UTF_8)
+                        ))
+                        .param("fileName", "核价附件.xlsx")
+                        .param("category", "TEST_ATTACHMENT")
+                        .param("uploadedBy", "张研发"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contentType")
+                        .value("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+
+        mockMvc.perform(multipart("/api/v1/experiment-forms/{id}/attachments", experimentFormId)
+                        .file(new MockMultipartFile(
+                                "file",
+                                "异常程序.exe",
+                                "application/x-msdownload",
+                                "exe内容".getBytes(StandardCharsets.UTF_8)
+                        ))
+                        .param("fileName", "异常程序.exe")
+                        .param("category", "PROCESS_PHOTO")
+                        .param("uploadedBy", "张研发"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("ARCHIVE_FILE_TYPE_NOT_ALLOWED"));
+    }
+
+    @Test
     void passingInternalTestLocksExperimentVersion() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);
