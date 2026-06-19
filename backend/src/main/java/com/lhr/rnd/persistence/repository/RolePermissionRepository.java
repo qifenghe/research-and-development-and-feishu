@@ -9,4 +9,8 @@ public interface RolePermissionRepository extends JpaRepository<RolePermissionEn
     long countByRoleCode(String roleCode);
 
     List<RolePermissionEntity> findByRoleCodeAndEnabledTrueOrderBySortOrderAsc(String roleCode);
+
+    List<RolePermissionEntity> findByRoleCodeOrderBySortOrderAsc(String roleCode);
+
+    void deleteByRoleCode(String roleCode);
 }

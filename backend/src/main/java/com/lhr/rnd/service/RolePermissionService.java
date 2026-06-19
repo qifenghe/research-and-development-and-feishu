@@ -1,8 +1,14 @@
 package com.lhr.rnd.service;
 
 import com.lhr.rnd.persistence.repository.RolePermissionRepository;
+import com.lhr.rnd.persistence.entity.RolePermissionEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.AntPathMatcher;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
 
 @Service
 public class RolePermissionService {
@@ -11,6 +17,36 @@ public class RolePermissionService {
 
     public RolePermissionService(RolePermissionRepository repository) {
         this.repository = repository;
+    }
+
+    public RolePermissionConfig rolePermissions(String roleCode) {
+        return new RolePermissionConfig(
+                roleCode,
+                repository.findByRoleCodeOrderBySortOrderAsc(roleCode).stream()
+                        .map(this::toRule)
+                        .toList()
+        );
+    }
+
+    @Transactional
+    public RolePermissionConfig replaceRolePermissions(String roleCode, List<RolePermissionRule> permissions) {
+        repository.deleteByRoleCode(roleCode);
+        LocalDateTime now = LocalDateTime.now();
+        var saved = permissions.stream()
+                .map(permission -> repository.save(new RolePermissionEntity(
+                        "PERM-" + UUID.randomUUID().toString().replace("-", "").substring(0, 24),
+                        roleCode,
+                        permission.httpMethod().toUpperCase(),
+                        permission.pathPattern(),
+                        permission.enabled(),
+                        permission.description(),
+                        permission.sortOrder(),
+                        now
+                )))
+                .map(this::toRule)
+                .sorted((left, right) -> Integer.compare(left.sortOrder(), right.sortOrder()))
+                .toList();
+        return new RolePermissionConfig(roleCode, saved);
     }
 
     public boolean hasPermission(String role, String method, String uri) {
@@ -27,6 +63,17 @@ public class RolePermissionService {
                             && pathMatcher.match(permission.getPathPattern(), uri));
         }
         return hasDefaultPermission(role, normalizedMethod, uri);
+    }
+
+    private RolePermissionRule toRule(RolePermissionEntity entity) {
+        return new RolePermissionRule(
+                entity.getId(),
+                entity.getHttpMethod(),
+                entity.getPathPattern(),
+                entity.isEnabled(),
+                entity.getDescription(),
+                entity.getSortOrder()
+        );
     }
 
     private boolean hasDefaultPermission(String role, String method, String uri) {

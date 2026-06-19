@@ -61,6 +61,10 @@ public class RolePermissionEntity {
         return roleCode;
     }
 
+    public String getId() {
+        return id;
+    }
+
     public String getHttpMethod() {
         return httpMethod;
     }
@@ -71,5 +75,13 @@ public class RolePermissionEntity {
 
     public boolean isEnabled() {
         return enabled;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public int getSortOrder() {
+        return sortOrder;
     }
 }
