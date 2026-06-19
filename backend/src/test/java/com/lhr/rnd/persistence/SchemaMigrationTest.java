@@ -41,6 +41,12 @@ class SchemaMigrationTest {
         assertForeignKeyExists("shipment_record", "fk_shipment_record_version");
         assertForeignKeyExists("pricing_file", "fk_pricing_file_version");
         assertForeignKeyExists("finance_notification", "fk_finance_notification_pricing_file");
+
+        assertColumnExists("archive_file", "category");
+        assertColumnExists("archive_file", "uploaded_by");
+        assertColumnExists("archive_file", "remark");
+        assertColumnExists("archive_file", "content_type");
+        assertColumnExists("archive_file", "file_size");
     }
 
     private void assertTableExists(String tableName) {
@@ -89,5 +95,21 @@ class SchemaMigrationTest {
                 constraintName.toUpperCase()
         );
         assertThat(count).as("foreign key %s exists", constraintName).isEqualTo(1);
+    }
+
+    private void assertColumnExists(String tableName, String columnName) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                        select count(*)
+                        from information_schema.columns
+                        where table_schema = 'PUBLIC'
+                          and table_name = ?
+                          and column_name = ?
+                        """,
+                Integer.class,
+                tableName.toUpperCase(),
+                columnName.toUpperCase()
+        );
+        assertThat(count).as("column %s.%s exists", tableName, columnName).isEqualTo(1);
     }
 }

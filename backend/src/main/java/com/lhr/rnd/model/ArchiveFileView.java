@@ -10,6 +10,11 @@ public record ArchiveFileView(
         String fileName,
         String filePath,
         String fileUrl,
+        String category,
+        String uploadedBy,
+        String remark,
+        String contentType,
+        Long fileSize,
         String fileStatus,
         LocalDateTime archivedAt
 ) {

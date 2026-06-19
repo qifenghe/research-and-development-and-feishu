@@ -111,11 +111,22 @@ public class SampleWorkflowController {
     public ApiResponse<ArchiveFileView> uploadExperimentAttachment(
             @PathVariable String id,
             @RequestParam("file") MultipartFile file,
-            @RequestParam(required = false) String fileName
+            @RequestParam(required = false) String fileName,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String uploadedBy,
+            @RequestParam(required = false) String remark
     ) {
         var resolvedFileName = fileName == null || fileName.isBlank() ? file.getOriginalFilename() : fileName;
         try {
-            return ApiResponse.success(workflowService.archiveExperimentAttachment(id, resolvedFileName, file.getBytes()));
+            return ApiResponse.success(workflowService.archiveExperimentAttachment(
+                    id,
+                    resolvedFileName,
+                    file.getBytes(),
+                    category,
+                    uploadedBy,
+                    remark,
+                    file.getContentType()
+            ));
         } catch (IOException exception) {
             throw new BusinessException("ARCHIVE_FILE_READ_FAILED", "上传文件读取失败");
         }

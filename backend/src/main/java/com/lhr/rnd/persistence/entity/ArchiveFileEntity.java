@@ -33,6 +33,21 @@ public class ArchiveFileEntity {
     @Column(name = "file_url")
     private String fileUrl;
 
+    @Column(name = "category")
+    private String category;
+
+    @Column(name = "uploaded_by")
+    private String uploadedBy;
+
+    @Column(name = "remark")
+    private String remark;
+
+    @Column(name = "content_type")
+    private String contentType;
+
+    @Column(name = "file_size")
+    private Long fileSize;
+
     @Column(name = "file_status", nullable = false)
     private String fileStatus;
 
@@ -53,6 +68,26 @@ public class ArchiveFileEntity {
             String fileStatus,
             LocalDateTime archivedAt
     ) {
+        this(id, businessType, businessId, versionId, fileName, filePath, fileUrl,
+                null, null, null, null, null, fileStatus, archivedAt);
+    }
+
+    public ArchiveFileEntity(
+            String id,
+            String businessType,
+            String businessId,
+            String versionId,
+            String fileName,
+            String filePath,
+            String fileUrl,
+            String category,
+            String uploadedBy,
+            String remark,
+            String contentType,
+            Long fileSize,
+            String fileStatus,
+            LocalDateTime archivedAt
+    ) {
         this.id = id;
         this.businessType = businessType;
         this.businessId = businessId;
@@ -60,6 +95,11 @@ public class ArchiveFileEntity {
         this.fileName = fileName;
         this.filePath = filePath;
         this.fileUrl = fileUrl;
+        this.category = category;
+        this.uploadedBy = uploadedBy;
+        this.remark = remark;
+        this.contentType = contentType;
+        this.fileSize = fileSize;
         this.fileStatus = fileStatus;
         this.archivedAt = archivedAt;
     }
@@ -81,6 +121,11 @@ public class ArchiveFileEntity {
                 fileName,
                 filePath,
                 fileUrl,
+                category,
+                uploadedBy,
+                remark,
+                contentType,
+                fileSize,
                 fileStatus,
                 archivedAt
         );

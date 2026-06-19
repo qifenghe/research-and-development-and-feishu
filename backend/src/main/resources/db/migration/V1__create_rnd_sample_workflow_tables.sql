@@ -174,6 +174,11 @@ create table archive_file (
     file_name varchar(300) not null,
     file_path varchar(500) not null,
     file_url varchar(500),
+    category varchar(50),
+    uploaded_by varchar(100),
+    remark varchar(500),
+    content_type varchar(100),
+    file_size bigint,
     file_status varchar(50) not null,
     archived_at timestamp not null,
     constraint fk_archive_file_version foreign key (version_id) references sample_version(id)

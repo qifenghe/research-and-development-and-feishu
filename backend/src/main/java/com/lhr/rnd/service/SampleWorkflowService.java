@@ -64,6 +64,8 @@ import java.util.UUID;
 
 @Service
 public class SampleWorkflowService {
+    private static final int MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
+
     private final Clock clock;
     private final PricingFileService pricingFileService = new PricingFileService();
     private final LocalArchiveStorageService archiveStorageService;
@@ -589,12 +591,23 @@ public class SampleWorkflowService {
     }
 
     @Transactional
-    public synchronized ArchiveFileView archiveExperimentAttachment(String experimentFormId, String fileName, byte[] content) {
+    public synchronized ArchiveFileView archiveExperimentAttachment(
+            String experimentFormId,
+            String fileName,
+            byte[] content,
+            String category,
+            String uploadedBy,
+            String remark,
+            String contentType
+    ) {
         if (archiveFileRepository == null) {
             throw new BusinessException("ARCHIVE_FILE_REPOSITORY_NOT_READY", "归档仓库未初始化");
         }
         if (content == null || content.length == 0) {
             throw new BusinessException("ARCHIVE_FILE_EMPTY", "上传文件不能为空");
+        }
+        if (content.length > MAX_ATTACHMENT_SIZE_BYTES) {
+            throw new BusinessException("ARCHIVE_FILE_TOO_LARGE", "上传文件不能超过10MB");
         }
         var form = experimentFormArchiveContext(experimentFormId);
         var cleanFileName = cleanArchiveFileName(fileName);
@@ -614,6 +627,11 @@ public class SampleWorkflowService {
                 cleanFileName,
                 relativePath,
                 null,
+                normalizeOptional(category),
+                normalizeOptional(uploadedBy),
+                normalizeOptional(remark),
+                normalizeOptional(contentType),
+                (long) content.length,
                 "ARCHIVED",
                 now()
         );
@@ -1029,6 +1047,10 @@ public class SampleWorkflowService {
             throw new BusinessException("ARCHIVE_FILE_NAME_REQUIRED", "归档文件名不能为空");
         }
         return cleanFileName;
+    }
+
+    private String normalizeOptional(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private void ensureReadyForShipment(String versionId) {

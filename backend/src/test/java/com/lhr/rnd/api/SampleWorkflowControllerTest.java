@@ -7,6 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.file.Files;
@@ -140,14 +141,22 @@ class SampleWorkflowControllerTest {
         var photoBytes = "称重照片内容".getBytes(StandardCharsets.UTF_8);
 
         var archiveFileId = mockMvc.perform(multipart("/api/v1/experiment-forms/{id}/attachments", experimentFormId)
-                        .file("file", photoBytes)
-                        .param("fileName", "现场称重.jpg"))
+                        .file(new MockMultipartFile("file", "现场称重.jpg", "image/jpeg", photoBytes))
+                        .param("fileName", "现场称重.jpg")
+                        .param("category", "WEIGHING_PHOTO")
+                        .param("uploadedBy", "张研发")
+                        .param("remark", "A0 打样称重照片"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.businessType").value("EXPERIMENT_ATTACHMENT"))
                 .andExpect(jsonPath("$.data.businessId").value(experimentFormId))
                 .andExpect(jsonPath("$.data.versionId").value(versionId))
                 .andExpect(jsonPath("$.data.fileName").value("现场称重.jpg"))
                 .andExpect(jsonPath("$.data.fileStatus").value("ARCHIVED"))
+                .andExpect(jsonPath("$.data.category").value("WEIGHING_PHOTO"))
+                .andExpect(jsonPath("$.data.uploadedBy").value("张研发"))
+                .andExpect(jsonPath("$.data.remark").value("A0 打样称重照片"))
+                .andExpect(jsonPath("$.data.contentType").value("image/jpeg"))
+                .andExpect(jsonPath("$.data.fileSize").value(photoBytes.length))
                 .andReturn()
                 .getResponse()
                 .getContentAsString()
@@ -158,6 +167,11 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("archive_file", archiveFileId, "business_type")).isEqualTo("EXPERIMENT_ATTACHMENT");
         assertThat(valueById("archive_file", archiveFileId, "business_id")).isEqualTo(experimentFormId);
         assertThat(valueById("archive_file", archiveFileId, "version_id")).isEqualTo(versionId);
+        assertThat(valueById("archive_file", archiveFileId, "category")).isEqualTo("WEIGHING_PHOTO");
+        assertThat(valueById("archive_file", archiveFileId, "uploaded_by")).isEqualTo("张研发");
+        assertThat(valueById("archive_file", archiveFileId, "remark")).isEqualTo("A0 打样称重照片");
+        assertThat(valueById("archive_file", archiveFileId, "content_type")).isEqualTo("image/jpeg");
+        assertThat(valueById("archive_file", archiveFileId, "file_size")).isEqualTo(String.valueOf(photoBytes.length));
         assertThat(valueById("archive_file", archiveFileId, "file_path"))
                 .startsWith(sampleNo + "/A0/实验附件/" + archiveFileId + "/")
                 .endsWith("/现场称重.jpg");
@@ -168,7 +182,9 @@ class SampleWorkflowControllerTest {
         mockMvc.perform(get("/api/v1/sample-versions/{id}/archive-files", versionId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].id").value(archiveFileId))
-                .andExpect(jsonPath("$.data[0].businessType").value("EXPERIMENT_ATTACHMENT"));
+                .andExpect(jsonPath("$.data[0].businessType").value("EXPERIMENT_ATTACHMENT"))
+                .andExpect(jsonPath("$.data[0].category").value("WEIGHING_PHOTO"))
+                .andExpect(jsonPath("$.data[0].uploadedBy").value("张研发"));
 
         mockMvc.perform(get("/api/v1/archive-files/{id}/download", archiveFileId))
                 .andExpect(status().isOk())
@@ -176,7 +192,7 @@ class SampleWorkflowControllerTest {
 
         var secondPhotoBytes = "第二次称重照片内容".getBytes(StandardCharsets.UTF_8);
         var secondArchiveFileId = mockMvc.perform(multipart("/api/v1/experiment-forms/{id}/attachments", experimentFormId)
-                        .file("file", secondPhotoBytes)
+                        .file(new MockMultipartFile("file", "现场称重.jpg", "image/jpeg", secondPhotoBytes))
                         .param("fileName", "现场称重.jpg"))
                 .andExpect(status().isOk())
                 .andReturn()
@@ -190,6 +206,23 @@ class SampleWorkflowControllerTest {
         mockMvc.perform(get("/api/v1/archive-files/{id}/download", archiveFileId))
                 .andExpect(status().isOk())
                 .andExpect(content().bytes(photoBytes));
+    }
+
+    @Test
+    void rejectsExperimentAttachmentWhenFileIsTooLarge() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+        var oversizedContent = new byte[10 * 1024 * 1024 + 1];
+
+        mockMvc.perform(multipart("/api/v1/experiment-forms/{id}/attachments", experimentFormId)
+                        .file(new MockMultipartFile("file", "超大照片.jpg", "image/jpeg", oversizedContent))
+                        .param("fileName", "超大照片.jpg")
+                        .param("category", "PROCESS_PHOTO")
+                        .param("uploadedBy", "张研发"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("ARCHIVE_FILE_TOO_LARGE"));
     }
 
     @Test
