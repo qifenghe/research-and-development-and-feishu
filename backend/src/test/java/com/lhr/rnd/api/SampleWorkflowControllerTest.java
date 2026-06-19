@@ -53,6 +53,45 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void bindingFeishuUserCreatesTaskAssignmentNotificationWhenTaskIsAssigned() throws Exception {
+        mockMvc.perform(post("/api/v1/feishu/users/bind")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "张研发",
+                                  "feishuUserId": "ou_rnd_001",
+                                  "role": "RND_ENGINEER",
+                                  "departmentName": "研发部"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("张研发"))
+                .andExpect(jsonPath("$.data.feishuUserId").value("ou_rnd_001"))
+                .andExpect(jsonPath("$.data.role").value("RND_ENGINEER"))
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+
+        assertThat(valueByColumn("user_account", "feishu_user_id", "ou_rnd_001", "name")).isEqualTo("张研发");
+        assertThat(valueByColumn("user_account", "feishu_user_id", "ou_rnd_001", "department_name")).isEqualTo("研发部");
+
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+
+        assertThat(countByColumn("feishu_notification", "business_id", taskId)).isEqualTo(1);
+        assertThat(valueByColumn("feishu_notification", "business_id", taskId, "business_type")).isEqualTo("RND_TASK");
+        assertThat(valueByColumn("feishu_notification", "business_id", taskId, "recipient_feishu_user_id")).isEqualTo("ou_rnd_001");
+        assertThat(valueByColumn("feishu_notification", "business_id", taskId, "template_key")).isEqualTo("RND_TASK_ASSIGNED");
+        assertThat(valueByColumn("feishu_notification", "business_id", taskId, "status")).isEqualTo("PENDING_SEND");
+
+        mockMvc.perform(get("/api/v1/feishu/notifications/pending"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].businessId").value(taskId))
+                .andExpect(jsonPath("$.data[0].recipientFeishuUserId").value("ou_rnd_001"))
+                .andExpect(jsonPath("$.data[0].templateKey").value("RND_TASK_ASSIGNED"))
+                .andExpect(jsonPath("$.data[0].status").value("PENDING_SEND"));
+    }
+
+    @Test
     void approvingRequestPersistsProjectVersionAndTaskToDatabase() throws Exception {
         var taskId = createApprovedRequest();
 

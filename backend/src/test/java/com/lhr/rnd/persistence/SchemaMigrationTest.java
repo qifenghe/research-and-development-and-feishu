@@ -31,6 +31,8 @@ class SchemaMigrationTest {
         assertTableExists("customer_feedback");
         assertTableExists("pricing_file");
         assertTableExists("finance_notification");
+        assertTableExists("user_account");
+        assertTableExists("feishu_notification");
         assertTableExists("archive_file");
         assertTableExists("audit_log");
 
@@ -41,6 +43,7 @@ class SchemaMigrationTest {
         assertForeignKeyExists("shipment_record", "fk_shipment_record_version");
         assertForeignKeyExists("pricing_file", "fk_pricing_file_version");
         assertForeignKeyExists("finance_notification", "fk_finance_notification_pricing_file");
+        assertForeignKeyExists("feishu_notification", "fk_feishu_notification_user");
 
         assertColumnExists("archive_file", "category");
         assertColumnExists("archive_file", "uploaded_by");

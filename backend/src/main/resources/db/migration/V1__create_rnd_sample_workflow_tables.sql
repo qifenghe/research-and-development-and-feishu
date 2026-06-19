@@ -166,6 +166,32 @@ create table finance_notification (
     constraint fk_finance_notification_pricing_file foreign key (pricing_file_id) references pricing_file(id)
 );
 
+create table user_account (
+    id varchar(32) primary key,
+    name varchar(100) not null,
+    feishu_user_id varchar(100) not null unique,
+    role varchar(100) not null,
+    department_name varchar(100),
+    status varchar(50) not null,
+    created_at timestamp not null,
+    updated_at timestamp not null
+);
+
+create table feishu_notification (
+    id varchar(32) primary key,
+    business_type varchar(50) not null,
+    business_id varchar(32) not null,
+    recipient_user_id varchar(32) not null,
+    recipient_feishu_user_id varchar(100) not null,
+    template_key varchar(100) not null,
+    title varchar(200) not null,
+    content varchar(1000),
+    status varchar(50) not null,
+    created_at timestamp not null,
+    sent_at timestamp,
+    constraint fk_feishu_notification_user foreign key (recipient_user_id) references user_account(id)
+);
+
 create table archive_file (
     id varchar(32) primary key,
     business_type varchar(50) not null,
@@ -201,3 +227,6 @@ create index idx_experiment_form_version_status on experiment_form(version_id, s
 create index idx_shipment_record_version_status on shipment_record(version_id, status);
 create index idx_pricing_file_version_status on pricing_file(version_id, status);
 create index idx_archive_file_business on archive_file(business_type, business_id);
+create index idx_user_account_name_status on user_account(name, status);
+create index idx_feishu_notification_status on feishu_notification(status, created_at);
+create index idx_feishu_notification_business on feishu_notification(business_type, business_id);

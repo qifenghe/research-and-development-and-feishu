@@ -78,6 +78,7 @@ public class SampleWorkflowService {
     private final Clock clock;
     private final PricingFileService pricingFileService = new PricingFileService();
     private final LocalArchiveStorageService archiveStorageService;
+    private final FeishuIntegrationService feishuIntegrationService;
     private final SampleRequestRepository sampleRequestRepository;
     private final SampleProjectRepository sampleProjectRepository;
     private final SampleVersionRepository sampleVersionRepository;
@@ -114,16 +115,17 @@ public class SampleWorkflowService {
     private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
-        this(Clock.systemDefaultZone(), new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(Clock.systemDefaultZone(), new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     SampleWorkflowService(Clock clock) {
-        this(clock, new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(clock, new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Autowired
     public SampleWorkflowService(
             LocalArchiveStorageService archiveStorageService,
+            FeishuIntegrationService feishuIntegrationService,
             SampleRequestRepository sampleRequestRepository,
             SampleProjectRepository sampleProjectRepository,
             SampleVersionRepository sampleVersionRepository,
@@ -141,6 +143,7 @@ public class SampleWorkflowService {
         this(
                 Clock.systemDefaultZone(),
                 archiveStorageService,
+                feishuIntegrationService,
                 sampleRequestRepository,
                 sampleProjectRepository,
                 sampleVersionRepository,
@@ -160,6 +163,7 @@ public class SampleWorkflowService {
     private SampleWorkflowService(
             Clock clock,
             LocalArchiveStorageService archiveStorageService,
+            FeishuIntegrationService feishuIntegrationService,
             SampleRequestRepository sampleRequestRepository,
             SampleProjectRepository sampleProjectRepository,
             SampleVersionRepository sampleVersionRepository,
@@ -176,6 +180,7 @@ public class SampleWorkflowService {
     ) {
         this.clock = clock;
         this.archiveStorageService = archiveStorageService;
+        this.feishuIntegrationService = feishuIntegrationService;
         this.sampleRequestRepository = sampleRequestRepository;
         this.sampleProjectRepository = sampleProjectRepository;
         this.sampleVersionRepository = sampleVersionRepository;
@@ -286,6 +291,7 @@ public class SampleWorkflowService {
         var assigned = task.assign(assigneeName, dueDate, now());
         tasks.put(taskId, assigned);
         persistAssignedTask(assigned);
+        notifyTaskAssigned(assigned);
         return assigned;
     }
 
@@ -734,6 +740,13 @@ public class SampleWorkflowService {
                 .orElseThrow(() -> new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在"));
         taskEntity.assign(task.assigneeName(), task.dueDate(), task.assignedAt());
         rndTaskRepository.save(taskEntity);
+    }
+
+    private void notifyTaskAssigned(RndTask task) {
+        if (feishuIntegrationService == null) {
+            return;
+        }
+        feishuIntegrationService.createTaskAssignedNotification(task);
     }
 
     private void persistAcceptedTask(RndTask task, LocalDateTime acceptedAt) {
