@@ -61,4 +61,8 @@ public class SampleProjectEntity {
         this.status = status;
         this.createdAt = createdAt;
     }
+
+    public void updateStatus(String status) {
+        this.status = status;
+    }
 }

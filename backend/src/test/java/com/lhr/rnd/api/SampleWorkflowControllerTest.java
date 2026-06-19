@@ -892,6 +892,57 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
     }
 
+    @Test
+    void customerFeedbackResampleCreatesNextSampleVersionAndRndTask() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var projectId = valueById("sample_version", versionId, "project_id");
+        var shipmentId = createShipment(versionId);
+
+        mockMvc.perform(post("/api/v1/shipments/{id}/feedback", shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "feedbackBy": "业务员",
+                                  "result": "FAILED_RESAMPLE",
+                                  "comment": "客户要求调整辣度后复打样"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.shipment.status").value("FEEDBACK_FAILED_RESAMPLE"))
+                .andExpect(jsonPath("$.data.feedback.result").value("FAILED_RESAMPLE"));
+
+        assertThat(countByColumn("sample_version", "project_id", projectId)).isEqualTo(2);
+        assertThat(valueByColumns("sample_version", "project_id", projectId, "version_number", "1", "version_code"))
+                .isEqualTo("A1");
+        var nextVersionId = valueByColumns("sample_version", "project_id", projectId, "version_number", "1", "id");
+        assertThat(valueByColumn("rnd_task", "version_id", nextVersionId, "status"))
+                .isEqualTo("PENDING_ACCEPTANCE");
+        assertThat(valueByColumn("rnd_task", "version_id", nextVersionId, "version_code"))
+                .isEqualTo("A1");
+    }
+
+    @Test
+    void customerFeedbackStoppedMarksSampleProjectStopped() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var projectId = valueById("sample_version", versionId, "project_id");
+        var shipmentId = createShipment(versionId);
+
+        mockMvc.perform(post("/api/v1/shipments/{id}/feedback", shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "feedbackBy": "业务员",
+                                  "result": "STOPPED",
+                                  "comment": "客户项目暂停"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.shipment.status").value("STOPPED"))
+                .andExpect(jsonPath("$.data.feedback.result").value("STOPPED"));
+
+        assertThat(valueById("sample_project", projectId, "status")).isEqualTo("STOPPED");
+    }
+
     private void acceptTask(String taskId) throws Exception {
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/accept", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -1110,6 +1161,23 @@ class SampleWorkflowControllerTest {
                 "select " + columnName + " from " + tableName + " where " + lookupColumnName + " = ?",
                 String.class,
                 value
+        );
+    }
+
+    private String valueByColumns(
+            String tableName,
+            String firstColumnName,
+            String firstValue,
+            String secondColumnName,
+            String secondValue,
+            String resultColumnName
+    ) {
+        return jdbcTemplate.queryForObject(
+                "select " + resultColumnName + " from " + tableName
+                        + " where " + firstColumnName + " = ? and " + secondColumnName + " = ?",
+                String.class,
+                firstValue,
+                secondValue
         );
     }
 

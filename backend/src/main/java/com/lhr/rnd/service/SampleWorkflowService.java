@@ -533,7 +533,19 @@ public class SampleWorkflowService {
                 now()
         );
         customerFeedbacks.put(feedback.id(), feedback);
+        var resampleTask = command.result() == CustomerFeedbackResult.FAILED_RESAMPLE
+                ? createCustomerResampleTask(shipment.versionId())
+                : null;
+        var stoppedProject = command.result() == CustomerFeedbackResult.STOPPED
+                ? updateProjectStatusForVersion(shipment.versionId(), SampleStatus.STOPPED)
+                : null;
         persistCustomerFeedback(updatedShipment, feedback);
+        if (resampleTask != null) {
+            persistCustomerResampleTask(resampleTask.nextVersion(), resampleTask.nextTask());
+        }
+        if (stoppedProject != null) {
+            persistSampleProjectStatus(stoppedProject);
+        }
         return new ShipmentFeedbackResult(updatedShipment, feedback);
     }
 
@@ -707,6 +719,72 @@ public class SampleWorkflowService {
             case FAILED_RESAMPLE -> SampleAction.CUSTOMER_FEEDBACK_RESAMPLE;
             case STOPPED -> SampleAction.CUSTOMER_FEEDBACK_STOP;
         };
+    }
+
+    private CustomerResampleTask createCustomerResampleTask(String currentVersionId) {
+        var currentVersion = requiredVersion(currentVersionId);
+        var nextNumber = currentVersion.versionNumber() == null ? 1 : currentVersion.versionNumber() + 1;
+        var nextCode = SampleVersionCode.fromNumber(nextNumber).code();
+        var nextVersion = SampleVersion.builder()
+                .id("VER-%04d".formatted(versions.size() + 1))
+                .projectId(currentVersion.projectId())
+                .sampleNo(currentVersion.sampleNo())
+                .productName(currentVersion.productName())
+                .productType(currentVersion.productType())
+                .specification(currentVersion.specification())
+                .versionNo(nextCode)
+                .versionNumber(nextNumber)
+                .versionCode(nextCode)
+                .ownerName(currentVersion.ownerName())
+                .authorName(currentVersion.authorName())
+                .createdAt(now())
+                .build();
+        versions.put(nextVersion.id(), nextVersion);
+
+        var previousTask = taskByVersionId(currentVersion.id());
+        var nextTaskStatus = taskStatusAfter(SampleStatus.RESAMPLING_REQUIRED, SampleAction.CREATE_NEXT_VERSION);
+        var nextTask = new RndTask(
+                "TASK-%04d".formatted(taskSequence++),
+                nextVersion.projectId(),
+                nextVersion.id(),
+                nextVersion.sampleNo(),
+                nextVersion.productName(),
+                nextVersion.versionCode(),
+                nextTaskStatus,
+                previousTask == null ? null : previousTask.assigneeName(),
+                previousTask == null ? null : previousTask.dueDate(),
+                now(),
+                null
+        );
+        tasks.put(nextTask.id(), nextTask);
+        return new CustomerResampleTask(nextVersion, nextTask);
+    }
+
+    private RndTask taskByVersionId(String versionId) {
+        return tasks.values().stream()
+                .filter(task -> task.versionId().equals(versionId))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private SampleProject updateProjectStatusForVersion(String versionId, SampleStatus status) {
+        var version = requiredVersion(versionId);
+        var project = projects.get(version.projectId());
+        if (project == null) {
+            throw new BusinessException("SAMPLE_PROJECT_NOT_FOUND", "样品项目不存在");
+        }
+        var updatedProject = new SampleProject(
+                project.id(),
+                project.sampleNo(),
+                project.productName(),
+                project.productType(),
+                project.customerName(),
+                project.specification(),
+                status,
+                project.createdAt()
+        );
+        projects.put(updatedProject.id(), updatedProject);
+        return updatedProject;
     }
 
     private RndTaskStatus taskStatusAfter(SampleStatus current, SampleAction action) {
@@ -1021,6 +1099,54 @@ public class SampleWorkflowService {
         ));
     }
 
+    private void persistCustomerResampleTask(SampleVersion nextVersion, RndTask nextTask) {
+        if (sampleVersionRepository == null || rndTaskRepository == null) {
+            return;
+        }
+        sampleVersionRepository.save(new SampleVersionEntity(
+                nextVersion.id(),
+                nextVersion.projectId(),
+                nextVersion.sampleNo(),
+                nextVersion.productName(),
+                nextVersion.productType(),
+                nextVersion.specification(),
+                nextVersion.versionNo(),
+                nextVersion.versionNumber(),
+                nextVersion.versionCode(),
+                nextVersion.ownerName(),
+                nextVersion.authorName(),
+                nextVersion.effectiveDate(),
+                nextVersion.referenceOutputKg(),
+                nextVersion.unitWeightKg(),
+                nextVersion.createdAt()
+        ));
+
+        rndTaskRepository.save(new RndTaskEntity(
+                nextTask.id(),
+                nextTask.projectId(),
+                nextTask.versionId(),
+                nextTask.sampleNo(),
+                nextTask.productName(),
+                nextTask.versionCode(),
+                nextTask.status().name(),
+                nextTask.assigneeName(),
+                nextTask.dueDate(),
+                nextTask.createdAt(),
+                nextTask.assignedAt(),
+                null
+        ));
+    }
+
+    private void persistSampleProjectStatus(SampleProject project) {
+        if (sampleProjectRepository == null) {
+            return;
+        }
+        var projectEntity = sampleProjectRepository.findById(project.id())
+                .orElseThrow(() -> new BusinessException("SAMPLE_PROJECT_NOT_FOUND", "样品项目不存在"));
+        projectEntity.updateStatus(project.status().name());
+        sampleProjectRepository.save(projectEntity);
+    }
+
     private void persistPricingFile(PricingFileRecord pricingFile, byte[] content) {
         if (pricingFileRepository == null) {
             return;
@@ -1225,6 +1351,12 @@ public class SampleWorkflowService {
             String versionId,
             String sampleNo,
             String versionCode
+    ) {
+    }
+
+    private record CustomerResampleTask(
+            SampleVersion nextVersion,
+            RndTask nextTask
     ) {
     }
 }
