@@ -31,7 +31,22 @@ public class RolePermissionService {
     @Transactional
     public RolePermissionConfig replaceRolePermissions(String roleCode, List<RolePermissionRule> permissions) {
         repository.deleteByRoleCode(roleCode);
-        LocalDateTime now = LocalDateTime.now();
+        return saveRolePermissions(roleCode, permissions, LocalDateTime.now());
+    }
+
+    @Transactional
+    public List<RolePermissionConfig> initializeDefaultPermissions() {
+        return defaultPermissionConfigs().stream()
+                .map(config -> {
+                    if (repository.countByRoleCode(config.roleCode()) == 0) {
+                        return saveRolePermissions(config.roleCode(), config.permissions(), LocalDateTime.now());
+                    }
+                    return rolePermissions(config.roleCode());
+                })
+                .toList();
+    }
+
+    private RolePermissionConfig saveRolePermissions(String roleCode, List<RolePermissionRule> permissions, LocalDateTime now) {
         var saved = permissions.stream()
                 .map(permission -> repository.save(new RolePermissionEntity(
                         "PERM-" + UUID.randomUUID().toString().replace("-", "").substring(0, 24),
@@ -47,6 +62,65 @@ public class RolePermissionService {
                 .sorted((left, right) -> Integer.compare(left.sortOrder(), right.sortOrder()))
                 .toList();
         return new RolePermissionConfig(roleCode, saved);
+    }
+
+    private List<RolePermissionConfig> defaultPermissionConfigs() {
+        return List.of(
+                new RolePermissionConfig("RND_ASSISTANT", List.of(
+                        rule("POST", "/api/v1/sample-requests", "创建样品需求", 10),
+                        rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 20),
+                        rule("POST", "/api/v1/sample-versions/*/shipments", "登记寄样", 30),
+                        rule("POST", "/api/v1/shipments/*/feedback", "登记客户反馈", 40),
+                        rule("POST", "/api/v1/sample-versions/*/pricing-files", "生成核价文件", 50),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 60),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 70)
+                )),
+                new RolePermissionConfig("RND_DIRECTOR", List.of(
+                        rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
+                        rule("POST", "/api/v1/sample-requests/*/approve", "审核样品需求", 20),
+                        rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 30),
+                        rule("POST", "/api/v1/rnd-tasks/*/assign", "分发研发任务", 40),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 50),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 60)
+                )),
+                new RolePermissionConfig("RND_ENGINEER", List.of(
+                        rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
+                        rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 20),
+                        rule("POST", "/api/v1/rnd-tasks/*/accept", "接受研发任务", 30),
+                        rule("POST", "/api/v1/rnd-tasks/*/experiment-form/draft", "保存实验单草稿", 40),
+                        rule("POST", "/api/v1/experiment-forms/*/submit-test", "提交内部测试", 50),
+                        rule("POST", "/api/v1/experiment-forms/*/attachments", "上传实验附件", 60),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 70),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 80)
+                )),
+                new RolePermissionConfig("TESTER", List.of(
+                        rule("POST", "/api/v1/test-assignments/*/pass", "提交测试通过", 10),
+                        rule("POST", "/api/v1/test-assignments/*/fail-resample", "提交测试不通过复打样", 20),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 30),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 40)
+                )),
+                new RolePermissionConfig("QA_TESTER", List.of(
+                        rule("POST", "/api/v1/test-assignments/*/pass", "提交测试通过", 10),
+                        rule("POST", "/api/v1/test-assignments/*/fail-resample", "提交测试不通过复打样", 20),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 30),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 40)
+                )),
+                new RolePermissionConfig("FINANCE", List.of(
+                        rule("POST", "/api/v1/pricing-files/*/notify-finance", "处理核价通知", 10),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 20),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 30)
+                )),
+                new RolePermissionConfig("MANAGER", List.of(
+                        rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
+                        rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 20),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 30),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 40)
+                ))
+        );
+    }
+
+    private RolePermissionRule rule(String httpMethod, String pathPattern, String description, int sortOrder) {
+        return new RolePermissionRule(null, httpMethod, pathPattern, true, description, sortOrder);
     }
 
     public boolean hasPermission(String role, String method, String uri) {

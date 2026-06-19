@@ -79,6 +79,48 @@ class RolePermissionControllerTest {
                 .andExpect(jsonPath("$.code").value("SESSION_ROLE_FORBIDDEN"));
     }
 
+    @Test
+    void adminCanInitializeDefaultRolePermissionsWithoutOverwritingConfiguredRoles() throws Exception {
+        var adminToken = tokenFor("默认权限管理员", "ou_admin_perm_002", "SYSTEM_ADMIN");
+
+        mockMvc.perform(put("/api/v1/settings/role-permissions/{roleCode}", "CONFIG_KEEP_ROLE")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "permissions": [
+                                    {
+                                      "httpMethod": "GET",
+                                      "pathPattern": "/api/v1/sample-requests",
+                                      "enabled": true,
+                                      "description": "保留已有自定义权限",
+                                      "sortOrder": 1
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/settings/role-permissions/defaults/initialize")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(7))
+                .andExpect(jsonPath("$.data[?(@.roleCode == 'RND_ASSISTANT')]").exists())
+                .andExpect(jsonPath("$.data[?(@.roleCode == 'RND_DIRECTOR')]").exists())
+                .andExpect(jsonPath("$.data[?(@.roleCode == 'RND_ENGINEER')]").exists());
+
+        mockMvc.perform(get("/api/v1/settings/role-permissions/{roleCode}", "RND_ASSISTANT")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.permissions[0].pathPattern").value("/api/v1/sample-requests"));
+
+        mockMvc.perform(get("/api/v1/settings/role-permissions/{roleCode}", "CONFIG_KEEP_ROLE")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.permissions.length()").value(1))
+                .andExpect(jsonPath("$.data.permissions[0].description").value("保留已有自定义权限"));
+    }
+
     private String tokenFor(String name, String feishuUserId, String role) throws Exception {
         mockMvc.perform(post("/api/v1/feishu/users/bind")
                         .contentType(MediaType.APPLICATION_JSON)
