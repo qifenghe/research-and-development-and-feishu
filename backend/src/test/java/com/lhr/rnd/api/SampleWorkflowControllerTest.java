@@ -11,10 +11,12 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -125,6 +127,69 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("test_assignment", testAssignmentId, "experiment_form_id")).isEqualTo(experimentFormId);
         assertThat(valueById("test_assignment", testAssignmentId, "tester_name")).isEqualTo("内部测试员");
         assertThat(valueById("test_assignment", testAssignmentId, "status")).isEqualTo("PENDING_TEST");
+    }
+
+    @Test
+    void uploadingExperimentAttachmentArchivesFileAndAllowsVersionDownload() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+        var versionId = valueById("experiment_form", experimentFormId, "version_id");
+        var sampleNo = valueById("experiment_form", experimentFormId, "sample_no");
+        var photoBytes = "称重照片内容".getBytes(StandardCharsets.UTF_8);
+
+        var archiveFileId = mockMvc.perform(multipart("/api/v1/experiment-forms/{id}/attachments", experimentFormId)
+                        .file("file", photoBytes)
+                        .param("fileName", "现场称重.jpg"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.businessType").value("EXPERIMENT_ATTACHMENT"))
+                .andExpect(jsonPath("$.data.businessId").value(experimentFormId))
+                .andExpect(jsonPath("$.data.versionId").value(versionId))
+                .andExpect(jsonPath("$.data.fileName").value("现场称重.jpg"))
+                .andExpect(jsonPath("$.data.fileStatus").value("ARCHIVED"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\"id\":\"")[1]
+                .split("\"")[0];
+
+        assertThat(countById("archive_file", archiveFileId)).isEqualTo(1);
+        assertThat(valueById("archive_file", archiveFileId, "business_type")).isEqualTo("EXPERIMENT_ATTACHMENT");
+        assertThat(valueById("archive_file", archiveFileId, "business_id")).isEqualTo(experimentFormId);
+        assertThat(valueById("archive_file", archiveFileId, "version_id")).isEqualTo(versionId);
+        assertThat(valueById("archive_file", archiveFileId, "file_path"))
+                .startsWith(sampleNo + "/A0/实验附件/" + archiveFileId + "/")
+                .endsWith("/现场称重.jpg");
+        var archivedPath = Path.of("target/rnd-archive")
+                .resolve(valueById("archive_file", archiveFileId, "file_path"));
+        assertThat(Files.exists(archivedPath)).isTrue();
+
+        mockMvc.perform(get("/api/v1/sample-versions/{id}/archive-files", versionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(archiveFileId))
+                .andExpect(jsonPath("$.data[0].businessType").value("EXPERIMENT_ATTACHMENT"));
+
+        mockMvc.perform(get("/api/v1/archive-files/{id}/download", archiveFileId))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(photoBytes));
+
+        var secondPhotoBytes = "第二次称重照片内容".getBytes(StandardCharsets.UTF_8);
+        var secondArchiveFileId = mockMvc.perform(multipart("/api/v1/experiment-forms/{id}/attachments", experimentFormId)
+                        .file("file", secondPhotoBytes)
+                        .param("fileName", "现场称重.jpg"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\"id\":\"")[1]
+                .split("\"")[0];
+
+        assertThat(valueById("archive_file", secondArchiveFileId, "file_path"))
+                .isNotEqualTo(valueById("archive_file", archiveFileId, "file_path"));
+        mockMvc.perform(get("/api/v1/archive-files/{id}/download", archiveFileId))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(photoBytes));
     }
 
     @Test

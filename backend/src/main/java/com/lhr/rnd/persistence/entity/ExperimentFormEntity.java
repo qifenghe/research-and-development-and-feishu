@@ -85,4 +85,20 @@ public class ExperimentFormEntity {
     public void lock() {
         this.status = "LOCKED";
     }
+
+    public String getId() {
+        return id;
+    }
+
+    public String getVersionId() {
+        return versionId;
+    }
+
+    public String getSampleNo() {
+        return sampleNo;
+    }
+
+    public String getVersionCode() {
+        return versionCode;
+    }
 }

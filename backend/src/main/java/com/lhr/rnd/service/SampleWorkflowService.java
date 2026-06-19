@@ -60,6 +60,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class SampleWorkflowService {
@@ -587,6 +588,39 @@ public class SampleWorkflowService {
         );
     }
 
+    @Transactional
+    public synchronized ArchiveFileView archiveExperimentAttachment(String experimentFormId, String fileName, byte[] content) {
+        if (archiveFileRepository == null) {
+            throw new BusinessException("ARCHIVE_FILE_REPOSITORY_NOT_READY", "归档仓库未初始化");
+        }
+        if (content == null || content.length == 0) {
+            throw new BusinessException("ARCHIVE_FILE_EMPTY", "上传文件不能为空");
+        }
+        var form = experimentFormArchiveContext(experimentFormId);
+        var cleanFileName = cleanArchiveFileName(fileName);
+        var archiveId = "ARCH-" + UUID.randomUUID().toString().replace("-", "").substring(0, 27);
+        var relativePath = "%s/%s/实验附件/%s/%s".formatted(
+                form.sampleNo(),
+                form.versionCode(),
+                archiveId,
+                cleanFileName
+        );
+        archiveStorageService.store(relativePath, content);
+        var archiveFile = new ArchiveFileEntity(
+                archiveId,
+                "EXPERIMENT_ATTACHMENT",
+                form.id(),
+                form.versionId(),
+                cleanFileName,
+                relativePath,
+                null,
+                "ARCHIVED",
+                now()
+        );
+        archiveFileRepository.save(archiveFile);
+        return archiveFile.toView();
+    }
+
     private LocalDateTime now() {
         return LocalDateTime.now(clock);
     }
@@ -961,6 +995,42 @@ public class SampleWorkflowService {
                 .orElseThrow(() -> new BusinessException("SAMPLE_VERSION_NOT_READY_FOR_PRICING", "实验单锁定后才能生成核价文件"));
     }
 
+    private ExperimentFormArchiveContext experimentFormArchiveContext(String experimentFormId) {
+        var form = experimentForms.get(experimentFormId);
+        if (form != null) {
+            return new ExperimentFormArchiveContext(
+                    form.id(),
+                    form.versionId(),
+                    form.sampleNo(),
+                    form.versionCode()
+            );
+        }
+        if (experimentFormRepository == null) {
+            throw new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在");
+        }
+        var entity = experimentFormRepository.findById(experimentFormId)
+                .orElseThrow(() -> new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在"));
+        return new ExperimentFormArchiveContext(
+                entity.getId(),
+                entity.getVersionId(),
+                entity.getSampleNo(),
+                entity.getVersionCode()
+        );
+    }
+
+    private String cleanArchiveFileName(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            throw new BusinessException("ARCHIVE_FILE_NAME_REQUIRED", "归档文件名不能为空");
+        }
+        var cleanFileName = fileName.replace("\\", "/")
+                .replaceAll(".*/", "")
+                .trim();
+        if (cleanFileName.isBlank()) {
+            throw new BusinessException("ARCHIVE_FILE_NAME_REQUIRED", "归档文件名不能为空");
+        }
+        return cleanFileName;
+    }
+
     private void ensureReadyForShipment(String versionId) {
         var hasLockedExperimentForm = experimentForms.values().stream()
                 .anyMatch(form -> form.versionId().equals(versionId) && form.status() == ExperimentFormStatus.LOCKED);
@@ -1040,6 +1110,14 @@ public class SampleWorkflowService {
     public record ArchiveFileDownload(
             String fileName,
             byte[] content
+    ) {
+    }
+
+    private record ExperimentFormArchiveContext(
+            String id,
+            String versionId,
+            String sampleNo,
+            String versionCode
     ) {
     }
 }
