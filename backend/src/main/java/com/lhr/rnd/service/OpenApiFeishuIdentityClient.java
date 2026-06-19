@@ -6,15 +6,18 @@ public class OpenApiFeishuIdentityClient implements FeishuIdentityClient {
     private final FeishuProperties properties;
     private final FeishuTenantAccessTokenService tenantAccessTokenService;
     private final FeishuOauthUserInfoFetcher oauthUserInfoFetcher;
+    private final FeishuMessageSender messageSender;
 
     public OpenApiFeishuIdentityClient(
             FeishuProperties properties,
             FeishuTenantAccessTokenService tenantAccessTokenService,
-            FeishuOauthUserInfoFetcher oauthUserInfoFetcher
+            FeishuOauthUserInfoFetcher oauthUserInfoFetcher,
+            FeishuMessageSender messageSender
     ) {
         this.properties = properties;
         this.tenantAccessTokenService = tenantAccessTokenService;
         this.oauthUserInfoFetcher = oauthUserInfoFetcher;
+        this.messageSender = messageSender;
     }
 
     @Override
@@ -28,7 +31,7 @@ public class OpenApiFeishuIdentityClient implements FeishuIdentityClient {
         if (!properties.readyForOpenApi()) {
             return FeishuSendResult.failed("飞书 OpenAPI 配置未完成");
         }
-        tenantAccessTokenService.currentToken();
-        return FeishuSendResult.failed("真实飞书消息发送接口尚未接入");
+        var tenantAccessToken = tenantAccessTokenService.currentToken();
+        return messageSender.send(properties, tenantAccessToken, notification);
     }
 }
