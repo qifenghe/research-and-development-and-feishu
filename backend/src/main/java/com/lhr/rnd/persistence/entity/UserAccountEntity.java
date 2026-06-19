@@ -66,6 +66,11 @@ public class UserAccountEntity {
         this.updatedAt = updatedAt;
     }
 
+    public void updateStatus(String status, LocalDateTime updatedAt) {
+        this.status = status;
+        this.updatedAt = updatedAt;
+    }
+
     public String getId() {
         return id;
     }
