@@ -33,6 +33,7 @@ class SchemaMigrationTest {
         assertTableExists("finance_notification");
         assertTableExists("user_account");
         assertTableExists("role_permission");
+        assertTableExists("dictionary_item");
         assertTableExists("feishu_notification");
         assertTableExists("archive_file");
         assertTableExists("audit_log");
@@ -57,6 +58,10 @@ class SchemaMigrationTest {
         assertColumnExists("role_permission", "http_method");
         assertColumnExists("role_permission", "path_pattern");
         assertColumnExists("role_permission", "enabled");
+        assertColumnExists("dictionary_item", "category");
+        assertColumnExists("dictionary_item", "item_code");
+        assertColumnExists("dictionary_item", "item_label");
+        assertColumnExists("dictionary_item", "enabled");
     }
 
     private void assertTableExists(String tableName) {
