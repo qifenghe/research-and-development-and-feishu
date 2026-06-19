@@ -35,6 +35,7 @@ class SchemaMigrationTest {
         assertTableExists("role_permission");
         assertTableExists("dictionary_item");
         assertTableExists("form_field_config");
+        assertTableExists("workflow_rule_config");
         assertTableExists("feishu_notification");
         assertTableExists("archive_file");
         assertTableExists("audit_log");
@@ -68,6 +69,11 @@ class SchemaMigrationTest {
         assertColumnExists("form_field_config", "control_type");
         assertColumnExists("form_field_config", "required");
         assertColumnExists("form_field_config", "dictionary_category");
+        assertColumnExists("workflow_rule_config", "workflow_code");
+        assertColumnExists("workflow_rule_config", "current_status");
+        assertColumnExists("workflow_rule_config", "action_code");
+        assertColumnExists("workflow_rule_config", "next_status");
+        assertColumnExists("workflow_rule_config", "notify_feishu");
     }
 
     private void assertTableExists(String tableName) {
