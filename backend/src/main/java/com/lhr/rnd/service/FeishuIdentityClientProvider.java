@@ -10,11 +10,12 @@ public class FeishuIdentityClientProvider {
 
     public FeishuIdentityClientProvider(
             FeishuProperties properties,
-            FeishuTenantAccessTokenService tenantAccessTokenService
+            FeishuTenantAccessTokenService tenantAccessTokenService,
+            FeishuOauthUserInfoFetcher oauthUserInfoFetcher
     ) {
         this.properties = properties;
         this.mockClient = new MockFeishuIdentityClient();
-        this.openApiClient = new OpenApiFeishuIdentityClient(properties, tenantAccessTokenService);
+        this.openApiClient = new OpenApiFeishuIdentityClient(properties, tenantAccessTokenService, oauthUserInfoFetcher);
     }
 
     public FeishuIdentityClient current() {

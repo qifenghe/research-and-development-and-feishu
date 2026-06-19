@@ -1,24 +1,26 @@
 package com.lhr.rnd.service;
 
-import com.lhr.rnd.api.BusinessException;
 import com.lhr.rnd.persistence.entity.FeishuNotificationEntity;
 
 public class OpenApiFeishuIdentityClient implements FeishuIdentityClient {
     private final FeishuProperties properties;
     private final FeishuTenantAccessTokenService tenantAccessTokenService;
+    private final FeishuOauthUserInfoFetcher oauthUserInfoFetcher;
 
     public OpenApiFeishuIdentityClient(
             FeishuProperties properties,
-            FeishuTenantAccessTokenService tenantAccessTokenService
+            FeishuTenantAccessTokenService tenantAccessTokenService,
+            FeishuOauthUserInfoFetcher oauthUserInfoFetcher
     ) {
         this.properties = properties;
         this.tenantAccessTokenService = tenantAccessTokenService;
+        this.oauthUserInfoFetcher = oauthUserInfoFetcher;
     }
 
     @Override
     public String exchangeCodeForFeishuUserId(String code) {
-        tenantAccessTokenService.currentToken();
-        throw new BusinessException("FEISHU_OPENAPI_NOT_IMPLEMENTED", "真实飞书免登接口尚未接入");
+        var tenantAccessToken = tenantAccessTokenService.currentToken();
+        return oauthUserInfoFetcher.fetch(properties, tenantAccessToken, code).feishuUserId();
     }
 
     @Override
