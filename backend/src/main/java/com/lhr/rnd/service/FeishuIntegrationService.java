@@ -1,5 +1,6 @@
 package com.lhr.rnd.service;
 
+import com.lhr.rnd.api.BusinessException;
 import com.lhr.rnd.model.FeishuNotification;
 import com.lhr.rnd.model.RndTask;
 import com.lhr.rnd.model.UserAccount;
@@ -88,6 +89,14 @@ public class FeishuIntegrationService {
                 .toList();
     }
 
+    public FeishuLoginResult oauthCallback(OauthCallbackCommand command) {
+        var feishuUserId = resolveFeishuUserId(command.code());
+        var user = userAccountRepository.findByFeishuUserId(feishuUserId)
+                .filter(existing -> "ACTIVE".equals(existing.toModel().status()))
+                .orElseThrow(() -> new BusinessException("FEISHU_USER_NOT_BOUND", "飞书用户未绑定系统账号"));
+        return new FeishuLoginResult(feishuUserId, user.toModel(), "mock-token-" + feishuUserId);
+    }
+
     @Transactional
     public FeishuDispatchResult dispatchPendingNotifications() {
         var pending = feishuNotificationRepository.findByStatusOrderByCreatedAtAsc("PENDING_SEND");
@@ -114,6 +123,19 @@ public class FeishuIntegrationService {
         return FeishuSendResult.sent();
     }
 
+    private String resolveFeishuUserId(String code) {
+        if (code == null || code.isBlank()) {
+            throw new BusinessException("FEISHU_OAUTH_CODE_REQUIRED", "飞书免登 code 不能为空");
+        }
+        if (code.startsWith("mock:")) {
+            var feishuUserId = code.substring("mock:".length());
+            if (!feishuUserId.isBlank()) {
+                return feishuUserId;
+            }
+        }
+        throw new BusinessException("FEISHU_OAUTH_CODE_UNSUPPORTED", "当前仅支持本地 mock 飞书免登 code");
+    }
+
     private LocalDateTime now() {
         return LocalDateTime.now(clock);
     }
@@ -128,6 +150,9 @@ public class FeishuIntegrationService {
             String role,
             String departmentName
     ) {
+    }
+
+    public record OauthCallbackCommand(String code) {
     }
 
     private record FeishuSendResult(boolean success, String errorMessage) {

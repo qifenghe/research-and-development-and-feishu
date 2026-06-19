@@ -136,6 +136,38 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void feishuOauthCallbackReturnsBoundSystemUser() throws Exception {
+        bindFeishuUser("免登研发", "ou_oauth_001");
+
+        mockMvc.perform(post("/api/v1/feishu/oauth/callback")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "mock:ou_oauth_001"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.feishuUserId").value("ou_oauth_001"))
+                .andExpect(jsonPath("$.data.user.name").value("免登研发"))
+                .andExpect(jsonPath("$.data.user.role").value("RND_ENGINEER"))
+                .andExpect(jsonPath("$.data.user.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.accessToken").value("mock-token-ou_oauth_001"));
+    }
+
+    @Test
+    void feishuOauthCallbackRejectsUnboundFeishuUser() throws Exception {
+        mockMvc.perform(post("/api/v1/feishu/oauth/callback")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "mock:ou_unbound_001"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("FEISHU_USER_NOT_BOUND"));
+    }
+
+    @Test
     void approvingRequestPersistsProjectVersionAndTaskToDatabase() throws Exception {
         var taskId = createApprovedRequest();
 
