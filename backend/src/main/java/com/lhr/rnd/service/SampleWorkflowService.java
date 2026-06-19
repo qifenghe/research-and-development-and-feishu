@@ -514,6 +514,7 @@ public class SampleWorkflowService {
         if (shipment.status() != ShipmentStatus.SHIPPED) {
             throw new BusinessException("SHIPMENT_STATUS_ILLEGAL", "当前寄样状态不可反馈");
         }
+        ensureWorkflowAllows(SampleStatus.SAMPLE_COMPLETED, customerFeedbackAction(command.result()));
 
         var nextStatus = switch (command.result()) {
             case PASSED -> ShipmentStatus.FEEDBACK_PASSED;
@@ -698,6 +699,14 @@ public class SampleWorkflowService {
         if (archiveFileRepository != null) {
             ensureWorkflowAllows(SampleStatus.FINANCE_NOTIFIED, SampleAction.ARCHIVE);
         }
+    }
+
+    private SampleAction customerFeedbackAction(CustomerFeedbackResult result) {
+        return switch (result) {
+            case PASSED -> SampleAction.CUSTOMER_FEEDBACK_PASS;
+            case FAILED_RESAMPLE -> SampleAction.CUSTOMER_FEEDBACK_RESAMPLE;
+            case STOPPED -> SampleAction.CUSTOMER_FEEDBACK_STOP;
+        };
     }
 
     private RndTaskStatus taskStatusAfter(SampleStatus current, SampleAction action) {

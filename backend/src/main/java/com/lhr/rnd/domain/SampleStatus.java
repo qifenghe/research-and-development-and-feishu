@@ -10,5 +10,6 @@ public enum SampleStatus {
     RESAMPLING_REQUIRED,
     PRICING_FILE_GENERATED,
     FINANCE_NOTIFIED,
-    ARCHIVED
+    ARCHIVED,
+    STOPPED
 }

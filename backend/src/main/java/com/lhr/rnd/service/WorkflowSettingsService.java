@@ -104,9 +104,12 @@ public class WorkflowSettingsService {
                 item("PENDING_TEST", "TEST_PASS", "测试通过", "SAMPLE_COMPLETED", true, "RND_ASSISTANT", 50, "进入寄样/核价阶段"),
                 item("PENDING_TEST", "TEST_FAIL_RESAMPLE", "复打样", "RESAMPLING_REQUIRED", true, "RND_ENGINEER", 60, "测试不通过进入复打样"),
                 item("RESAMPLING_REQUIRED", "CREATE_NEXT_VERSION", "生成下一版", "PENDING_ACCEPTANCE", true, "RND_ENGINEER", 70, "生成 A1/A2/A3 等下一版本"),
-                item("SAMPLE_COMPLETED", "REQUEST_PRICING", "生成核价", "PRICING_FILE_GENERATED", true, "FINANCE", 80, "生成核价文件"),
-                item("PRICING_FILE_GENERATED", "NOTIFY_FINANCE", "通知财务", "FINANCE_NOTIFIED", true, "FINANCE", 90, "飞书通知财务核价"),
-                item("FINANCE_NOTIFIED", "ARCHIVE", "归档", "ARCHIVED", false, null, 100, "流程归档")
+                item("SAMPLE_COMPLETED", "CUSTOMER_FEEDBACK_PASS", "客户通过", "SAMPLE_COMPLETED", true, "RND_ASSISTANT", 80, "客户确认样品通过"),
+                item("SAMPLE_COMPLETED", "CUSTOMER_FEEDBACK_RESAMPLE", "客户复打样", "RESAMPLING_REQUIRED", true, "RND_ENGINEER", 90, "客户反馈不通过，进入复打样"),
+                item("SAMPLE_COMPLETED", "CUSTOMER_FEEDBACK_STOP", "客户停止", "STOPPED", true, "RND_DIRECTOR", 100, "客户或业务确认停止打样"),
+                item("SAMPLE_COMPLETED", "REQUEST_PRICING", "生成核价", "PRICING_FILE_GENERATED", true, "FINANCE", 110, "生成核价文件"),
+                item("PRICING_FILE_GENERATED", "NOTIFY_FINANCE", "通知财务", "FINANCE_NOTIFIED", true, "FINANCE", 120, "飞书通知财务核价"),
+                item("FINANCE_NOTIFIED", "ARCHIVE", "归档", "ARCHIVED", false, null, 130, "流程归档")
         )));
     }
 

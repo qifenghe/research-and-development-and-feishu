@@ -838,6 +838,60 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.code").value("SAMPLE_VERSION_NOT_READY_FOR_SHIPMENT"));
     }
 
+    @Test
+    void customerFeedbackPassedUsesWorkflowConfigAndRejectsDisabledAction() throws Exception {
+        var shipmentId = createShipment(createLockedSampleVersion());
+        disableWorkflowAction("SAMPLE_COMPLETED", "CUSTOMER_FEEDBACK_PASS", "SAMPLE_COMPLETED");
+
+        mockMvc.perform(post("/api/v1/shipments/{id}/feedback", shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "feedbackBy": "业务员",
+                                  "result": "PASSED",
+                                  "comment": "客户确认通过"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
+    }
+
+    @Test
+    void customerFeedbackResampleUsesWorkflowConfigAndRejectsDisabledAction() throws Exception {
+        var shipmentId = createShipment(createLockedSampleVersion());
+        disableWorkflowAction("SAMPLE_COMPLETED", "CUSTOMER_FEEDBACK_RESAMPLE", "RESAMPLING_REQUIRED");
+
+        mockMvc.perform(post("/api/v1/shipments/{id}/feedback", shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "feedbackBy": "业务员",
+                                  "result": "FAILED_RESAMPLE",
+                                  "comment": "客户要求调整辣度后复打样"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
+    }
+
+    @Test
+    void customerFeedbackStoppedUsesWorkflowConfigAndRejectsDisabledAction() throws Exception {
+        var shipmentId = createShipment(createLockedSampleVersion());
+        disableWorkflowAction("SAMPLE_COMPLETED", "CUSTOMER_FEEDBACK_STOP", "STOPPED");
+
+        mockMvc.perform(post("/api/v1/shipments/{id}/feedback", shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "feedbackBy": "业务员",
+                                  "result": "STOPPED",
+                                  "comment": "客户项目暂停"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
+    }
+
     private void acceptTask(String taskId) throws Exception {
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/accept", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -892,6 +946,26 @@ class SampleWorkflowControllerTest {
                 .getResponse()
                 .getContentAsString()
                 .split("\\\"testAssignment\\\":\\{\\\"id\\\":\\\"")[1]
+                .split("\"")[0];
+    }
+
+    private String createShipment(String versionId) throws Exception {
+        return mockMvc.perform(post("/api/v1/sample-versions/{id}/shipments", versionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "quantity": 6,
+                                  "receiverName": "销售内勤",
+                                  "trackingNo": "SF202606180099",
+                                  "remark": "寄客户确认复热效果"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SHIPPED"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\"id\":\"")[1]
                 .split("\"")[0];
     }
 
