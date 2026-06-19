@@ -96,6 +96,78 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void taskAssignmentUsesWorkflowConfigAndRejectsDisabledAction() throws Exception {
+        var taskId = createApprovedRequest();
+        disableWorkflowAction("PENDING_ASSIGNMENT", "ASSIGN_TASK", "PENDING_ACCEPTANCE");
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/assign", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"assigneeName\":\"张研发\",\"dueDate\":\"2026-06-25\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
+    }
+
+    @Test
+    void acceptingTaskUsesWorkflowConfigAndRejectsDisabledAction() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        disableWorkflowAction("PENDING_ACCEPTANCE", "ACCEPT_TASK", "SAMPLING");
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/accept", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"acceptedBy\":\"张研发\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
+    }
+
+    @Test
+    void submittingExperimentUsesWorkflowConfigAndRejectsDisabledAction() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+        disableWorkflowAction("SAMPLING", "SUBMIT_EXPERIMENT", "PENDING_TEST");
+
+        mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", experimentFormId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
+    }
+
+    @Test
+    void passingInternalTestUsesWorkflowConfigAndRejectsDisabledAction() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+        var testAssignmentId = submitExperimentForTest(experimentFormId);
+        disableWorkflowAction("PENDING_TEST", "TEST_PASS", "SAMPLE_COMPLETED");
+
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"口味和复热状态通过\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
+    }
+
+    @Test
+    void failingInternalTestUsesWorkflowConfigAndRejectsDisabledAction() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+        var testAssignmentId = submitExperimentForTest(experimentFormId);
+        disableWorkflowAction("PENDING_TEST", "TEST_FAIL_RESAMPLE", "RESAMPLING_REQUIRED");
+
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/fail-resample", testAssignmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"需要调整咸度后复打样\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
+    }
+
+    @Test
     void bindingFeishuUserCreatesTaskAssignmentNotificationWhenTaskIsAssigned() throws Exception {
         mockMvc.perform(post("/api/v1/feishu/users/bind")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -874,6 +946,28 @@ class SampleWorkflowControllerTest {
                                 """.formatted(name, feishuUserId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.feishuUserId").value(feishuUserId));
+    }
+
+    private void disableWorkflowAction(String currentStatus, String actionCode, String nextStatus) {
+        jdbcTemplate.update(
+                """
+                        insert into workflow_rule_config (
+                            id, workflow_code, current_status, action_code, action_label, next_status,
+                            enabled, notify_feishu, notify_role, sort_order, remark, updated_at
+                        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)
+                        """,
+                "FLOW-DIS-" + Math.abs((currentStatus + actionCode).hashCode()),
+                "SAMPLE_RND_FLOW",
+                currentStatus,
+                actionCode,
+                "禁用动作",
+                nextStatus,
+                false,
+                false,
+                null,
+                10,
+                "测试禁用流程动作"
+        );
     }
 
     private int countById(String tableName, String id) {

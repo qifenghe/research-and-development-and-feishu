@@ -296,7 +296,8 @@ public class SampleWorkflowService {
         if (task.status() != RndTaskStatus.PENDING_ASSIGNMENT) {
             throw new BusinessException("RND_TASK_STATUS_ILLEGAL", "当前任务状态不可分发");
         }
-        var assigned = task.assign(assigneeName, dueDate, now());
+        var nextStatus = taskStatusAfter(SampleStatus.PENDING_ASSIGNMENT, SampleAction.ASSIGN_TASK);
+        var assigned = task.assign(assigneeName, dueDate, now()).withStatus(nextStatus);
         tasks.put(taskId, assigned);
         persistAssignedTask(assigned);
         notifyTaskAssigned(assigned);
@@ -316,7 +317,8 @@ public class SampleWorkflowService {
             throw new BusinessException("RND_TASK_ASSIGNEE_MISMATCH", "只能由被分发的研发人员接受任务");
         }
         var acceptedAt = now();
-        var accepted = task.accept(acceptedAt);
+        var nextStatus = taskStatusAfter(SampleStatus.PENDING_ACCEPTANCE, SampleAction.ACCEPT_TASK);
+        var accepted = task.accept(acceptedAt).withStatus(nextStatus);
         tasks.put(taskId, accepted);
         persistAcceptedTask(accepted, acceptedAt);
         return accepted;
@@ -365,6 +367,7 @@ public class SampleWorkflowService {
         if (form.status() != ExperimentFormStatus.DRAFT) {
             throw new BusinessException("EXPERIMENT_FORM_STATUS_ILLEGAL", "只有草稿实验单可以提交测试");
         }
+        var nextTaskStatus = taskStatusAfter(SampleStatus.SAMPLING, SampleAction.SUBMIT_EXPERIMENT);
         var submitted = form.submit(now());
         experimentForms.put(submitted.id(), submitted);
 
@@ -377,7 +380,7 @@ public class SampleWorkflowService {
                     task.sampleNo(),
                     task.productName(),
                     task.versionCode(),
-                    RndTaskStatus.PENDING_TEST,
+                    nextTaskStatus,
                     task.assigneeName(),
                     task.dueDate(),
                     task.createdAt(),
@@ -406,6 +409,7 @@ public class SampleWorkflowService {
         if (form == null) {
             throw new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在");
         }
+        ensureWorkflowAllows(SampleStatus.PENDING_TEST, SampleAction.TEST_PASS);
         var locked = form.lock();
         experimentForms.put(locked.id(), locked);
 
@@ -425,6 +429,7 @@ public class SampleWorkflowService {
     @Transactional
     public synchronized FailInternalTestResult failInternalTestForResample(String testAssignmentId, String testerName, String comment) {
         var assignment = pendingTestAssignment(testAssignmentId, testerName);
+        ensureWorkflowAllows(SampleStatus.PENDING_TEST, SampleAction.TEST_FAIL_RESAMPLE);
         var failed = assignment.withStatus(TestAssignmentStatus.FAILED_RESAMPLE);
         testAssignments.put(failed.id(), failed);
         var record = testRecord(failed, testerName, TestAssignmentStatus.FAILED_RESAMPLE, comment);
@@ -455,6 +460,7 @@ public class SampleWorkflowService {
         if (previousTask != null) {
             tasks.put(previousTask.id(), previousTask.withStatus(RndTaskStatus.COMPLETED));
         }
+        var nextTaskStatus = taskStatusAfter(SampleStatus.RESAMPLING_REQUIRED, SampleAction.CREATE_NEXT_VERSION);
         var nextTask = new RndTask(
                 "TASK-%04d".formatted(taskSequence++),
                 nextVersion.projectId(),
@@ -462,7 +468,7 @@ public class SampleWorkflowService {
                 nextVersion.sampleNo(),
                 nextVersion.productName(),
                 nextVersion.versionCode(),
-                RndTaskStatus.PENDING_ACCEPTANCE,
+                nextTaskStatus,
                 previousTask == null ? null : previousTask.assigneeName(),
                 previousTask == null ? null : previousTask.dueDate(),
                 now(),
@@ -671,10 +677,30 @@ public class SampleWorkflowService {
     }
 
     private SampleStatus transitionSampleStatus(SampleStatus current, SampleAction action) {
-        if (workflowStatusMachine != null) {
-            return workflowStatusMachine.transition(current, action);
+        try {
+            if (workflowStatusMachine != null) {
+                return workflowStatusMachine.transition(current, action);
+            }
+            return new SampleStatusMachine().transition(current, action);
+        } catch (IllegalStateException exception) {
+            throw new BusinessException("SAMPLE_STATUS_TRANSITION_ILLEGAL", exception.getMessage());
         }
-        return new SampleStatusMachine().transition(current, action);
+    }
+
+    private void ensureWorkflowAllows(SampleStatus current, SampleAction action) {
+        transitionSampleStatus(current, action);
+    }
+
+    private RndTaskStatus taskStatusAfter(SampleStatus current, SampleAction action) {
+        var nextStatus = transitionSampleStatus(current, action);
+        try {
+            return RndTaskStatus.valueOf(nextStatus.name());
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(
+                    "SAMPLE_STATUS_TRANSITION_ILLEGAL",
+                    "流程配置目标状态不能用于研发任务: " + nextStatus
+            );
+        }
     }
 
     private void persistRequest(SampleRequest request) {
