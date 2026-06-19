@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class SessionProperties {
     private String secret = "local-dev-session-secret-change-me";
     private long ttlSeconds = 86_400;
+    private boolean authRequired = true;
 
     public String getSecret() {
         return secret;
@@ -21,5 +22,13 @@ public class SessionProperties {
 
     public void setTtlSeconds(long ttlSeconds) {
         this.ttlSeconds = ttlSeconds;
+    }
+
+    public boolean isAuthRequired() {
+        return authRequired;
+    }
+
+    public void setAuthRequired(boolean authRequired) {
+        this.authRequired = authRequired;
     }
 }

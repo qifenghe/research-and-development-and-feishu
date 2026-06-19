@@ -13,6 +13,8 @@ spring:
     locations: classpath:db/migration
 
 rnd:
+  session:
+    auth-required: false
   feishu:
     mode: MOCK
     base-url: https://open.feishu.cn

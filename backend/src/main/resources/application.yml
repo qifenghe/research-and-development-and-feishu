@@ -15,6 +15,7 @@ rnd:
   session:
     secret: ${SESSION_SECRET:local-dev-session-secret-change-me}
     ttl-seconds: ${SESSION_TTL_SECONDS:86400}
+    auth-required: ${SESSION_AUTH_REQUIRED:true}
   feishu:
     mode: ${FEISHU_MODE:MOCK}
     base-url: ${FEISHU_BASE_URL:https://open.feishu.cn}
