@@ -34,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class HttpFeishuMessageSenderTest {
 
     @Test
-    void sendsTextMessageToFeishuUser() {
+    void sendsInteractiveCardMessageToFeishuUser() {
         var httpClient = new CapturingHttpClient(200, """
                 {"code":0,"msg":"ok","data":{"message_id":"om_message_001"}}
                 """);
@@ -49,9 +49,11 @@ class HttpFeishuMessageSenderTest {
         assertThat(httpClient.request.get().headers().firstValue("Authorization"))
                 .contains("Bearer tenant-token-001");
         assertThat(httpClient.requestBody.get()).contains("\"receive_id\":\"ou_rnd_001\"");
-        assertThat(httpClient.requestBody.get()).contains("\"msg_type\":\"text\"");
+        assertThat(httpClient.requestBody.get()).contains("\"msg_type\":\"interactive\"");
         assertThat(httpClient.requestBody.get()).contains("研发任务分发通知");
         assertThat(httpClient.requestBody.get()).contains("香卤大肠头 A0 已分发给你");
+        assertThat(httpClient.requestBody.get()).contains("https://rnd.example.com/#task-detail?id=TASK-001");
+        assertThat(httpClient.requestBody.get()).contains("ACCEPT_RND_TASK");
     }
 
     @Test
@@ -87,6 +89,7 @@ class HttpFeishuMessageSenderTest {
         var properties = new FeishuProperties();
         properties.setMode("OPENAPI");
         properties.setBaseUrl("https://open.feishu.cn");
+        properties.setAppUrl("https://rnd.example.com/");
         properties.setAppId("cli_http_test");
         properties.setAppSecret("http-secret");
         return properties;

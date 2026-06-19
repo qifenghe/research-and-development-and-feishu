@@ -34,7 +34,7 @@ public class HttpFeishuMessageSender implements FeishuMessageSender {
                 .timeout(Duration.ofSeconds(10))
                 .header("Content-Type", "application/json; charset=utf-8")
                 .header("Authorization", "Bearer " + tenantAccessToken)
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody(notification)))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody(properties, notification)))
                 .build();
         try {
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -50,19 +50,73 @@ public class HttpFeishuMessageSender implements FeishuMessageSender {
         }
     }
 
-    private String requestBody(FeishuNotificationEntity notification) {
+    private String requestBody(FeishuProperties properties, FeishuNotificationEntity notification) {
         var model = notification.toModel();
-        var text = "%s\n%s".formatted(model.title(), model.content() == null ? "" : model.content()).trim();
         try {
-            var content = objectMapper.writeValueAsString(Map.of("text", text));
+            var content = objectMapper.writeValueAsString(interactiveCard(properties, notification));
             return objectMapper.writeValueAsString(Map.of(
                     "receive_id", model.recipientFeishuUserId(),
-                    "msg_type", "text",
+                    "msg_type", "interactive",
                     "content", content
             ));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("飞书消息体序列化失败", exception);
         }
+    }
+
+    private Map<String, Object> interactiveCard(FeishuProperties properties, FeishuNotificationEntity notification) {
+        var model = notification.toModel();
+        return Map.of(
+                "config", Map.of("wide_screen_mode", true),
+                "header", Map.of(
+                        "template", "blue",
+                        "title", Map.of("tag", "plain_text", "content", model.title())
+                ),
+                "elements", java.util.List.of(
+                        Map.of("tag", "div", "text", Map.of(
+                                "tag", "lark_md",
+                                "content", model.content() == null ? "" : model.content()
+                        )),
+                        Map.of(
+                                "tag", "action",
+                                "actions", java.util.List.of(
+                                        Map.of(
+                                                "tag", "button",
+                                                "text", Map.of("tag", "plain_text", "content", "查看详情"),
+                                                "type", "primary",
+                                                "url", businessUrl(properties, model.businessType(), model.businessId())
+                                        ),
+                                        Map.of(
+                                                "tag", "button",
+                                                "text", Map.of("tag", "plain_text", "content", "接受任务"),
+                                                "type", "default",
+                                                "value", Map.of(
+                                                        "action", actionKey(model.templateKey()),
+                                                        "businessType", model.businessType(),
+                                                        "businessId", model.businessId(),
+                                                        "notificationId", model.id()
+                                                )
+                                        )
+                                )
+                        )
+                )
+        );
+    }
+
+    private String businessUrl(FeishuProperties properties, String businessType, String businessId) {
+        var baseUrl = properties.getAppUrl();
+        if (baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        }
+        var route = "RND_TASK".equals(businessType) ? "task-detail" : "dashboard";
+        return "%s/#%s?id=%s".formatted(baseUrl, route, businessId);
+    }
+
+    private String actionKey(String templateKey) {
+        if ("RND_TASK_ASSIGNED".equals(templateKey)) {
+            return "ACCEPT_RND_TASK";
+        }
+        return "VIEW_NOTIFICATION";
     }
 
     private URI messageUri(FeishuProperties properties) {
