@@ -1,5 +1,6 @@
 package com.lhr.rnd.api;
 
+import com.lhr.rnd.model.ArchiveFileView;
 import com.lhr.rnd.model.RndTask;
 import com.lhr.rnd.model.ExperimentForm;
 import com.lhr.rnd.model.PricingFileRecord;
@@ -13,6 +14,9 @@ import com.lhr.rnd.service.SampleWorkflowService;
 import com.lhr.rnd.service.ShipmentFeedbackResult;
 import com.lhr.rnd.service.SubmitExperimentForTestResult;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,6 +24,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -152,5 +158,20 @@ public class SampleWorkflowController {
             @Valid @RequestBody NotifyFinanceRequest request
     ) {
         return ApiResponse.success(workflowService.notifyFinance(id, request.recipientName(), request.remark()));
+    }
+
+    @GetMapping("/sample-versions/{id}/archive-files")
+    public ApiResponse<List<ArchiveFileView>> archiveFiles(@PathVariable String id) {
+        return ApiResponse.success(workflowService.archiveFiles(id));
+    }
+
+    @GetMapping("/archive-files/{id}/download")
+    public ResponseEntity<byte[]> downloadArchiveFile(@PathVariable String id) {
+        var file = workflowService.downloadArchiveFile(id);
+        var encodedFileName = URLEncoder.encode(file.fileName(), StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .body(file.content());
     }
 }

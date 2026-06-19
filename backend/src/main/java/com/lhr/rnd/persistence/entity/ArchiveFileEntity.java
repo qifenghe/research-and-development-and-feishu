@@ -5,6 +5,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import com.lhr.rnd.model.ArchiveFileView;
+
 import java.time.LocalDateTime;
 
 @Entity
@@ -60,5 +62,27 @@ public class ArchiveFileEntity {
         this.fileUrl = fileUrl;
         this.fileStatus = fileStatus;
         this.archivedAt = archivedAt;
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    public String getFilePath() {
+        return filePath;
+    }
+
+    public ArchiveFileView toView() {
+        return new ArchiveFileView(
+                id,
+                businessType,
+                businessId,
+                versionId,
+                fileName,
+                filePath,
+                fileUrl,
+                fileStatus,
+                archivedAt
+        );
     }
 }

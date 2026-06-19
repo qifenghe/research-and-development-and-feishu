@@ -9,6 +9,7 @@ import com.lhr.rnd.model.FinanceNotification;
 import com.lhr.rnd.model.FinanceNotificationStatus;
 import com.lhr.rnd.model.RndTask;
 import com.lhr.rnd.model.RndTaskStatus;
+import com.lhr.rnd.model.ArchiveFileView;
 import com.lhr.rnd.model.ExperimentForm;
 import com.lhr.rnd.model.ExperimentFormStatus;
 import com.lhr.rnd.model.ExperimentMaterial;
@@ -565,6 +566,27 @@ public class SampleWorkflowService {
         return new NotifyFinanceResult(notifiedPricingFile, notification);
     }
 
+    public synchronized List<ArchiveFileView> archiveFiles(String versionId) {
+        if (archiveFileRepository == null) {
+            return List.of();
+        }
+        return archiveFileRepository.findByVersionIdOrderByArchivedAtDesc(versionId).stream()
+                .map(ArchiveFileEntity::toView)
+                .toList();
+    }
+
+    public synchronized ArchiveFileDownload downloadArchiveFile(String archiveFileId) {
+        if (archiveFileRepository == null) {
+            throw new BusinessException("ARCHIVE_FILE_NOT_FOUND", "归档文件不存在");
+        }
+        var archiveFile = archiveFileRepository.findById(archiveFileId)
+                .orElseThrow(() -> new BusinessException("ARCHIVE_FILE_NOT_FOUND", "归档文件不存在"));
+        return new ArchiveFileDownload(
+                archiveFile.getFileName(),
+                archiveStorageService.read(archiveFile.getFilePath())
+        );
+    }
+
     private LocalDateTime now() {
         return LocalDateTime.now(clock);
     }
@@ -1012,6 +1034,12 @@ public class SampleWorkflowService {
             String feedbackBy,
             CustomerFeedbackResult result,
             String comment
+    ) {
+    }
+
+    public record ArchiveFileDownload(
+            String fileName,
+            byte[] content
     ) {
     }
 }

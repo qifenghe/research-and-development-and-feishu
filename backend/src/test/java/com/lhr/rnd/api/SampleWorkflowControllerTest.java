@@ -18,6 +18,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -276,6 +277,20 @@ class SampleWorkflowControllerTest {
                 .resolve(valueByColumn("archive_file", "business_id", pricingFileId, "file_path"));
         assertThat(Files.exists(archivedPath)).isTrue();
         assertThat(Files.size(archivedPath)).isEqualTo(Long.parseLong(valueById("pricing_file", pricingFileId, "content_length")));
+        var archiveFileId = valueByColumn("archive_file", "business_id", pricingFileId, "id");
+
+        mockMvc.perform(get("/api/v1/sample-versions/{id}/archive-files", versionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].id").value(archiveFileId))
+                .andExpect(jsonPath("$.data[0].businessType").value("PRICING_FILE"))
+                .andExpect(jsonPath("$.data[0].businessId").value(pricingFileId))
+                .andExpect(jsonPath("$.data[0].fileName").value("500g香卤大肠头-核价原料清单-A0-V1.xlsx"))
+                .andExpect(jsonPath("$.data[0].fileStatus").value("ARCHIVED"));
+
+        mockMvc.perform(get("/api/v1/archive-files/{id}/download", archiveFileId))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(Files.readAllBytes(archivedPath)));
 
         var financeNotificationId = mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
                         .contentType(MediaType.APPLICATION_JSON)
