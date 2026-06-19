@@ -101,6 +101,13 @@ public class FeishuIntegrationService {
         return new FeishuLoginResult(feishuUserId, user.toModel(), "mock-token-" + feishuUserId);
     }
 
+    public UserAccount activeUserByFeishuUserId(String feishuUserId) {
+        return userAccountRepository.findByFeishuUserId(feishuUserId)
+                .map(UserAccountEntity::toModel)
+                .filter(user -> "ACTIVE".equals(user.status()))
+                .orElseThrow(() -> new BusinessException("FEISHU_USER_NOT_BOUND", "飞书用户未绑定系统账号"));
+    }
+
     public FeishuIntegrationStatus integrationStatus() {
         return feishuIdentityClientProvider.status();
     }

@@ -136,6 +136,35 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void feishuCardActionAcceptsAssignedRndTask() throws Exception {
+        bindFeishuUser("卡片研发", "ou_card_rnd_001");
+        var taskId = createApprovedRequest();
+        assignTask(taskId, "卡片研发");
+        mockMvc.perform(post("/api/v1/feishu/notifications/dispatch"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/feishu/card-actions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "action": "ACCEPT_RND_TASK",
+                                  "businessType": "RND_TASK",
+                                  "businessId": "%s",
+                                  "feishuUserId": "ou_card_rnd_001"
+                                }
+                                """.formatted(taskId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.action").value("ACCEPT_RND_TASK"))
+                .andExpect(jsonPath("$.data.message").value("任务已接受"))
+                .andExpect(jsonPath("$.data.task.id").value(taskId))
+                .andExpect(jsonPath("$.data.task.status").value("SAMPLING"))
+                .andExpect(jsonPath("$.data.task.assigneeName").value("卡片研发"));
+
+        assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("SAMPLING");
+        assertThat(valueById("rnd_task", taskId, "accepted_at")).isNotBlank();
+    }
+
+    @Test
     void feishuOauthCallbackReturnsBoundSystemUser() throws Exception {
         bindFeishuUser("免登研发", "ou_oauth_001");
 
