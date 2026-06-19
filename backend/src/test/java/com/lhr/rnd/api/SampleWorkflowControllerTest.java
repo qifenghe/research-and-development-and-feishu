@@ -168,6 +168,17 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void feishuIntegrationStatusExposesClientModeAndConfigurationReadiness() throws Exception {
+        mockMvc.perform(get("/api/v1/feishu/integration/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("MOCK"))
+                .andExpect(jsonPath("$.data.baseUrl").value("https://open.feishu.cn"))
+                .andExpect(jsonPath("$.data.appIdConfigured").value(false))
+                .andExpect(jsonPath("$.data.appSecretConfigured").value(false))
+                .andExpect(jsonPath("$.data.readyForOpenApi").value(false));
+    }
+
+    @Test
     void approvingRequestPersistsProjectVersionAndTaskToDatabase() throws Exception {
         var taskId = createApprovedRequest();
 

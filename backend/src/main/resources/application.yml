@@ -10,3 +10,10 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+
+rnd:
+  feishu:
+    mode: ${FEISHU_MODE:MOCK}
+    base-url: ${FEISHU_BASE_URL:https://open.feishu.cn}
+    app-id: ${FEISHU_APP_ID:}
+    app-secret: ${FEISHU_APP_SECRET:}

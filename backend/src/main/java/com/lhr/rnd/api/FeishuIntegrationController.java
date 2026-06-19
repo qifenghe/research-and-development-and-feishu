@@ -4,6 +4,7 @@ import com.lhr.rnd.model.FeishuNotification;
 import com.lhr.rnd.model.UserAccount;
 import com.lhr.rnd.service.FeishuDispatchResult;
 import com.lhr.rnd.service.FeishuIntegrationService;
+import com.lhr.rnd.service.FeishuIntegrationStatus;
 import com.lhr.rnd.service.FeishuLoginResult;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,6 +39,11 @@ public class FeishuIntegrationController {
         return ApiResponse.success(feishuIntegrationService.oauthCallback(
                 new FeishuIntegrationService.OauthCallbackCommand(request.code())
         ));
+    }
+
+    @GetMapping("/integration/status")
+    public ApiResponse<FeishuIntegrationStatus> integrationStatus() {
+        return ApiResponse.success(feishuIntegrationService.integrationStatus());
     }
 
     @GetMapping("/notifications/pending")

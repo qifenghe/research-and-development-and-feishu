@@ -22,23 +22,27 @@ public class FeishuIntegrationService {
     private final Clock clock;
     private final UserAccountRepository userAccountRepository;
     private final FeishuNotificationRepository feishuNotificationRepository;
+    private final FeishuIdentityClientProvider feishuIdentityClientProvider;
 
     @Autowired
     public FeishuIntegrationService(
             UserAccountRepository userAccountRepository,
-            FeishuNotificationRepository feishuNotificationRepository
+            FeishuNotificationRepository feishuNotificationRepository,
+            FeishuIdentityClientProvider feishuIdentityClientProvider
     ) {
-        this(Clock.systemDefaultZone(), userAccountRepository, feishuNotificationRepository);
+        this(Clock.systemDefaultZone(), userAccountRepository, feishuNotificationRepository, feishuIdentityClientProvider);
     }
 
     FeishuIntegrationService(
             Clock clock,
             UserAccountRepository userAccountRepository,
-            FeishuNotificationRepository feishuNotificationRepository
+            FeishuNotificationRepository feishuNotificationRepository,
+            FeishuIdentityClientProvider feishuIdentityClientProvider
     ) {
         this.clock = clock;
         this.userAccountRepository = userAccountRepository;
         this.feishuNotificationRepository = feishuNotificationRepository;
+        this.feishuIdentityClientProvider = feishuIdentityClientProvider;
     }
 
     @Transactional
@@ -90,11 +94,15 @@ public class FeishuIntegrationService {
     }
 
     public FeishuLoginResult oauthCallback(OauthCallbackCommand command) {
-        var feishuUserId = resolveFeishuUserId(command.code());
+        var feishuUserId = feishuIdentityClientProvider.current().exchangeCodeForFeishuUserId(command.code());
         var user = userAccountRepository.findByFeishuUserId(feishuUserId)
                 .filter(existing -> "ACTIVE".equals(existing.toModel().status()))
                 .orElseThrow(() -> new BusinessException("FEISHU_USER_NOT_BOUND", "飞书用户未绑定系统账号"));
         return new FeishuLoginResult(feishuUserId, user.toModel(), "mock-token-" + feishuUserId);
+    }
+
+    public FeishuIntegrationStatus integrationStatus() {
+        return feishuIdentityClientProvider.status();
     }
 
     @Transactional
@@ -103,7 +111,7 @@ public class FeishuIntegrationService {
         var sentCount = 0;
         var failedCount = 0;
         for (var notification : pending) {
-            var sendResult = sendNotification(notification);
+            var sendResult = feishuIdentityClientProvider.current().sendNotification(notification);
             if (sendResult.success()) {
                 notification.markSent(now());
                 sentCount++;
@@ -114,26 +122,6 @@ public class FeishuIntegrationService {
             feishuNotificationRepository.save(notification);
         }
         return new FeishuDispatchResult(pending.size(), sentCount, failedCount);
-    }
-
-    private FeishuSendResult sendNotification(FeishuNotificationEntity notification) {
-        if (notification.getRecipientFeishuUserId().startsWith("fail_")) {
-            return FeishuSendResult.failed("模拟飞书发送失败");
-        }
-        return FeishuSendResult.sent();
-    }
-
-    private String resolveFeishuUserId(String code) {
-        if (code == null || code.isBlank()) {
-            throw new BusinessException("FEISHU_OAUTH_CODE_REQUIRED", "飞书免登 code 不能为空");
-        }
-        if (code.startsWith("mock:")) {
-            var feishuUserId = code.substring("mock:".length());
-            if (!feishuUserId.isBlank()) {
-                return feishuUserId;
-            }
-        }
-        throw new BusinessException("FEISHU_OAUTH_CODE_UNSUPPORTED", "当前仅支持本地 mock 飞书免登 code");
     }
 
     private LocalDateTime now() {
@@ -155,13 +143,4 @@ public class FeishuIntegrationService {
     public record OauthCallbackCommand(String code) {
     }
 
-    private record FeishuSendResult(boolean success, String errorMessage) {
-        private static FeishuSendResult sent() {
-            return new FeishuSendResult(true, null);
-        }
-
-        private static FeishuSendResult failed(String errorMessage) {
-            return new FeishuSendResult(false, errorMessage);
-        }
-    }
 }
