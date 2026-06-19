@@ -540,6 +540,8 @@ public class SampleWorkflowService {
     public synchronized PricingFileRecord generatePricingFile(String versionId) {
         var version = requiredVersion(versionId);
         var lockedForm = lockedExperimentForm(versionId);
+        ensureWorkflowAllows(SampleStatus.SAMPLE_COMPLETED, SampleAction.REQUEST_PRICING);
+        ensurePricingArchiveAllowed();
         var pricingVersionNo = "V" + nextPricingVersionNumber(versionId);
         var versionWithMaterials = SampleVersion.builder()
                 .id(version.id())
@@ -583,6 +585,7 @@ public class SampleWorkflowService {
         if (pricingFile == null) {
             throw new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在");
         }
+        ensureWorkflowAllows(SampleStatus.PRICING_FILE_GENERATED, SampleAction.NOTIFY_FINANCE);
         var notifiedPricingFile = pricingFile.withStatus(PricingFileStatus.FINANCE_NOTIFIED);
         pricingFiles.put(notifiedPricingFile.id(), notifiedPricingFile);
         var notification = new FinanceNotification(
@@ -689,6 +692,12 @@ public class SampleWorkflowService {
 
     private void ensureWorkflowAllows(SampleStatus current, SampleAction action) {
         transitionSampleStatus(current, action);
+    }
+
+    private void ensurePricingArchiveAllowed() {
+        if (archiveFileRepository != null) {
+            ensureWorkflowAllows(SampleStatus.FINANCE_NOTIFIED, SampleAction.ARCHIVE);
+        }
     }
 
     private RndTaskStatus taskStatusAfter(SampleStatus current, SampleAction action) {

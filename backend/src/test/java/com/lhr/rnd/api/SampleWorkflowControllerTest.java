@@ -46,15 +46,16 @@ class SampleWorkflowControllerTest {
 
     @Test
     void createsRequestApprovesToProjectAndAssignsTask() throws Exception {
-        createApprovedRequest();
+        var taskId = createApprovedRequest();
+        var sampleNo = valueById("rnd_task", taskId, "sample_no");
 
         mockMvc.perform(get("/api/v1/rnd-tasks/pool"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(1)))
-                .andExpect(jsonPath("$.data[0].sampleNo").value("YP202606180001"))
+                .andExpect(jsonPath("$.data[0].sampleNo").value(sampleNo))
                 .andExpect(jsonPath("$.data[0].productName").value("500g香卤大肠头"));
 
-        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/assign", "TASK-0001")
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/assign", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"assigneeName\":\"张研发\",\"dueDate\":\"2026-06-25\"}"))
                 .andExpect(status().isOk())
@@ -783,6 +784,39 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void generatingPricingFileUsesWorkflowConfigAndRejectsDisabledAction() throws Exception {
+        var versionId = createLockedSampleVersion();
+        disableWorkflowAction("SAMPLE_COMPLETED", "REQUEST_PRICING", "PRICING_FILE_GENERATED");
+
+        mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files", versionId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
+    }
+
+    @Test
+    void generatingPricingFileArchiveUsesWorkflowConfigAndRejectsDisabledAction() throws Exception {
+        var versionId = createLockedSampleVersion();
+        disableWorkflowAction("FINANCE_NOTIFIED", "ARCHIVE", "ARCHIVED");
+
+        mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files", versionId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
+    }
+
+    @Test
+    void notifyingFinanceUsesWorkflowConfigAndRejectsDisabledAction() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var pricingFileId = generatePricingFile(versionId);
+        disableWorkflowAction("PRICING_FILE_GENERATED", "NOTIFY_FINANCE", "FINANCE_NOTIFIED");
+
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recipientName\":\"财务核价员\",\"remark\":\"请核价\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
+    }
+
+    @Test
     void rejectsShipmentBeforeExperimentVersionIsLocked() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);
@@ -858,6 +892,17 @@ class SampleWorkflowControllerTest {
                 .getResponse()
                 .getContentAsString()
                 .split("\\\"testAssignment\\\":\\{\\\"id\\\":\\\"")[1]
+                .split("\"")[0];
+    }
+
+    private String generatePricingFile(String versionId) throws Exception {
+        return mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files", versionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("GENERATED"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\"id\":\"")[1]
                 .split("\"")[0];
     }
 
