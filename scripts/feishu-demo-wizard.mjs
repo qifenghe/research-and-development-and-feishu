@@ -71,7 +71,7 @@ export function buildWizardSummary(result) {
   };
 }
 
-export function buildWizardVerificationChecklist(summary) {
+export function buildWizardVerificationChecklist(summary, appUrl) {
   return [
     {
       label: "工作台查看样品编号",
@@ -103,7 +103,10 @@ export function buildWizardVerificationChecklist(summary) {
       route: "#pricing-detail",
       expected: summary.financeNotificationId,
     },
-  ];
+  ].map((item) => ({
+    ...item,
+    ...(appUrl ? { url: buildRouteUrl(appUrl, item.route) } : {}),
+  }));
 }
 
 function loadOptionalDemoWizardConfig(filePath) {
@@ -219,9 +222,15 @@ function printResult(result) {
     console.log("- 当前只生成待发送通知；确认真实发送时追加 --dispatch。");
   }
   console.log("演示核对清单：");
-  for (const item of buildWizardVerificationChecklist(summary)) {
-    console.log(`- ${item.label}：${item.route}，核对 ${item.expected}`);
+  const appUrl = result.checkResult?.env?.FEISHU_APP_URL;
+  for (const item of buildWizardVerificationChecklist(summary, appUrl)) {
+    const target = item.url || item.route;
+    console.log(`- ${item.label}：${target}，核对 ${item.expected}`);
   }
+}
+
+function buildRouteUrl(appUrl, route) {
+  return `${appUrl.replace(/#.*$/, "").replace(/\/$/, "")}/${route}`;
 }
 
 function printHelp() {
