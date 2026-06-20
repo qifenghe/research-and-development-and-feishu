@@ -20,6 +20,27 @@ const sampleRows = [
   ["腊肠新口味", "A0", "待分发", "任务池", "06-25", "task-pool"],
 ];
 
+const dashboardOverview = {
+  endpoint: "GET /api/v1/dashboard/overview",
+  pendingReviewCount: 1,
+  pendingAssignmentCount: 1,
+  pendingAcceptanceCount: 1,
+  samplingCount: 1,
+  pendingTestCount: 0,
+  completedSampleCount: 2,
+  pendingPricingCount: 1,
+  financeNotifiedCount: 0,
+  stoppedCount: 1,
+  recentTasks: [
+    ["TASK-0003", "500g香卤大肠头", "A0", "张研发", "打样中", "06-25", "experiment"],
+    ["TASK-0002", "500g香卤大肠头", "A0", "李研发", "待研发接受", "06-25", "task-pool"],
+    ["TASK-0001", "500g香卤大肠头", "A0", "待分发", "任务池待分发", "未定", "task-assign"],
+  ],
+  pendingPricingFiles: [
+    ["PRICE-0001", "500g香卤大肠头", "A0-核价V1", "待通知财务", "pricing-detail"],
+  ],
+};
+
 const sampleRecords = [
   { product: "500g香卤大肠头", version: "A0", customer: "客户A", owner: "黄丽金", status: "待内部测试", date: "2026-06-20", target: "internal-test" },
   { product: "黑椒鸡柳料理包", version: "A1", customer: "客户C", owner: "李工", status: "待寄样反馈", date: "2026-06-21", target: "shipment-list" },
@@ -239,11 +260,51 @@ function appShell(view) {
 function renderDashboard() {
   return `
     <div class="card">
+      <div class="section-title"><h3>工作台实时概览</h3><span class="badge">${dashboardOverview.endpoint}</span></div>
       <div class="grid cols-4">
-        ${stat("待总监审核", "6", "var(--orange)")}
-        ${stat("任务池待分发", "9", "var(--purple)")}
-        ${stat("待内部测试", "5", "var(--teal)")}
-        ${stat("待财务核价", "3", "var(--red)")}
+        ${stat("待总监审核", dashboardOverview.pendingReviewCount, "var(--orange)")}
+        ${stat("任务池待分发", dashboardOverview.pendingAssignmentCount, "var(--purple)")}
+        ${stat("研发处理中", dashboardOverview.samplingCount + dashboardOverview.pendingAcceptanceCount, "var(--teal)")}
+        ${stat("待财务核价", dashboardOverview.pendingPricingCount, "var(--red)")}
+      </div>
+      <div class="grid cols-3" style="margin-top:14px">
+        ${stat("样品已完成", dashboardOverview.completedSampleCount, "var(--green)")}
+        ${stat("已通知财务", dashboardOverview.financeNotifiedCount, "var(--blue)")}
+        ${stat("停止/废弃", dashboardOverview.stoppedCount, "var(--red)")}
+      </div>
+      <div class="grid cols-2" style="margin-top:18px">
+        <div>
+          <div class="section-title"><h3>最近待办任务</h3><a class="button secondary" href="#rnd-module">进入研发任务</a></div>
+          <div class="table compact-table">
+            <div class="row header"><div>任务</div><div>版本</div><div>负责人</div><div>状态</div><div>期限</div><div>操作</div></div>
+            ${dashboardOverview.recentTasks.map(([taskId, product, version, assignee, status, dueDate, target]) => `
+              <div class="row">
+                <strong>${taskId}<small>${product}</small></strong>
+                <div>${version}</div>
+                <div>${assignee}</div>
+                <div>${statusBadge(status)}</div>
+                <div>${dueDate}</div>
+                <a class="button secondary" href="#${target}">处理</a>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+        <div>
+          <div class="section-title"><h3>待核价文件</h3><a class="button secondary" href="#shipment-pricing-module">进入寄样核价</a></div>
+          <div class="table compact-table">
+            <div class="row header"><div>文件</div><div>产品</div><div>版本</div><div>状态</div><div>来源</div><div>操作</div></div>
+            ${dashboardOverview.pendingPricingFiles.map(([pricingFileId, product, version, status, target]) => `
+              <div class="row">
+                <strong>${pricingFileId}</strong>
+                <div>${product}</div>
+                <div>${version}</div>
+                <div>${statusBadge(status)}</div>
+                <div>实验单锁版</div>
+                <a class="button secondary" href="#${target}">查看</a>
+              </div>
+            `).join("")}
+          </div>
+        </div>
       </div>
       ${renderSearchPanel()}
       <div class="section-title"><h3>业务模块入口</h3><a class="button secondary" href="#flowchart">查看流程图</a></div>

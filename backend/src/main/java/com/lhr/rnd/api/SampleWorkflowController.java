@@ -1,6 +1,7 @@
 package com.lhr.rnd.api;
 
 import com.lhr.rnd.model.ArchiveFileView;
+import com.lhr.rnd.model.DashboardOverview;
 import com.lhr.rnd.model.RndTask;
 import com.lhr.rnd.model.ExperimentForm;
 import com.lhr.rnd.model.PricingFileRecord;
@@ -56,6 +57,11 @@ public class SampleWorkflowController {
     @GetMapping("/sample-requests")
     public ApiResponse<List<SampleRequest>> sampleRequests() {
         return ApiResponse.success(workflowService.requests());
+    }
+
+    @GetMapping("/dashboard/overview")
+    public ApiResponse<DashboardOverview> dashboardOverview() {
+        return ApiResponse.success(workflowService.dashboardOverview());
     }
 
     @GetMapping("/sample-projects/stopped")

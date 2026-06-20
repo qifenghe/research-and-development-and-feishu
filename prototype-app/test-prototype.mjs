@@ -91,6 +91,12 @@ for (const marker of ["search-name", "search-start", "search-end", "filterSample
   }
 }
 
+for (const marker of ["dashboardOverview", "GET /api/v1/dashboard/overview", "recentTasks", "pendingPricingFiles"]) {
+  if (!js.includes(marker) && !html.includes(marker)) {
+    throw new Error(`Missing dashboard-overview marker: ${marker}`);
+  }
+}
+
 for (const marker of ["config-card", "表单字段配置", "流程状态配置", "飞书通知配置", "模板配置", "基础字典配置"]) {
   if (!js.includes(marker) && !html.includes(marker)) {
     throw new Error(`Missing config-center marker: ${marker}`);

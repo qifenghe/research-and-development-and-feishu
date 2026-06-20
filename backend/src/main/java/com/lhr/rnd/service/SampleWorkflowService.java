@@ -7,6 +7,9 @@ import com.lhr.rnd.domain.SampleStatusMachine;
 import com.lhr.rnd.domain.SampleVersionCode;
 import com.lhr.rnd.model.CustomerFeedback;
 import com.lhr.rnd.model.CustomerFeedbackResult;
+import com.lhr.rnd.model.DashboardOverview;
+import com.lhr.rnd.model.DashboardPricingFileItem;
+import com.lhr.rnd.model.DashboardTaskItem;
 import com.lhr.rnd.model.FinanceNotification;
 import com.lhr.rnd.model.FinanceNotificationStatus;
 import com.lhr.rnd.model.RndTask;
@@ -236,6 +239,17 @@ public class SampleWorkflowService {
         }
 
         var projectStatus = transitionSampleStatus(request.status(), SampleAction.APPROVE_REQUEST);
+        var approvedRequest = new SampleRequest(
+                request.id(),
+                request.sampleNo(),
+                request.productName(),
+                request.productType(),
+                request.customerName(),
+                request.specification(),
+                request.creatorName(),
+                projectStatus,
+                request.createdAt()
+        );
         var project = new SampleProject(
                 "PROJ-%04d".formatted(projects.size() + 1),
                 request.sampleNo(),
@@ -276,10 +290,11 @@ public class SampleWorkflowService {
         );
         taskSequence++;
 
+        requests.put(approvedRequest.id(), approvedRequest);
         projects.put(project.id(), project);
         versions.put(version.id(), version);
         tasks.put(task.id(), task);
-        persistApprovedWorkflow(request, project, version, task);
+        persistApprovedWorkflow(approvedRequest, project, version, task);
         return new ApproveSampleRequestResult(project, version, task);
     }
 
@@ -485,11 +500,92 @@ public class SampleWorkflowService {
         return new ArrayList<>(requests.values());
     }
 
+    public synchronized DashboardOverview dashboardOverview() {
+        var pendingReviewCount = requests.values().stream()
+                .filter(request -> request.status() == SampleStatus.PENDING_REVIEW)
+                .count();
+        var pendingAssignmentCount = tasks.values().stream()
+                .filter(task -> task.status() == RndTaskStatus.PENDING_ASSIGNMENT)
+                .count();
+        var pendingAcceptanceCount = tasks.values().stream()
+                .filter(task -> task.status() == RndTaskStatus.PENDING_ACCEPTANCE)
+                .count();
+        var samplingCount = tasks.values().stream()
+                .filter(task -> task.status() == RndTaskStatus.SAMPLING)
+                .count();
+        var pendingTestCount = tasks.values().stream()
+                .filter(task -> task.status() == RndTaskStatus.PENDING_TEST)
+                .count();
+        var completedSampleCount = tasks.values().stream()
+                .filter(task -> task.status() == RndTaskStatus.COMPLETED)
+                .count();
+        var pendingPricingCount = pricingFiles.values().stream()
+                .filter(pricingFile -> pricingFile.status() == PricingFileStatus.GENERATED)
+                .count();
+        var financeNotifiedCount = pricingFiles.values().stream()
+                .filter(pricingFile -> pricingFile.status() == PricingFileStatus.FINANCE_NOTIFIED)
+                .count();
+        var stoppedCount = projects.values().stream()
+                .filter(project -> project.status() == SampleStatus.STOPPED)
+                .count();
+        var recentTasks = tasks.values().stream()
+                .filter(task -> task.status() != RndTaskStatus.COMPLETED)
+                .sorted(Comparator.comparing(RndTask::createdAt).reversed())
+                .limit(3)
+                .map(this::dashboardTaskItem)
+                .toList();
+        var pendingPricingFiles = pricingFiles.values().stream()
+                .filter(pricingFile -> pricingFile.status() == PricingFileStatus.GENERATED)
+                .sorted(Comparator.comparing(PricingFileRecord::generatedAt).reversed())
+                .limit(5)
+                .map(this::dashboardPricingFileItem)
+                .toList();
+
+        return new DashboardOverview(
+                pendingReviewCount,
+                pendingAssignmentCount,
+                pendingAcceptanceCount,
+                samplingCount,
+                pendingTestCount,
+                completedSampleCount,
+                pendingPricingCount,
+                financeNotifiedCount,
+                stoppedCount,
+                recentTasks,
+                pendingPricingFiles
+        );
+    }
+
     public synchronized List<StoppedSampleProjectView> stoppedProjects() {
         return projects.values().stream()
                 .filter(project -> project.status() == SampleStatus.STOPPED)
                 .map(this::stoppedProjectView)
                 .toList();
+    }
+
+    private DashboardTaskItem dashboardTaskItem(RndTask task) {
+        return new DashboardTaskItem(
+                task.id(),
+                task.sampleNo(),
+                task.productName(),
+                task.versionCode(),
+                task.status().name(),
+                task.assigneeName(),
+                task.dueDate(),
+                task.createdAt()
+        );
+    }
+
+    private DashboardPricingFileItem dashboardPricingFileItem(PricingFileRecord pricingFile) {
+        return new DashboardPricingFileItem(
+                pricingFile.id(),
+                pricingFile.sampleNo(),
+                pricingFile.productName(),
+                pricingFile.versionCode(),
+                pricingFile.pricingVersion(),
+                pricingFile.status().name(),
+                pricingFile.generatedAt()
+        );
     }
 
     @Transactional
@@ -867,6 +963,7 @@ public class SampleWorkflowService {
             SampleVersion version,
             RndTask task
     ) {
+        persistRequest(request);
         if (sampleProjectRepository == null || sampleVersionRepository == null || rndTaskRepository == null) {
             return;
         }

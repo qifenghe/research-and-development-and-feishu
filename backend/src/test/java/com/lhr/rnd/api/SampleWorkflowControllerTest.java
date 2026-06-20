@@ -6,6 +6,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
@@ -13,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 
@@ -39,9 +41,69 @@ class SampleWorkflowControllerTest {
     @Autowired
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
+    @Autowired
+    private com.lhr.rnd.service.SampleWorkflowService workflowService;
+
     @BeforeEach
-    void clearWorkflowRuleConfig() {
-        jdbcTemplate.update("delete from workflow_rule_config");
+    void clearWorkflowState() {
+        clearBusinessTables();
+        clearWorkflowServiceMemory();
+    }
+
+    private void clearBusinessTables() {
+        for (String table : new String[]{
+                "audit_log",
+                "archive_file",
+                "finance_notification",
+                "pricing_file",
+                "customer_feedback",
+                "shipment_record",
+                "test_record",
+                "test_assignment",
+                "experiment_material",
+                "experiment_form",
+                "feishu_notification",
+                "user_account",
+                "rnd_task",
+                "sample_version",
+                "sample_project",
+                "sample_request",
+                "workflow_rule_config"
+        }) {
+            jdbcTemplate.update("delete from " + table);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void clearWorkflowServiceMemory() {
+        for (String field : new String[]{
+                "requests",
+                "projects",
+                "versions",
+                "tasks",
+                "experimentForms",
+                "testAssignments",
+                "testRecords",
+                "shipments",
+                "customerFeedbacks",
+                "pricingFiles",
+                "financeNotifications"
+        }) {
+            ((Map<?, ?>) ReflectionTestUtils.getField(workflowService, field)).clear();
+        }
+        for (String sequence : new String[]{
+                "requestSequence",
+                "taskSequence",
+                "experimentSequence",
+                "testAssignmentSequence",
+                "testRecordSequence",
+                "shipmentSequence",
+                "customerFeedbackSequence",
+                "pricingFileSequence",
+                "financeNotificationSequence"
+        }) {
+            ReflectionTestUtils.setField(workflowService, sequence, 1);
+        }
     }
 
     @Test
@@ -968,6 +1030,49 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data[0].lastVersionCode").value("A0"))
                 .andExpect(jsonPath("$.data[0].stoppedBy").value("业务员"))
                 .andExpect(jsonPath("$.data[0].stopReason").value("客户项目暂停"));
+    }
+
+    @Test
+    void dashboardOverviewSummarizesWorkflowCountsAndRecentTasks() throws Exception {
+        createPendingSampleRequest();
+        var pendingTaskId = createApprovedRequest();
+        var assignedTaskId = createApprovedRequest();
+        assignTask(assignedTaskId, "李研发");
+        var samplingTaskId = createApprovedRequest();
+        assignTask(samplingTaskId, "张研发");
+        acceptTask(samplingTaskId);
+        var completedVersionId = createLockedSampleVersion();
+        var pricingFileId = generatePricingFile(completedVersionId);
+        var stoppedVersionId = createLockedSampleVersion();
+        var stoppedShipmentId = createShipment(stoppedVersionId);
+        mockMvc.perform(post("/api/v1/shipments/{id}/feedback", stoppedShipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "feedbackBy": "业务员",
+                                  "result": "STOPPED",
+                                  "comment": "客户项目暂停"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/dashboard/overview"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pendingReviewCount").value(1))
+                .andExpect(jsonPath("$.data.pendingAssignmentCount").value(1))
+                .andExpect(jsonPath("$.data.pendingAcceptanceCount").value(1))
+                .andExpect(jsonPath("$.data.samplingCount").value(1))
+                .andExpect(jsonPath("$.data.pendingPricingCount").value(1))
+                .andExpect(jsonPath("$.data.financeNotifiedCount").value(0))
+                .andExpect(jsonPath("$.data.stoppedCount").value(1))
+                .andExpect(jsonPath("$.data.recentTasks", hasSize(3)))
+                .andExpect(jsonPath("$.data.recentTasks[0].taskId").value(samplingTaskId))
+                .andExpect(jsonPath("$.data.recentTasks[0].status").value("SAMPLING"))
+                .andExpect(jsonPath("$.data.recentTasks[1].taskId").value(assignedTaskId))
+                .andExpect(jsonPath("$.data.recentTasks[1].assigneeName").value("李研发"))
+                .andExpect(jsonPath("$.data.recentTasks[2].taskId").value(pendingTaskId))
+                .andExpect(jsonPath("$.data.pendingPricingFiles", hasSize(1)))
+                .andExpect(jsonPath("$.data.pendingPricingFiles[0].pricingFileId").value(pricingFileId));
     }
 
     private void acceptTask(String taskId) throws Exception {

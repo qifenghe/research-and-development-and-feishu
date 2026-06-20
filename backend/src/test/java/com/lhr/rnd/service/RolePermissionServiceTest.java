@@ -29,6 +29,8 @@ class RolePermissionServiceTest {
         assertThat(service.hasPermission("RND_ENGINEER", "POST", "/api/v1/sample-requests")).isFalse();
         assertThat(service.hasPermission("RND_DIRECTOR", "GET", "/api/v1/sample-projects/stopped")).isTrue();
         assertThat(service.hasPermission("RND_ENGINEER", "GET", "/api/v1/sample-projects/stopped")).isFalse();
+        assertThat(service.hasPermission("MANAGER", "GET", "/api/v1/dashboard/overview")).isTrue();
+        assertThat(service.hasPermission("TESTER", "GET", "/api/v1/dashboard/overview")).isFalse();
     }
 
     @Test
