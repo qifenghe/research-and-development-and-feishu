@@ -10,10 +10,13 @@ import com.lhr.rnd.model.CustomerFeedbackResult;
 import com.lhr.rnd.model.DashboardOverview;
 import com.lhr.rnd.model.DashboardPricingFileItem;
 import com.lhr.rnd.model.DashboardTaskItem;
+import com.lhr.rnd.model.DetailAction;
+import com.lhr.rnd.model.DetailFieldGroup;
 import com.lhr.rnd.model.FinanceNotification;
 import com.lhr.rnd.model.FinanceNotificationStatus;
 import com.lhr.rnd.model.PagedResult;
 import com.lhr.rnd.model.RndTask;
+import com.lhr.rnd.model.RndTaskDetailView;
 import com.lhr.rnd.model.RndTaskStatus;
 import com.lhr.rnd.model.ArchiveFileView;
 import com.lhr.rnd.model.ExperimentForm;
@@ -553,6 +556,21 @@ public class SampleWorkflowService {
         );
     }
 
+    public synchronized RndTaskDetailView rndTaskDetail(String taskId, String role) {
+        var task = requiredTask(taskId);
+        var version = requiredVersion(task.versionId());
+        var currentExperimentForm = currentExperimentForm(taskId);
+        var currentTestAssignment = currentTestAssignment(taskId);
+        return new RndTaskDetailView(
+                task,
+                version,
+                currentExperimentForm,
+                currentTestAssignment,
+                detailFieldGroups(currentExperimentForm, currentTestAssignment),
+                detailActions(task, currentExperimentForm, currentTestAssignment, role)
+        );
+    }
+
     public synchronized List<PricingFileRecord> pricingFiles(String status, String keyword) {
         return pricingFiles.values().stream()
                 .filter(pricingFile -> matchesStatus(status, pricingFile.status().name()))
@@ -678,6 +696,145 @@ public class SampleWorkflowService {
         var normalizedKeyword = keyword.trim().toLowerCase();
         for (String value : values) {
             if (value != null && value.toLowerCase().contains(normalizedKeyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private RndTask requiredTask(String taskId) {
+        var task = tasks.get(taskId);
+        if (task == null) {
+            throw new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在");
+        }
+        return task;
+    }
+
+    private ExperimentForm currentExperimentForm(String taskId) {
+        return experimentForms.values().stream()
+                .filter(form -> form.taskId().equals(taskId))
+                .max(Comparator.comparing(ExperimentForm::savedAt))
+                .orElse(null);
+    }
+
+    private TestAssignment currentTestAssignment(String taskId) {
+        return testAssignments.values().stream()
+                .filter(assignment -> assignment.taskId().equals(taskId))
+                .max(Comparator.comparing(TestAssignment::assignedAt))
+                .orElse(null);
+    }
+
+    private List<DetailFieldGroup> detailFieldGroups(
+            ExperimentForm currentExperimentForm,
+            TestAssignment currentTestAssignment
+    ) {
+        var groups = new ArrayList<DetailFieldGroup>();
+        groups.add(new DetailFieldGroup("基础信息", List.of(
+                "sampleNo",
+                "productName",
+                "versionCode"
+        )));
+        groups.add(new DetailFieldGroup("任务信息", List.of(
+                "status",
+                "assigneeName",
+                "dueDate",
+                "createdAt",
+                "assignedAt"
+        )));
+        if (currentExperimentForm != null) {
+            groups.add(new DetailFieldGroup("实验单", List.of(
+                    "currentExperimentForm.id",
+                    "currentExperimentForm.status",
+                    "currentExperimentForm.operatorName",
+                    "currentExperimentForm.summary",
+                    "currentExperimentForm.materials"
+            )));
+        }
+        if (currentTestAssignment != null) {
+            groups.add(new DetailFieldGroup("内部测试", List.of(
+                    "currentTestAssignment.id",
+                    "currentTestAssignment.testerName",
+                    "currentTestAssignment.status",
+                    "currentTestAssignment.assignedAt"
+            )));
+        }
+        return groups;
+    }
+
+    private List<DetailAction> detailActions(
+            RndTask task,
+            ExperimentForm currentExperimentForm,
+            TestAssignment currentTestAssignment,
+            String role
+    ) {
+        if (role == null || role.isBlank()) {
+            return List.of();
+        }
+        return switch (task.status()) {
+            case PENDING_ASSIGNMENT -> hasRole(role, "RND_DIRECTOR")
+                    ? List.of(action("ASSIGN_TASK", "分发任务", "POST", "/api/v1/rnd-tasks/" + task.id() + "/assign", true))
+                    : List.of();
+            case PENDING_ACCEPTANCE -> hasRole(role, "RND_ENGINEER", "RND")
+                    ? List.of(action("ACCEPT_TASK", "接受任务", "POST", "/api/v1/rnd-tasks/" + task.id() + "/accept", true))
+                    : List.of();
+            case SAMPLING -> samplingActions(task, currentExperimentForm, role);
+            case PENDING_TEST -> testActions(currentTestAssignment, role);
+            case COMPLETED -> completedActions(task, role);
+        };
+    }
+
+    private List<DetailAction> samplingActions(RndTask task, ExperimentForm currentExperimentForm, String role) {
+        if (!hasRole(role, "RND_ENGINEER", "RND")) {
+            return List.of();
+        }
+        var actions = new ArrayList<DetailAction>();
+        actions.add(action(
+                "SAVE_EXPERIMENT_DRAFT",
+                "保存实验单",
+                "POST",
+                "/api/v1/rnd-tasks/" + task.id() + "/experiment-form/draft",
+                true
+        ));
+        if (currentExperimentForm != null && currentExperimentForm.status() == ExperimentFormStatus.DRAFT) {
+            actions.add(action(
+                    "SUBMIT_EXPERIMENT_TEST",
+                    "提交内部测试",
+                    "POST",
+                    "/api/v1/experiment-forms/" + currentExperimentForm.id() + "/submit-test",
+                    true
+            ));
+        }
+        return actions;
+    }
+
+    private List<DetailAction> testActions(TestAssignment currentTestAssignment, String role) {
+        if (!hasRole(role, "TESTER", "QA_TESTER") || currentTestAssignment == null
+                || currentTestAssignment.status() != TestAssignmentStatus.PENDING_TEST) {
+            return List.of();
+        }
+        return List.of(
+                action("PASS_INTERNAL_TEST", "测试通过并锁版", "POST", "/api/v1/test-assignments/" + currentTestAssignment.id() + "/pass", true),
+                action("FAIL_RESAMPLE", "不通过复打样", "POST", "/api/v1/test-assignments/" + currentTestAssignment.id() + "/fail-resample", false)
+        );
+    }
+
+    private List<DetailAction> completedActions(RndTask task, String role) {
+        if (!hasRole(role, "RND_ASSISTANT")) {
+            return List.of();
+        }
+        return List.of(
+                action("CREATE_SHIPMENT", "登记寄样", "POST", "/api/v1/sample-versions/" + task.versionId() + "/shipments", true),
+                action("GENERATE_PRICING_FILE", "生成核价文件", "POST", "/api/v1/sample-versions/" + task.versionId() + "/pricing-files", false)
+        );
+    }
+
+    private DetailAction action(String code, String label, String httpMethod, String endpoint, boolean primary) {
+        return new DetailAction(code, label, httpMethod, endpoint, primary);
+    }
+
+    private boolean hasRole(String role, String... allowedRoles) {
+        for (String allowedRole : allowedRoles) {
+            if (allowedRole.equals(role)) {
                 return true;
             }
         }

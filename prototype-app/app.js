@@ -146,6 +146,7 @@ const views = [
   { id: "rnd-module", title: "研发任务", subtitle: "任务池、分发、研发接任务、实验单、内部测试和锁版都在这里处理", render: renderRndModule },
   { id: "task-pool", title: "PC端：研发任务池", subtitle: "所有审核通过但尚未分配的任务先进入任务池", render: renderTaskPool },
   { id: "task-assign", title: "PC端：任务分发", subtitle: "研发总监分发给具体研发人员，飞书自动通知到人", render: renderTaskAssign },
+  { id: "task-detail", title: "研发任务详情", subtitle: "按角色和状态展示字段分组、实验单和可点击操作按钮", render: renderTaskDetail },
   { id: "mobile-home", title: "手机/平板端：研发人员接任务", subtitle: "研发人员在自己的飞书账号内接受任务", render: renderMobileHome },
   { id: "experiment", title: "手机/平板端：打样实验单", subtitle: "现场录入实验数据，先保存草稿，再通知内部测试", render: renderExperiment },
   { id: "experiment-history", title: "实验单历史版本", subtitle: "按样品版本查阅已锁定和草稿实验单，保留每次打样调整记录", render: renderExperimentHistory },
@@ -186,6 +187,7 @@ const moduleMap = {
   "request-review": "demand-module",
   "task-pool": "rnd-module",
   "task-assign": "rnd-module",
+  "task-detail": "rnd-module",
   "mobile-home": "rnd-module",
   "experiment": "rnd-module",
   "experiment-history": "rnd-module",
@@ -588,7 +590,64 @@ function renderTaskAssign() {
       </div>
       <div class="actions">
         <button class="secondary" data-toast="分发草稿已保存">保存分发草稿</button>
-        <button data-route="mobile-home">分发任务并飞书通知研发</button>
+        <button data-route="task-detail">分发任务并飞书通知研发</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderTaskDetail() {
+  const detailEndpoint = "GET /api/v1/rnd-tasks/TASK-0001/detail?role=RND_ENGINEER";
+  const actions = [
+    ["RND_DIRECTOR", "PENDING_ASSIGNMENT", "ASSIGN_TASK", "分发任务", "/api/v1/rnd-tasks/{id}/assign"],
+    ["RND_ENGINEER", "PENDING_ACCEPTANCE", "ACCEPT_TASK", "接受任务", "/api/v1/rnd-tasks/{id}/accept"],
+    ["RND_ENGINEER", "SAMPLING", "SAVE_EXPERIMENT_DRAFT", "保存实验单", "/api/v1/rnd-tasks/{id}/experiment-form/draft"],
+    ["RND_ENGINEER", "SAMPLING", "SUBMIT_EXPERIMENT_TEST", "提交内部测试", "/api/v1/experiment-forms/{id}/submit-test"],
+    ["TESTER", "PENDING_TEST", "PASS_INTERNAL_TEST", "测试通过并锁版", "/api/v1/test-assignments/{id}/pass"],
+    ["TESTER", "PENDING_TEST", "FAIL_RESAMPLE", "不通过复打样", "/api/v1/test-assignments/{id}/fail-resample"],
+    ["RND_ASSISTANT", "COMPLETED", "CREATE_SHIPMENT", "登记寄样", "/api/v1/sample-versions/{id}/shipments"],
+    ["RND_ASSISTANT", "COMPLETED", "GENERATE_PRICING_FILE", "生成核价文件", "/api/v1/sample-versions/{id}/pricing-files"],
+  ];
+
+  return `
+    <div class="grid cols-2">
+      <div class="card">
+        <div class="section-title"><h3>研发任务详情</h3><span class="badge green">按钮权限矩阵</span></div>
+        <p><span class="badge">${detailEndpoint}</span></p>
+        ${detailGrid([
+          ["任务编号", "TASK-0001"],
+          ["样品编号", "YP202606180001"],
+          ["产品名称", state.product],
+          ["样品版本", "A0"],
+          ["当前状态", "SAMPLING"],
+          ["负责人", "黄丽金"],
+        ])}
+        <div class="doc-grid" style="margin-top:16px">
+          ${docCard("基础信息", "sampleNo / productName / versionCode")}
+          ${docCard("任务信息", "status / assigneeName / dueDate / assignedAt")}
+          ${docCard("实验单", "currentExperimentForm.id / status / summary / materials")}
+          ${docCard("内部测试", "currentTestAssignment.id / testerName / status")}
+        </div>
+        <div class="actions">
+          <button class="green" data-route="experiment">按可用操作进入实验单</button>
+          <button class="secondary" data-route="experiment-history">查看历史版本</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-title"><h3>角色-状态-按钮矩阵</h3><span class="badge orange">availableActions</span></div>
+        <div class="table action-matrix">
+          <div class="row header"><div>角色</div><div>状态</div><div>动作编码</div><div>按钮</div><div>接口</div></div>
+          ${actions.map(([role, status, code, label, endpoint]) => `
+            <div class="row">
+              <strong>${role}</strong>
+              <div>${status}</div>
+              <div><span class="badge">${code}</span></div>
+              <div>${label}</div>
+              <div>${endpoint}</div>
+            </div>
+          `).join("")}
+        </div>
+        <p style="color:var(--muted)">页面按钮不再写死，而是读取后端 availableActions；同一个详情页给总监、研发、测试、内勤看到的按钮不同。</p>
       </div>
     </div>
   `;
@@ -600,7 +659,7 @@ function renderMobileHome() {
       <span class="badge orange">待接受 1</span>
       <span class="badge green">打样中 2</span>
     </div>
-    ${phoneCard("新研发任务", "500g香卤大肠头 A0", "研发总监已分发，等待接受", "待接受", "orange", "experiment")}
+    ${phoneCard("新研发任务", "500g香卤大肠头 A0", "研发总监已分发，等待接受", "待接受", "orange", "task-detail")}
     ${phoneCard("继续填写实验单", "调理鸡排 A2", "草稿已保存，待补充工序照片", "草稿", "green", "experiment")}
     <h3 style="margin-top:20px">快捷入口</h3>
     <div class="quick-grid">
@@ -613,7 +672,7 @@ function renderMobileHome() {
     <div class="card">
       <h3>研发人员在自己的账号里处理</h3>
       <p>飞书消息卡片会直接跳到这条任务。接受后进入实验单，现场用手机/平板录入数据和照片。</p>
-      <div class="actions"><button class="green" data-route="experiment">接受任务并开始实验</button></div>
+      <div class="actions"><button class="green" data-route="task-detail">打开飞书任务详情</button></div>
     </div>
   `, true);
 }

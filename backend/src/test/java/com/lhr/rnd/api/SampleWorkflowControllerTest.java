@@ -1183,6 +1183,60 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.items[0].id").value(firstPricingId));
     }
 
+    @Test
+    void rndTaskDetailReturnsRoleAwareFieldGroupsAndAvailableActions() throws Exception {
+        var taskId = createApprovedRequest();
+
+        mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                        .param("role", "RND_DIRECTOR"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.task.id").value(taskId))
+                .andExpect(jsonPath("$.data.version.versionCode").value("A0"))
+                .andExpect(jsonPath("$.data.fieldGroups[0].title").value("基础信息"))
+                .andExpect(jsonPath("$.data.fieldGroups[1].title").value("任务信息"))
+                .andExpect(jsonPath("$.data.availableActions", hasSize(1)))
+                .andExpect(jsonPath("$.data.availableActions[0].code").value("ASSIGN_TASK"))
+                .andExpect(jsonPath("$.data.availableActions[0].endpoint").value("/api/v1/rnd-tasks/" + taskId + "/assign"));
+
+        assignTask(taskId);
+
+        mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                        .param("role", "RND_ENGINEER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.task.status").value("PENDING_ACCEPTANCE"))
+                .andExpect(jsonPath("$.data.availableActions", hasSize(1)))
+                .andExpect(jsonPath("$.data.availableActions[0].code").value("ACCEPT_TASK"));
+
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+
+        mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                        .param("role", "RND_ENGINEER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.task.status").value("SAMPLING"))
+                .andExpect(jsonPath("$.data.currentExperimentForm.id").value(experimentFormId))
+                .andExpect(jsonPath("$.data.fieldGroups[2].title").value("实验单"))
+                .andExpect(jsonPath("$.data.availableActions", hasSize(2)))
+                .andExpect(jsonPath("$.data.availableActions[0].code").value("SAVE_EXPERIMENT_DRAFT"))
+                .andExpect(jsonPath("$.data.availableActions[1].code").value("SUBMIT_EXPERIMENT_TEST"));
+
+        var testAssignmentId = submitExperimentForTest(experimentFormId);
+
+        mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                        .param("role", "TESTER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.task.status").value("PENDING_TEST"))
+                .andExpect(jsonPath("$.data.currentTestAssignment.id").value(testAssignmentId))
+                .andExpect(jsonPath("$.data.availableActions", hasSize(2)))
+                .andExpect(jsonPath("$.data.availableActions[0].code").value("PASS_INTERNAL_TEST"))
+                .andExpect(jsonPath("$.data.availableActions[1].code").value("FAIL_RESAMPLE"));
+
+        mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                        .param("role", "MANAGER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.availableActions", hasSize(0)));
+    }
+
     private void acceptTask(String taskId) throws Exception {
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/accept", taskId)
                         .contentType(MediaType.APPLICATION_JSON)

@@ -3,6 +3,7 @@ package com.lhr.rnd.api;
 import com.lhr.rnd.model.ArchiveFileView;
 import com.lhr.rnd.model.DashboardOverview;
 import com.lhr.rnd.model.RndTask;
+import com.lhr.rnd.model.RndTaskDetailView;
 import com.lhr.rnd.model.ExperimentForm;
 import com.lhr.rnd.model.PricingFileRecord;
 import com.lhr.rnd.model.SampleRequest;
@@ -103,6 +104,14 @@ public class SampleWorkflowController {
             return ApiResponse.success(workflowService.tasks(status, keyword, page, size, sort));
         }
         return ApiResponse.success(workflowService.tasks(status, keyword));
+    }
+
+    @GetMapping("/rnd-tasks/{id}/detail")
+    public ApiResponse<RndTaskDetailView> rndTaskDetail(
+            @PathVariable String id,
+            @RequestParam(required = false) String role
+    ) {
+        return ApiResponse.success(workflowService.rndTaskDetail(id, role));
     }
 
     @PostMapping("/rnd-tasks/{id}/assign")

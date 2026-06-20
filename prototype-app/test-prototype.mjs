@@ -109,6 +109,12 @@ for (const marker of ["pagedListExamples", "page=0&size=10", "sort=createdAt,des
   }
 }
 
+for (const marker of ["task-detail", "GET /api/v1/rnd-tasks/TASK-0001/detail?role=RND_ENGINEER", "availableActions", "PASS_INTERNAL_TEST"]) {
+  if (!js.includes(marker) && !html.includes(marker)) {
+    throw new Error(`Missing task-detail marker: ${marker}`);
+  }
+}
+
 for (const marker of ["config-card", "表单字段配置", "流程状态配置", "飞书通知配置", "模板配置", "基础字典配置"]) {
   if (!js.includes(marker) && !html.includes(marker)) {
     throw new Error(`Missing config-center marker: ${marker}`);
