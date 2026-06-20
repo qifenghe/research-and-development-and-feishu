@@ -55,8 +55,11 @@ public class SampleWorkflowController {
     }
 
     @GetMapping("/sample-requests")
-    public ApiResponse<List<SampleRequest>> sampleRequests() {
-        return ApiResponse.success(workflowService.requests());
+    public ApiResponse<List<SampleRequest>> sampleRequests(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword
+    ) {
+        return ApiResponse.success(workflowService.requests(status, keyword));
     }
 
     @GetMapping("/dashboard/overview")
@@ -80,6 +83,14 @@ public class SampleWorkflowController {
     @GetMapping("/rnd-tasks/pool")
     public ApiResponse<List<RndTask>> taskPool() {
         return ApiResponse.success(workflowService.taskPool());
+    }
+
+    @GetMapping("/rnd-tasks")
+    public ApiResponse<List<RndTask>> rndTasks(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword
+    ) {
+        return ApiResponse.success(workflowService.tasks(status, keyword));
     }
 
     @PostMapping("/rnd-tasks/{id}/assign")
@@ -190,6 +201,14 @@ public class SampleWorkflowController {
     @PostMapping("/sample-versions/{id}/pricing-files")
     public ApiResponse<PricingFileRecord> generatePricingFile(@PathVariable String id) {
         return ApiResponse.success(workflowService.generatePricingFile(id));
+    }
+
+    @GetMapping("/pricing-files")
+    public ApiResponse<List<PricingFileRecord>> pricingFiles(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword
+    ) {
+        return ApiResponse.success(workflowService.pricingFiles(status, keyword));
     }
 
     @PostMapping("/pricing-files/{id}/notify-finance")

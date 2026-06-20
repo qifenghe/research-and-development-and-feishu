@@ -41,6 +41,13 @@ const dashboardOverview = {
   ],
 };
 
+const dashboardDrilldowns = [
+  ["待总监审核", "GET /api/v1/sample-requests?status=PENDING_REVIEW&keyword=", "request-review"],
+  ["任务池待分发", "GET /api/v1/rnd-tasks?status=PENDING_ASSIGNMENT&keyword=", "task-pool"],
+  ["研发打样中", "GET /api/v1/rnd-tasks?status=SAMPLING&keyword=", "experiment"],
+  ["待财务核价", "GET /api/v1/pricing-files?status=GENERATED&keyword=", "pricing-list"],
+];
+
 const sampleRecords = [
   { product: "500g香卤大肠头", version: "A0", customer: "客户A", owner: "黄丽金", status: "待内部测试", date: "2026-06-20", target: "internal-test" },
   { product: "黑椒鸡柳料理包", version: "A1", customer: "客户C", owner: "李工", status: "待寄样反馈", date: "2026-06-21", target: "shipment-list" },
@@ -272,6 +279,15 @@ function renderDashboard() {
         ${stat("已通知财务", dashboardOverview.financeNotifiedCount, "var(--blue)")}
         ${stat("停止/废弃", dashboardOverview.stoppedCount, "var(--red)")}
       </div>
+      <div class="section-title"><h3>指标下钻入口</h3><span class="badge">按状态过滤列表</span></div>
+      <div class="module-grid drilldown-grid">
+        ${dashboardDrilldowns.map(([label, endpoint, target]) => `
+          <a class="module-card blue" href="#${target}">
+            <strong>${label}</strong>
+            <span>${endpoint}</span>
+          </a>
+        `).join("")}
+      </div>
       <div class="grid cols-2" style="margin-top:18px">
         <div>
           <div class="section-title"><h3>最近待办任务</h3><a class="button secondary" href="#rnd-module">进入研发任务</a></div>
@@ -412,9 +428,9 @@ function renderDemandModule() {
     ["2", "研发总监审核", "检查信息是否完整，可退回补充或通过", "request-review", "orange"],
     ["3", "进入任务池", "审核通过后进入研发任务池等待分发", "task-pool", "purple"],
   ], [
-    ["待审核需求", "6", "var(--orange)"],
-    ["退回补充", "2", "var(--red)"],
-    ["今日新增", "4", "var(--blue)"],
+    ["待审核需求", "GET /sample-requests?status=PENDING_REVIEW", "var(--orange)"],
+    ["按名称搜索", "keyword", "var(--blue)"],
+    ["审核后", "进入任务池", "var(--purple)"],
   ]);
 }
 
@@ -428,9 +444,9 @@ function renderRndModule() {
     ["6", "配置内部测试", "选择测试人员、测试项目和通知方式", "test-config", "teal"],
     ["7", "测试通过锁版", "测试通过后提交实验单并锁定历史版本", "internal-test", "teal"],
   ], [
-    ["任务池待分发", "9", "var(--purple)"],
-    ["打样中", "8", "var(--green)"],
-    ["待内部测试", "5", "var(--teal)"],
+    ["任务池待分发", "GET /rnd-tasks?status=PENDING_ASSIGNMENT", "var(--purple)"],
+    ["打样中", "GET /rnd-tasks?status=SAMPLING", "var(--green)"],
+    ["待内部测试", "GET /rnd-tasks?status=PENDING_TEST", "var(--teal)"],
   ]);
 }
 
@@ -444,8 +460,8 @@ function renderShipmentPricingModule() {
     ["6", "核价资料归档", "留存实验、测试、寄样和核价文件", "archive", "gray"],
   ], [
     ["待寄样反馈", "7", "var(--orange)"],
-    ["待生成核价", "4", "var(--blue)"],
-    ["待财务报价", "3", "var(--red)"],
+    ["待生成核价", "GET /pricing-files?status=GENERATED", "var(--blue)"],
+    ["已通知财务", "GET /pricing-files?status=FINANCE_NOTIFIED", "var(--red)"],
   ]);
 }
 
@@ -768,7 +784,7 @@ function renderShipmentDetail() {
 function renderPricingList() {
   return `
     <div class="card">
-      <div class="section-title"><h3>核价文件列表</h3><span class="badge">Excel模板版本化</span></div>
+      <div class="section-title"><h3>核价文件列表</h3><span class="badge">GET /api/v1/pricing-files?status=GENERATED&keyword=</span></div>
       <div class="actions" style="margin-top:0;margin-bottom:14px">
         <button data-route="pricing-detail">为选中样品生成核价文件</button>
         <button class="secondary" data-toast="样品完成后可不等寄样反馈，单独生成核价文件">单独生成核价文件</button>

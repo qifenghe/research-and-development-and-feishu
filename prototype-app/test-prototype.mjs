@@ -97,6 +97,12 @@ for (const marker of ["dashboardOverview", "GET /api/v1/dashboard/overview", "re
   }
 }
 
+for (const marker of ["dashboardDrilldowns", "GET /api/v1/rnd-tasks?status=SAMPLING", "GET /api/v1/pricing-files?status=GENERATED", "GET /api/v1/sample-requests?status=PENDING_REVIEW"]) {
+  if (!js.includes(marker) && !html.includes(marker)) {
+    throw new Error(`Missing drilldown marker: ${marker}`);
+  }
+}
+
 for (const marker of ["config-card", "表单字段配置", "流程状态配置", "飞书通知配置", "模板配置", "基础字典配置"]) {
   if (!js.includes(marker) && !html.includes(marker)) {
     throw new Error(`Missing config-center marker: ${marker}`);

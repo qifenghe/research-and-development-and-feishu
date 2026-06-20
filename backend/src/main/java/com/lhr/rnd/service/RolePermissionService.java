@@ -73,29 +73,33 @@ public class RolePermissionService {
                         rule("POST", "/api/v1/sample-versions/*/shipments", "登记寄样", 40),
                         rule("POST", "/api/v1/shipments/*/feedback", "登记客户反馈", 50),
                         rule("POST", "/api/v1/sample-versions/*/pricing-files", "生成核价文件", 60),
-                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 70),
-                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 80),
-                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 90)
+                        rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 70),
+                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 80),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 90),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 100)
                 )),
                 new RolePermissionConfig("RND_DIRECTOR", List.of(
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
                         rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 20),
                         rule("POST", "/api/v1/sample-requests/*/approve", "审核样品需求", 30),
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 40),
-                        rule("POST", "/api/v1/rnd-tasks/*/assign", "分发研发任务", 50),
-                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 60),
-                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 70),
-                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 80)
+                        rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 50),
+                        rule("POST", "/api/v1/rnd-tasks/*/assign", "分发研发任务", 60),
+                        rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 70),
+                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 80),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 90),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 100)
                 )),
                 new RolePermissionConfig("RND_ENGINEER", List.of(
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 20),
-                        rule("POST", "/api/v1/rnd-tasks/*/accept", "接受研发任务", 30),
-                        rule("POST", "/api/v1/rnd-tasks/*/experiment-form/draft", "保存实验单草稿", 40),
-                        rule("POST", "/api/v1/experiment-forms/*/submit-test", "提交内部测试", 50),
-                        rule("POST", "/api/v1/experiment-forms/*/attachments", "上传实验附件", 60),
-                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 70),
-                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 80)
+                        rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 30),
+                        rule("POST", "/api/v1/rnd-tasks/*/accept", "接受研发任务", 40),
+                        rule("POST", "/api/v1/rnd-tasks/*/experiment-form/draft", "保存实验单草稿", 50),
+                        rule("POST", "/api/v1/experiment-forms/*/submit-test", "提交内部测试", 60),
+                        rule("POST", "/api/v1/experiment-forms/*/attachments", "上传实验附件", 70),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 80),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 90)
                 )),
                 new RolePermissionConfig("TESTER", List.of(
                         rule("POST", "/api/v1/test-assignments/*/pass", "提交测试通过", 10),
@@ -118,9 +122,11 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
                         rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 20),
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 30),
-                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 40),
-                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 50),
-                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 60)
+                        rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 40),
+                        rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 50),
+                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 60),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 70),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 80)
                 ))
         );
     }
@@ -164,6 +170,12 @@ public class RolePermissionService {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
         }
         if (isDashboardRead(method, uri)) {
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
+        }
+        if (isTaskList(method, uri)) {
+            return hasAnyRole(role, "RND_DIRECTOR", "RND_ENGINEER", "MANAGER");
+        }
+        if (isPricingList(method, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
         }
         return switch (role) {
@@ -215,6 +227,10 @@ public class RolePermissionService {
         return "GET".equals(method) && uri.equals("/api/v1/rnd-tasks/pool");
     }
 
+    private boolean isTaskList(String method, String uri) {
+        return "GET".equals(method) && uri.equals("/api/v1/rnd-tasks");
+    }
+
     private boolean isTaskAssign(String method, String uri) {
         return "POST".equals(method) && uri.matches("^/api/v1/rnd-tasks/[^/]+/assign$");
     }
@@ -246,6 +262,10 @@ public class RolePermissionService {
 
     private boolean isPricingWrite(String method, String uri) {
         return "POST".equals(method) && uri.matches("^/api/v1/sample-versions/[^/]+/pricing-files$");
+    }
+
+    private boolean isPricingList(String method, String uri) {
+        return "GET".equals(method) && uri.equals("/api/v1/pricing-files");
     }
 
     private boolean isFinanceWrite(String method, String uri) {

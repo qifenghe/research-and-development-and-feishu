@@ -497,7 +497,54 @@ public class SampleWorkflowService {
     }
 
     public synchronized List<SampleRequest> requests() {
-        return new ArrayList<>(requests.values());
+        return requests(null, null);
+    }
+
+    public synchronized List<SampleRequest> requests(String status, String keyword) {
+        return requests.values().stream()
+                .filter(request -> matchesStatus(status, request.status().name()))
+                .filter(request -> matchesKeyword(
+                        keyword,
+                        request.sampleNo(),
+                        request.productName(),
+                        request.productType(),
+                        request.customerName(),
+                        request.specification(),
+                        request.creatorName(),
+                        request.status().name()
+                ))
+                .toList();
+    }
+
+    public synchronized List<RndTask> tasks(String status, String keyword) {
+        return tasks.values().stream()
+                .filter(task -> matchesStatus(status, task.status().name()))
+                .filter(task -> matchesKeyword(
+                        keyword,
+                        task.id(),
+                        task.sampleNo(),
+                        task.productName(),
+                        task.versionCode(),
+                        task.assigneeName(),
+                        task.status().name()
+                ))
+                .toList();
+    }
+
+    public synchronized List<PricingFileRecord> pricingFiles(String status, String keyword) {
+        return pricingFiles.values().stream()
+                .filter(pricingFile -> matchesStatus(status, pricingFile.status().name()))
+                .filter(pricingFile -> matchesKeyword(
+                        keyword,
+                        pricingFile.id(),
+                        pricingFile.sampleNo(),
+                        pricingFile.productName(),
+                        pricingFile.versionCode(),
+                        pricingFile.pricingVersion(),
+                        pricingFile.fileName(),
+                        pricingFile.status().name()
+                ))
+                .toList();
     }
 
     public synchronized DashboardOverview dashboardOverview() {
@@ -586,6 +633,23 @@ public class SampleWorkflowService {
                 pricingFile.status().name(),
                 pricingFile.generatedAt()
         );
+    }
+
+    private boolean matchesStatus(String expectedStatus, String actualStatus) {
+        return expectedStatus == null || expectedStatus.isBlank() || expectedStatus.equals(actualStatus);
+    }
+
+    private boolean matchesKeyword(String keyword, String... values) {
+        if (keyword == null || keyword.isBlank()) {
+            return true;
+        }
+        var normalizedKeyword = keyword.trim().toLowerCase();
+        for (String value : values) {
+            if (value != null && value.toLowerCase().contains(normalizedKeyword)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Transactional

@@ -1075,6 +1075,49 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.pendingPricingFiles[0].pricingFileId").value(pricingFileId));
     }
 
+    @Test
+    void listEndpointsFilterByStatusAndKeywordForDashboardDrillDown() throws Exception {
+        createPendingSampleRequest();
+        var pendingTaskId = createApprovedRequest();
+        var assignedTaskId = createApprovedRequest();
+        assignTask(assignedTaskId, "李研发");
+        var samplingTaskId = createApprovedRequest();
+        assignTask(samplingTaskId, "张研发");
+        acceptTask(samplingTaskId);
+        var completedVersionId = createLockedSampleVersion();
+        var pricingFileId = generatePricingFile(completedVersionId);
+
+        mockMvc.perform(get("/api/v1/sample-requests")
+                        .param("status", "PENDING_REVIEW")
+                        .param("keyword", "香卤"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].status").value("PENDING_REVIEW"))
+                .andExpect(jsonPath("$.data[0].productName").value("500g香卤大肠头"));
+
+        mockMvc.perform(get("/api/v1/rnd-tasks")
+                        .param("status", "SAMPLING")
+                        .param("keyword", "香卤"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].id").value(samplingTaskId))
+                .andExpect(jsonPath("$.data[0].status").value("SAMPLING"));
+
+        mockMvc.perform(get("/api/v1/rnd-tasks")
+                        .param("status", "PENDING_ASSIGNMENT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].id").value(pendingTaskId));
+
+        mockMvc.perform(get("/api/v1/pricing-files")
+                        .param("status", "GENERATED")
+                        .param("keyword", "香卤"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].id").value(pricingFileId))
+                .andExpect(jsonPath("$.data[0].status").value("GENERATED"));
+    }
+
     private void acceptTask(String taskId) throws Exception {
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/accept", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
