@@ -59,4 +59,55 @@ assert.deepEqual(buildWizardSummary(ready), {
   dispatchResult: null,
 });
 
+let receivedPeople = null;
+await runDemoWizard({
+  check: async () => ({
+    ready: true,
+    envResult: { ready: true, missing: [] },
+    statusResult: { ready: true, missing: [] },
+  }),
+  demo: async (options) => {
+    receivedPeople = {
+      assistant: options.assistant,
+      director: options.director,
+      engineer: options.engineer,
+    };
+    return {
+      requestId: "REQ-0002",
+      taskId: "TASK-0002",
+      sampleNo: "YP202606180002",
+      engineer: options.engineer,
+      pendingNotifications: [],
+      dispatchResult: null,
+    };
+  },
+  assistant: {
+    name: "李内勤",
+    feishuUserId: "ou_assistant_real",
+  },
+  director: {
+    name: "王总监",
+    feishuUserId: "ou_director_real",
+  },
+  engineer: {
+    name: "张研发",
+    feishuUserId: "ou_engineer_real",
+  },
+});
+
+assert.deepEqual(receivedPeople, {
+  assistant: {
+    name: "李内勤",
+    feishuUserId: "ou_assistant_real",
+  },
+  director: {
+    name: "王总监",
+    feishuUserId: "ou_director_real",
+  },
+  engineer: {
+    name: "张研发",
+    feishuUserId: "ou_engineer_real",
+  },
+});
+
 console.log("Feishu demo wizard tests passed.");

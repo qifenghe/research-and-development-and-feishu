@@ -28,6 +28,8 @@ export async function runDemoWizard(options = {}) {
     dispatch: options.dispatch === true,
     productName: options.productName,
     customerName: options.customerName,
+    assistant: options.assistant,
+    director: options.director,
     engineer: options.engineer,
   });
   return {
@@ -58,6 +60,14 @@ function parseArgs(argv) {
       options.envFile = argv[++index];
     } else if (arg === "--backend-url") {
       options.backendUrl = argv[++index];
+    } else if (arg === "--assistant-name") {
+      options.assistant = { ...(options.assistant || {}), name: argv[++index] };
+    } else if (arg === "--assistant-feishu-user-id") {
+      options.assistant = { ...(options.assistant || {}), feishuUserId: argv[++index] };
+    } else if (arg === "--director-name") {
+      options.director = { ...(options.director || {}), name: argv[++index] };
+    } else if (arg === "--director-feishu-user-id") {
+      options.director = { ...(options.director || {}), feishuUserId: argv[++index] };
     } else if (arg === "--engineer-name") {
       options.engineer = { ...(options.engineer || {}), name: argv[++index] };
     } else if (arg === "--engineer-feishu-user-id") {
@@ -99,12 +109,17 @@ function printHelp() {
   console.log(`用法：
   node scripts/feishu-demo-wizard.mjs \\
     --backend-url http://127.0.0.1:8080 \\
+    --assistant-name 李内勤 \\
+    --assistant-feishu-user-id ou_assistant_xxx \\
+    --director-name 王总监 \\
+    --director-feishu-user-id ou_director_xxx \\
     --engineer-name 张研发 \\
     --engineer-feishu-user-id ou_xxx
 
 说明：
   - 先运行飞书本地自检，未就绪时不会创建演示任务。
   - 就绪后自动创建样品需求、审核、分发研发任务，并生成飞书待发送通知。
+  - 可分别指定研发内勤、研发总监和研发人员的飞书 user_id。
   - 默认不真实派发；追加 --dispatch 后才调用通知派发接口。
   - 使用 --dispatch 时必须填写真实研发人员飞书 user_id。`);
 }
