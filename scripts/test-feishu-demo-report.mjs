@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
-import { validateDemoReport } from "./feishu-demo-report.mjs";
+import { loadPrototypeRoutes, validateDemoReport } from "./feishu-demo-report.mjs";
 
 const validReport = {
   ready: true,
@@ -98,5 +101,32 @@ assert.deepEqual(validateDemoReport({
   ],
   checklistCount: 6,
 });
+
+assert.deepEqual(validateDemoReport({
+  ...validReport,
+  checklist: [
+    {
+      ...validReport.checklist[0],
+      route: "#missing-page",
+    },
+    ...validReport.checklist.slice(1),
+  ],
+}, { knownRoutes: ["dashboard", "rnd-module", "experiment-history", "shipment-pricing-module", "pricing-list", "pricing-detail"] }), {
+  valid: false,
+  errors: [
+    "checklist[0].route 指向不存在的页面：#missing-page",
+  ],
+  checklistCount: 6,
+});
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "feishu-demo-report-"));
+const prototypeAppPath = path.join(tempDir, "app.js");
+fs.writeFileSync(prototypeAppPath, `
+const views = [
+  { id: "dashboard", title: "工作台" },
+  { id: "pricing-detail", title: "核价文件详情" },
+];
+`, "utf8");
+assert.deepEqual(loadPrototypeRoutes(prototypeAppPath), ["dashboard", "pricing-detail"]);
 
 console.log("Feishu demo report tests passed.");
