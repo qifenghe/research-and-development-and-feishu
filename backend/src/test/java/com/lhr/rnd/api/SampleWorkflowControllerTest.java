@@ -1118,6 +1118,71 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data[0].status").value("GENERATED"));
     }
 
+    @Test
+    void listEndpointsSupportPaginationAndSortingWhenPageParametersAreProvided() throws Exception {
+        createPendingSampleRequest();
+        var secondRequestId = createPendingSampleRequest();
+        var thirdRequestId = createPendingSampleRequest();
+
+        mockMvc.perform(get("/api/v1/sample-requests")
+                        .param("status", "PENDING_REVIEW")
+                        .param("page", "0")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items", hasSize(2)))
+                .andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.size").value(2))
+                .andExpect(jsonPath("$.data.totalPages").value(2))
+                .andExpect(jsonPath("$.data.items[0].id").value(thirdRequestId))
+                .andExpect(jsonPath("$.data.items[1].id").value(secondRequestId));
+
+        mockMvc.perform(get("/api/v1/sample-requests")
+                        .param("status", "PENDING_REVIEW")
+                        .param("page", "0")
+                        .param("size", "2")
+                        .param("sort", "createdAt,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items", hasSize(2)))
+                .andExpect(jsonPath("$.data.items[0].id").value("REQ-0001"))
+                .andExpect(jsonPath("$.data.items[1].id").value(secondRequestId));
+
+        var firstTaskId = createApprovedRequest();
+        var secondTaskId = createApprovedRequest();
+        var thirdTaskId = createApprovedRequest();
+
+        mockMvc.perform(get("/api/v1/rnd-tasks")
+                        .param("status", "PENDING_ASSIGNMENT")
+                        .param("page", "0")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items", hasSize(2)))
+                .andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.items[0].id").value(thirdTaskId))
+                .andExpect(jsonPath("$.data.items[1].id").value(secondTaskId));
+
+        var firstPricingId = generatePricingFile(createLockedSampleVersion());
+        var secondPricingId = generatePricingFile(createLockedSampleVersion());
+
+        mockMvc.perform(get("/api/v1/pricing-files")
+                        .param("status", "GENERATED")
+                        .param("page", "0")
+                        .param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items", hasSize(1)))
+                .andExpect(jsonPath("$.data.total").value(2))
+                .andExpect(jsonPath("$.data.totalPages").value(2))
+                .andExpect(jsonPath("$.data.items[0].id").value(secondPricingId));
+
+        mockMvc.perform(get("/api/v1/pricing-files")
+                        .param("status", "GENERATED")
+                        .param("page", "0")
+                        .param("size", "1")
+                        .param("sort", "generatedAt,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(firstPricingId));
+    }
+
     private void acceptTask(String taskId) throws Exception {
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/accept", taskId)
                         .contentType(MediaType.APPLICATION_JSON)

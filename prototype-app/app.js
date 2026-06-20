@@ -48,6 +48,17 @@ const dashboardDrilldowns = [
   ["待财务核价", "GET /api/v1/pricing-files?status=GENERATED&keyword=", "pricing-list"],
 ];
 
+const pagedListExamples = {
+  task: {
+    endpoint: "GET /api/v1/rnd-tasks?status=SAMPLING&keyword=&page=0&size=10&sort=createdAt,desc",
+    pageText: "第 1 / 4 页 · 共 34 条 · 每页 10 条",
+  },
+  pricing: {
+    endpoint: "GET /api/v1/pricing-files?status=GENERATED&keyword=&page=0&size=10&sort=generatedAt,desc",
+    pageText: "第 1 / 2 页 · 共 12 条 · 每页 10 条",
+  },
+};
+
 const sampleRecords = [
   { product: "500g香卤大肠头", version: "A0", customer: "客户A", owner: "黄丽金", status: "待内部测试", date: "2026-06-20", target: "internal-test" },
   { product: "黑椒鸡柳料理包", version: "A1", customer: "客户C", owner: "李工", status: "待寄样反馈", date: "2026-06-21", target: "shipment-list" },
@@ -784,19 +795,21 @@ function renderShipmentDetail() {
 function renderPricingList() {
   return `
     <div class="card">
-      <div class="section-title"><h3>核价文件列表</h3><span class="badge">GET /api/v1/pricing-files?status=GENERATED&keyword=</span></div>
+      <div class="section-title"><h3>核价文件列表</h3><span class="badge">${pagedListExamples.pricing.endpoint}</span></div>
+      ${listToolbar("核价状态", "GENERATED", "产品名 / 样品编号 / 文件名", "生成时间倒序")}
       <div class="actions" style="margin-top:0;margin-bottom:14px">
         <button data-route="pricing-detail">为选中样品生成核价文件</button>
         <button class="secondary" data-toast="样品完成后可不等寄样反馈，单独生成核价文件">单独生成核价文件</button>
       </div>
       <div class="table">
-        <div class="row header"><div>产品</div><div>样品版本</div><div>核价版本</div><div>状态</div><div>日期</div><div>操作</div></div>
+        <div class="row header"><div>编号/产品</div><div>样品版本</div><div>负责人</div><div>状态</div><div>生成时间</div><div>操作</div></div>
         ${[
-          [state.product, "A0", "待生成", "样品完成", "06-20", "pricing-detail"],
-          ["黑椒鸡柳料理包", "A1", "A1-核价V2", "已提交财务", "06-18", "finance"],
-          ["调理鸡排", "A2", "A2-核价V1", "草稿", "06-17", "pricing-detail"],
+          ["PRICE-0003 / " + state.product, "A0-核价V1", "研发内勤", "GENERATED", "06-20 11:30", "pricing-detail"],
+          ["PRICE-0002 / 黑椒鸡柳料理包", "A1-核价V2", "研发内勤", "FINANCE_NOTIFIED", "06-18 15:20", "finance"],
+          ["PRICE-0001 / 调理鸡排", "A2-核价V1", "研发内勤", "GENERATED", "06-17 09:45", "pricing-detail"],
         ].map(row).join("")}
       </div>
+      ${paginationBar(pagedListExamples.pricing.pageText)}
     </div>
   `;
 }
@@ -1249,9 +1262,32 @@ function modelGroupCard(group, index) {
 
 function taskTable(rows = sampleRows) {
   return `
+    ${listToolbar("任务状态", "SAMPLING", "产品名 / 样品编号 / 负责人", "创建时间倒序")}
     <div class="table">
-      <div class="row header"><div>产品</div><div>版本</div><div>负责人</div><div>当前状态</div><div>期限</div><div>操作</div></div>
+      <div class="row header"><div>编号/产品</div><div>版本</div><div>负责人</div><div>当前状态</div><div>期限/创建时间</div><div>操作</div></div>
       ${rows.map(row).join("")}
+    </div>
+    ${paginationBar(pagedListExamples.task.pageText)}
+  `;
+}
+
+function listToolbar(statusLabel, statusValue, keywordPlaceholder, sortLabel) {
+  return `
+    <div class="list-toolbar">
+      <span class="badge gray">${statusLabel}: ${statusValue}</span>
+      <span class="badge">keyword: ${keywordPlaceholder}</span>
+      <span class="badge green">sort: ${sortLabel}</span>
+      <span class="badge orange">page=0&size=10</span>
+    </div>
+  `;
+}
+
+function paginationBar(text) {
+  return `
+    <div class="pagination-bar">
+      <button class="secondary">上一页</button>
+      <span>${text}</span>
+      <button class="secondary">下一页</button>
     </div>
   `;
 }

@@ -303,6 +303,27 @@ button.red,
   overflow: hidden;
 }
 
+.list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 14px;
+}
+
+.pagination-bar {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.pagination-bar span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
 .row {
   align-items: center;
   border-bottom: 1px solid #edf2f7;

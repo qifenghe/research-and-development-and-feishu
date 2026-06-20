@@ -103,6 +103,12 @@ for (const marker of ["dashboardDrilldowns", "GET /api/v1/rnd-tasks?status=SAMPL
   }
 }
 
+for (const marker of ["pagedListExamples", "page=0&size=10", "sort=createdAt,desc", "pagination-bar"]) {
+  if (!js.includes(marker) && !html.includes(marker)) {
+    throw new Error(`Missing paged-list marker: ${marker}`);
+  }
+}
+
 for (const marker of ["config-card", "表单字段配置", "流程状态配置", "飞书通知配置", "模板配置", "基础字典配置"]) {
   if (!js.includes(marker) && !html.includes(marker)) {
     throw new Error(`Missing config-center marker: ${marker}`);

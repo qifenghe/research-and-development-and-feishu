@@ -12,6 +12,7 @@ import com.lhr.rnd.model.DashboardPricingFileItem;
 import com.lhr.rnd.model.DashboardTaskItem;
 import com.lhr.rnd.model.FinanceNotification;
 import com.lhr.rnd.model.FinanceNotificationStatus;
+import com.lhr.rnd.model.PagedResult;
 import com.lhr.rnd.model.RndTask;
 import com.lhr.rnd.model.RndTaskStatus;
 import com.lhr.rnd.model.ArchiveFileView;
@@ -67,6 +68,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.Set;
 import java.util.UUID;
 
@@ -516,6 +518,16 @@ public class SampleWorkflowService {
                 .toList();
     }
 
+    public synchronized PagedResult<SampleRequest> requests(String status, String keyword, Integer page, Integer size, String sort) {
+        return paginate(
+                requests(status, keyword),
+                page,
+                size,
+                sort,
+                SampleRequest::createdAt
+        );
+    }
+
     public synchronized List<RndTask> tasks(String status, String keyword) {
         return tasks.values().stream()
                 .filter(task -> matchesStatus(status, task.status().name()))
@@ -529,6 +541,16 @@ public class SampleWorkflowService {
                         task.status().name()
                 ))
                 .toList();
+    }
+
+    public synchronized PagedResult<RndTask> tasks(String status, String keyword, Integer page, Integer size, String sort) {
+        return paginate(
+                tasks(status, keyword),
+                page,
+                size,
+                sort,
+                RndTask::createdAt
+        );
     }
 
     public synchronized List<PricingFileRecord> pricingFiles(String status, String keyword) {
@@ -545,6 +567,16 @@ public class SampleWorkflowService {
                         pricingFile.status().name()
                 ))
                 .toList();
+    }
+
+    public synchronized PagedResult<PricingFileRecord> pricingFiles(String status, String keyword, Integer page, Integer size, String sort) {
+        return paginate(
+                pricingFiles(status, keyword),
+                page,
+                size,
+                sort,
+                PricingFileRecord::generatedAt
+        );
     }
 
     public synchronized DashboardOverview dashboardOverview() {
@@ -650,6 +682,36 @@ public class SampleWorkflowService {
             }
         }
         return false;
+    }
+
+    private <T> PagedResult<T> paginate(
+            List<T> source,
+            Integer page,
+            Integer size,
+            String sort,
+            Function<T, LocalDateTime> timeExtractor
+    ) {
+        var resolvedPage = page == null || page < 0 ? 0 : page;
+        var resolvedSize = size == null || size <= 0 ? 20 : Math.min(size, 200);
+        var descending = sort == null || sort.isBlank() || !sort.toLowerCase().endsWith(",asc");
+        Comparator<T> comparator = Comparator.comparing(timeExtractor);
+        if (descending) {
+            comparator = comparator.reversed();
+        }
+        var sorted = source.stream()
+                .sorted(comparator)
+                .toList();
+        var total = sorted.size();
+        var fromIndex = Math.min(resolvedPage * resolvedSize, total);
+        var toIndex = Math.min(fromIndex + resolvedSize, total);
+        var totalPages = total == 0 ? 0 : (int) Math.ceil((double) total / resolvedSize);
+        return new PagedResult<>(
+                sorted.subList(fromIndex, toIndex),
+                total,
+                resolvedPage,
+                resolvedSize,
+                totalPages
+        );
     }
 
     @Transactional

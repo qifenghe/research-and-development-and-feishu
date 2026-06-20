@@ -55,10 +55,16 @@ public class SampleWorkflowController {
     }
 
     @GetMapping("/sample-requests")
-    public ApiResponse<List<SampleRequest>> sampleRequests(
+    public ApiResponse<?> sampleRequests(
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String keyword
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String sort
     ) {
+        if (page != null || size != null) {
+            return ApiResponse.success(workflowService.requests(status, keyword, page, size, sort));
+        }
         return ApiResponse.success(workflowService.requests(status, keyword));
     }
 
@@ -86,10 +92,16 @@ public class SampleWorkflowController {
     }
 
     @GetMapping("/rnd-tasks")
-    public ApiResponse<List<RndTask>> rndTasks(
+    public ApiResponse<?> rndTasks(
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String keyword
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String sort
     ) {
+        if (page != null || size != null) {
+            return ApiResponse.success(workflowService.tasks(status, keyword, page, size, sort));
+        }
         return ApiResponse.success(workflowService.tasks(status, keyword));
     }
 
@@ -204,10 +216,16 @@ public class SampleWorkflowController {
     }
 
     @GetMapping("/pricing-files")
-    public ApiResponse<List<PricingFileRecord>> pricingFiles(
+    public ApiResponse<?> pricingFiles(
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String keyword
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String sort
     ) {
+        if (page != null || size != null) {
+            return ApiResponse.success(workflowService.pricingFiles(status, keyword, page, size, sort));
+        }
         return ApiResponse.success(workflowService.pricingFiles(status, keyword));
     }
 
