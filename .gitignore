@@ -9,6 +9,15 @@ target/
 # Logs
 *.log
 
+# Local secrets / Feishu integration
+.env
+.env.*
+!.env.example
+!*.env.example
+!*.env.*.example
+!backend/.env.feishu.example
+backend/.env.feishu.local
+
 # IDE
 .idea/
 .vscode/
