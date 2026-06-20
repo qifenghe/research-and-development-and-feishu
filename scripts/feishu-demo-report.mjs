@@ -13,6 +13,15 @@ const REQUIRED_IDS = [
   "financeNotificationId",
 ];
 
+const REQUIRED_CHECKLIST_EXPECTATIONS = [
+  ["sampleNo", (report) => report?.sampleNo],
+  ["ids.taskId", (report) => report?.ids?.taskId],
+  ["ids.experimentFormId", (report) => report?.ids?.experimentFormId],
+  ["ids.shipmentId", (report) => report?.ids?.shipmentId],
+  ["ids.pricingFileId", (report) => report?.ids?.pricingFileId],
+  ["ids.financeNotificationId", (report) => report?.ids?.financeNotificationId],
+];
+
 export function validateDemoReport(report, options = {}) {
   const errors = [];
   const knownRoutes = normalizeKnownRoutes(options.knownRoutes);
@@ -30,6 +39,13 @@ export function validateDemoReport(report, options = {}) {
   const checklist = Array.isArray(report?.checklist) ? report.checklist : [];
   if (checklist.length < 6) {
     errors.push("checklist 至少需要 6 项");
+  }
+  const expectedValues = new Set(checklist.map((item) => item?.expected).filter(Boolean));
+  for (const [label, readValue] of REQUIRED_CHECKLIST_EXPECTATIONS) {
+    const value = readValue(report);
+    if (value && !expectedValues.has(value)) {
+      errors.push(`checklist 未覆盖 ${label}：${value}`);
+    }
   }
   checklist.forEach((item, index) => {
     let routeCanBeComparedWithUrl = false;

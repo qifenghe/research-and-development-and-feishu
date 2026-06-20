@@ -79,8 +79,23 @@ assert.deepEqual(validateDemoReport({
   errors: [
     "ids.pricingFileId 缺失",
     "checklist 至少需要 6 项",
+    "checklist 未覆盖 ids.financeNotificationId：FIN-0001",
   ],
   checklistCount: 5,
+});
+
+assert.deepEqual(validateDemoReport({
+  ...validReport,
+  checklist: validReport.checklist.map((item) => ({
+    ...item,
+    expected: item.expected === "PRICE-0001" ? "TASK-0001" : item.expected,
+  })),
+}), {
+  valid: false,
+  errors: [
+    "checklist 未覆盖 ids.pricingFileId：PRICE-0001",
+  ],
+  checklistCount: 6,
 });
 
 assert.deepEqual(validateDemoReport({
