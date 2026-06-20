@@ -80,4 +80,23 @@ assert.deepEqual(validateDemoReport({
   checklistCount: 5,
 });
 
+assert.deepEqual(validateDemoReport({
+  ...validReport,
+  checklist: [
+    {
+      ...validReport.checklist[0],
+      route: "dashboard",
+      url: "not a url",
+    },
+    ...validReport.checklist.slice(1),
+  ],
+}), {
+  valid: false,
+  errors: [
+    "checklist[0].route 必须以 # 开头",
+    "checklist[0].url 不是合法 URL",
+  ],
+  checklistCount: 6,
+});
+
 console.log("Feishu demo report tests passed.");

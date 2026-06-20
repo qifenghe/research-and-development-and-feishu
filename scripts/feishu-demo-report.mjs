@@ -36,9 +36,14 @@ export function validateDemoReport(report) {
     }
     if (!item.route) {
       errors.push(`checklist[${index}].route 缺失`);
+    } else if (!item.route.startsWith("#")) {
+      errors.push(`checklist[${index}].route 必须以 # 开头`);
     }
     if (!item.expected) {
       errors.push(`checklist[${index}].expected 缺失`);
+    }
+    if (item.url && !isValidUrl(item.url)) {
+      errors.push(`checklist[${index}].url 不是合法 URL`);
     }
   });
   return {
@@ -46,6 +51,15 @@ export function validateDemoReport(report) {
     errors,
     checklistCount: checklist.length,
   };
+}
+
+function isValidUrl(value) {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function parseReportJson(text) {
