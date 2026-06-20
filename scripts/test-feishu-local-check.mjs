@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildReadinessAdvice,
   evaluateEnv,
+  evaluateFeishuAppUrl,
   evaluateIntegrationStatus,
   parseEnvText,
   parseIntegrationStatusResponse,
@@ -21,6 +22,13 @@ assert.equal(parsed.FEISHU_MODE, "OPENAPI");
 assert.equal(parsed.FEISHU_APP_SECRET, "secret value");
 
 assert.deepEqual(evaluateEnv(parsed).missing, []);
+assert.deepEqual(evaluateFeishuAppUrl("https://rnd.example.com/").warnings, []);
+assert.deepEqual(evaluateFeishuAppUrl("http://127.0.0.1:4174/").warnings, [
+  "FEISHU_APP_URL 建议使用手机可访问的 HTTPS 地址，否则飞书卡片链接可能打不开",
+]);
+assert.deepEqual(evaluateFeishuAppUrl("not a url").warnings, [
+  "FEISHU_APP_URL 不是合法 URL",
+]);
 assert.deepEqual(evaluateEnv({
   FEISHU_MODE: "OPENAPI",
   FEISHU_APP_ID: "请填写你的飞书AppID",

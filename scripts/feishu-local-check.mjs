@@ -44,6 +44,24 @@ export function evaluateEnv(env) {
   };
 }
 
+export function evaluateFeishuAppUrl(appUrl) {
+  const warnings = [];
+  if (isBlankOrPlaceholder(appUrl)) {
+    return { warnings };
+  }
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(appUrl);
+  } catch {
+    warnings.push("FEISHU_APP_URL 不是合法 URL");
+    return { warnings };
+  }
+  if (parsedUrl.protocol !== "https:") {
+    warnings.push("FEISHU_APP_URL 建议使用手机可访问的 HTTPS 地址，否则飞书卡片链接可能打不开");
+  }
+  return { warnings };
+}
+
 export function evaluateIntegrationStatus(status) {
   const missing = [];
   if (status.mode !== "OPENAPI") {
@@ -116,6 +134,7 @@ export async function runCheck(options = {}) {
   const envText = fs.readFileSync(envFile, "utf8");
   const env = parseEnvText(envText);
   const envResult = evaluateEnv(env);
+  const appUrlResult = evaluateFeishuAppUrl(env.FEISHU_APP_URL);
   let status = null;
   let statusResult = null;
   let requestError = null;
@@ -134,6 +153,7 @@ export async function runCheck(options = {}) {
     backendUrl,
     env,
     envResult,
+    appUrlResult,
     status,
     statusResult,
     requestError,
@@ -191,6 +211,7 @@ function printReport(result) {
   console.log(`- FEISHU_APP_ID：${describeVisibleValue(result.env.FEISHU_APP_ID)}`);
   console.log(`- FEISHU_APP_SECRET：${describeSecretValue(result.env.FEISHU_APP_SECRET)}`);
   console.log(`- FEISHU_APP_URL：${result.env.FEISHU_APP_URL || "(未配置)"}`);
+  printWarnings(result.appUrlResult?.warnings || []);
 
   if (!result.envResult.ready) {
     console.log("\n配置检查：未通过");
@@ -251,6 +272,16 @@ function describeSecretValue(value) {
 function printAdvice(result) {
   const advice = buildReadinessAdvice(result);
   console.log(`\n下一步：${advice.message}`);
+}
+
+function printWarnings(warnings) {
+  if (warnings.length === 0) {
+    return;
+  }
+  console.log("\n配置警告：");
+  for (const warning of warnings) {
+    console.log(`- ${warning}`);
+  }
 }
 
 function parseArgs(argv) {
