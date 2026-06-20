@@ -34,6 +34,12 @@ const ready = await runDemoWizard({
   demo: async (options) => ({
     requestId: "REQ-0001",
     taskId: "TASK-0001",
+    experimentFormId: "EXP-0001",
+    testAssignmentId: "TEST-0001",
+    versionId: "VER-0001",
+    shipmentId: "SHIP-0001",
+    pricingFileId: "PRICE-0001",
+    financeNotificationId: "FIN-0001",
     sampleNo: "YP202606180001",
     engineer: {
       name: options.engineer.name,
@@ -58,6 +64,12 @@ assert.deepEqual(buildWizardSummary(ready), {
   adviceCode: "READY_TO_DEMO",
   requestId: "REQ-0001",
   taskId: "TASK-0001",
+  experimentFormId: "EXP-0001",
+  testAssignmentId: "TEST-0001",
+  versionId: "VER-0001",
+  shipmentId: "SHIP-0001",
+  pricingFileId: "PRICE-0001",
+  financeNotificationId: "FIN-0001",
   sampleNo: "YP202606180001",
   pendingCount: 1,
   dispatchResult: null,
@@ -123,6 +135,8 @@ FEISHU_DEMO_DIRECTOR_NAME=钱总监
 FEISHU_DEMO_DIRECTOR_USER_ID=ou_director_file
 FEISHU_DEMO_ENGINEER_NAME=孙研发
 FEISHU_DEMO_ENGINEER_USER_ID=ou_engineer_file
+FEISHU_DEMO_TESTER_NAME=周测试
+FEISHU_DEMO_FINANCE_RECIPIENT_NAME=吴财务
 FEISHU_DEMO_PRODUCT_NAME=500g香卤大肠头
 FEISHU_DEMO_CUSTOMER_NAME=LHYC
 `);
@@ -140,6 +154,8 @@ assert.deepEqual(loadDemoWizardConfig(demoConfigFile), {
     name: "孙研发",
     feishuUserId: "ou_engineer_file",
   },
+  testerName: "周测试",
+  financeRecipientName: "吴财务",
   productName: "500g香卤大肠头",
   customerName: "LHYC",
 });
@@ -157,6 +173,8 @@ await runDemoWizard({
       assistant: options.assistant,
       director: options.director,
       engineer: options.engineer,
+      testerName: options.testerName,
+      financeRecipientName: options.financeRecipientName,
       productName: options.productName,
       customerName: options.customerName,
     };
@@ -184,6 +202,8 @@ assert.deepEqual(filePeople, {
     name: "孙研发",
     feishuUserId: "ou_engineer_file",
   },
+  testerName: "周测试",
+  financeRecipientName: "吴财务",
   productName: "500g香卤大肠头",
   customerName: "LHYC",
 });

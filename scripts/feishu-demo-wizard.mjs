@@ -37,6 +37,8 @@ export async function runDemoWizard(options = {}) {
     assistant: mergedOptions.assistant,
     director: mergedOptions.director,
     engineer: mergedOptions.engineer,
+    testerName: mergedOptions.testerName,
+    financeRecipientName: mergedOptions.financeRecipientName,
   });
   return {
     ready: true,
@@ -57,6 +59,12 @@ export function buildWizardSummary(result) {
     adviceCode: result.advice.code,
     requestId: result.demoResult?.requestId || null,
     taskId: result.demoResult?.taskId || null,
+    experimentFormId: result.demoResult?.experimentFormId || null,
+    testAssignmentId: result.demoResult?.testAssignmentId || null,
+    versionId: result.demoResult?.versionId || null,
+    shipmentId: result.demoResult?.shipmentId || null,
+    pricingFileId: result.demoResult?.pricingFileId || null,
+    financeNotificationId: result.demoResult?.financeNotificationId || null,
     sampleNo: result.demoResult?.sampleNo || null,
     pendingCount: result.demoResult?.pendingNotifications?.length ?? null,
     dispatchResult: result.demoResult?.dispatchResult || null,
@@ -77,6 +85,8 @@ function envToWizardOptions(env) {
     engineer: personFromEnv(env, "FEISHU_DEMO_ENGINEER"),
     productName: env.FEISHU_DEMO_PRODUCT_NAME,
     customerName: env.FEISHU_DEMO_CUSTOMER_NAME,
+    testerName: env.FEISHU_DEMO_TESTER_NAME,
+    financeRecipientName: env.FEISHU_DEMO_FINANCE_RECIPIENT_NAME,
   };
 }
 
@@ -136,6 +146,10 @@ function parseArgs(argv) {
       options.productName = argv[++index];
     } else if (arg === "--customer-name") {
       options.customerName = argv[++index];
+    } else if (arg === "--tester-name") {
+      options.testerName = argv[++index];
+    } else if (arg === "--finance-recipient-name") {
+      options.financeRecipientName = argv[++index];
     } else if (arg === "--dispatch") {
       options.dispatch = true;
     } else if (arg === "--help" || arg === "-h") {
@@ -157,6 +171,12 @@ function printResult(result) {
   console.log(`- 样品需求：${summary.requestId}`);
   console.log(`- 样品编号：${summary.sampleNo}`);
   console.log(`- 研发任务：${summary.taskId}`);
+  console.log(`- 实验单：${summary.experimentFormId}`);
+  console.log(`- 测试任务：${summary.testAssignmentId}`);
+  console.log(`- 样品版本：${summary.versionId}`);
+  console.log(`- 寄样记录：${summary.shipmentId}`);
+  console.log(`- 核价文件：${summary.pricingFileId}`);
+  console.log(`- 财务通知：${summary.financeNotificationId}`);
   console.log(`- 待发送通知数：${summary.pendingCount}`);
   if (summary.dispatchResult) {
     console.log(`- 派发结果：attempted=${summary.dispatchResult.attemptedCount}, sent=${summary.dispatchResult.sentCount}, failed=${summary.dispatchResult.failedCount}`);
@@ -175,13 +195,15 @@ function printHelp() {
     --director-name 王总监 \\
     --director-feishu-user-id ou_director_xxx \\
     --engineer-name 张研发 \\
-    --engineer-feishu-user-id ou_xxx
+    --engineer-feishu-user-id ou_xxx \\
+    --tester-name 内部测试员 \\
+    --finance-recipient-name 财务核价员
 
 说明：
   - 先运行飞书本地自检，未就绪时不会创建演示任务。
-  - 就绪后自动创建样品需求、审核、分发研发任务，并生成飞书待发送通知。
+  - 就绪后自动创建样品需求、审核、分发、接受任务、实验、测试通过、寄样反馈、核价文件和财务通知。
   - 默认会尝试读取 .feishu-demo.local；也可用 --demo-config-file 指定本地演示人员配置。
-  - 可分别指定研发内勤、研发总监和研发人员的飞书 user_id。
+  - 可分别指定研发内勤、研发总监和研发人员的飞书 user_id，并配置测试人员、财务接收人姓名。
   - 默认不真实派发；追加 --dispatch 后才调用通知派发接口。
   - 使用 --dispatch 时必须填写真实研发人员飞书 user_id。`);
 }

@@ -29,6 +29,8 @@ const DEFAULT_OPTIONS = {
     role: "RND_ENGINEER",
     departmentName: "研发部",
   },
+  testerName: "内部测试员",
+  financeRecipientName: "财务核价员",
 };
 
 export async function runDemoTaskFlow(options = {}) {
@@ -44,6 +46,7 @@ export async function runDemoTaskFlow(options = {}) {
 
   const assistantToken = await login(client, assistant.feishuUserId);
   const directorToken = await login(client, director.feishuUserId);
+  const engineerToken = await login(client, engineer.feishuUserId);
 
   const sampleRequest = await client.post("/api/v1/sample-requests", {
     productName: options.productName || DEFAULT_OPTIONS.productName,
@@ -64,6 +67,53 @@ export async function runDemoTaskFlow(options = {}) {
     dueDate: options.dueDate || DEFAULT_OPTIONS.dueDate,
   }, { token: directorToken });
 
+  await client.post(`/api/v1/rnd-tasks/${taskId}/accept`, {
+    acceptedBy: engineer.name,
+  }, { token: engineerToken });
+
+  const experimentForm = await client.post(`/api/v1/rnd-tasks/${taskId}/experiment-form/draft`, {
+    operatorName: engineer.name,
+    summary: options.experimentSummary || "现场打样：卤制后冷却包装，复热风味稳定。",
+    materials: options.materials || defaultExperimentMaterials(),
+  }, { token: engineerToken });
+  const experimentFormId = experimentForm.data.id;
+  const versionId = experimentForm.data.versionId;
+
+  const submittedTest = await client.post(`/api/v1/experiment-forms/${experimentFormId}/submit-test`, {
+    testerName: options.testerName || DEFAULT_OPTIONS.testerName,
+  }, { token: engineerToken });
+  const testAssignmentId = submittedTest.data.testAssignment.id;
+
+  const passedTest = await client.post(`/api/v1/test-assignments/${testAssignmentId}/pass`, {
+    testerName: options.testerName || DEFAULT_OPTIONS.testerName,
+    comment: options.testComment || "口味、口感、复热状态通过，可以进入寄样/核价。",
+  }, { token: engineerToken });
+  const lockedVersionId = passedTest.data.experimentForm.versionId || versionId;
+
+  const shipment = await client.post(`/api/v1/sample-versions/${lockedVersionId}/shipments`, {
+    quantity: options.shipmentQuantity || 6,
+    receiverName: options.shipmentReceiverName || "销售内勤",
+    trackingNo: options.trackingNo || "SF202606180001",
+    remark: options.shipmentRemark || "寄客户确认复热效果",
+  }, { token: directorToken });
+  const shipmentId = shipment.data.id;
+
+  const feedback = await client.post(`/api/v1/shipments/${shipmentId}/feedback`, {
+    feedbackBy: options.feedbackBy || "业务员",
+    result: "PASSED",
+    comment: options.feedbackComment || "客户确认通过，可以进入核价。",
+  }, { token: directorToken });
+  const customerFeedbackId = feedback.data.feedback.id;
+
+  const pricingFile = await client.post(`/api/v1/sample-versions/${lockedVersionId}/pricing-files`, {}, { token: directorToken });
+  const pricingFileId = pricingFile.data.id;
+
+  const financeNotification = await client.post(`/api/v1/pricing-files/${pricingFileId}/notify-finance`, {
+    recipientName: options.financeRecipientName || DEFAULT_OPTIONS.financeRecipientName,
+    remark: options.financeRemark || "请按研发核价清单核算报价。",
+  }, { token: directorToken });
+  const financeNotificationId = financeNotification.data.notification.id;
+
   const pending = await client.get("/api/v1/feishu/notifications/pending", { token: directorToken });
   let dispatchResult = null;
   if (options.dispatch === true) {
@@ -73,11 +123,42 @@ export async function runDemoTaskFlow(options = {}) {
   return {
     requestId,
     taskId,
+    experimentFormId,
+    testAssignmentId,
+    versionId: lockedVersionId,
+    shipmentId,
+    customerFeedbackId,
+    pricingFileId,
+    pricingVersion: pricingFile.data.pricingVersion,
+    financeNotificationId,
     sampleNo: sampleRequest.data.sampleNo,
     engineer,
     pendingNotifications: pending.data,
     dispatchResult: dispatchResult?.data || null,
   };
+}
+
+function defaultExperimentMaterials() {
+  return [
+    {
+      stage: "原料",
+      sequence: 1,
+      materialCode: "YL-DC-001",
+      materialName: "冻猪大肠头（预煮）",
+      weightKg: 100,
+      utilizationRate: 0.82,
+      remark: "按泡发后实际投入量记录",
+    },
+    {
+      stage: "辅料",
+      sequence: 2,
+      materialCode: "FL-LZ-001",
+      materialName: "香卤料包",
+      weightKg: 3.5,
+      utilizationRate: 1,
+      remark: "卤制调味",
+    },
+  ];
 }
 
 export function validateDemoTaskOptions(options = {}) {
@@ -200,6 +281,10 @@ function parseArgs(argv) {
       options.productName = argv[++index];
     } else if (arg === "--customer-name") {
       options.customerName = argv[++index];
+    } else if (arg === "--tester-name") {
+      options.testerName = argv[++index];
+    } else if (arg === "--finance-recipient-name") {
+      options.financeRecipientName = argv[++index];
     } else if (arg === "--dispatch") {
       options.dispatch = true;
     } else if (arg === "--help" || arg === "-h") {
@@ -214,10 +299,13 @@ function printHelp() {
   node scripts/feishu-demo-task.mjs \\
     --backend-url http://127.0.0.1:8080 \\
     --engineer-name 张研发 \\
-    --engineer-feishu-user-id ou_xxx
+    --engineer-feishu-user-id ou_xxx \\
+    --tester-name 内部测试员 \\
+    --finance-recipient-name 财务核价员
 
 说明：
-  - 默认只生成一条 PENDING_SEND 飞书任务通知，不会真实派发。
+  - 默认会创建演示需求、审核、分发、接受任务、实验单、内部测试通过、寄样反馈、核价文件、财务通知。
+  - 默认只生成 PENDING_SEND 飞书任务通知，不会真实派发。
   - 加 --dispatch 后会调用 /api/v1/feishu/notifications/dispatch，真实 OPENAPI 模式下会尝试发送飞书消息。
   - 使用 --dispatch 时必须通过 --engineer-feishu-user-id 填写真实研发人员飞书 user_id，不能使用默认演示 ID。
   - 需要后端已启动；如果开启鉴权，脚本会自动绑定演示用户并通过 mock 免登拿 token。`);
@@ -228,6 +316,12 @@ function printResult(result, dispatch) {
   console.log(`- 样品需求：${result.requestId}`);
   console.log(`- 样品编号：${result.sampleNo}`);
   console.log(`- 研发任务：${result.taskId}`);
+  console.log(`- 实验单：${result.experimentFormId}`);
+  console.log(`- 测试任务：${result.testAssignmentId}`);
+  console.log(`- 样品版本：${result.versionId}`);
+  console.log(`- 寄样记录：${result.shipmentId}`);
+  console.log(`- 核价文件：${result.pricingFileId} / ${result.pricingVersion}`);
+  console.log(`- 财务通知：${result.financeNotificationId}`);
   console.log(`- 接收研发：${result.engineer.name} / ${result.engineer.feishuUserId}`);
   console.log(`- 待发送通知数：${result.pendingNotifications.length}`);
   const matched = result.pendingNotifications.find((item) => item.businessId === result.taskId);
