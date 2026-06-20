@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { runDemoTaskFlow } from "./feishu-demo-task.mjs";
+import { runDemoTaskFlow, validateDemoTaskOptions } from "./feishu-demo-task.mjs";
 
 const calls = [];
 const client = {
@@ -91,5 +91,22 @@ assert.deepEqual(calls.map((call) => `${call[0]} ${call[1]}`), [
   "POST /api/v1/rnd-tasks/TASK-0001/assign",
   "GET /api/v1/feishu/notifications/pending",
 ]);
+
+assert.throws(
+  () => validateDemoTaskOptions({
+    dispatch: true,
+    engineer: {
+      feishuUserId: "ou_demo_engineer",
+    },
+  }),
+  /--dispatch 需要填写真实研发人员飞书 user_id/
+);
+
+assert.doesNotThrow(() => validateDemoTaskOptions({
+  dispatch: true,
+  engineer: {
+    feishuUserId: "ou_real_engineer",
+  },
+}));
 
 console.log("Feishu demo task tests passed.");

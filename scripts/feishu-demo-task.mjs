@@ -32,6 +32,7 @@ const DEFAULT_OPTIONS = {
 };
 
 export async function runDemoTaskFlow(options = {}) {
+  validateDemoTaskOptions(options);
   const client = options.client || new ApiClient(options.backendUrl || DEFAULT_BACKEND_URL);
   const assistant = personWithDefaults(options.assistant, DEFAULT_OPTIONS.assistant);
   const director = personWithDefaults(options.director, DEFAULT_OPTIONS.director);
@@ -77,6 +78,13 @@ export async function runDemoTaskFlow(options = {}) {
     pendingNotifications: pending.data,
     dispatchResult: dispatchResult?.data || null,
   };
+}
+
+export function validateDemoTaskOptions(options = {}) {
+  const engineer = personWithDefaults(options.engineer, DEFAULT_OPTIONS.engineer);
+  if (options.dispatch === true && isDemoFeishuUserId(engineer.feishuUserId)) {
+    throw new Error("--dispatch 需要填写真实研发人员飞书 user_id，请使用 --engineer-feishu-user-id ou_xxx");
+  }
 }
 
 class ApiClient {
@@ -128,6 +136,10 @@ function personWithDefaults(person = {}, defaults) {
     role: person.role || defaults.role,
     departmentName: person.departmentName || defaults.departmentName,
   };
+}
+
+function isDemoFeishuUserId(feishuUserId) {
+  return !feishuUserId || feishuUserId.startsWith("ou_demo_") || feishuUserId.includes("xxx");
 }
 
 async function bindUser(client, person) {
@@ -207,6 +219,7 @@ function printHelp() {
 说明：
   - 默认只生成一条 PENDING_SEND 飞书任务通知，不会真实派发。
   - 加 --dispatch 后会调用 /api/v1/feishu/notifications/dispatch，真实 OPENAPI 模式下会尝试发送飞书消息。
+  - 使用 --dispatch 时必须通过 --engineer-feishu-user-id 填写真实研发人员飞书 user_id，不能使用默认演示 ID。
   - 需要后端已启动；如果开启鉴权，脚本会自动绑定演示用户并通过 mock 免登拿 token。`);
 }
 
