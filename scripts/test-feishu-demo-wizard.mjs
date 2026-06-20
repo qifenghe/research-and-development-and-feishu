@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  buildWizardVerificationChecklist,
   buildWizardSummary,
   loadDemoWizardConfig,
   runDemoWizard,
@@ -74,6 +75,39 @@ assert.deepEqual(buildWizardSummary(ready), {
   pendingCount: 1,
   dispatchResult: null,
 });
+
+assert.deepEqual(buildWizardVerificationChecklist(buildWizardSummary(ready)), [
+  {
+    label: "工作台查看样品编号",
+    route: "#dashboard",
+    expected: "YP202606180001",
+  },
+  {
+    label: "研发任务查看任务编号",
+    route: "#rnd-module",
+    expected: "TASK-0001",
+  },
+  {
+    label: "实验单历史查看实验单",
+    route: "#experiment-history",
+    expected: "EXP-0001",
+  },
+  {
+    label: "寄样核价查看寄样记录",
+    route: "#shipment-pricing-module",
+    expected: "SHIP-0001",
+  },
+  {
+    label: "核价文件查看文件记录",
+    route: "#pricing-list",
+    expected: "PRICE-0001",
+  },
+  {
+    label: "财务通知查看通知记录",
+    route: "#pricing-detail",
+    expected: "FIN-0001",
+  },
+]);
 
 let receivedPeople = null;
 await runDemoWizard({

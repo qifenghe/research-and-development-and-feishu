@@ -71,6 +71,41 @@ export function buildWizardSummary(result) {
   };
 }
 
+export function buildWizardVerificationChecklist(summary) {
+  return [
+    {
+      label: "工作台查看样品编号",
+      route: "#dashboard",
+      expected: summary.sampleNo,
+    },
+    {
+      label: "研发任务查看任务编号",
+      route: "#rnd-module",
+      expected: summary.taskId,
+    },
+    {
+      label: "实验单历史查看实验单",
+      route: "#experiment-history",
+      expected: summary.experimentFormId,
+    },
+    {
+      label: "寄样核价查看寄样记录",
+      route: "#shipment-pricing-module",
+      expected: summary.shipmentId,
+    },
+    {
+      label: "核价文件查看文件记录",
+      route: "#pricing-list",
+      expected: summary.pricingFileId,
+    },
+    {
+      label: "财务通知查看通知记录",
+      route: "#pricing-detail",
+      expected: summary.financeNotificationId,
+    },
+  ];
+}
+
 function loadOptionalDemoWizardConfig(filePath) {
   if (!filePath || !fs.existsSync(filePath)) {
     return {};
@@ -182,6 +217,10 @@ function printResult(result) {
     console.log(`- 派发结果：attempted=${summary.dispatchResult.attemptedCount}, sent=${summary.dispatchResult.sentCount}, failed=${summary.dispatchResult.failedCount}`);
   } else {
     console.log("- 当前只生成待发送通知；确认真实发送时追加 --dispatch。");
+  }
+  console.log("演示核对清单：");
+  for (const item of buildWizardVerificationChecklist(summary)) {
+    console.log(`- ${item.label}：${item.route}，核对 ${item.expected}`);
   }
 }
 
