@@ -32,6 +32,7 @@ export function validateDemoReport(report, options = {}) {
     errors.push("checklist 至少需要 6 项");
   }
   checklist.forEach((item, index) => {
+    let routeCanBeComparedWithUrl = false;
     if (!item.label) {
       errors.push(`checklist[${index}].label 缺失`);
     }
@@ -41,12 +42,21 @@ export function validateDemoReport(report, options = {}) {
       errors.push(`checklist[${index}].route 必须以 # 开头`);
     } else if (knownRoutes && !knownRoutes.has(routeIdFromHash(item.route))) {
       errors.push(`checklist[${index}].route 指向不存在的页面：${item.route}`);
+    } else {
+      routeCanBeComparedWithUrl = true;
     }
     if (!item.expected) {
       errors.push(`checklist[${index}].expected 缺失`);
     }
-    if (item.url && !isValidUrl(item.url)) {
-      errors.push(`checklist[${index}].url 不是合法 URL`);
+    if (item.url) {
+      if (!isValidUrl(item.url)) {
+        errors.push(`checklist[${index}].url 不是合法 URL`);
+      } else if (routeCanBeComparedWithUrl) {
+        const urlRoute = routeFromUrl(item.url);
+        if (urlRoute && routeIdFromHash(urlRoute) !== routeIdFromHash(item.route)) {
+          errors.push(`checklist[${index}].url hash 与 route 不一致：${urlRoute} != ${item.route}`);
+        }
+      }
     }
   });
   return {
@@ -70,6 +80,10 @@ function normalizeKnownRoutes(routes) {
 
 function routeIdFromHash(route) {
   return route.slice(1).split(/[?&]/, 1)[0];
+}
+
+function routeFromUrl(value) {
+  return new URL(value).hash;
 }
 
 function isValidUrl(value) {

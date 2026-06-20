@@ -107,6 +107,24 @@ assert.deepEqual(validateDemoReport({
   checklist: [
     {
       ...validReport.checklist[0],
+      route: "#dashboard",
+      url: "https://rnd.example.com/app/#pricing-list",
+    },
+    ...validReport.checklist.slice(1),
+  ],
+}), {
+  valid: false,
+  errors: [
+    "checklist[0].url hash 与 route 不一致：#pricing-list != #dashboard",
+  ],
+  checklistCount: 6,
+});
+
+assert.deepEqual(validateDemoReport({
+  ...validReport,
+  checklist: [
+    {
+      ...validReport.checklist[0],
       route: "#missing-page",
     },
     ...validReport.checklist.slice(1),
