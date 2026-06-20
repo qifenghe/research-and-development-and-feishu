@@ -64,6 +64,31 @@ export function evaluateIntegrationStatus(status) {
   };
 }
 
+export function buildReadinessAdvice(result) {
+  if (!result.envResult?.ready) {
+    return {
+      code: "FILL_ENV",
+      message: "请先补齐 backend/.env.feishu.local 中的飞书配置。",
+    };
+  }
+  if (result.requestError) {
+    return {
+      code: "START_BACKEND",
+      message: "配置已填写，请先运行 node scripts/run-backend-local.mjs 启动后端。",
+    };
+  }
+  if (!result.statusResult?.ready) {
+    return {
+      code: "RESTART_WITH_ENV",
+      message: "后端已启动，但飞书 OpenAPI 未就绪，请用 node scripts/run-backend-local.mjs 重新启动。",
+    };
+  }
+  return {
+    code: "READY_TO_DEMO",
+    message: "飞书 OpenAPI 已就绪，可以运行 node scripts/feishu-demo-task.mjs 生成演示任务。",
+  };
+}
+
 export async function requestIntegrationStatus(baseUrl) {
   const url = new URL("/api/v1/feishu/integration/status", ensureTrailingSlash(baseUrl));
   const body = await requestText(url);
@@ -170,6 +195,7 @@ function printReport(result) {
   if (!result.envResult.ready) {
     console.log("\n配置检查：未通过");
     console.log(`需要补齐：${result.envResult.missing.join(", ")}`);
+    printAdvice(result);
     process.exitCode = 1;
     return;
   }
@@ -180,6 +206,7 @@ function printReport(result) {
     console.log("\n后端状态检查：未通过");
     console.log(`原因：${result.requestError.message}`);
     console.log("提示：请先启动后端，并确认端口和 BACKEND_URL 是否正确。");
+    printAdvice(result);
     process.exitCode = 1;
     return;
   }
@@ -194,11 +221,13 @@ function printReport(result) {
   if (!result.statusResult.ready) {
     console.log("\nOpenAPI 就绪检查：未通过");
     console.log(`需要满足：${result.statusResult.missing.join(", ")}`);
+    printAdvice(result);
     process.exitCode = 1;
     return;
   }
 
   console.log("\nOpenAPI 就绪检查：通过，可以进入真实飞书通知派发联调。");
+  printAdvice(result);
 }
 
 function mask(value) {
@@ -217,6 +246,11 @@ function describeVisibleValue(value) {
 
 function describeSecretValue(value) {
   return isBlankOrPlaceholder(value) ? "(未配置或占位符)" : "***已填写***";
+}
+
+function printAdvice(result) {
+  const advice = buildReadinessAdvice(result);
+  console.log(`\n下一步：${advice.message}`);
 }
 
 function parseArgs(argv) {

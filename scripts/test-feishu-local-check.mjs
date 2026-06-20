@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import {
+  buildReadinessAdvice,
   evaluateEnv,
   evaluateIntegrationStatus,
   parseEnvText,
@@ -52,5 +53,36 @@ const status = parseIntegrationStatusResponse(JSON.stringify({
   },
 }));
 assert.equal(status.readyForOpenApi, true);
+
+assert.deepEqual(buildReadinessAdvice({
+  envResult: { ready: false, missing: ["FEISHU_APP_ID"] },
+}), {
+  code: "FILL_ENV",
+  message: "请先补齐 backend/.env.feishu.local 中的飞书配置。",
+});
+
+assert.deepEqual(buildReadinessAdvice({
+  envResult: { ready: true, missing: [] },
+  requestError: new Error("connect ECONNREFUSED"),
+}), {
+  code: "START_BACKEND",
+  message: "配置已填写，请先运行 node scripts/run-backend-local.mjs 启动后端。",
+});
+
+assert.deepEqual(buildReadinessAdvice({
+  envResult: { ready: true, missing: [] },
+  statusResult: { ready: false, missing: ["mode=OPENAPI"] },
+}), {
+  code: "RESTART_WITH_ENV",
+  message: "后端已启动，但飞书 OpenAPI 未就绪，请用 node scripts/run-backend-local.mjs 重新启动。",
+});
+
+assert.deepEqual(buildReadinessAdvice({
+  envResult: { ready: true, missing: [] },
+  statusResult: { ready: true, missing: [] },
+}), {
+  code: "READY_TO_DEMO",
+  message: "飞书 OpenAPI 已就绪，可以运行 node scripts/feishu-demo-task.mjs 生成演示任务。",
+});
 
 console.log("Feishu local check tests passed.");
