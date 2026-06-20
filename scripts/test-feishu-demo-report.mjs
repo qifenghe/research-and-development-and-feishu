@@ -64,6 +64,7 @@ const validReport = {
 assert.deepEqual(validateDemoReport(validReport), {
   valid: true,
   errors: [],
+  advice: "演示报告完整，可以按核对清单进行演示。",
   checklistCount: 6,
 });
 
@@ -81,6 +82,7 @@ assert.deepEqual(validateDemoReport({
     "checklist 至少需要 6 项",
     "checklist 未覆盖 ids.financeNotificationId：FIN-0001",
   ],
+  advice: "请修正演示报告 JSON，或重新运行 node scripts/feishu-demo-wizard.mjs --json 生成完整报告。",
   checklistCount: 5,
 });
 
@@ -95,6 +97,7 @@ assert.deepEqual(validateDemoReport({
   errors: [
     "checklist 未覆盖 ids.pricingFileId：PRICE-0001",
   ],
+  advice: "请修正演示报告 JSON，或重新运行 node scripts/feishu-demo-wizard.mjs --json 生成完整报告。",
   checklistCount: 6,
 });
 
@@ -114,6 +117,7 @@ assert.deepEqual(validateDemoReport({
     "checklist[0].route 必须以 # 开头",
     "checklist[0].url 不是合法 URL",
   ],
+  advice: "请修正演示报告 JSON，或重新运行 node scripts/feishu-demo-wizard.mjs --json 生成完整报告。",
   checklistCount: 6,
 });
 
@@ -132,6 +136,7 @@ assert.deepEqual(validateDemoReport({
   errors: [
     "checklist[0].url hash 与 route 不一致：#pricing-list != #dashboard",
   ],
+  advice: "请修正演示报告 JSON，或重新运行 node scripts/feishu-demo-wizard.mjs --json 生成完整报告。",
   checklistCount: 6,
 });
 
@@ -149,6 +154,7 @@ assert.deepEqual(validateDemoReport({
   errors: [
     "checklist[0].route 指向不存在的页面：#missing-page",
   ],
+  advice: "请确认 --prototype-app 指向最新 prototype-app/app.js，或修正报告中的 route。",
   checklistCount: 6,
 });
 

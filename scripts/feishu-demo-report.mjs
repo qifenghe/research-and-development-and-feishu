@@ -78,8 +78,19 @@ export function validateDemoReport(report, options = {}) {
   return {
     valid: errors.length === 0,
     errors,
+    advice: buildAdvice(errors),
     checklistCount: checklist.length,
   };
+}
+
+function buildAdvice(errors) {
+  if (errors.length === 0) {
+    return "演示报告完整，可以按核对清单进行演示。";
+  }
+  if (errors.some((error) => error.includes("route 指向不存在的页面"))) {
+    return "请确认 --prototype-app 指向最新 prototype-app/app.js，或修正报告中的 route。";
+  }
+  return "请修正演示报告 JSON，或重新运行 node scripts/feishu-demo-wizard.mjs --json 生成完整报告。";
 }
 
 export function loadPrototypeRoutes(filePath) {
@@ -156,6 +167,7 @@ function printHelp() {
 function printResult(result) {
   console.log(`飞书演示报告校验：${result.valid ? "通过" : "未通过"}`);
   console.log(`- 核对项数量：${result.checklistCount}`);
+  console.log(`- 下一步：${result.advice}`);
   if (!result.valid) {
     for (const error of result.errors) {
       console.log(`- ${error}`);
