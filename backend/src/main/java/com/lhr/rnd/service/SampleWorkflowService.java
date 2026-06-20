@@ -1175,6 +1175,23 @@ public class SampleWorkflowService {
         );
     }
 
+    public synchronized ArchiveFileDownload downloadPricingFile(String pricingFileId) {
+        if (pricingFileRepository == null || archiveFileRepository == null) {
+            throw new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在");
+        }
+        pricingFileRepository.findById(pricingFileId)
+                .orElseThrow(() -> new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在"));
+        var archiveFile = archiveFileRepository.findFirstByBusinessTypeAndBusinessIdOrderByArchivedAtDesc(
+                        "PRICING_FILE",
+                        pricingFileId
+                )
+                .orElseThrow(() -> new BusinessException("PRICING_FILE_ARCHIVE_NOT_FOUND", "核价文件归档不存在"));
+        return new ArchiveFileDownload(
+                archiveFile.getFileName(),
+                archiveStorageService.read(archiveFile.getFilePath())
+        );
+    }
+
     @Transactional
     public synchronized ArchiveFileView archiveExperimentAttachment(
             String experimentFormId,

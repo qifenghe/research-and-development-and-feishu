@@ -264,6 +264,16 @@ public class SampleWorkflowController {
         return ApiResponse.success(workflowService.notifyFinance(id, request.recipientName(), request.remark()));
     }
 
+    @GetMapping("/pricing-files/{id}/download")
+    public ResponseEntity<byte[]> downloadPricingFile(@PathVariable String id) {
+        var file = workflowService.downloadPricingFile(id);
+        var encodedFileName = URLEncoder.encode(file.fileName(), StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .body(file.content());
+    }
+
     @GetMapping("/sample-versions/{id}/archive-files")
     public ApiResponse<List<ArchiveFileView>> archiveFiles(@PathVariable String id) {
         return ApiResponse.success(workflowService.archiveFiles(id));

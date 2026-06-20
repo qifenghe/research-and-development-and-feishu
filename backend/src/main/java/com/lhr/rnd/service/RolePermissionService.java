@@ -76,9 +76,10 @@ public class RolePermissionService {
                         rule("POST", "/api/v1/sample-versions/*/pricing-files", "生成核价文件", 70),
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 80),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 90),
-                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 100),
-                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 110),
-                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 120)
+                        rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 100),
+                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 110),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 120),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 130)
                 )),
                 new RolePermissionConfig("RND_DIRECTOR", List.of(
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
@@ -91,9 +92,10 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 80),
                         rule("GET", "/api/v1/shipments/*/detail", "查看寄样详情", 90),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 100),
-                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 110),
-                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 120),
-                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 130)
+                        rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 110),
+                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 120),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 130),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 140)
                 )),
                 new RolePermissionConfig("RND_ENGINEER", List.of(
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
@@ -123,9 +125,10 @@ public class RolePermissionService {
                 )),
                 new RolePermissionConfig("FINANCE", List.of(
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 10),
-                        rule("POST", "/api/v1/pricing-files/*/notify-finance", "处理核价通知", 20),
-                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 30),
-                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 40)
+                        rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 20),
+                        rule("POST", "/api/v1/pricing-files/*/notify-finance", "处理核价通知", 30),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 40),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 50)
                 )),
                 new RolePermissionConfig("MANAGER", List.of(
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
@@ -136,9 +139,10 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 60),
                         rule("GET", "/api/v1/shipments/*/detail", "查看寄样详情", 70),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 80),
-                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 90),
-                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 100),
-                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 110)
+                        rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 90),
+                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 100),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 110),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 120)
                 ))
         );
     }
@@ -197,6 +201,9 @@ public class RolePermissionService {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
         }
         if (isPricingDetail(method, uri)) {
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "FINANCE", "MANAGER");
+        }
+        if (isPricingDownload(method, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "FINANCE", "MANAGER");
         }
         return switch (role) {
@@ -299,6 +306,10 @@ public class RolePermissionService {
 
     private boolean isPricingDetail(String method, String uri) {
         return "GET".equals(method) && uri.matches("^/api/v1/pricing-files/[^/]+/detail$");
+    }
+
+    private boolean isPricingDownload(String method, String uri) {
+        return "GET".equals(method) && uri.matches("^/api/v1/pricing-files/[^/]+/download$");
     }
 
     private boolean isFinanceWrite(String method, String uri) {

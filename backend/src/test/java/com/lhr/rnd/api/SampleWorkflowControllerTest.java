@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -26,6 +27,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -810,6 +812,12 @@ class SampleWorkflowControllerTest {
 
         mockMvc.perform(get("/api/v1/archive-files/{id}/download", archiveFileId))
                 .andExpect(status().isOk())
+                .andExpect(content().bytes(Files.readAllBytes(archivedPath)));
+
+        mockMvc.perform(get("/api/v1/pricing-files/{id}/download", pricingFileId))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename*=UTF-8''500g%E9%A6%99%E5%8D%A4%E5%A4%A7%E8%82%A0%E5%A4%B4-%E6%A0%B8%E4%BB%B7%E5%8E%9F%E6%96%99%E6%B8%85%E5%8D%95-A0-V1.xlsx"))
                 .andExpect(content().bytes(Files.readAllBytes(archivedPath)));
 
         var financeNotificationId = mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
