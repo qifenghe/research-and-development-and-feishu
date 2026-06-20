@@ -109,6 +109,28 @@ export function buildWizardVerificationChecklist(summary, appUrl) {
   }));
 }
 
+export function buildWizardJsonReport(result, appUrl) {
+  const summary = buildWizardSummary(result);
+  return {
+    ready: summary.ready,
+    adviceCode: summary.adviceCode,
+    sampleNo: summary.sampleNo,
+    ids: {
+      requestId: summary.requestId,
+      taskId: summary.taskId,
+      experimentFormId: summary.experimentFormId,
+      testAssignmentId: summary.testAssignmentId,
+      versionId: summary.versionId,
+      shipmentId: summary.shipmentId,
+      pricingFileId: summary.pricingFileId,
+      financeNotificationId: summary.financeNotificationId,
+    },
+    pendingCount: summary.pendingCount,
+    dispatchResult: summary.dispatchResult,
+    checklist: buildWizardVerificationChecklist(summary, appUrl),
+  };
+}
+
 function loadOptionalDemoWizardConfig(filePath) {
   if (!filePath || !fs.existsSync(filePath)) {
     return {};
@@ -158,7 +180,7 @@ function mergeWizardOptions(fileOptions, commandOptions) {
   };
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -190,6 +212,8 @@ function parseArgs(argv) {
       options.financeRecipientName = argv[++index];
     } else if (arg === "--dispatch") {
       options.dispatch = true;
+    } else if (arg === "--json") {
+      options.json = true;
     } else if (arg === "--help" || arg === "-h") {
       options.help = true;
     }
@@ -198,6 +222,11 @@ function parseArgs(argv) {
 }
 
 function printResult(result) {
+  if (result.outputJson === true) {
+    const appUrl = result.checkResult?.env?.FEISHU_APP_URL;
+    console.log(JSON.stringify(buildWizardJsonReport(result, appUrl), null, 2));
+    return;
+  }
   console.log("飞书联调向导");
   console.log(`- 就绪状态：${result.ready ? "已就绪" : "未就绪"}`);
   console.log(`- 下一步：${result.advice.message}`);
@@ -253,6 +282,7 @@ function printHelp() {
   - 默认会尝试读取 .feishu-demo.local；也可用 --demo-config-file 指定本地演示人员配置。
   - 可分别指定研发内勤、研发总监和研发人员的飞书 user_id，并配置测试人员、财务接收人姓名。
   - 默认不真实派发；追加 --dispatch 后才调用通知派发接口。
+  - 追加 --json 后输出机器可读 JSON，便于自动核验或留档。
   - 使用 --dispatch 时必须填写真实研发人员飞书 user_id。`);
 }
 
@@ -262,6 +292,10 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     printHelp();
   } else {
     runDemoWizard(options)
+      .then((result) => ({
+        ...result,
+        outputJson: options.json === true,
+      }))
       .then(printResult)
       .catch((error) => {
         console.error(`飞书联调向导失败：${error.message}`);

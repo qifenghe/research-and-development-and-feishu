@@ -4,9 +4,11 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  buildWizardJsonReport,
   buildWizardVerificationChecklist,
   buildWizardSummary,
   loadDemoWizardConfig,
+  parseArgs,
   runDemoWizard,
 } from "./feishu-demo-wizard.mjs";
 
@@ -120,6 +122,27 @@ assert.deepEqual(
     "https://rnd.example.com/app/#pricing-detail",
   ],
 );
+
+assert.deepEqual(buildWizardJsonReport(ready, "https://rnd.example.com/app/"), {
+  ready: true,
+  adviceCode: "READY_TO_DEMO",
+  sampleNo: "YP202606180001",
+  ids: {
+    requestId: "REQ-0001",
+    taskId: "TASK-0001",
+    experimentFormId: "EXP-0001",
+    testAssignmentId: "TEST-0001",
+    versionId: "VER-0001",
+    shipmentId: "SHIP-0001",
+    pricingFileId: "PRICE-0001",
+    financeNotificationId: "FIN-0001",
+  },
+  pendingCount: 1,
+  dispatchResult: null,
+  checklist: buildWizardVerificationChecklist(buildWizardSummary(ready), "https://rnd.example.com/app/"),
+});
+
+assert.equal(parseArgs(["--json"]).json, true);
 
 let receivedPeople = null;
 await runDemoWizard({
