@@ -23,10 +23,12 @@ import com.lhr.rnd.model.ExperimentForm;
 import com.lhr.rnd.model.ExperimentFormStatus;
 import com.lhr.rnd.model.ExperimentMaterial;
 import com.lhr.rnd.model.PricingFileRecord;
+import com.lhr.rnd.model.PricingFileDetailView;
 import com.lhr.rnd.model.PricingFileStatus;
 import com.lhr.rnd.model.SampleProject;
 import com.lhr.rnd.model.SampleRequest;
 import com.lhr.rnd.model.SampleVersion;
+import com.lhr.rnd.model.ShipmentDetailView;
 import com.lhr.rnd.model.ShipmentRecord;
 import com.lhr.rnd.model.ShipmentStatus;
 import com.lhr.rnd.model.StoppedSampleProjectView;
@@ -597,6 +599,32 @@ public class SampleWorkflowService {
         );
     }
 
+    public synchronized ShipmentDetailView shipmentDetail(String shipmentId, String role) {
+        var shipment = requiredShipment(shipmentId);
+        var version = requiredVersion(shipment.versionId());
+        var feedback = currentCustomerFeedback(shipment.id());
+        return new ShipmentDetailView(
+                shipment,
+                version,
+                feedback,
+                shipmentFieldGroups(feedback),
+                shipmentActions(shipment, role)
+        );
+    }
+
+    public synchronized PricingFileDetailView pricingFileDetail(String pricingFileId, String role) {
+        var pricingFile = requiredPricingFile(pricingFileId);
+        var version = requiredVersion(pricingFile.versionId());
+        var financeNotification = currentFinanceNotification(pricingFile.id());
+        return new PricingFileDetailView(
+                pricingFile,
+                version,
+                financeNotification,
+                pricingFileFieldGroups(financeNotification),
+                pricingFileActions(pricingFile, role)
+        );
+    }
+
     public synchronized DashboardOverview dashboardOverview() {
         var pendingReviewCount = requests.values().stream()
                 .filter(request -> request.status() == SampleStatus.PENDING_REVIEW)
@@ -710,6 +738,22 @@ public class SampleWorkflowService {
         return task;
     }
 
+    private ShipmentRecord requiredShipment(String shipmentId) {
+        var shipment = shipments.get(shipmentId);
+        if (shipment == null) {
+            throw new BusinessException("SHIPMENT_NOT_FOUND", "寄样记录不存在");
+        }
+        return shipment;
+    }
+
+    private PricingFileRecord requiredPricingFile(String pricingFileId) {
+        var pricingFile = pricingFiles.get(pricingFileId);
+        if (pricingFile == null) {
+            throw new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在");
+        }
+        return pricingFile;
+    }
+
     private ExperimentForm currentExperimentForm(String taskId) {
         return experimentForms.values().stream()
                 .filter(form -> form.taskId().equals(taskId))
@@ -721,6 +765,20 @@ public class SampleWorkflowService {
         return testAssignments.values().stream()
                 .filter(assignment -> assignment.taskId().equals(taskId))
                 .max(Comparator.comparing(TestAssignment::assignedAt))
+                .orElse(null);
+    }
+
+    private CustomerFeedback currentCustomerFeedback(String shipmentId) {
+        return customerFeedbacks.values().stream()
+                .filter(feedback -> feedback.shipmentId().equals(shipmentId))
+                .max(Comparator.comparing(CustomerFeedback::feedbackAt))
+                .orElse(null);
+    }
+
+    private FinanceNotification currentFinanceNotification(String pricingFileId) {
+        return financeNotifications.values().stream()
+                .filter(notification -> notification.pricingFileId().equals(pricingFileId))
+                .max(Comparator.comparing(FinanceNotification::notifiedAt))
                 .orElse(null);
     }
 
@@ -826,6 +884,100 @@ public class SampleWorkflowService {
                 action("CREATE_SHIPMENT", "登记寄样", "POST", "/api/v1/sample-versions/" + task.versionId() + "/shipments", true),
                 action("GENERATE_PRICING_FILE", "生成核价文件", "POST", "/api/v1/sample-versions/" + task.versionId() + "/pricing-files", false)
         );
+    }
+
+    private List<DetailFieldGroup> shipmentFieldGroups(CustomerFeedback feedback) {
+        var groups = new ArrayList<DetailFieldGroup>();
+        groups.add(new DetailFieldGroup("寄样信息", List.of(
+                "shipment.id",
+                "shipment.sampleNo",
+                "shipment.productName",
+                "shipment.versionCode",
+                "shipment.quantity",
+                "shipment.receiverName",
+                "shipment.trackingNo",
+                "shipment.status",
+                "shipment.shippedAt"
+        )));
+        if (feedback != null) {
+            groups.add(new DetailFieldGroup("客户反馈", List.of(
+                    "customerFeedback.feedbackBy",
+                    "customerFeedback.result",
+                    "customerFeedback.comment",
+                    "customerFeedback.feedbackAt"
+            )));
+        }
+        return groups;
+    }
+
+    private List<DetailFieldGroup> pricingFileFieldGroups(FinanceNotification financeNotification) {
+        var groups = new ArrayList<DetailFieldGroup>();
+        groups.add(new DetailFieldGroup("核价文件", List.of(
+                "pricingFile.id",
+                "pricingFile.sampleNo",
+                "pricingFile.productName",
+                "pricingFile.versionCode",
+                "pricingFile.pricingVersion",
+                "pricingFile.fileName",
+                "pricingFile.status",
+                "pricingFile.generatedAt"
+        )));
+        if (financeNotification != null) {
+            groups.add(new DetailFieldGroup("财务通知", List.of(
+                    "financeNotification.recipientName",
+                    "financeNotification.remark",
+                    "financeNotification.status",
+                    "financeNotification.notifiedAt"
+            )));
+        }
+        return groups;
+    }
+
+    private List<DetailAction> shipmentActions(ShipmentRecord shipment, String role) {
+        if (!hasRole(role, "RND_ASSISTANT")) {
+            return List.of();
+        }
+        if (shipment.status() == ShipmentStatus.SHIPPED) {
+            return List.of(
+                    action("CUSTOMER_FEEDBACK_PASS", "客户通过", "POST", "/api/v1/shipments/" + shipment.id() + "/feedback", true),
+                    action("CUSTOMER_FEEDBACK_RESAMPLE", "客户不通过复打样", "POST", "/api/v1/shipments/" + shipment.id() + "/feedback", false),
+                    action("CUSTOMER_FEEDBACK_STOP", "停止打样", "POST", "/api/v1/shipments/" + shipment.id() + "/feedback", false)
+            );
+        }
+        if (shipment.status() == ShipmentStatus.FEEDBACK_PASSED) {
+            return List.of(action(
+                    "GENERATE_PRICING_FILE",
+                    "生成核价文件",
+                    "POST",
+                    "/api/v1/sample-versions/" + shipment.versionId() + "/pricing-files",
+                    true
+            ));
+        }
+        return List.of();
+    }
+
+    private List<DetailAction> pricingFileActions(PricingFileRecord pricingFile, String role) {
+        if (!hasRole(role, "RND_ASSISTANT", "FINANCE")) {
+            return List.of();
+        }
+        var actions = new ArrayList<DetailAction>();
+        actions.add(action(
+                "DOWNLOAD_PRICING_FILE",
+                "下载核价文件",
+                "GET",
+                "/api/v1/pricing-files/" + pricingFile.id() + "/download",
+                true
+        ));
+        if (hasRole(role, "RND_ASSISTANT") && pricingFile.status() == PricingFileStatus.GENERATED) {
+            actions.add(action(
+                    "NOTIFY_FINANCE",
+                    "通知财务核价",
+                    "POST",
+                    "/api/v1/pricing-files/" + pricingFile.id() + "/notify-finance",
+                    true
+            ));
+        }
+        return actions;
     }
 
     private DetailAction action(String code, String label, String httpMethod, String endpoint, boolean primary) {

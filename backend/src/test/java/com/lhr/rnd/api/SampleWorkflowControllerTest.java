@@ -1237,6 +1237,71 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.availableActions", hasSize(0)));
     }
 
+    @Test
+    void shipmentAndPricingDetailsReturnRoleAwareAvailableActions() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var shipmentId = createShipment(versionId);
+
+        mockMvc.perform(get("/api/v1/shipments/{id}/detail", shipmentId)
+                        .param("role", "RND_ASSISTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.shipment.id").value(shipmentId))
+                .andExpect(jsonPath("$.data.version.versionCode").value("A0"))
+                .andExpect(jsonPath("$.data.fieldGroups[0].title").value("寄样信息"))
+                .andExpect(jsonPath("$.data.availableActions", hasSize(3)))
+                .andExpect(jsonPath("$.data.availableActions[0].code").value("CUSTOMER_FEEDBACK_PASS"))
+                .andExpect(jsonPath("$.data.availableActions[1].code").value("CUSTOMER_FEEDBACK_RESAMPLE"))
+                .andExpect(jsonPath("$.data.availableActions[2].code").value("CUSTOMER_FEEDBACK_STOP"));
+
+        mockMvc.perform(post("/api/v1/shipments/{id}/feedback", shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "feedbackBy": "业务员",
+                                  "result": "PASSED",
+                                  "comment": "客户确认通过，可以核价"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/shipments/{id}/detail", shipmentId)
+                        .param("role", "RND_ASSISTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.customerFeedback.result").value("PASSED"))
+                .andExpect(jsonPath("$.data.availableActions", hasSize(1)))
+                .andExpect(jsonPath("$.data.availableActions[0].code").value("GENERATE_PRICING_FILE"));
+
+        var pricingFileId = generatePricingFile(versionId);
+
+        mockMvc.perform(get("/api/v1/pricing-files/{id}/detail", pricingFileId)
+                        .param("role", "RND_ASSISTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pricingFile.id").value(pricingFileId))
+                .andExpect(jsonPath("$.data.version.versionCode").value("A0"))
+                .andExpect(jsonPath("$.data.fieldGroups[0].title").value("核价文件"))
+                .andExpect(jsonPath("$.data.availableActions", hasSize(2)))
+                .andExpect(jsonPath("$.data.availableActions[0].code").value("DOWNLOAD_PRICING_FILE"))
+                .andExpect(jsonPath("$.data.availableActions[1].code").value("NOTIFY_FINANCE"));
+
+        mockMvc.perform(get("/api/v1/pricing-files/{id}/detail", pricingFileId)
+                        .param("role", "FINANCE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.availableActions", hasSize(1)))
+                .andExpect(jsonPath("$.data.availableActions[0].code").value("DOWNLOAD_PRICING_FILE"));
+
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recipientName\":\"财务核价员\",\"remark\":\"请核价\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/pricing-files/{id}/detail", pricingFileId)
+                        .param("role", "RND_ASSISTANT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.financeNotification.recipientName").value("财务核价员"))
+                .andExpect(jsonPath("$.data.availableActions", hasSize(1)))
+                .andExpect(jsonPath("$.data.availableActions[0].code").value("DOWNLOAD_PRICING_FILE"));
+    }
+
     private void acceptTask(String taskId) throws Exception {
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/accept", taskId)
                         .contentType(MediaType.APPLICATION_JSON)

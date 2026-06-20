@@ -38,6 +38,12 @@ class RolePermissionServiceTest {
         assertThat(service.hasPermission("FINANCE", "GET", "/api/v1/rnd-tasks/TASK-0001/detail")).isFalse();
         assertThat(service.hasPermission("RND_ASSISTANT", "GET", "/api/v1/pricing-files")).isTrue();
         assertThat(service.hasPermission("FINANCE", "GET", "/api/v1/pricing-files")).isFalse();
+        assertThat(service.hasPermission("RND_ASSISTANT", "GET", "/api/v1/shipments/SHIP-0001/detail")).isTrue();
+        assertThat(service.hasPermission("RND_DIRECTOR", "GET", "/api/v1/shipments/SHIP-0001/detail")).isTrue();
+        assertThat(service.hasPermission("FINANCE", "GET", "/api/v1/shipments/SHIP-0001/detail")).isFalse();
+        assertThat(service.hasPermission("RND_ASSISTANT", "GET", "/api/v1/pricing-files/PRICE-0001/detail")).isTrue();
+        assertThat(service.hasPermission("RND_DIRECTOR", "GET", "/api/v1/pricing-files/PRICE-0001/detail")).isTrue();
+        assertThat(service.hasPermission("FINANCE", "GET", "/api/v1/pricing-files/PRICE-0001/detail")).isTrue();
     }
 
     @Test

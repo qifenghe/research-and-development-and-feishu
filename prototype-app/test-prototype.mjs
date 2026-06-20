@@ -115,6 +115,18 @@ for (const marker of ["task-detail", "GET /api/v1/rnd-tasks/TASK-0001/detail?rol
   }
 }
 
+for (const marker of ["GET /api/v1/shipments/SHIP-0001/detail?role=RND_ASSISTANT", "CUSTOMER_FEEDBACK_PASS", "GENERATE_PRICING_FILE"]) {
+  if (!js.includes(marker) && !html.includes(marker)) {
+    throw new Error(`Missing shipment-detail marker: ${marker}`);
+  }
+}
+
+for (const marker of ["GET /api/v1/pricing-files/PRICE-0003/detail?role=RND_ASSISTANT", "DOWNLOAD_PRICING_FILE", "NOTIFY_FINANCE"]) {
+  if (!js.includes(marker) && !html.includes(marker)) {
+    throw new Error(`Missing pricing-detail marker: ${marker}`);
+  }
+}
+
 for (const marker of ["config-card", "表单字段配置", "流程状态配置", "飞书通知配置", "模板配置", "基础字典配置"]) {
   if (!js.includes(marker) && !html.includes(marker)) {
     throw new Error(`Missing config-center marker: ${marker}`);

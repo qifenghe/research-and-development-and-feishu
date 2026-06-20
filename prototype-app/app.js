@@ -830,7 +830,15 @@ function renderShipmentList() {
 }
 
 function renderShipmentDetail() {
+  const detailEndpoint = "GET /api/v1/shipments/SHIP-0001/detail?role=RND_ASSISTANT";
+  const actions = [
+    ["RND_ASSISTANT", "SHIPPED", "CUSTOMER_FEEDBACK_PASS", "客户通过", "/api/v1/shipments/{id}/feedback"],
+    ["RND_ASSISTANT", "SHIPPED", "CUSTOMER_FEEDBACK_RESAMPLE", "客户不通过复打样", "/api/v1/shipments/{id}/feedback"],
+    ["RND_ASSISTANT", "SHIPPED", "CUSTOMER_FEEDBACK_STOP", "停止打样", "/api/v1/shipments/{id}/feedback"],
+    ["RND_ASSISTANT", "FEEDBACK_PASSED", "GENERATE_PRICING_FILE", "生成核价文件", "/api/v1/sample-versions/{id}/pricing-files"],
+  ];
   return mobileLayout("寄样反馈详情", `研发内勤/业务员 · ${state.product} A0`, `
+    <span class="badge">${detailEndpoint}</span>
     <span class="badge green">样品完成</span>
     ${field("寄样版本", "A0", true)}
     ${field("寄样数量", "6袋", true)}
@@ -844,7 +852,19 @@ function renderShipmentDetail() {
     </div>
   `, `
     <div class="card">
-      <h3>为什么这里要列表 + 详情</h3>
+      <div class="section-title"><h3>availableActions</h3><span class="badge orange">寄样按钮矩阵</span></div>
+      <div class="table action-matrix">
+        <div class="row header"><div>角色</div><div>状态</div><div>动作编码</div><div>按钮</div><div>接口</div></div>
+        ${actions.map(([role, status, code, label, endpoint]) => `
+          <div class="row">
+            <strong>${role}</strong>
+            <div>${status}</div>
+            <div><span class="badge">${code}</span></div>
+            <div>${label}</div>
+            <div>${endpoint}</div>
+          </div>
+        `).join("")}
+      </div>
       <p>同一时间可能有多个样品在寄样和等反馈，所以先进入列表定位样品，再进入详情页登记寄样、客户意见、是否继续打样或生成核价。</p>
       <div class="actions"><button data-route="pricing-list">进入核价文件列表</button></div>
     </div>
@@ -874,25 +894,50 @@ function renderPricingList() {
 }
 
 function renderPricingDetail() {
+  const detailEndpoint = "GET /api/v1/pricing-files/PRICE-0003/detail?role=RND_ASSISTANT";
+  const actions = [
+    ["RND_ASSISTANT", "GENERATED", "DOWNLOAD_PRICING_FILE", "下载核价文件", "/api/v1/pricing-files/{id}/download"],
+    ["RND_ASSISTANT", "GENERATED", "NOTIFY_FINANCE", "通知财务核价", "/api/v1/pricing-files/{id}/notify-finance"],
+    ["FINANCE", "GENERATED/FINANCE_NOTIFIED", "DOWNLOAD_PRICING_FILE", "下载核价文件", "/api/v1/pricing-files/{id}/download"],
+  ];
   return `
-    <div class="card">
-      <div class="section-title"><h3>核价文件详情</h3><span class="badge">生成 ${state.pricingVersion}.xlsx</span></div>
-      ${detailGrid([
-        ["产品", state.product],
-        ["样品版本", "A0"],
-        ["核价版本", "A0-核价V1"],
-        ["Excel模板", "原材料清单A0"],
-        ["生成来源", "样品完成/客户通过"],
-        ["文件状态", "待提交财务"],
-      ])}
-      <div class="doc-grid" style="margin-top:16px">
-        ${docCard("原料明细", "冻猪大肠头、去腥粉、香辛料")}
-        ${docCard("辅料/包材", "调味料、500g袋、纸箱")}
-        ${docCard("研发出成", "89kg / 178包 / 得率84.55%")}
+    <div class="grid cols-2">
+      <div class="card">
+        <div class="section-title"><h3>核价文件详情</h3><span class="badge">生成 ${state.pricingVersion}.xlsx</span></div>
+        <p><span class="badge">${detailEndpoint}</span></p>
+        ${detailGrid([
+          ["产品", state.product],
+          ["样品版本", "A0"],
+          ["核价版本", "A0-核价V1"],
+          ["Excel模板", "原材料清单A0"],
+          ["生成来源", "样品完成/客户通过"],
+          ["文件状态", "待提交财务"],
+        ])}
+        <div class="doc-grid" style="margin-top:16px">
+          ${docCard("原料明细", "冻猪大肠头、去腥粉、香辛料")}
+          ${docCard("辅料/包材", "调味料、500g袋、纸箱")}
+          ${docCard("研发出成", "89kg / 178包 / 得率84.55%")}
+        </div>
+        <div class="actions">
+          <button data-toast="已按Excel模板生成 A0-核价V1.xlsx">生成Excel核价文件</button>
+          <button class="green" data-route="finance">提交财务并发送飞书通知</button>
+        </div>
       </div>
-      <div class="actions">
-        <button data-toast="已按Excel模板生成 A0-核价V1.xlsx">生成Excel核价文件</button>
-        <button class="green" data-route="finance">提交财务并发送飞书通知</button>
+      <div class="card">
+        <div class="section-title"><h3>availableActions</h3><span class="badge orange">核价按钮矩阵</span></div>
+        <div class="table action-matrix">
+          <div class="row header"><div>角色</div><div>状态</div><div>动作编码</div><div>按钮</div><div>接口</div></div>
+          ${actions.map(([role, status, code, label, endpoint]) => `
+            <div class="row">
+              <strong>${role}</strong>
+              <div>${status}</div>
+              <div><span class="badge">${code}</span></div>
+              <div>${label}</div>
+              <div>${endpoint}</div>
+            </div>
+          `).join("")}
+        </div>
+        <p style="color:var(--muted)">研发内勤生成核价文件并通知财务；财务端只看文件和核价状态，不进入研发实验过程。</p>
       </div>
     </div>
   `;

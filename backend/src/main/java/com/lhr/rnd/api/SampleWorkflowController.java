@@ -5,8 +5,10 @@ import com.lhr.rnd.model.DashboardOverview;
 import com.lhr.rnd.model.RndTask;
 import com.lhr.rnd.model.RndTaskDetailView;
 import com.lhr.rnd.model.ExperimentForm;
+import com.lhr.rnd.model.PricingFileDetailView;
 import com.lhr.rnd.model.PricingFileRecord;
 import com.lhr.rnd.model.SampleRequest;
+import com.lhr.rnd.model.ShipmentDetailView;
 import com.lhr.rnd.model.ShipmentRecord;
 import com.lhr.rnd.model.StoppedSampleProjectView;
 import com.lhr.rnd.service.ApproveSampleRequestResult;
@@ -219,6 +221,14 @@ public class SampleWorkflowController {
         )));
     }
 
+    @GetMapping("/shipments/{id}/detail")
+    public ApiResponse<ShipmentDetailView> shipmentDetail(
+            @PathVariable String id,
+            @RequestParam(required = false) String role
+    ) {
+        return ApiResponse.success(workflowService.shipmentDetail(id, role));
+    }
+
     @PostMapping("/sample-versions/{id}/pricing-files")
     public ApiResponse<PricingFileRecord> generatePricingFile(@PathVariable String id) {
         return ApiResponse.success(workflowService.generatePricingFile(id));
@@ -236,6 +246,14 @@ public class SampleWorkflowController {
             return ApiResponse.success(workflowService.pricingFiles(status, keyword, page, size, sort));
         }
         return ApiResponse.success(workflowService.pricingFiles(status, keyword));
+    }
+
+    @GetMapping("/pricing-files/{id}/detail")
+    public ApiResponse<PricingFileDetailView> pricingFileDetail(
+            @PathVariable String id,
+            @RequestParam(required = false) String role
+    ) {
+        return ApiResponse.success(workflowService.pricingFileDetail(id, role));
     }
 
     @PostMapping("/pricing-files/{id}/notify-finance")
