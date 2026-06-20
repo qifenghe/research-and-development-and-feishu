@@ -51,7 +51,8 @@ class HttpFeishuMessageSenderTest {
         assertThat(httpClient.requestBody.get()).contains("\"receive_id\":\"ou_rnd_001\"");
         assertThat(httpClient.requestBody.get()).contains("\"msg_type\":\"interactive\"");
         assertThat(httpClient.requestBody.get()).contains("研发任务分发通知");
-        assertThat(httpClient.requestBody.get()).contains("香卤大肠头 A0 已分发给你");
+        assertThat(httpClient.requestBody.get()).contains("**产品**：香卤大肠头");
+        assertThat(httpClient.requestBody.get()).contains("**任务编号**：TASK-001");
         assertThat(httpClient.requestBody.get()).contains("https://rnd.example.com/#task-detail?id=TASK-001");
         assertThat(httpClient.requestBody.get()).contains("ACCEPT_RND_TASK");
     }
@@ -78,7 +79,15 @@ class HttpFeishuMessageSenderTest {
                 "ou_rnd_001",
                 "RND_TASK_ASSIGNED",
                 "研发任务分发通知",
-                "香卤大肠头 A0 已分发给你，请在飞书自建应用中接受任务。",
+                """
+                        **产品**：香卤大肠头
+                        **版本**：A0
+                        **任务编号**：TASK-001
+                        **负责人**：张研发
+                        **截止日期**：2026-06-25
+
+                        请在飞书自建应用中接受任务。
+                        """.trim(),
                 "PENDING_SEND",
                 LocalDateTime.of(2026, 6, 19, 10, 0),
                 null

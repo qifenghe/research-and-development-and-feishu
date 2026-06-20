@@ -95,11 +95,30 @@ public class FeishuIntegrationService {
                         user.getFeishuUserId(),
                         "RND_TASK_ASSIGNED",
                         "研发任务分发通知",
-                        "%s %s 已分发给你，请在飞书自建应用中接受任务。".formatted(task.productName(), task.versionCode()),
+                        taskAssignedContent(task),
                         "PENDING_SEND",
                         now(),
                         null
                 )));
+    }
+
+    private String taskAssignedContent(RndTask task) {
+        var dueDate = task.dueDate() == null ? "未设置" : task.dueDate().toString();
+        return """
+                **产品**：%s
+                **版本**：%s
+                **任务编号**：%s
+                **负责人**：%s
+                **截止日期**：%s
+
+                请在飞书自建应用中接受任务，并进入现场打样实验单。
+                """.formatted(
+                task.productName(),
+                task.versionCode(),
+                task.id(),
+                task.assigneeName(),
+                dueDate
+        ).trim();
     }
 
     public List<FeishuNotification> pendingNotifications() {

@@ -261,6 +261,13 @@ class SampleWorkflowControllerTest {
         assertThat(valueByColumn("feishu_notification", "business_id", taskId, "recipient_feishu_user_id")).isEqualTo("ou_rnd_001");
         assertThat(valueByColumn("feishu_notification", "business_id", taskId, "template_key")).isEqualTo("RND_TASK_ASSIGNED");
         assertThat(valueByColumn("feishu_notification", "business_id", taskId, "status")).isEqualTo("PENDING_SEND");
+        var notificationContent = valueByColumn("feishu_notification", "business_id", taskId, "content");
+        assertThat(notificationContent).contains("**产品**：500g香卤大肠头");
+        assertThat(notificationContent).contains("**版本**：A0");
+        assertThat(notificationContent).contains("**任务编号**：" + taskId);
+        assertThat(notificationContent).contains("**负责人**：张研发");
+        assertThat(notificationContent).contains("**截止日期**：2026-06-25");
+        assertThat(notificationContent).contains("请在飞书自建应用中接受任务");
 
         mockMvc.perform(get("/api/v1/feishu/notifications/pending"))
                 .andExpect(status().isOk())
