@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import {
   buildWizardSummary,
+  loadDemoWizardConfig,
   runDemoWizard,
 } from "./feishu-demo-wizard.mjs";
 
@@ -108,6 +112,80 @@ assert.deepEqual(receivedPeople, {
     name: "张研发",
     feishuUserId: "ou_engineer_real",
   },
+});
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "feishu-demo-wizard-"));
+const demoConfigFile = path.join(tempDir, ".feishu-demo.local");
+fs.writeFileSync(demoConfigFile, `
+FEISHU_DEMO_ASSISTANT_NAME=赵内勤
+FEISHU_DEMO_ASSISTANT_USER_ID=ou_assistant_file
+FEISHU_DEMO_DIRECTOR_NAME=钱总监
+FEISHU_DEMO_DIRECTOR_USER_ID=ou_director_file
+FEISHU_DEMO_ENGINEER_NAME=孙研发
+FEISHU_DEMO_ENGINEER_USER_ID=ou_engineer_file
+FEISHU_DEMO_PRODUCT_NAME=500g香卤大肠头
+FEISHU_DEMO_CUSTOMER_NAME=LHYC
+`);
+
+assert.deepEqual(loadDemoWizardConfig(demoConfigFile), {
+  assistant: {
+    name: "赵内勤",
+    feishuUserId: "ou_assistant_file",
+  },
+  director: {
+    name: "钱总监",
+    feishuUserId: "ou_director_file",
+  },
+  engineer: {
+    name: "孙研发",
+    feishuUserId: "ou_engineer_file",
+  },
+  productName: "500g香卤大肠头",
+  customerName: "LHYC",
+});
+
+let filePeople = null;
+await runDemoWizard({
+  demoConfigFile,
+  check: async () => ({
+    ready: true,
+    envResult: { ready: true, missing: [] },
+    statusResult: { ready: true, missing: [] },
+  }),
+  demo: async (options) => {
+    filePeople = {
+      assistant: options.assistant,
+      director: options.director,
+      engineer: options.engineer,
+      productName: options.productName,
+      customerName: options.customerName,
+    };
+    return {
+      requestId: "REQ-0003",
+      taskId: "TASK-0003",
+      sampleNo: "YP202606180003",
+      engineer: options.engineer,
+      pendingNotifications: [],
+      dispatchResult: null,
+    };
+  },
+});
+
+assert.deepEqual(filePeople, {
+  assistant: {
+    name: "赵内勤",
+    feishuUserId: "ou_assistant_file",
+  },
+  director: {
+    name: "钱总监",
+    feishuUserId: "ou_director_file",
+  },
+  engineer: {
+    name: "孙研发",
+    feishuUserId: "ou_engineer_file",
+  },
+  productName: "500g香卤大肠头",
+  customerName: "LHYC",
 });
 
 console.log("Feishu demo wizard tests passed.");

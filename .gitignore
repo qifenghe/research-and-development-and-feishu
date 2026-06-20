@@ -17,6 +17,7 @@ target/
 !*.env.*.example
 !backend/.env.feishu.example
 backend/.env.feishu.local
+.feishu-demo.local
 
 # IDE
 .idea/

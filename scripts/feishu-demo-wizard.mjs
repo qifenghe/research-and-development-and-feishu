@@ -1,18 +1,24 @@
 import process from "node:process";
+import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 
 import {
   buildReadinessAdvice,
+  parseEnvText,
   runCheck,
 } from "./feishu-local-check.mjs";
 import { runDemoTaskFlow } from "./feishu-demo-task.mjs";
 
+const DEFAULT_DEMO_CONFIG_FILE = ".feishu-demo.local";
+
 export async function runDemoWizard(options = {}) {
   const check = options.check || runCheck;
   const demo = options.demo || runDemoTaskFlow;
+  const fileOptions = loadOptionalDemoWizardConfig(options.demoConfigFile || DEFAULT_DEMO_CONFIG_FILE);
+  const mergedOptions = mergeWizardOptions(fileOptions, options);
   const checkResult = await check({
-    envFile: options.envFile,
-    backendUrl: options.backendUrl,
+    envFile: mergedOptions.envFile,
+    backendUrl: mergedOptions.backendUrl,
   });
   const advice = buildReadinessAdvice(checkResult);
   if (!checkResult.ready) {
@@ -24,13 +30,13 @@ export async function runDemoWizard(options = {}) {
     };
   }
   const demoResult = await demo({
-    backendUrl: options.backendUrl,
-    dispatch: options.dispatch === true,
-    productName: options.productName,
-    customerName: options.customerName,
-    assistant: options.assistant,
-    director: options.director,
-    engineer: options.engineer,
+    backendUrl: mergedOptions.backendUrl,
+    dispatch: mergedOptions.dispatch === true,
+    productName: mergedOptions.productName,
+    customerName: mergedOptions.customerName,
+    assistant: mergedOptions.assistant,
+    director: mergedOptions.director,
+    engineer: mergedOptions.engineer,
   });
   return {
     ready: true,
@@ -38,6 +44,11 @@ export async function runDemoWizard(options = {}) {
     checkResult,
     demoResult,
   };
+}
+
+export function loadDemoWizardConfig(filePath) {
+  const env = parseEnvText(fs.readFileSync(filePath, "utf8"));
+  return envToWizardOptions(env);
 }
 
 export function buildWizardSummary(result) {
@@ -52,12 +63,61 @@ export function buildWizardSummary(result) {
   };
 }
 
+function loadOptionalDemoWizardConfig(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return {};
+  }
+  return loadDemoWizardConfig(filePath);
+}
+
+function envToWizardOptions(env) {
+  return {
+    assistant: personFromEnv(env, "FEISHU_DEMO_ASSISTANT"),
+    director: personFromEnv(env, "FEISHU_DEMO_DIRECTOR"),
+    engineer: personFromEnv(env, "FEISHU_DEMO_ENGINEER"),
+    productName: env.FEISHU_DEMO_PRODUCT_NAME,
+    customerName: env.FEISHU_DEMO_CUSTOMER_NAME,
+  };
+}
+
+function personFromEnv(env, prefix) {
+  const person = {};
+  if (env[`${prefix}_NAME`]) {
+    person.name = env[`${prefix}_NAME`];
+  }
+  if (env[`${prefix}_USER_ID`]) {
+    person.feishuUserId = env[`${prefix}_USER_ID`];
+  }
+  return Object.keys(person).length > 0 ? person : undefined;
+}
+
+function mergeWizardOptions(fileOptions, commandOptions) {
+  return {
+    ...fileOptions,
+    ...commandOptions,
+    assistant: {
+      ...(fileOptions.assistant || {}),
+      ...(commandOptions.assistant || {}),
+    },
+    director: {
+      ...(fileOptions.director || {}),
+      ...(commandOptions.director || {}),
+    },
+    engineer: {
+      ...(fileOptions.engineer || {}),
+      ...(commandOptions.engineer || {}),
+    },
+  };
+}
+
 function parseArgs(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
     if (arg === "--env-file") {
       options.envFile = argv[++index];
+    } else if (arg === "--demo-config-file") {
+      options.demoConfigFile = argv[++index];
     } else if (arg === "--backend-url") {
       options.backendUrl = argv[++index];
     } else if (arg === "--assistant-name") {
@@ -108,6 +168,7 @@ function printResult(result) {
 function printHelp() {
   console.log(`用法：
   node scripts/feishu-demo-wizard.mjs \\
+    --demo-config-file .feishu-demo.local \\
     --backend-url http://127.0.0.1:8080 \\
     --assistant-name 李内勤 \\
     --assistant-feishu-user-id ou_assistant_xxx \\
@@ -119,6 +180,7 @@ function printHelp() {
 说明：
   - 先运行飞书本地自检，未就绪时不会创建演示任务。
   - 就绪后自动创建样品需求、审核、分发研发任务，并生成飞书待发送通知。
+  - 默认会尝试读取 .feishu-demo.local；也可用 --demo-config-file 指定本地演示人员配置。
   - 可分别指定研发内勤、研发总监和研发人员的飞书 user_id。
   - 默认不真实派发；追加 --dispatch 后才调用通知派发接口。
   - 使用 --dispatch 时必须填写真实研发人员飞书 user_id。`);
