@@ -6,6 +6,7 @@ import com.lhr.rnd.model.ExperimentForm;
 import com.lhr.rnd.model.PricingFileRecord;
 import com.lhr.rnd.model.SampleRequest;
 import com.lhr.rnd.model.ShipmentRecord;
+import com.lhr.rnd.model.StoppedSampleProjectView;
 import com.lhr.rnd.service.ApproveSampleRequestResult;
 import com.lhr.rnd.service.FailInternalTestResult;
 import com.lhr.rnd.service.NotifyFinanceResult;
@@ -55,6 +56,11 @@ public class SampleWorkflowController {
     @GetMapping("/sample-requests")
     public ApiResponse<List<SampleRequest>> sampleRequests() {
         return ApiResponse.success(workflowService.requests());
+    }
+
+    @GetMapping("/sample-projects/stopped")
+    public ApiResponse<List<StoppedSampleProjectView>> stoppedSampleProjects() {
+        return ApiResponse.success(workflowService.stoppedProjects());
     }
 
     @PostMapping("/sample-requests/{id}/approve")

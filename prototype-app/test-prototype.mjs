@@ -103,6 +103,12 @@ for (const marker of ["dataModelGroups", "SampleRequest", "SampleProject", "Samp
   }
 }
 
+for (const marker of ["GET /api/v1/sample-projects/stopped", "停止原因", "复制为新需求"]) {
+  if (!js.includes(marker) && !html.includes(marker)) {
+    throw new Error(`Missing stopped-project marker: ${marker}`);
+  }
+}
+
 const sidebarMatch = js.match(/const sidebarItems = \[([\s\S]*?)\];/);
 if (!sidebarMatch) {
   throw new Error("Missing sidebarItems");

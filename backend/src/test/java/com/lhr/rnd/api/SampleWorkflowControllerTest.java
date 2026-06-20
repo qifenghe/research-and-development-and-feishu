@@ -943,6 +943,33 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("sample_project", projectId, "status")).isEqualTo("STOPPED");
     }
 
+    @Test
+    void stoppedSampleProjectsReturnStopReasonAndLastVersion() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var projectId = valueById("sample_version", versionId, "project_id");
+        var shipmentId = createShipment(versionId);
+
+        mockMvc.perform(post("/api/v1/shipments/{id}/feedback", shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "feedbackBy": "业务员",
+                                  "result": "STOPPED",
+                                  "comment": "客户项目暂停"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/sample-projects/stopped"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].projectId").value(projectId))
+                .andExpect(jsonPath("$.data[0].productName").value("500g香卤大肠头"))
+                .andExpect(jsonPath("$.data[0].lastVersionCode").value("A0"))
+                .andExpect(jsonPath("$.data[0].stoppedBy").value("业务员"))
+                .andExpect(jsonPath("$.data[0].stopReason").value("客户项目暂停"));
+    }
+
     private void acceptTask(String taskId) throws Exception {
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/accept", taskId)
                         .contentType(MediaType.APPLICATION_JSON)

@@ -72,16 +72,18 @@ public class RolePermissionService {
                         rule("POST", "/api/v1/sample-versions/*/shipments", "登记寄样", 30),
                         rule("POST", "/api/v1/shipments/*/feedback", "登记客户反馈", 40),
                         rule("POST", "/api/v1/sample-versions/*/pricing-files", "生成核价文件", 50),
-                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 60),
-                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 70)
+                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 60),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 70),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 80)
                 )),
                 new RolePermissionConfig("RND_DIRECTOR", List.of(
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
                         rule("POST", "/api/v1/sample-requests/*/approve", "审核样品需求", 20),
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 30),
                         rule("POST", "/api/v1/rnd-tasks/*/assign", "分发研发任务", 40),
-                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 50),
-                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 60)
+                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 50),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 60),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 70)
                 )),
                 new RolePermissionConfig("RND_ENGINEER", List.of(
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
@@ -113,8 +115,9 @@ public class RolePermissionService {
                 new RolePermissionConfig("MANAGER", List.of(
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 20),
-                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 30),
-                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 40)
+                        rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 30),
+                        rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 40),
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 50)
                 ))
         );
     }
@@ -153,6 +156,9 @@ public class RolePermissionService {
     private boolean hasDefaultPermission(String role, String method, String uri) {
         if (isArchiveRead(method, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER");
+        }
+        if (isStoppedProjectRead(method, uri)) {
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
         }
         return switch (role) {
             case "RND_ASSISTANT" -> isSampleRequestCreate(method, uri)
@@ -244,6 +250,10 @@ public class RolePermissionService {
         return "GET".equals(method)
                 && (uri.matches("^/api/v1/sample-versions/[^/]+/archive-files$")
                 || uri.matches("^/api/v1/archive-files/[^/]+/download$"));
+    }
+
+    private boolean isStoppedProjectRead(String method, String uri) {
+        return "GET".equals(method) && uri.equals("/api/v1/sample-projects/stopped");
     }
 
     private boolean isFeishuOperation(String method, String uri) {

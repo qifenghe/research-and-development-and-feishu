@@ -22,6 +22,7 @@ import com.lhr.rnd.model.SampleRequest;
 import com.lhr.rnd.model.SampleVersion;
 import com.lhr.rnd.model.ShipmentRecord;
 import com.lhr.rnd.model.ShipmentStatus;
+import com.lhr.rnd.model.StoppedSampleProjectView;
 import com.lhr.rnd.model.TestAssignment;
 import com.lhr.rnd.model.TestAssignmentStatus;
 import com.lhr.rnd.model.TestRecord;
@@ -59,6 +60,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -483,6 +485,13 @@ public class SampleWorkflowService {
         return new ArrayList<>(requests.values());
     }
 
+    public synchronized List<StoppedSampleProjectView> stoppedProjects() {
+        return projects.values().stream()
+                .filter(project -> project.status() == SampleStatus.STOPPED)
+                .map(this::stoppedProjectView)
+                .toList();
+    }
+
     @Transactional
     public synchronized ShipmentRecord createShipment(CreateShipmentCommand command) {
         var version = requiredVersion(command.versionId());
@@ -785,6 +794,42 @@ public class SampleWorkflowService {
         );
         projects.put(updatedProject.id(), updatedProject);
         return updatedProject;
+    }
+
+    private StoppedSampleProjectView stoppedProjectView(SampleProject project) {
+        var projectVersions = versions.values().stream()
+                .filter(version -> version.projectId().equals(project.id()))
+                .toList();
+        var lastVersionCode = projectVersions.stream()
+                .max(Comparator.comparing(version -> version.versionNumber() == null ? -1 : version.versionNumber()))
+                .map(SampleVersion::versionCode)
+                .orElse(null);
+        var stoppedFeedback = customerFeedbacks.values().stream()
+                .filter(feedback -> feedback.result() == CustomerFeedbackResult.STOPPED)
+                .filter(feedback -> shipmentBelongsToAnyVersion(feedback.shipmentId(), projectVersions))
+                .max(Comparator.comparing(CustomerFeedback::feedbackAt));
+
+        return new StoppedSampleProjectView(
+                project.id(),
+                project.sampleNo(),
+                project.productName(),
+                project.productType(),
+                project.customerName(),
+                project.specification(),
+                project.status().name(),
+                lastVersionCode,
+                stoppedFeedback.map(CustomerFeedback::feedbackBy).orElse(null),
+                stoppedFeedback.map(CustomerFeedback::comment).orElse(null),
+                stoppedFeedback.map(CustomerFeedback::feedbackAt).orElse(null)
+        );
+    }
+
+    private boolean shipmentBelongsToAnyVersion(String shipmentId, List<SampleVersion> projectVersions) {
+        var shipment = shipments.get(shipmentId);
+        if (shipment == null) {
+            return false;
+        }
+        return projectVersions.stream().anyMatch(version -> version.id().equals(shipment.versionId()));
     }
 
     private RndTaskStatus taskStatusAfter(SampleStatus current, SampleAction action) {

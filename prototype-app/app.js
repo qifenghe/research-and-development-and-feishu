@@ -1053,22 +1053,44 @@ function renderFlowchart() {
 }
 
 function renderStopped() {
+  const stoppedProjects = [
+    ["SP-202606-018", "试制香辣肥肠", "华东渠道", "A2", "研发总监", "客户取消需求", "2026-06-18", "已归档"],
+    ["SP-202606-021", "黑椒牛柳调理包", "便利店事业部", "A1", "业务员", "客户项目暂停", "2026-06-20", "资料待复核"],
+  ];
+
   return `
     <div class="card">
-      <div class="section-title"><h3>停止/废弃项目池</h3><span class="badge red">已停止</span></div>
-      ${detailGrid([
-        ["产品名称", "试制香辣肥肠"],
-        ["最后版本", "A2"],
-        ["停止原因", "客户取消需求"],
-        ["停止人", "研发总监"],
-        ["停止时间", "2026-06-18"],
-        ["归档状态", "已归档"],
-      ])}
+      <div class="section-title"><h3>停止/废弃项目池</h3><span class="badge red">GET /api/v1/sample-projects/stopped</span></div>
+      <p class="module-intro">客户反馈停止或研发总监确认停止后，项目进入这里统一保留。停止不会删除实验单历史版本、照片、测试记录、寄样记录和核价草稿，后续可以查看归档，也可以复制为新需求重新发起。</p>
+      <div class="grid cols-3">
+        ${stat("停止项目", "2", "var(--red)")}
+        ${stat("保留版本", "A0-A2", "var(--blue)")}
+        ${stat("可追溯资料", "实验/测试/寄样", "var(--teal)")}
+      </div>
+      <div class="table">
+        <div class="row header"><span>项目编号</span><span>产品/客户</span><span>最后版本</span><span>停止信息</span><span>归档状态</span><span>操作</span></div>
+        ${stoppedProjects.map(([no, product, customer, version, stoppedBy, reason, stoppedAt, archiveStatus]) => `
+          <div class="row">
+            <strong>${no}</strong>
+            <div>${product}<small>${customer}</small></div>
+            <div>${version}</div>
+            <div>${statusBadge("已停止")}<small>${stoppedBy} · ${stoppedAt}<br>${reason}</small></div>
+            <div>${archiveStatus}</div>
+            <div class="row-actions">
+              <a class="button secondary" href="#archive">查看归档</a>
+              <a class="button secondary" href="#request-new">复制为新需求</a>
+            </div>
+          </div>
+        `).join("")}
+      </div>
       <div class="field" style="margin-top:16px">
         <label>停止说明</label>
-        <textarea>停止后不删除实验数据、照片、测试记录和核价草稿；进入废弃项目池，后续可复制为新需求重新发起。</textarea>
+        <textarea>停止项目需要记录停止原因、停止人、停止时间和最后样品版本。系统按样品项目主档状态 STOPPED 查询列表，并从客户反馈/停止确认记录中带出原因。</textarea>
       </div>
-      <div class="actions"><button class="secondary" data-route="dashboard">返回首页</button></div>
+      <div class="actions">
+        <button class="secondary" data-route="rnd-module">返回研发任务</button>
+        <button class="secondary" data-route="dashboard">返回首页</button>
+      </div>
     </div>
   `;
 }
