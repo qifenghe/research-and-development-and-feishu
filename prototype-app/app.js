@@ -441,8 +441,8 @@ function renderDemandModule() {
     ["2", "研发总监审核", "检查信息是否完整，可退回补充或通过", "request-review", "orange"],
     ["3", "进入任务池", "审核通过后进入研发任务池等待分发", "task-pool", "purple"],
   ], [
-    ["待审核需求", "GET /sample-requests?status=PENDING_REVIEW", "var(--orange)"],
-    ["按名称搜索", "keyword", "var(--blue)"],
+    ["待审核需求", "3个", "var(--orange)"],
+    ["按名称/时间查找", "支持", "var(--blue)"],
     ["审核后", "进入任务池", "var(--purple)"],
   ]);
 }
@@ -457,9 +457,9 @@ function renderRndModule() {
     ["6", "配置内部测试", "选择测试人员、测试项目和通知方式", "test-config", "teal"],
     ["7", "测试通过锁版", "测试通过后提交实验单并锁定历史版本", "internal-test", "teal"],
   ], [
-    ["任务池待分发", "GET /rnd-tasks?status=PENDING_ASSIGNMENT", "var(--purple)"],
-    ["打样中", "GET /rnd-tasks?status=SAMPLING", "var(--green)"],
-    ["待内部测试", "GET /rnd-tasks?status=PENDING_TEST", "var(--teal)"],
+    ["任务池待分发", "6个", "var(--purple)"],
+    ["打样中", "4个", "var(--green)"],
+    ["待内部测试", "2个", "var(--teal)"],
   ]);
 }
 
@@ -473,8 +473,8 @@ function renderShipmentPricingModule() {
     ["6", "核价资料归档", "留存实验、测试、寄样和核价文件", "archive", "gray"],
   ], [
     ["待寄样反馈", "7", "var(--orange)"],
-    ["待生成核价", "GET /pricing-files?status=GENERATED", "var(--blue)"],
-    ["已通知财务", "GET /pricing-files?status=FINANCE_NOTIFIED", "var(--red)"],
+    ["待生成核价", "3份", "var(--blue)"],
+    ["已通知财务", "2份", "var(--red)"],
   ]);
 }
 

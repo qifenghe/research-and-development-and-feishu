@@ -91,6 +91,20 @@ for (const marker of ["search-name", "search-start", "search-end", "filterSample
   }
 }
 
+for (const forbiddenMetric of [
+  '["待审核需求", "GET /sample-requests?status=PENDING_REVIEW"',
+  '["按名称搜索", "keyword"',
+  '["任务池待分发", "GET /rnd-tasks?status=PENDING_ASSIGNMENT"',
+  '["打样中", "GET /rnd-tasks?status=SAMPLING"',
+  '["待内部测试", "GET /rnd-tasks?status=PENDING_TEST"',
+  '["待生成核价", "GET /pricing-files?status=GENERATED"',
+  '["已通知财务", "GET /pricing-files?status=FINANCE_NOTIFIED"',
+]) {
+  if (js.includes(forbiddenMetric)) {
+    throw new Error(`Developer placeholder leaked into module metric UI: ${forbiddenMetric}`);
+  }
+}
+
 for (const marker of ["dashboardOverview", "GET /api/v1/dashboard/overview", "recentTasks", "pendingPricingFiles"]) {
   if (!js.includes(marker) && !html.includes(marker)) {
     throw new Error(`Missing dashboard-overview marker: ${marker}`);
