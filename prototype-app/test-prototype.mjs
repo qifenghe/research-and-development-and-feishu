@@ -105,37 +105,55 @@ for (const forbiddenMetric of [
   }
 }
 
-for (const marker of ["dashboardOverview", "GET /api/v1/dashboard/overview", "recentTasks", "pendingPricingFiles"]) {
+for (const forbiddenRenderedMarker of [
+  "${dashboardOverview.endpoint}",
+  "${detailEndpoint}",
+  "${pagedListExamples.pricing.endpoint}",
+  "${endpoint}",
+  ">GET /api",
+  "keyword:",
+  "sort:",
+  "page=0",
+  "availableActions",
+  "动作编码",
+  "<div>接口</div>",
+]) {
+  if (js.includes(forbiddenRenderedMarker) || html.includes(forbiddenRenderedMarker)) {
+    throw new Error(`Developer marker leaked into rendered prototype UI: ${forbiddenRenderedMarker}`);
+  }
+}
+
+for (const marker of ["dashboardOverview", "数据实时汇总", "recentTasks", "pendingPricingFiles"]) {
   if (!js.includes(marker) && !html.includes(marker)) {
     throw new Error(`Missing dashboard-overview marker: ${marker}`);
   }
 }
 
-for (const marker of ["dashboardDrilldowns", "GET /api/v1/rnd-tasks?status=SAMPLING", "GET /api/v1/pricing-files?status=GENERATED", "GET /api/v1/sample-requests?status=PENDING_REVIEW"]) {
+for (const marker of ["dashboardDrilldowns", "查看正在打样的任务", "查看待提交财务的核价文件", "查看待审核需求列表"]) {
   if (!js.includes(marker) && !html.includes(marker)) {
     throw new Error(`Missing drilldown marker: ${marker}`);
   }
 }
 
-for (const marker of ["pagedListExamples", "page=0&size=10", "sort=createdAt,desc", "pagination-bar"]) {
+for (const marker of ["pagedListExamples", "分页：每页10条", "排序：", "pagination-bar"]) {
   if (!js.includes(marker) && !html.includes(marker)) {
     throw new Error(`Missing paged-list marker: ${marker}`);
   }
 }
 
-for (const marker of ["task-detail", "GET /api/v1/rnd-tasks/TASK-0001/detail?role=RND_ENGINEER", "availableActions", "PASS_INTERNAL_TEST"]) {
+for (const marker of ["task-detail", "按当前角色展示可处理动作", "按钮按权限显示", "测试通过并锁版"]) {
   if (!js.includes(marker) && !html.includes(marker)) {
     throw new Error(`Missing task-detail marker: ${marker}`);
   }
 }
 
-for (const marker of ["GET /api/v1/shipments/SHIP-0001/detail?role=RND_ASSISTANT", "CUSTOMER_FEEDBACK_PASS", "GENERATE_PRICING_FILE"]) {
+for (const marker of ["寄样记录与反馈", "客户通过", "生成核价文件"]) {
   if (!js.includes(marker) && !html.includes(marker)) {
     throw new Error(`Missing shipment-detail marker: ${marker}`);
   }
 }
 
-for (const marker of ["GET /api/v1/pricing-files/PRICE-0003/detail?role=RND_ASSISTANT", "DOWNLOAD_PRICING_FILE", "NOTIFY_FINANCE"]) {
+for (const marker of ["核价文件版本与财务通知", "下载核价文件", "通知财务核价"]) {
   if (!js.includes(marker) && !html.includes(marker)) {
     throw new Error(`Missing pricing-detail marker: ${marker}`);
   }
@@ -153,7 +171,7 @@ for (const marker of ["dataModelGroups", "SampleRequest", "SampleProject", "Samp
   }
 }
 
-for (const marker of ["GET /api/v1/sample-projects/stopped", "停止原因", "复制为新需求"]) {
+for (const marker of ["保留原因与历史资料", "停止原因", "复制为新需求"]) {
   if (!js.includes(marker) && !html.includes(marker)) {
     throw new Error(`Missing stopped-project marker: ${marker}`);
   }

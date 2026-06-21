@@ -21,7 +21,6 @@ const sampleRows = [
 ];
 
 const dashboardOverview = {
-  endpoint: "GET /api/v1/dashboard/overview",
   pendingReviewCount: 1,
   pendingAssignmentCount: 1,
   pendingAcceptanceCount: 1,
@@ -42,19 +41,17 @@ const dashboardOverview = {
 };
 
 const dashboardDrilldowns = [
-  ["待总监审核", "GET /api/v1/sample-requests?status=PENDING_REVIEW&keyword=", "request-review"],
-  ["任务池待分发", "GET /api/v1/rnd-tasks?status=PENDING_ASSIGNMENT&keyword=", "task-pool"],
-  ["研发打样中", "GET /api/v1/rnd-tasks?status=SAMPLING&keyword=", "experiment"],
-  ["待财务核价", "GET /api/v1/pricing-files?status=GENERATED&keyword=", "pricing-list"],
+  ["待总监审核", "查看待审核需求列表", "request-review"],
+  ["任务池待分发", "查看待分发研发任务", "task-pool"],
+  ["研发打样中", "查看正在打样的任务", "experiment"],
+  ["待财务核价", "查看待提交财务的核价文件", "pricing-list"],
 ];
 
 const pagedListExamples = {
   task: {
-    endpoint: "GET /api/v1/rnd-tasks?status=SAMPLING&keyword=&page=0&size=10&sort=createdAt,desc",
     pageText: "第 1 / 4 页 · 共 34 条 · 每页 10 条",
   },
   pricing: {
-    endpoint: "GET /api/v1/pricing-files?status=GENERATED&keyword=&page=0&size=10&sort=generatedAt,desc",
     pageText: "第 1 / 2 页 · 共 12 条 · 每页 10 条",
   },
 };
@@ -280,7 +277,7 @@ function appShell(view) {
 function renderDashboard() {
   return `
     <div class="card">
-      <div class="section-title"><h3>工作台实时概览</h3><span class="badge">${dashboardOverview.endpoint}</span></div>
+      <div class="section-title"><h3>工作台实时概览</h3><span class="badge">数据实时汇总</span></div>
       <div class="grid cols-4">
         ${stat("待总监审核", dashboardOverview.pendingReviewCount, "var(--orange)")}
         ${stat("任务池待分发", dashboardOverview.pendingAssignmentCount, "var(--purple)")}
@@ -294,10 +291,10 @@ function renderDashboard() {
       </div>
       <div class="section-title"><h3>指标下钻入口</h3><span class="badge">按状态过滤列表</span></div>
       <div class="module-grid drilldown-grid">
-        ${dashboardDrilldowns.map(([label, endpoint, target]) => `
+        ${dashboardDrilldowns.map(([label, description, target]) => `
           <a class="module-card blue" href="#${target}">
             <strong>${label}</strong>
-            <span>${endpoint}</span>
+            <span>${description}</span>
           </a>
         `).join("")}
       </div>
@@ -597,29 +594,28 @@ function renderTaskAssign() {
 }
 
 function renderTaskDetail() {
-  const detailEndpoint = "GET /api/v1/rnd-tasks/TASK-0001/detail?role=RND_ENGINEER";
   const actions = [
-    ["RND_DIRECTOR", "PENDING_ASSIGNMENT", "ASSIGN_TASK", "分发任务", "/api/v1/rnd-tasks/{id}/assign"],
-    ["RND_ENGINEER", "PENDING_ACCEPTANCE", "ACCEPT_TASK", "接受任务", "/api/v1/rnd-tasks/{id}/accept"],
-    ["RND_ENGINEER", "SAMPLING", "SAVE_EXPERIMENT_DRAFT", "保存实验单", "/api/v1/rnd-tasks/{id}/experiment-form/draft"],
-    ["RND_ENGINEER", "SAMPLING", "SUBMIT_EXPERIMENT_TEST", "提交内部测试", "/api/v1/experiment-forms/{id}/submit-test"],
-    ["TESTER", "PENDING_TEST", "PASS_INTERNAL_TEST", "测试通过并锁版", "/api/v1/test-assignments/{id}/pass"],
-    ["TESTER", "PENDING_TEST", "FAIL_RESAMPLE", "不通过复打样", "/api/v1/test-assignments/{id}/fail-resample"],
-    ["RND_ASSISTANT", "COMPLETED", "CREATE_SHIPMENT", "登记寄样", "/api/v1/sample-versions/{id}/shipments"],
-    ["RND_ASSISTANT", "COMPLETED", "GENERATE_PRICING_FILE", "生成核价文件", "/api/v1/sample-versions/{id}/pricing-files"],
+    ["研发总监", "待分发", "分发任务", "指定研发并发送飞书通知"],
+    ["研发人员", "待接受", "接受任务", "进入现场打样"],
+    ["研发人员", "打样中", "保存实验单", "保存草稿，不锁定版本"],
+    ["研发人员", "打样中", "提交内部测试", "通知测试人员确认"],
+    ["测试人员", "待内部测试", "测试通过并锁版", "实验单进入历史版本"],
+    ["测试人员", "待内部测试", "不通过复打样", "生成下一轮打样任务"],
+    ["研发内勤", "样品完成", "登记寄样", "进入寄样反馈"],
+    ["研发内勤", "样品完成", "生成核价文件", "提交财务核价"],
   ];
 
   return `
     <div class="grid cols-2">
       <div class="card">
         <div class="section-title"><h3>研发任务详情</h3><span class="badge green">按钮权限矩阵</span></div>
-        <p><span class="badge">${detailEndpoint}</span></p>
+        <p><span class="badge">按当前角色展示可处理动作</span></p>
         ${detailGrid([
           ["任务编号", "TASK-0001"],
           ["样品编号", "YP202606180001"],
           ["产品名称", state.product],
           ["样品版本", "A0"],
-          ["当前状态", "SAMPLING"],
+          ["当前状态", "打样中"],
           ["负责人", "黄丽金"],
         ])}
         <div class="doc-grid" style="margin-top:16px">
@@ -634,20 +630,20 @@ function renderTaskDetail() {
         </div>
       </div>
       <div class="card">
-        <div class="section-title"><h3>角色-状态-按钮矩阵</h3><span class="badge orange">availableActions</span></div>
+        <div class="section-title"><h3>角色-状态-按钮矩阵</h3><span class="badge orange">按钮按权限显示</span></div>
         <div class="table action-matrix">
-          <div class="row header"><div>角色</div><div>状态</div><div>动作编码</div><div>按钮</div><div>接口</div></div>
-          ${actions.map(([role, status, code, label, endpoint]) => `
+          <div class="row header"><div>角色</div><div>状态</div><div>允许动作</div><div>按钮</div><div>说明</div></div>
+          ${actions.map(([role, status, label, description]) => `
             <div class="row">
               <strong>${role}</strong>
               <div>${status}</div>
-              <div><span class="badge">${code}</span></div>
               <div>${label}</div>
-              <div>${endpoint}</div>
+              <div><span class="badge">可操作</span></div>
+              <div>${description}</div>
             </div>
           `).join("")}
         </div>
-        <p style="color:var(--muted)">页面按钮不再写死，而是读取后端 availableActions；同一个详情页给总监、研发、测试、内勤看到的按钮不同。</p>
+        <p style="color:var(--muted)">页面按钮不再写死；同一个详情页给总监、研发、测试、内勤看到的按钮不同。</p>
       </div>
     </div>
   `;
@@ -830,15 +826,14 @@ function renderShipmentList() {
 }
 
 function renderShipmentDetail() {
-  const detailEndpoint = "GET /api/v1/shipments/SHIP-0001/detail?role=RND_ASSISTANT";
   const actions = [
-    ["RND_ASSISTANT", "SHIPPED", "CUSTOMER_FEEDBACK_PASS", "客户通过", "/api/v1/shipments/{id}/feedback"],
-    ["RND_ASSISTANT", "SHIPPED", "CUSTOMER_FEEDBACK_RESAMPLE", "客户不通过复打样", "/api/v1/shipments/{id}/feedback"],
-    ["RND_ASSISTANT", "SHIPPED", "CUSTOMER_FEEDBACK_STOP", "停止打样", "/api/v1/shipments/{id}/feedback"],
-    ["RND_ASSISTANT", "FEEDBACK_PASSED", "GENERATE_PRICING_FILE", "生成核价文件", "/api/v1/sample-versions/{id}/pricing-files"],
+    ["研发内勤", "已寄样待反馈", "客户通过", "进入核价文件生成"],
+    ["研发内勤", "已寄样待反馈", "客户不通过复打样", "回到研发任务流程"],
+    ["研发内勤", "已寄样待反馈", "停止打样", "进入停止/废弃项目池"],
+    ["研发内勤", "客户已通过", "生成核价文件", "通知财务核价"],
   ];
   return mobileLayout("寄样反馈详情", `研发内勤/业务员 · ${state.product} A0`, `
-    <span class="badge">${detailEndpoint}</span>
+    <span class="badge">寄样记录与反馈</span>
     <span class="badge green">样品完成</span>
     ${field("寄样版本", "A0", true)}
     ${field("寄样数量", "6袋", true)}
@@ -852,16 +847,16 @@ function renderShipmentDetail() {
     </div>
   `, `
     <div class="card">
-      <div class="section-title"><h3>availableActions</h3><span class="badge orange">寄样按钮矩阵</span></div>
+      <div class="section-title"><h3>可处理动作</h3><span class="badge orange">寄样按钮矩阵</span></div>
       <div class="table action-matrix">
-        <div class="row header"><div>角色</div><div>状态</div><div>动作编码</div><div>按钮</div><div>接口</div></div>
-        ${actions.map(([role, status, code, label, endpoint]) => `
+        <div class="row header"><div>角色</div><div>状态</div><div>允许动作</div><div>按钮</div><div>说明</div></div>
+        ${actions.map(([role, status, label, description]) => `
           <div class="row">
             <strong>${role}</strong>
             <div>${status}</div>
-            <div><span class="badge">${code}</span></div>
             <div>${label}</div>
-            <div>${endpoint}</div>
+            <div><span class="badge">可操作</span></div>
+            <div>${description}</div>
           </div>
         `).join("")}
       </div>
@@ -874,8 +869,8 @@ function renderShipmentDetail() {
 function renderPricingList() {
   return `
     <div class="card">
-      <div class="section-title"><h3>核价文件列表</h3><span class="badge">${pagedListExamples.pricing.endpoint}</span></div>
-      ${listToolbar("核价状态", "GENERATED", "产品名 / 样品编号 / 文件名", "生成时间倒序")}
+      <div class="section-title"><h3>核价文件列表</h3><span class="badge">按状态和时间筛选</span></div>
+      ${listToolbar("核价状态", "待通知财务", "产品名 / 样品编号 / 文件名", "生成时间倒序")}
       <div class="actions" style="margin-top:0;margin-bottom:14px">
         <button data-route="pricing-detail">为选中样品生成核价文件</button>
         <button class="secondary" data-toast="样品完成后可不等寄样反馈，单独生成核价文件">单独生成核价文件</button>
@@ -883,9 +878,9 @@ function renderPricingList() {
       <div class="table">
         <div class="row header"><div>编号/产品</div><div>样品版本</div><div>负责人</div><div>状态</div><div>生成时间</div><div>操作</div></div>
         ${[
-          ["PRICE-0003 / " + state.product, "A0-核价V1", "研发内勤", "GENERATED", "06-20 11:30", "pricing-detail"],
-          ["PRICE-0002 / 黑椒鸡柳料理包", "A1-核价V2", "研发内勤", "FINANCE_NOTIFIED", "06-18 15:20", "finance"],
-          ["PRICE-0001 / 调理鸡排", "A2-核价V1", "研发内勤", "GENERATED", "06-17 09:45", "pricing-detail"],
+          ["PRICE-0003 / " + state.product, "A0-核价V1", "研发内勤", "待通知财务", "06-20 11:30", "pricing-detail"],
+          ["PRICE-0002 / 黑椒鸡柳料理包", "A1-核价V2", "研发内勤", "已通知财务", "06-18 15:20", "finance"],
+          ["PRICE-0001 / 调理鸡排", "A2-核价V1", "研发内勤", "待通知财务", "06-17 09:45", "pricing-detail"],
         ].map(row).join("")}
       </div>
       ${paginationBar(pagedListExamples.pricing.pageText)}
@@ -894,17 +889,16 @@ function renderPricingList() {
 }
 
 function renderPricingDetail() {
-  const detailEndpoint = "GET /api/v1/pricing-files/PRICE-0003/detail?role=RND_ASSISTANT";
   const actions = [
-    ["RND_ASSISTANT", "GENERATED", "DOWNLOAD_PRICING_FILE", "下载核价文件", "/api/v1/pricing-files/{id}/download"],
-    ["RND_ASSISTANT", "GENERATED", "NOTIFY_FINANCE", "通知财务核价", "/api/v1/pricing-files/{id}/notify-finance"],
-    ["FINANCE", "GENERATED/FINANCE_NOTIFIED", "DOWNLOAD_PRICING_FILE", "下载核价文件", "/api/v1/pricing-files/{id}/download"],
+    ["研发内勤", "已生成核价文件", "下载核价文件", "核对Excel内容"],
+    ["研发内勤", "已生成核价文件", "通知财务核价", "发送飞书待办"],
+    ["财务", "待核价/已通知", "下载核价文件", "核算报价"],
   ];
   return `
     <div class="grid cols-2">
       <div class="card">
         <div class="section-title"><h3>核价文件详情</h3><span class="badge">生成 ${state.pricingVersion}.xlsx</span></div>
-        <p><span class="badge">${detailEndpoint}</span></p>
+        <p><span class="badge">核价文件版本与财务通知</span></p>
         ${detailGrid([
           ["产品", state.product],
           ["样品版本", "A0"],
@@ -924,16 +918,16 @@ function renderPricingDetail() {
         </div>
       </div>
       <div class="card">
-        <div class="section-title"><h3>availableActions</h3><span class="badge orange">核价按钮矩阵</span></div>
+        <div class="section-title"><h3>可处理动作</h3><span class="badge orange">核价按钮矩阵</span></div>
         <div class="table action-matrix">
-          <div class="row header"><div>角色</div><div>状态</div><div>动作编码</div><div>按钮</div><div>接口</div></div>
-          ${actions.map(([role, status, code, label, endpoint]) => `
+          <div class="row header"><div>角色</div><div>状态</div><div>允许动作</div><div>按钮</div><div>说明</div></div>
+          ${actions.map(([role, status, label, description]) => `
             <div class="row">
               <strong>${role}</strong>
               <div>${status}</div>
-              <div><span class="badge">${code}</span></div>
               <div>${label}</div>
-              <div>${endpoint}</div>
+              <div><span class="badge">可操作</span></div>
+              <div>${description}</div>
             </div>
           `).join("")}
         </div>
@@ -1254,7 +1248,7 @@ function renderStopped() {
 
   return `
     <div class="card">
-      <div class="section-title"><h3>停止/废弃项目池</h3><span class="badge red">GET /api/v1/sample-projects/stopped</span></div>
+      <div class="section-title"><h3>停止/废弃项目池</h3><span class="badge red">保留原因与历史资料</span></div>
       <p class="module-intro">客户反馈停止或研发总监确认停止后，项目进入这里统一保留。停止不会删除实验单历史版本、照片、测试记录、寄样记录和核价草稿，后续可以查看归档，也可以复制为新需求重新发起。</p>
       <div class="grid cols-3">
         ${stat("停止项目", "2", "var(--red)")}
@@ -1366,7 +1360,7 @@ function modelGroupCard(group, index) {
 
 function taskTable(rows = sampleRows) {
   return `
-    ${listToolbar("任务状态", "SAMPLING", "产品名 / 样品编号 / 负责人", "创建时间倒序")}
+    ${listToolbar("任务状态", "打样中", "产品名 / 样品编号 / 负责人", "创建时间倒序")}
     <div class="table">
       <div class="row header"><div>编号/产品</div><div>版本</div><div>负责人</div><div>当前状态</div><div>期限/创建时间</div><div>操作</div></div>
       ${rows.map(row).join("")}
@@ -1378,10 +1372,10 @@ function taskTable(rows = sampleRows) {
 function listToolbar(statusLabel, statusValue, keywordPlaceholder, sortLabel) {
   return `
     <div class="list-toolbar">
-      <span class="badge gray">${statusLabel}: ${statusValue}</span>
-      <span class="badge">keyword: ${keywordPlaceholder}</span>
-      <span class="badge green">sort: ${sortLabel}</span>
-      <span class="badge orange">page=0&size=10</span>
+      <span class="badge gray">${statusLabel}：${statusValue}</span>
+      <span class="badge">搜索：${keywordPlaceholder}</span>
+      <span class="badge green">排序：${sortLabel}</span>
+      <span class="badge orange">分页：每页10条</span>
     </div>
   `;
 }
