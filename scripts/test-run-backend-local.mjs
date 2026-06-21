@@ -41,17 +41,30 @@ const command = buildBackendCommand({
   port: "8081",
 });
 assert.equal(command.command, "mvn");
-assert.deepEqual(command.args, ["spring-boot:run", "-Dspring-boot.run.arguments=--server.port=8081"]);
+assert.deepEqual(command.args, [
+  "spring-boot:run",
+  "-Dspring-boot.run.profiles=local",
+  "-Dspring-boot.run.arguments=--server.port=8081",
+]);
 assert.equal(command.cwd, "/repo/backend");
 assert.equal(command.env.JAVA_HOME, "/opt/jdk17");
+
+const productionCommand = buildBackendCommand({
+  javaHome: "/opt/jdk17",
+  backendDir: "/repo/backend",
+  profile: "default",
+});
+assert.deepEqual(productionCommand.args, ["spring-boot:run"]);
 
 const parsed = parseRunBackendArgs([
   "--env-file", "backend/.env.feishu.local",
   "--backend-dir", "backend",
+  "--profile", "default",
   "--port", "8081",
 ]);
 assert.equal(parsed.envFile, "backend/.env.feishu.local");
 assert.equal(parsed.backendDir, "backend");
+assert.equal(parsed.profile, "default");
 assert.equal(parsed.port, "8081");
 
 console.log("Run backend local tests passed.");

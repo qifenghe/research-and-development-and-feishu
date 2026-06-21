@@ -40,6 +40,13 @@ class SessionAuthenticationInterceptorTest {
     }
 
     @Test
+    void allowsFeishuIntegrationStatusWithoutSessionToken() throws Exception {
+        mockMvc.perform(get("/api/v1/feishu/integration/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").exists());
+    }
+
+    @Test
     void enforcesRolePermissionsForSampleRequestCreationAndReview() throws Exception {
         var assistantToken = tokenFor("研发内勤A", "ou_assistant_001", "RND_ASSISTANT");
         var directorToken = tokenFor("研发总监A", "ou_director_001", "RND_DIRECTOR");

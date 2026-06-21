@@ -58,6 +58,7 @@ public class SessionAuthenticationInterceptor implements HandlerInterceptor {
     private boolean isPublicPath(String uri) {
         return uri.startsWith("/actuator")
                 || uri.equals("/api/v1/session/me")
+                || uri.equals("/api/v1/feishu/integration/status")
                 || uri.equals("/api/v1/feishu/users/bind")
                 || uri.equals("/api/v1/feishu/oauth/callback")
                 || uri.equals("/api/v1/feishu/card-actions")

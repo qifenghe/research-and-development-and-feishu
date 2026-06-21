@@ -9,6 +9,7 @@ import { parseEnvText } from "./feishu-local-check.mjs";
 const DEFAULT_ENV_FILE = "backend/.env.feishu.local";
 const DEFAULT_BACKEND_DIR = "backend";
 const DEFAULT_JAVA_HOME = "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home";
+const DEFAULT_PROFILE = "local";
 
 export function readBackendLocalEnv(envFile) {
   return parseEnvText(fs.readFileSync(envFile, "utf8"));
@@ -26,7 +27,11 @@ export function buildBackendEnvironment(options = {}) {
 export function buildBackendCommand(options = {}) {
   const backendDir = options.backendDir || DEFAULT_BACKEND_DIR;
   const javaHome = options.javaHome || DEFAULT_JAVA_HOME;
+  const profile = options.profile || DEFAULT_PROFILE;
   const args = ["spring-boot:run"];
+  if (profile !== "default") {
+    args.push(`-Dspring-boot.run.profiles=${profile}`);
+  }
   if (options.port) {
     args.push(`-Dspring-boot.run.arguments=--server.port=${options.port}`);
   }
@@ -53,6 +58,8 @@ export function parseRunBackendArgs(argv) {
       options.javaHome = argv[++index];
     } else if (arg === "--port") {
       options.port = argv[++index];
+    } else if (arg === "--profile") {
+      options.profile = argv[++index];
     } else if (arg === "--help" || arg === "-h") {
       options.help = true;
     }
@@ -68,6 +75,7 @@ function runBackend(options) {
   const command = buildBackendCommand({
     backendDir,
     javaHome: options.javaHome || DEFAULT_JAVA_HOME,
+    profile: options.profile,
     port: options.port,
   });
   const childEnv = {
@@ -79,6 +87,7 @@ function runBackend(options) {
   console.log(`- env 文件：${envFile}`);
   console.log(`- 后端目录：${backendDir}`);
   console.log(`- FEISHU_MODE：${childEnv.FEISHU_MODE || "(未配置)"}`);
+  console.log(`- Spring Profile：${options.profile || DEFAULT_PROFILE}`);
   console.log(`- FEISHU_APP_ID：${mask(childEnv.FEISHU_APP_ID)}`);
   console.log("- FEISHU_APP_SECRET：***不显示***");
 
@@ -104,10 +113,12 @@ function mask(value) {
 
 function printHelp() {
   console.log(`用法：
-  node scripts/run-backend-local.mjs [--env-file backend/.env.feishu.local] [--backend-dir backend] [--port 8080]
+  node scripts/run-backend-local.mjs [--env-file backend/.env.feishu.local] [--backend-dir backend] [--profile local] [--port 8080]
 
 说明：
   - 自动读取 backend/.env.feishu.local。
+  - 默认使用 local profile 和 H2 内存库，避免本地未安装 PostgreSQL 时无法联调。
+  - 如需连接 application.yml 中的 PostgreSQL，可传 --profile default。
   - 使用 Java 17 启动 Spring Boot 后端。
   - 控制台不会打印 App Secret。`);
 }

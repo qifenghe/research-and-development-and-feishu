@@ -90,7 +90,7 @@ assert.deepEqual(buildReadinessAdvice({
   statusResult: { ready: true, missing: [] },
 }), {
   code: "READY_TO_DEMO",
-  message: "飞书 OpenAPI 已就绪，可以运行 node scripts/feishu-demo-task.mjs 生成演示任务。",
+  message: "飞书 OpenAPI 已就绪，可以进入真实飞书通知派发联调；完整演示数据脚本仍需要 MOCK 模式或真实免登链路。",
 });
 
 console.log("Feishu local check tests passed.");
