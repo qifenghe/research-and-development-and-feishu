@@ -69,6 +69,8 @@ public class RolePermissionService {
                 new RolePermissionConfig("RND_ASSISTANT", List.of(
                         rule("POST", "/api/v1/sample-requests", "创建样品需求", 10),
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 20),
+                        rule("GET", "/api/v1/sample-requests/*", "查看样品需求详情", 25),
+                        rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 26),
                         rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 30),
                         rule("POST", "/api/v1/sample-versions/*/shipments", "登记寄样", 40),
                         rule("GET", "/api/v1/shipments/*/detail", "查看寄样详情", 50),
@@ -83,6 +85,8 @@ public class RolePermissionService {
                 )),
                 new RolePermissionConfig("RND_DIRECTOR", List.of(
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
+                        rule("GET", "/api/v1/sample-requests/*", "查看样品需求详情", 15),
+                        rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 16),
                         rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 20),
                         rule("POST", "/api/v1/sample-requests/*/approve", "审核样品需求", 30),
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 40),
@@ -99,6 +103,8 @@ public class RolePermissionService {
                 )),
                 new RolePermissionConfig("RND_ENGINEER", List.of(
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
+                        rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 15),
+                        rule("GET", "/api/v1/sample-versions/*/process-steps", "查看工序步骤", 16),
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 20),
                         rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 30),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 40),
@@ -110,6 +116,7 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 100)
                 )),
                 new RolePermissionConfig("TESTER", List.of(
+                        rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 5),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 10),
                         rule("POST", "/api/v1/test-assignments/*/pass", "提交测试通过", 20),
                         rule("POST", "/api/v1/test-assignments/*/fail-resample", "提交测试不通过复打样", 30),
@@ -117,6 +124,7 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 50)
                 )),
                 new RolePermissionConfig("QA_TESTER", List.of(
+                        rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 5),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 10),
                         rule("POST", "/api/v1/test-assignments/*/pass", "提交测试通过", 20),
                         rule("POST", "/api/v1/test-assignments/*/fail-resample", "提交测试不通过复打样", 30),
@@ -132,6 +140,8 @@ public class RolePermissionService {
                 )),
                 new RolePermissionConfig("MANAGER", List.of(
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
+                        rule("GET", "/api/v1/sample-requests/*", "查看样品需求详情", 15),
+                        rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 16),
                         rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 20),
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 30),
                         rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 40),
@@ -197,6 +207,9 @@ public class RolePermissionService {
         if (isShipmentDetail(method, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
         }
+        if (isShipmentList(method, uri)) {
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
+        }
         if (isPricingList(method, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
         }
@@ -205,6 +218,15 @@ public class RolePermissionService {
         }
         if (isPricingDownload(method, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "FINANCE", "MANAGER");
+        }
+        if (isVersionTimelineRead(method, uri)) {
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "MANAGER");
+        }
+        if (isProcessStepsRead(method, uri)) {
+            return hasAnyRole(role, "RND_ENGINEER", "RND_DIRECTOR", "RND_ASSISTANT", "MANAGER");
+        }
+        if (isSampleRequestDetail(method, uri)) {
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "MANAGER");
         }
         return switch (role) {
             case "RND_ASSISTANT" -> isSampleRequestCreate(method, uri)
@@ -245,6 +267,18 @@ public class RolePermissionService {
 
     private boolean isSampleRequestList(String method, String uri) {
         return "GET".equals(method) && uri.equals("/api/v1/sample-requests");
+    }
+
+    private boolean isSampleRequestDetail(String method, String uri) {
+        return "GET".equals(method) && uri.matches("^/api/v1/sample-requests/[^/]+$");
+    }
+
+    private boolean isVersionTimelineRead(String method, String uri) {
+        return "GET".equals(method) && uri.matches("^/api/v1/sample-projects/[^/]+/version-timeline$");
+    }
+
+    private boolean isProcessStepsRead(String method, String uri) {
+        return "GET".equals(method) && uri.matches("^/api/v1/sample-versions/[^/]+/process-steps$");
     }
 
     private boolean isSampleRequestApprove(String method, String uri) {
@@ -302,6 +336,10 @@ public class RolePermissionService {
 
     private boolean isShipmentDetail(String method, String uri) {
         return "GET".equals(method) && uri.matches("^/api/v1/shipments/[^/]+/detail$");
+    }
+
+    private boolean isShipmentList(String method, String uri) {
+        return "GET".equals(method) && uri.equals("/api/v1/shipments");
     }
 
     private boolean isPricingDetail(String method, String uri) {

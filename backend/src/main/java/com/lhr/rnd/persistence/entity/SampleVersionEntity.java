@@ -30,6 +30,12 @@ public class SampleVersionEntity {
     @Column(name = "specification", nullable = false)
     private String specification;
 
+    @Column(name = "application_scenario")
+    private String applicationScenario;
+
+    @Column(name = "flavor_requirement")
+    private String flavorRequirement;
+
     @Column(name = "version_no", nullable = false)
     private String versionNo;
 
@@ -67,6 +73,8 @@ public class SampleVersionEntity {
             String productName,
             String productType,
             String specification,
+            String applicationScenario,
+            String flavorRequirement,
             String versionNo,
             Integer versionNumber,
             String versionCode,
@@ -83,6 +91,8 @@ public class SampleVersionEntity {
         this.productName = productName;
         this.productType = productType;
         this.specification = specification;
+        this.applicationScenario = applicationScenario;
+        this.flavorRequirement = flavorRequirement;
         this.versionNo = versionNo;
         this.versionNumber = versionNumber;
         this.versionCode = versionCode;
@@ -92,5 +102,45 @@ public class SampleVersionEntity {
         this.referenceOutputKg = referenceOutputKg;
         this.unitWeightKg = unitWeightKg;
         this.createdAt = createdAt;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public String getProjectId() {
+        return projectId;
+    }
+
+    public String getSampleNo() {
+        return sampleNo;
+    }
+
+    public String getProductName() {
+        return productName;
+    }
+
+    public String getProductType() {
+        return productType;
+    }
+
+    public String getSpecification() {
+        return specification;
+    }
+
+    public String getVersionNo() {
+        return versionNo;
+    }
+
+    public Integer getVersionNumber() {
+        return versionNumber;
+    }
+
+    public String getVersionCode() {
+        return versionCode;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
     }
 }

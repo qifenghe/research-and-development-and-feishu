@@ -11,6 +11,8 @@ public record SampleRequest(
         String productType,
         String customerName,
         String specification,
+        String applicationScenario,
+        String flavorRequirement,
         String creatorName,
         SampleStatus status,
         LocalDateTime createdAt

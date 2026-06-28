@@ -11,3 +11,7 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+
+rnd:
+  feishu:
+    bootstrap-users: true

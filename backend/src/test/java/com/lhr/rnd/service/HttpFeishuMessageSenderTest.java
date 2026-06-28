@@ -53,7 +53,7 @@ class HttpFeishuMessageSenderTest {
         assertThat(httpClient.requestBody.get()).contains("研发任务分发通知");
         assertThat(httpClient.requestBody.get()).contains("**产品**：香卤大肠头");
         assertThat(httpClient.requestBody.get()).contains("**任务编号**：TASK-001");
-        assertThat(httpClient.requestBody.get()).contains("https://rnd.example.com/#task-detail?id=TASK-001");
+        assertThat(httpClient.requestBody.get()).contains("https://rnd.example.com/m/tasks/TASK-001");
         assertThat(httpClient.requestBody.get()).contains("ACCEPT_RND_TASK");
     }
 

@@ -101,4 +101,8 @@ public class ExperimentFormEntity {
     public String getVersionCode() {
         return versionCode;
     }
+
+    public LocalDateTime getSavedAt() {
+        return savedAt;
+    }
 }

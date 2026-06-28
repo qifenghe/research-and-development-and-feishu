@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="980" viewBox="0 0 520 980"><defs><filter id="shadow" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#334155" flood-opacity="0.16"/></filter></defs>
+<rect width="100%" height="100%" fill="#F6F8FB"/>
+<g filter="url(#shadow)"><rect x="52" y="92" width="416" height="820" rx="42" fill="#101828"/><rect x="68" y="110" width="384" height="784" rx="32" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/></g>
+<rect x="202" y="124" width="116" height="14" rx="7" fill="#0F172A"/>
+<text x="260" y="50" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="32" font-weight="800" fill="#111827">寄样反馈</text>
+<text x="92" y="162" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="800" fill="#111827">寄样反馈</text>
+<text x="92" y="200" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="27" font-weight="800" fill="#111827">调理鸡排 A2</text>
+<rect x="92" y="218" width="110" height="32" rx="16" fill="#EAF2FF"/><text x="147" y="240" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="700" fill="#246BFE">已寄样待反馈</text>
+<rect x="92" y="290" width="336" height="120" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="114" y="322" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="15" fill="#64748B">寄样数量</text><text x="300" y="322" text-anchor="end" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600" fill="#111827">6 袋</text>
+<text x="114" y="354" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="15" fill="#64748B">收件人</text><text x="300" y="354" text-anchor="end" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600" fill="#111827">张经理</text>
+<text x="114" y="386" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="15" fill="#64748B">快递单号</text><text x="300" y="386" text-anchor="end" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600" fill="#111827">SF1234567890</text>
+<rect x="92" y="478" width="336" height="80" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="110" y="512" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" fill="#94A3B8">客户试吃后反馈…</text>
+<rect x="92" y="604" width="104" height="46" rx="14" fill="#FFFFFF" stroke="#16A34A" stroke-width="2"/><text x="144" y="634" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="800" fill="#16A34A">客户通过</text>
+<rect x="208" y="604" width="104" height="46" rx="14" fill="#FFFFFF" stroke="#F59E0B" stroke-width="2"/><text x="260" y="634" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="800" fill="#F59E0B">继续打样</text>
+<rect x="324" y="604" width="104" height="46" rx="14" fill="#FFFFFF" stroke="#EF4444" stroke-width="2"/><text x="376" y="634" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="800" fill="#EF4444">停止打样</text>
+<rect x="92" y="820" width="336" height="50" rx="14" fill="#246BFE"/><text x="260" y="853" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="800" fill="#FFFFFF">客户通过，生成核价文件</text>
+</svg>

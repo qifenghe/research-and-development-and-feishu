@@ -3,39 +3,38 @@
 <filter id="shadow" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#334155" flood-opacity="0.16"/></filter>
 </defs>
 <rect width="100%" height="100%" fill="#F6F8FB"/>
-<text x="260.0" y="50" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="32" font-weight="800" fill="#111827">打样实验单</text>
+<text x="260" y="50" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="32" font-weight="800" fill="#111827">打样实验单</text>
+<text x="260" y="78" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="600" fill="#64748B">分段表单 · 路由 /m/experiments/:id · 底部固定操作</text>
 <g filter="url(#shadow)">
-<rect x="52" y="92" width="416" height="820" rx="42" fill="#101828" stroke="#101828" stroke-width="0"/>
+<rect x="52" y="92" width="416" height="820" rx="42" fill="#101828"/>
 <rect x="68" y="110" width="384" height="784" rx="32" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>
 </g>
-<rect x="202" y="124" width="116" height="14" rx="7" fill="#0F172A" stroke="#0F172A" stroke-width="0"/>
-<text x="92" y="176" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="27" font-weight="800" fill="#111827">打样实验单</text>
-<text x="92" y="208" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="500" fill="#64748B">任务：香卤大肠头 A0 · 研发：黄丽金</text>
-<rect x="92" y="232" width="92" height="36" rx="18" fill="#ECFDF5" stroke="none" stroke-width="0"/><text x="138.0" y="257" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#16A34A">打样中</text>
-<rect x="198" y="232" width="126" height="36" rx="18" fill="#EAF2FF" stroke="none" stroke-width="0"/><text x="261.0" y="257" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#246BFE">草稿已保存</text>
-<text x="92" y="304" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#EF4444">*产品名称</text>
-<rect x="92" y="314" width="336" height="50" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
-<text x="110" y="346" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="500" fill="#111827">500g香卤大肠头</text>
-<text x="92" y="390" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#EF4444">*产品规格</text>
-<rect x="92" y="400" width="336" height="50" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
-<text x="110" y="432" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="500" fill="#111827">500g/袋，20袋/箱</text>
-<text x="92" y="476" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#EF4444">*工序节点</text>
-<rect x="92" y="486" width="336" height="50" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
-<text x="110" y="518" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="500" fill="#111827">清洗 / 保水 / 卤制</text>
-<text x="92" y="562" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#EF4444">*研发参考出成</text>
-<rect x="92" y="572" width="336" height="50" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
-<text x="110" y="604" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="500" fill="#111827">89 kg</text>
-<text x="92" y="646" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="800" fill="#111827">原料明细</text>
-<rect x="92" y="670" width="336" height="46" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
-<text x="108" y="700" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#111827">冻猪大肠头（预煮）</text>
-<text x="316" y="700" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="600" fill="#64748B">100kg</text>
-<text x="378" y="700" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#246BFE">95%</text>
-<rect x="92" y="726" width="336" height="46" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
-<text x="108" y="756" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#111827">仲景去腥粉</text>
-<text x="316" y="756" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="600" fill="#64748B">0.03kg</text>
-<text x="378" y="756" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#246BFE">100%</text>
-<rect x="92" y="804" width="160" height="50" rx="14" fill="#FFFFFF" stroke="#246BFE" stroke-width="2"/>
-<text x="172" y="837" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#246BFE">上传照片</text>
-<rect x="268" y="804" width="160" height="50" rx="14" fill="#246BFE" stroke="#246BFE" stroke-width="2"/>
-<text x="348" y="837" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#FFFFFF">提交实验单</text>
+<rect x="202" y="124" width="116" height="14" rx="7" fill="#0F172A"/>
+<text x="92" y="162" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="800" fill="#111827">← 实验单录入</text>
+<text x="92" y="198" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="24" font-weight="800" fill="#111827">香卤大肠头 A0</text>
+<rect x="92" y="212" width="72" height="28" rx="14" fill="#ECFDF5"/><text x="128" y="232" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#16A34A">打样中</text>
+<rect x="172" y="212" width="96" height="28" rx="14" fill="#EAF2FF"/><text x="220" y="232" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#246BFE">草稿已保存</text>
+<rect x="92" y="252" width="336" height="44" rx="12" fill="#FFFFFF" stroke="#246BFE" stroke-width="2"/>
+<text x="114" y="280" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#246BFE">▼ 基本信息</text>
+<rect x="92" y="304" width="336" height="40" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="114" y="330" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#64748B">▶ 原辅料/包材</text>
+<rect x="92" y="352" width="336" height="40" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="114" y="378" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#64748B">▶ 工序记录</text>
+<rect x="92" y="400" width="336" height="40" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="114" y="426" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#64748B">▶ 成品出成</text>
+<rect x="92" y="448" width="336" height="40" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="114" y="474" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#64748B">▶ 照片附件</text>
+<rect x="92" y="496" width="336" height="40" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="114" y="522" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#64748B">▶ 备注</text>
+<text x="92" y="560" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="600" fill="#64748B">展开「原辅料」示例：</text>
+<rect x="92" y="572" width="336" height="46" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="108" y="602" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#111827">冻猪大肠头</text>
+<text x="260" y="602" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" fill="#64748B">100kg</text>
+<text x="320" y="602" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#246BFE">95%</text>
+<rect x="92" y="628" width="336" height="36" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-dasharray="4 4"/>
+<text x="260" y="652" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" fill="#64748B">+ 添加物料行</text>
+<rect x="92" y="820" width="160" height="50" rx="14" fill="#FFFFFF" stroke="#246BFE" stroke-width="2"/>
+<text x="172" y="853" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#246BFE">保存草稿</text>
+<rect x="268" y="820" width="160" height="50" rx="14" fill="#246BFE"/>
+<text x="348" y="853" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#FFFFFF">通知测试</text>
 </svg>

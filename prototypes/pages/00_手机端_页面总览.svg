@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200" viewBox="0 0 1600 1200">
+<rect width="100%" height="100%" fill="#F6F8FB"/>
+<text x="800" y="48" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="34" font-weight="800" fill="#111827">Mobile/PC 原型 PNG 索引</text>
+<rect x="40" y="80" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="56" y="112" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">01_手机端_我的待办.png</text>
+<image href="png/01_手机端_我的待办.png" x="56" y="124" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="430" y="80" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="446" y="112" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">02_手机端_样品需求录入.png</text>
+<image href="png/02_手机端_样品需求录入.png" x="446" y="124" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="820" y="80" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="836" y="112" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">02_手机端_任务详情.png</text>
+<image href="png/02_手机端_任务详情.png" x="836" y="124" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="1210" y="80" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="1226" y="112" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">03_手机端_打样实验单.png</text>
+<image href="png/03_手机端_打样实验单.png" x="1226" y="124" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="40" y="600" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="56" y="632" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">04_手机端_测试确认.png</text>
+<image href="png/04_手机端_测试确认.png" x="56" y="644" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="430" y="600" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="446" y="632" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">09_手机端_寄样反馈.png</text>
+<image href="png/09_手机端_寄样反馈.png" x="446" y="644" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="820" y="600" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="836" y="632" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">10_手机端_样品搜索.png</text>
+<image href="png/10_手机端_样品搜索.png" x="836" y="644" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="1210" y="600" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="1226" y="632" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">11_手机端_我的.png</text>
+<image href="png/11_手机端_我的.png" x="1226" y="644" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="40" y="1120" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="56" y="1152" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">12_手机端_实验单历史.png</text>
+<image href="png/12_手机端_实验单历史.png" x="56" y="1164" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="430" y="1120" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="446" y="1152" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">13_手机端_需求审核.png</text>
+<image href="png/13_手机端_需求审核.png" x="446" y="1164" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="820" y="1120" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="836" y="1152" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">14_手机端_任务分发.png</text>
+<image href="png/14_手机端_任务分发.png" x="836" y="1164" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="1210" y="1120" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="1226" y="1152" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">05_PC端-首页看板.png</text>
+<image href="png/05_PC端-首页看板.png" x="1226" y="1164" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="40" y="1640" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="56" y="1672" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">06_PC端-研发任务分发.png</text>
+<image href="png/06_PC端-研发任务分发.png" x="56" y="1684" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="430" y="1640" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="446" y="1672" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">07_PC端-核价文件.png</text>
+<image href="png/07_PC端-核价文件.png" x="446" y="1684" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+<rect x="820" y="1640" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>
+<text x="836" y="1672" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="800" fill="#111827">08_PC端-产品档案.png</text>
+<image href="png/08_PC端-产品档案.png" x="836" y="1684" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>
+</svg>

@@ -31,6 +31,12 @@ public class SampleProjectEntity {
     @Column(name = "specification", nullable = false)
     private String specification;
 
+    @Column(name = "application_scenario")
+    private String applicationScenario;
+
+    @Column(name = "flavor_requirement")
+    private String flavorRequirement;
+
     @Column(name = "status", nullable = false)
     private String status;
 
@@ -48,6 +54,8 @@ public class SampleProjectEntity {
             String productType,
             String customerName,
             String specification,
+            String applicationScenario,
+            String flavorRequirement,
             String status,
             LocalDateTime createdAt
     ) {
@@ -58,6 +66,8 @@ public class SampleProjectEntity {
         this.productType = productType;
         this.customerName = customerName;
         this.specification = specification;
+        this.applicationScenario = applicationScenario;
+        this.flavorRequirement = flavorRequirement;
         this.status = status;
         this.createdAt = createdAt;
     }

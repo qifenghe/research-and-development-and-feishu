@@ -104,7 +104,9 @@ public class FormFieldSettingsService {
                         field("productName", "产品名称", "TEXT", true, 20, null, "请输入样品名称"),
                         field("productType", "产品类型", "SELECT", true, 30, "PRODUCT_TYPE", null),
                         field("customerName", "客户名称", "TEXT", false, 40, null, "请输入客户名称"),
-                        field("specification", "规格", "TEXT", true, 50, null, "如 500g/袋")
+                        field("specification", "规格", "TEXT", true, 50, null, "如 500g/袋"),
+                        field("applicationScenario", "应用场景", "TEXTAREA", true, 60, null, "如商超零售、餐饮渠道、团餐、外卖等"),
+                        field("flavorRequirement", "口味/风味要求", "TEXTAREA", true, 70, null, "如香卤、麻辣、咸淡、复热后风味保持")
                 )),
                 config("EXPERIMENT_FORM", List.of(
                         field("versionCode", "样品版本", "TEXT", true, 10, null, "A0/A1/A2/A3"),

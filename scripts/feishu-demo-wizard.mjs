@@ -105,7 +105,7 @@ export function buildWizardVerificationChecklist(summary, appUrl) {
     },
   ].map((item) => ({
     ...item,
-    ...(appUrl ? { url: buildRouteUrl(appUrl, item.route) } : {}),
+    ...(appUrl ? { url: buildRouteUrl(appUrl, item.route, summary) } : {}),
   }));
 }
 
@@ -258,8 +258,28 @@ function printResult(result) {
   }
 }
 
-function buildRouteUrl(appUrl, route) {
-  return `${appUrl.replace(/#.*$/, "").replace(/\/$/, "")}/${route}`;
+function buildRouteUrl(appUrl, route, summary) {
+  const root = appUrl.replace(/#.*$/, "").replace(/\/$/, "");
+  return `${root}${routeToFrontendPath(route, summary)}`;
+}
+
+function routeToFrontendPath(route, summary) {
+  switch (route) {
+    case "#dashboard":
+      return "/admin/dashboard";
+    case "#rnd-module":
+      return "/admin/rnd";
+    case "#experiment-history":
+      return `/admin/rnd/history/${encodeURIComponent(summary.versionId || "")}`;
+    case "#shipment-pricing-module":
+      return "/admin/shipment";
+    case "#pricing-list":
+      return "/admin/pricing/list";
+    case "#pricing-detail":
+      return `/admin/pricing/${encodeURIComponent(summary.pricingFileId || "")}`;
+    default:
+      return `/${route}`;
+  }
 }
 
 function printHelp() {

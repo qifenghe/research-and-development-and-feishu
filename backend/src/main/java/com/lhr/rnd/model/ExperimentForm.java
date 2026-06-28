@@ -15,6 +15,7 @@ public record ExperimentForm(
         String operatorName,
         String summary,
         List<ExperimentMaterial> materials,
+        List<ExperimentProcessStep> processSteps,
         LocalDateTime savedAt,
         LocalDateTime submittedAt
 ) {
@@ -31,6 +32,7 @@ public record ExperimentForm(
                 operatorName,
                 summary,
                 materials,
+                processSteps,
                 savedAt,
                 submittedAt
         );
@@ -49,6 +51,7 @@ public record ExperimentForm(
                 operatorName,
                 summary,
                 materials,
+                processSteps,
                 savedAt,
                 submittedAt
         );

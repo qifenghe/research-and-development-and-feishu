@@ -16,6 +16,9 @@ rnd:
     secret: ${SESSION_SECRET:local-dev-session-secret-change-me}
     ttl-seconds: ${SESSION_TTL_SECONDS:86400}
     auth-required: ${SESSION_AUTH_REQUIRED:true}
+  cors:
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:8787,http://localhost:5173,http://localhost:5174,http://localhost:8787}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
   feishu:
     mode: ${FEISHU_MODE:MOCK}
     base-url: ${FEISHU_BASE_URL:https://open.feishu.cn}
@@ -23,3 +26,12 @@ rnd:
     card-action-secret: ${FEISHU_CARD_ACTION_SECRET:}
     app-id: ${FEISHU_APP_ID:}
     app-secret: ${FEISHU_APP_SECRET:}
+  archive:
+    storage: ${ARCHIVE_STORAGE:local}
+    local-root: ${ARCHIVE_LOCAL_ROOT:target/rnd-archive}
+  minio:
+    endpoint: ${MINIO_ENDPOINT:}
+    access-key: ${MINIO_ACCESS_KEY:}
+    secret-key: ${MINIO_SECRET_KEY:}
+    bucket: ${MINIO_BUCKET:rnd-archive}
+    enabled: ${MINIO_ENABLED:false}

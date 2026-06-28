@@ -1,0 +1,19 @@
+{
+  "name": "rnd-frontend",
+  "private": true,
+  "scripts": {
+    "dev:pc": "pnpm --filter @rnd/pc dev",
+    "dev:mobile": "pnpm --filter @rnd/mobile dev",
+    "build:pc": "pnpm --filter @rnd/pc build",
+    "build:mobile": "pnpm --filter @rnd/mobile build",
+    "build": "pnpm build:pc && pnpm build:mobile",
+    "typecheck": "pnpm -r typecheck",
+    "check:api-contracts": "node scripts/check-api-contracts.mjs",
+    "check:routes": "node scripts/check-routes.mjs",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.1",
+    "typescript": "^5.7.3"
+  }
+}

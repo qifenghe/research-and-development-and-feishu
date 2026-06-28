@@ -108,8 +108,10 @@ public class HttpFeishuMessageSender implements FeishuMessageSender {
         if (baseUrl.endsWith("/")) {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
-        var route = "RND_TASK".equals(businessType) ? "task-detail" : "dashboard";
-        return "%s/#%s?id=%s".formatted(baseUrl, route, businessId);
+        if ("RND_TASK".equals(businessType)) {
+            return "%s/m/tasks/%s".formatted(baseUrl, businessId);
+        }
+        return "%s/admin/dashboard".formatted(baseUrl);
     }
 
     private String actionKey(String templateKey) {

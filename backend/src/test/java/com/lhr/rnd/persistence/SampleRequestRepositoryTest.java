@@ -28,6 +28,8 @@ class SampleRequestRepositoryTest {
                 "冷冻即热菜",
                 "LHYC",
                 "500g/袋",
+                "商超零售冷冻即热，家庭复热即食",
+                "香卤风味，微辣，复热后卤香明显",
                 "研发内勤",
                 "PENDING_REVIEW",
                 createdAt
@@ -37,6 +39,8 @@ class SampleRequestRepositoryTest {
 
         assertThat(found).isPresent();
         assertThat(found.orElseThrow().productName()).isEqualTo("500g香卤大肠头");
+        assertThat(found.orElseThrow().applicationScenario()).isEqualTo("商超零售冷冻即热，家庭复热即食");
+        assertThat(found.orElseThrow().flavorRequirement()).isEqualTo("香卤风味，微辣，复热后卤香明显");
         assertThat(found.orElseThrow().createdAt()).isEqualTo(createdAt);
     }
 }

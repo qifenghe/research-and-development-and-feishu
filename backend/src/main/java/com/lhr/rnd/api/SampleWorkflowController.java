@@ -5,6 +5,8 @@ import com.lhr.rnd.model.DashboardOverview;
 import com.lhr.rnd.model.RndTask;
 import com.lhr.rnd.model.RndTaskDetailView;
 import com.lhr.rnd.model.ExperimentForm;
+import com.lhr.rnd.model.ExperimentProcessStep;
+import com.lhr.rnd.model.SampleVersionTimelineItem;
 import com.lhr.rnd.model.PricingFileDetailView;
 import com.lhr.rnd.model.PricingFileRecord;
 import com.lhr.rnd.model.SampleRequest;
@@ -52,6 +54,8 @@ public class SampleWorkflowController {
                 request.productType(),
                 request.customerName(),
                 request.specification(),
+                request.applicationScenario(),
+                request.flavorRequirement(),
                 request.creatorName()
         ));
         return ApiResponse.success(created);
@@ -141,7 +145,8 @@ public class SampleWorkflowController {
                 id,
                 request.operatorName(),
                 request.summary(),
-                request.materials()
+                request.materials(),
+                request.processSteps()
         )));
     }
 
@@ -221,6 +226,14 @@ public class SampleWorkflowController {
         )));
     }
 
+    @GetMapping("/shipments")
+    public ApiResponse<List<ShipmentRecord>> shipments(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword
+    ) {
+        return ApiResponse.success(workflowService.shipments(status, keyword));
+    }
+
     @GetMapping("/shipments/{id}/detail")
     public ApiResponse<ShipmentDetailView> shipmentDetail(
             @PathVariable String id,
@@ -272,6 +285,21 @@ public class SampleWorkflowController {
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
                 .body(file.content());
+    }
+
+    @GetMapping("/sample-versions/{id}/process-steps")
+    public ApiResponse<List<ExperimentProcessStep>> processSteps(@PathVariable String id) {
+        return ApiResponse.success(workflowService.processStepsForVersion(id));
+    }
+
+    @GetMapping("/sample-projects/{projectId}/version-timeline")
+    public ApiResponse<List<SampleVersionTimelineItem>> versionTimeline(@PathVariable String projectId) {
+        return ApiResponse.success(workflowService.versionTimeline(projectId));
+    }
+
+    @GetMapping("/sample-requests/{id}")
+    public ApiResponse<SampleRequest> sampleRequestDetail(@PathVariable String id) {
+        return ApiResponse.success(workflowService.requestDetail(id));
     }
 
     @GetMapping("/sample-versions/{id}/archive-files")

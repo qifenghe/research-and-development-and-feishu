@@ -20,6 +20,7 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -430,6 +431,7 @@ class SampleWorkflowControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.mode").value("MOCK"))
                 .andExpect(jsonPath("$.data.baseUrl").value("https://open.feishu.cn"))
+                .andExpect(jsonPath("$.data.appId").value(""))
                 .andExpect(jsonPath("$.data.appIdConfigured").value(false))
                 .andExpect(jsonPath("$.data.appSecretConfigured").value(false))
                 .andExpect(jsonPath("$.data.readyForOpenApi").value(false));
@@ -1208,6 +1210,7 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.task.id").value(taskId))
                 .andExpect(jsonPath("$.data.version.versionCode").value("A0"))
                 .andExpect(jsonPath("$.data.fieldGroups[0].title").value("基础信息"))
+                .andExpect(jsonPath("$.data.fieldGroups[0].fields", hasItems("applicationScenario", "flavorRequirement")))
                 .andExpect(jsonPath("$.data.fieldGroups[1].title").value("任务信息"))
                 .andExpect(jsonPath("$.data.availableActions", hasSize(1)))
                 .andExpect(jsonPath("$.data.availableActions[0].code").value("ASSIGN_TASK"))
@@ -1447,6 +1450,8 @@ class SampleWorkflowControllerTest {
                   "productType": "冷冻即热菜",
                   "customerName": "LHYC",
                   "specification": "500g/袋",
+                  "applicationScenario": "商超零售冷冻即热，家庭复热即食",
+                  "flavorRequirement": "香卤风味，微辣，复热后卤香明显",
                   "creatorName": "研发内勤"
                 }
                 """;
@@ -1456,6 +1461,8 @@ class SampleWorkflowControllerTest {
                         .content(createRequestJson))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("0"))
+                .andExpect(jsonPath("$.data.applicationScenario").value("商超零售冷冻即热，家庭复热即食"))
+                .andExpect(jsonPath("$.data.flavorRequirement").value("香卤风味，微辣，复热后卤香明显"))
                 .andExpect(jsonPath("$.data.status").value("PENDING_REVIEW"))
                 .andReturn()
                 .getResponse()

@@ -187,6 +187,8 @@ class SessionAuthenticationInterceptorTest {
                   "productType": "冷冻即热菜",
                   "customerName": "LHYC",
                   "specification": "500g/袋",
+                  "applicationScenario": "商超零售冷冻即热，家庭复热即食",
+                  "flavorRequirement": "香卤风味，微辣，复热后卤香明显",
                   "creatorName": "研发内勤"
                 }
                 """;

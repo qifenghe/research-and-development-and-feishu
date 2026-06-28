@@ -114,12 +114,12 @@ assert.deepEqual(buildWizardVerificationChecklist(buildWizardSummary(ready)), [
 assert.deepEqual(
   buildWizardVerificationChecklist(buildWizardSummary(ready), "https://rnd.example.com/app/").map((item) => item.url),
   [
-    "https://rnd.example.com/app/#dashboard",
-    "https://rnd.example.com/app/#rnd-module",
-    "https://rnd.example.com/app/#experiment-history",
-    "https://rnd.example.com/app/#shipment-pricing-module",
-    "https://rnd.example.com/app/#pricing-list",
-    "https://rnd.example.com/app/#pricing-detail",
+    "https://rnd.example.com/app/admin/dashboard",
+    "https://rnd.example.com/app/admin/rnd",
+    "https://rnd.example.com/app/admin/rnd/history/VER-0001",
+    "https://rnd.example.com/app/admin/shipment",
+    "https://rnd.example.com/app/admin/pricing/list",
+    "https://rnd.example.com/app/admin/pricing/PRICE-0001",
   ],
 );
 

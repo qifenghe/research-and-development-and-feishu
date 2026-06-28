@@ -131,7 +131,7 @@ public class FeishuIntegrationService {
         var feishuUserId = feishuIdentityClientProvider.current().exchangeCodeForFeishuUserId(command.code());
         var user = userAccountRepository.findByFeishuUserId(feishuUserId)
                 .filter(existing -> "ACTIVE".equals(existing.toModel().status()))
-                .orElseThrow(() -> new BusinessException("FEISHU_USER_NOT_BOUND", "飞书用户未绑定系统账号"));
+                .orElseThrow(() -> new BusinessException("FEISHU_USER_NOT_BOUND", "飞书用户未绑定系统账号，user_id=" + feishuUserId));
         return new FeishuLoginResult(feishuUserId, user.toModel(), sessionTokenService.issue(user.toModel()));
     }
 

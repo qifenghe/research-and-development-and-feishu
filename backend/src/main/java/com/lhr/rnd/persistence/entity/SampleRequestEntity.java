@@ -28,6 +28,12 @@ public class SampleRequestEntity {
     @Column(name = "specification", nullable = false)
     private String specification;
 
+    @Column(name = "application_scenario")
+    private String applicationScenario;
+
+    @Column(name = "flavor_requirement")
+    private String flavorRequirement;
+
     @Column(name = "creator_name", nullable = false)
     private String creatorName;
 
@@ -47,6 +53,8 @@ public class SampleRequestEntity {
             String productType,
             String customerName,
             String specification,
+            String applicationScenario,
+            String flavorRequirement,
             String creatorName,
             String status,
             LocalDateTime createdAt
@@ -57,6 +65,8 @@ public class SampleRequestEntity {
         this.productType = productType;
         this.customerName = customerName;
         this.specification = specification;
+        this.applicationScenario = applicationScenario;
+        this.flavorRequirement = flavorRequirement;
         this.creatorName = creatorName;
         this.status = status;
         this.createdAt = createdAt;
@@ -84,6 +94,14 @@ public class SampleRequestEntity {
 
     public String specification() {
         return specification;
+    }
+
+    public String applicationScenario() {
+        return applicationScenario;
+    }
+
+    public String flavorRequirement() {
+        return flavorRequirement;
     }
 
     public String creatorName() {

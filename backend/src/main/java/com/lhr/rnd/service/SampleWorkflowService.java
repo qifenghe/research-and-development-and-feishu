@@ -22,6 +22,8 @@ import com.lhr.rnd.model.ArchiveFileView;
 import com.lhr.rnd.model.ExperimentForm;
 import com.lhr.rnd.model.ExperimentFormStatus;
 import com.lhr.rnd.model.ExperimentMaterial;
+import com.lhr.rnd.model.ExperimentProcessStep;
+import com.lhr.rnd.model.SampleVersionTimelineItem;
 import com.lhr.rnd.model.PricingFileRecord;
 import com.lhr.rnd.model.PricingFileDetailView;
 import com.lhr.rnd.model.PricingFileStatus;
@@ -39,6 +41,7 @@ import com.lhr.rnd.persistence.entity.ArchiveFileEntity;
 import com.lhr.rnd.persistence.entity.CustomerFeedbackEntity;
 import com.lhr.rnd.persistence.entity.ExperimentFormEntity;
 import com.lhr.rnd.persistence.entity.ExperimentMaterialEntity;
+import com.lhr.rnd.persistence.entity.ExperimentProcessEntity;
 import com.lhr.rnd.persistence.entity.FinanceNotificationEntity;
 import com.lhr.rnd.persistence.entity.PricingFileEntity;
 import com.lhr.rnd.persistence.entity.RndTaskEntity;
@@ -52,6 +55,7 @@ import com.lhr.rnd.persistence.repository.ArchiveFileRepository;
 import com.lhr.rnd.persistence.repository.CustomerFeedbackRepository;
 import com.lhr.rnd.persistence.repository.ExperimentFormRepository;
 import com.lhr.rnd.persistence.repository.ExperimentMaterialRepository;
+import com.lhr.rnd.persistence.repository.ExperimentProcessRepository;
 import com.lhr.rnd.persistence.repository.FinanceNotificationRepository;
 import com.lhr.rnd.persistence.repository.PricingFileRepository;
 import com.lhr.rnd.persistence.repository.RndTaskRepository;
@@ -100,6 +104,8 @@ public class SampleWorkflowService {
     private final RndTaskRepository rndTaskRepository;
     private final ExperimentFormRepository experimentFormRepository;
     private final ExperimentMaterialRepository experimentMaterialRepository;
+    private final ExperimentProcessRepository experimentProcessRepository;
+    private final AuditLogService auditLogService;
     private final TestAssignmentRepository testAssignmentRepository;
     private final TestRecordRepository testRecordRepository;
     private final ShipmentRecordRepository shipmentRecordRepository;
@@ -130,11 +136,11 @@ public class SampleWorkflowService {
     private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
-        this(Clock.systemDefaultZone(), new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(Clock.systemDefaultZone(), new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     SampleWorkflowService(Clock clock) {
-        this(clock, new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(clock, new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -148,6 +154,8 @@ public class SampleWorkflowService {
             RndTaskRepository rndTaskRepository,
             ExperimentFormRepository experimentFormRepository,
             ExperimentMaterialRepository experimentMaterialRepository,
+            ExperimentProcessRepository experimentProcessRepository,
+            AuditLogService auditLogService,
             TestAssignmentRepository testAssignmentRepository,
             TestRecordRepository testRecordRepository,
             ShipmentRecordRepository shipmentRecordRepository,
@@ -167,6 +175,8 @@ public class SampleWorkflowService {
                 rndTaskRepository,
                 experimentFormRepository,
                 experimentMaterialRepository,
+                experimentProcessRepository,
+                auditLogService,
                 testAssignmentRepository,
                 testRecordRepository,
                 shipmentRecordRepository,
@@ -188,6 +198,8 @@ public class SampleWorkflowService {
             RndTaskRepository rndTaskRepository,
             ExperimentFormRepository experimentFormRepository,
             ExperimentMaterialRepository experimentMaterialRepository,
+            ExperimentProcessRepository experimentProcessRepository,
+            AuditLogService auditLogService,
             TestAssignmentRepository testAssignmentRepository,
             TestRecordRepository testRecordRepository,
             ShipmentRecordRepository shipmentRecordRepository,
@@ -206,6 +218,8 @@ public class SampleWorkflowService {
         this.rndTaskRepository = rndTaskRepository;
         this.experimentFormRepository = experimentFormRepository;
         this.experimentMaterialRepository = experimentMaterialRepository;
+        this.experimentProcessRepository = experimentProcessRepository;
+        this.auditLogService = auditLogService;
         this.testAssignmentRepository = testAssignmentRepository;
         this.testRecordRepository = testRecordRepository;
         this.shipmentRecordRepository = shipmentRecordRepository;
@@ -225,6 +239,8 @@ public class SampleWorkflowService {
                 command.productType(),
                 command.customerName(),
                 command.specification(),
+                command.applicationScenario(),
+                command.flavorRequirement(),
                 command.creatorName(),
                 SampleStatus.PENDING_REVIEW,
                 now()
@@ -253,6 +269,8 @@ public class SampleWorkflowService {
                 request.productType(),
                 request.customerName(),
                 request.specification(),
+                request.applicationScenario(),
+                request.flavorRequirement(),
                 request.creatorName(),
                 projectStatus,
                 request.createdAt()
@@ -264,6 +282,8 @@ public class SampleWorkflowService {
                 request.productType(),
                 request.customerName(),
                 request.specification(),
+                request.applicationScenario(),
+                request.flavorRequirement(),
                 projectStatus,
                 now()
         );
@@ -275,6 +295,8 @@ public class SampleWorkflowService {
                 .productName(request.productName())
                 .productType(request.productType())
                 .specification(request.specification())
+                .applicationScenario(request.applicationScenario())
+                .flavorRequirement(request.flavorRequirement())
                 .versionNo(versionCode)
                 .versionNumber(0)
                 .versionCode(versionCode)
@@ -362,6 +384,7 @@ public class SampleWorkflowService {
                 .filter(form -> form.taskId().equals(command.taskId()))
                 .findFirst();
         var id = existing.map(ExperimentForm::id).orElse("EXP-%04d".formatted(experimentSequence++));
+        var processSteps = command.processSteps() == null ? List.<ExperimentProcessStep>of() : List.copyOf(command.processSteps());
         var draft = new ExperimentForm(
                 id,
                 task.id(),
@@ -374,11 +397,16 @@ public class SampleWorkflowService {
                 command.operatorName(),
                 command.summary(),
                 command.materials() == null ? List.of() : List.copyOf(command.materials()),
+                processSteps,
                 now(),
                 null
         );
         experimentForms.put(draft.id(), draft);
         persistExperimentDraft(draft);
+        if (auditLogService != null) {
+            auditLogService.record("EXPERIMENT_FORM", draft.id(), "SAVE_DRAFT", command.operatorName(),
+                    "taskId=" + task.id() + ", processSteps=" + processSteps.size());
+        }
         return draft;
     }
 
@@ -471,6 +499,8 @@ public class SampleWorkflowService {
                 .productName(currentVersion.productName())
                 .productType(currentVersion.productType())
                 .specification(currentVersion.specification())
+                .applicationScenario(currentVersion.applicationScenario())
+                .flavorRequirement(currentVersion.flavorRequirement())
                 .versionNo(nextCode)
                 .versionNumber(nextNumber)
                 .versionCode(nextCode)
@@ -517,6 +547,8 @@ public class SampleWorkflowService {
                         request.productType(),
                         request.customerName(),
                         request.specification(),
+                        request.applicationScenario(),
+                        request.flavorRequirement(),
                         request.creatorName(),
                         request.status().name()
                 ))
@@ -688,6 +720,21 @@ public class SampleWorkflowService {
                 .toList();
     }
 
+    public synchronized List<ShipmentRecord> shipments(String status, String keyword) {
+        return shipments.values().stream()
+                .filter(shipment -> matchesStatus(status, shipment.status().name()))
+                .filter(shipment -> matchesKeyword(
+                        keyword,
+                        shipment.sampleNo(),
+                        shipment.productName(),
+                        shipment.versionCode(),
+                        shipment.receiverName(),
+                        shipment.trackingNo()
+                ))
+                .sorted(Comparator.comparing(ShipmentRecord::shippedAt).reversed())
+                .toList();
+    }
+
     private DashboardTaskItem dashboardTaskItem(RndTask task) {
         return new DashboardTaskItem(
                 task.id(),
@@ -746,6 +793,101 @@ public class SampleWorkflowService {
         return shipment;
     }
 
+    public synchronized List<ExperimentProcessStep> processStepsForVersion(String versionId) {
+        var form = experimentForms.values().stream()
+                .filter(item -> item.versionId().equals(versionId))
+                .max(Comparator.comparing(ExperimentForm::savedAt))
+                .orElse(null);
+        if (form != null) {
+            return form.processSteps();
+        }
+        if (experimentProcessRepository == null || experimentFormRepository == null) {
+            return List.of();
+        }
+        var formEntity = experimentFormRepository.findAll().stream()
+                .filter(item -> item.getVersionId().equals(versionId))
+                .max(Comparator.comparing(com.lhr.rnd.persistence.entity.ExperimentFormEntity::getSavedAt))
+                .orElse(null);
+        if (formEntity == null) {
+            return List.of();
+        }
+        return experimentProcessRepository.findByExperimentFormIdOrderBySequenceAsc(formEntity.getId()).stream()
+                .map(entity -> new ExperimentProcessStep(
+                        entity.getSequence(),
+                        entity.getProcessName(),
+                        entity.getBeforeWeightKg(),
+                        entity.getAfterWeightKg(),
+                        entity.getLossRate(),
+                        entity.getRemark()
+                ))
+                .toList();
+    }
+
+    public synchronized List<SampleVersionTimelineItem> versionTimeline(String projectId) {
+        var projectVersions = versions.values().stream()
+                .filter(version -> version.projectId().equals(projectId))
+                .sorted(Comparator.comparing(SampleVersion::versionNumber).reversed())
+                .toList();
+        if (projectVersions.isEmpty() && sampleVersionRepository != null) {
+            projectVersions = sampleVersionRepository.findByProjectIdOrderByVersionNumberDesc(projectId).stream()
+                    .map(entity -> SampleVersion.builder()
+                            .id(entity.getId())
+                            .projectId(entity.getProjectId())
+                            .sampleNo(entity.getSampleNo())
+                            .productName(entity.getProductName())
+                            .productType(entity.getProductType())
+                            .specification(entity.getSpecification())
+                            .versionNo(entity.getVersionNo())
+                            .versionNumber(entity.getVersionNumber())
+                            .versionCode(entity.getVersionCode())
+                            .createdAt(entity.getCreatedAt())
+                            .build())
+                    .toList();
+        }
+        return projectVersions.stream()
+                .map(version -> {
+                    var form = experimentForms.values().stream()
+                            .filter(item -> item.versionId().equals(version.id()))
+                            .max(Comparator.comparing(ExperimentForm::savedAt))
+                            .orElse(null);
+                    var task = tasks.values().stream()
+                            .filter(item -> item.versionId().equals(version.id()))
+                            .findFirst()
+                            .orElse(null);
+                    var locked = form != null && form.status() == ExperimentFormStatus.LOCKED;
+                    var current = task != null && task.status() != RndTaskStatus.COMPLETED;
+                    var statusLabel = form == null
+                            ? "未开始"
+                            : switch (form.status()) {
+                                case DRAFT -> "打样中";
+                                case SUBMITTED_FOR_TEST -> "待测试";
+                                case LOCKED -> "已锁定";
+                            };
+                    var subtitle = form != null && form.submittedAt() != null
+                            ? form.submittedAt().toString()
+                            : version.createdAt() != null ? version.createdAt().toString() : "";
+                    var summary = form != null ? form.summary() : null;
+                    return new SampleVersionTimelineItem(
+                            version.id(),
+                            version.versionCode(),
+                            statusLabel,
+                            subtitle,
+                            summary,
+                            locked,
+                            current
+                    );
+                })
+                .toList();
+    }
+
+    public synchronized SampleRequest requestDetail(String requestId) {
+        var request = requests.get(requestId);
+        if (request == null) {
+            throw new BusinessException("SAMPLE_REQUEST_NOT_FOUND", "样品需求不存在");
+        }
+        return request;
+    }
+
     private PricingFileRecord requiredPricingFile(String pricingFileId) {
         var pricingFile = pricingFiles.get(pricingFileId);
         if (pricingFile == null) {
@@ -790,7 +932,9 @@ public class SampleWorkflowService {
         groups.add(new DetailFieldGroup("基础信息", List.of(
                 "sampleNo",
                 "productName",
-                "versionCode"
+                "versionCode",
+                "applicationScenario",
+                "flavorRequirement"
         )));
         groups.add(new DetailFieldGroup("任务信息", List.of(
                 "status",
@@ -1103,6 +1247,8 @@ public class SampleWorkflowService {
                 .productName(version.productName())
                 .productType(version.productType())
                 .specification(version.specification())
+                .applicationScenario(version.applicationScenario())
+                .flavorRequirement(version.flavorRequirement())
                 .versionNo(version.versionNo())
                 .versionNumber(version.versionNumber())
                 .versionCode(version.versionCode())
@@ -1289,6 +1435,8 @@ public class SampleWorkflowService {
                 .productName(currentVersion.productName())
                 .productType(currentVersion.productType())
                 .specification(currentVersion.specification())
+                .applicationScenario(currentVersion.applicationScenario())
+                .flavorRequirement(currentVersion.flavorRequirement())
                 .versionNo(nextCode)
                 .versionNumber(nextNumber)
                 .versionCode(nextCode)
@@ -1337,6 +1485,8 @@ public class SampleWorkflowService {
                 project.productType(),
                 project.customerName(),
                 project.specification(),
+                project.applicationScenario(),
+                project.flavorRequirement(),
                 status,
                 project.createdAt()
         );
@@ -1403,6 +1553,8 @@ public class SampleWorkflowService {
                 request.productType(),
                 request.customerName(),
                 request.specification(),
+                request.applicationScenario(),
+                request.flavorRequirement(),
                 request.creatorName(),
                 request.status().name(),
                 request.createdAt()
@@ -1427,6 +1579,8 @@ public class SampleWorkflowService {
                 project.productType(),
                 project.customerName(),
                 project.specification(),
+                project.applicationScenario(),
+                project.flavorRequirement(),
                 project.status().name(),
                 project.createdAt()
         ));
@@ -1437,6 +1591,8 @@ public class SampleWorkflowService {
                 version.productName(),
                 version.productType(),
                 version.specification(),
+                version.applicationScenario(),
+                version.flavorRequirement(),
                 version.versionNo(),
                 version.versionNumber(),
                 version.versionCode(),
@@ -1524,6 +1680,23 @@ public class SampleWorkflowService {
             ));
         }
         experimentMaterialRepository.saveAll(materialEntities);
+        if (experimentProcessRepository != null) {
+            experimentProcessRepository.deleteByExperimentFormId(draft.id());
+            var processEntities = new ArrayList<ExperimentProcessEntity>();
+            for (var step : draft.processSteps()) {
+                processEntities.add(new ExperimentProcessEntity(
+                        "%s-P%04d".formatted(draft.id(), step.sequence()),
+                        draft.id(),
+                        step.sequence(),
+                        step.processName(),
+                        step.beforeWeightKg(),
+                        step.afterWeightKg(),
+                        step.lossRate(),
+                        step.remark()
+                ));
+            }
+            experimentProcessRepository.saveAll(processEntities);
+        }
     }
 
     private void persistSubmittedExperiment(ExperimentForm submitted, TestAssignment assignment) {
@@ -1621,6 +1794,8 @@ public class SampleWorkflowService {
                 nextVersion.productName(),
                 nextVersion.productType(),
                 nextVersion.specification(),
+                nextVersion.applicationScenario(),
+                nextVersion.flavorRequirement(),
                 nextVersion.versionNo(),
                 nextVersion.versionNumber(),
                 nextVersion.versionCode(),
@@ -1704,6 +1879,8 @@ public class SampleWorkflowService {
                 nextVersion.productName(),
                 nextVersion.productType(),
                 nextVersion.specification(),
+                nextVersion.applicationScenario(),
+                nextVersion.flavorRequirement(),
                 nextVersion.versionNo(),
                 nextVersion.versionNumber(),
                 nextVersion.versionCode(),
@@ -1905,6 +2082,8 @@ public class SampleWorkflowService {
             String productType,
             String customerName,
             String specification,
+            String applicationScenario,
+            String flavorRequirement,
             String creatorName
     ) {
     }
@@ -1913,7 +2092,8 @@ public class SampleWorkflowService {
             String taskId,
             String operatorName,
             String summary,
-            List<ExperimentMaterial> materials
+            List<ExperimentMaterial> materials,
+            List<ExperimentProcessStep> processSteps
     ) {
     }
 

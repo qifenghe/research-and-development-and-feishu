@@ -3,34 +3,40 @@
 <filter id="shadow" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#334155" flood-opacity="0.16"/></filter>
 </defs>
 <rect width="100%" height="100%" fill="#F6F8FB"/>
-<text x="260.0" y="50" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="32" font-weight="800" fill="#111827">样品测试确认</text>
+<text x="260" y="50" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="32" font-weight="800" fill="#111827">样品测试确认</text>
+<text x="260" y="78" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="600" fill="#64748B">内部测试 · 路由 /m/tests/:id · 三结论 + 提交</text>
 <g filter="url(#shadow)">
-<rect x="52" y="92" width="416" height="820" rx="42" fill="#101828" stroke="#101828" stroke-width="0"/>
+<rect x="52" y="92" width="416" height="820" rx="42" fill="#101828"/>
 <rect x="68" y="110" width="384" height="784" rx="32" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>
 </g>
-<rect x="202" y="124" width="116" height="14" rx="7" fill="#0F172A" stroke="#0F172A" stroke-width="0"/>
-<text x="92" y="176" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="27" font-weight="800" fill="#111827">样品测试确认</text>
-<text x="92" y="208" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="500" fill="#64748B">测试/品控 · 黑椒鸡柳 A1</text>
-<rect x="92" y="232" width="92" height="36" rx="18" fill="#EAF2FF" stroke="none" stroke-width="0"/><text x="138.0" y="257" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="700" fill="#246BFE">待测试</text>
-<text x="92" y="306" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#EF4444">*复热方式</text>
-<rect x="92" y="316" width="336" height="50" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
-<text x="110" y="348" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="500" fill="#111827">微波 / 水浴</text>
-<text x="92" y="402" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#EF4444">*口味评分</text>
-<rect x="92" y="412" width="336" height="50" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
-<text x="110" y="444" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="500" fill="#111827">8.5 / 10</text>
-<text x="92" y="498" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#EF4444">*口感评价</text>
-<rect x="92" y="508" width="336" height="50" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
-<text x="110" y="540" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="500" fill="#111827">鸡肉嫩度合适，汤汁略少</text>
-<text x="92" y="594" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#64748B">出水情况</text>
-<rect x="92" y="604" width="336" height="50" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
-<text x="110" y="636" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="500" fill="#111827">轻微出水，可接受</text>
-<text x="92" y="696" text-anchor="start" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="20" font-weight="800" fill="#111827">测试结论</text>
-<rect x="92" y="724" width="96" height="46" rx="14" fill="#FFFFFF" stroke="#16A34A" stroke-width="2"/>
-<text x="140" y="754" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#16A34A">通过</text>
-<rect x="204" y="724" width="96" height="46" rx="14" fill="#FFFFFF" stroke="#F59E0B" stroke-width="2"/>
-<text x="252" y="754" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#F59E0B">复打样</text>
-<rect x="316" y="724" width="96" height="46" rx="14" fill="#FFFFFF" stroke="#EF4444" stroke-width="2"/>
-<text x="364" y="754" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#EF4444">停止</text>
-<rect x="92" y="812" width="336" height="50" rx="14" fill="#246BFE" stroke="#246BFE" stroke-width="2"/>
-<text x="260" y="845" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#FFFFFF">提交测试结果</text>
+<rect x="202" y="124" width="116" height="14" rx="7" fill="#0F172A"/>
+<text x="92" y="162" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="22" font-weight="800" fill="#111827">← 测试确认</text>
+<text x="92" y="198" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="24" font-weight="800" fill="#111827">黑椒鸡柳 A1</text>
+<rect x="92" y="216" width="80" height="28" rx="14" fill="#EAF2FF"/><text x="132" y="236" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="700" fill="#246BFE">待测试</text>
+<text x="92" y="272" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="700" fill="#64748B">实验单摘要</text>
+<rect x="92" y="282" width="336" height="56" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="110" y="316" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" fill="#64748B">出成 12.5kg · 工序完整 · 照片 2 张</text>
+<text x="92" y="360" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#EF4444">*复热方式</text>
+<rect x="92" y="370" width="336" height="44" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="110" y="398" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" fill="#111827">微波 / 水浴</text>
+<text x="92" y="434" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#EF4444">*口味评分</text>
+<rect x="92" y="444" width="336" height="44" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="110" y="472" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" fill="#111827">8.5 / 10</text>
+<text x="92" y="508" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#EF4444">*口感评价</text>
+<rect x="92" y="518" width="336" height="44" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="110" y="546" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" fill="#111827">鸡肉嫩度合适</text>
+<text x="92" y="582" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#64748B">出水情况</text>
+<rect x="92" y="592" width="336" height="44" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="110" y="620" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" fill="#111827">轻微出水，可接受</text>
+<text x="92" y="660" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="18" font-weight="800" fill="#111827">测试结论</text>
+<rect x="92" y="676" width="96" height="40" rx="14" fill="#FFFFFF" stroke="#16A34A" stroke-width="2"/>
+<text x="140" y="702" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="800" fill="#16A34A">通过</text>
+<rect x="204" y="676" width="96" height="40" rx="14" fill="#FFFFFF" stroke="#F59E0B" stroke-width="2"/>
+<text x="252" y="702" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="800" fill="#F59E0B">复打样</text>
+<rect x="316" y="676" width="96" height="40" rx="14" fill="#FFFFFF" stroke="#EF4444" stroke-width="2"/>
+<text x="364" y="702" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="800" fill="#EF4444">停止</text>
+<rect x="92" y="820" width="336" height="50" rx="14" fill="#246BFE"/>
+<text x="260" y="853" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="800" fill="#FFFFFF">测试通过并锁版</text>
+<rect x="92" y="878" width="336" height="50" rx="14" fill="#FFFFFF" stroke="#E2E8F0"/>
+<text x="260" y="911" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="700" fill="#64748B">不通过，复打样</text>
 </svg>

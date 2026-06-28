@@ -29,8 +29,18 @@ const DEFAULT_OPTIONS = {
     role: "RND_ENGINEER",
     departmentName: "研发部",
   },
-  testerName: "内部测试员",
-  financeRecipientName: "财务核价员",
+  tester: {
+    name: "内部测试员",
+    feishuUserId: "ou_demo_tester",
+    role: "TESTER",
+    departmentName: "品控部",
+  },
+  finance: {
+    name: "财务核价员",
+    feishuUserId: "ou_demo_finance",
+    role: "FINANCE",
+    departmentName: "财务部",
+  },
 };
 
 export async function runDemoTaskFlow(options = {}) {
@@ -39,14 +49,26 @@ export async function runDemoTaskFlow(options = {}) {
   const assistant = personWithDefaults(options.assistant, DEFAULT_OPTIONS.assistant);
   const director = personWithDefaults(options.director, DEFAULT_OPTIONS.director);
   const engineer = personWithDefaults(options.engineer, DEFAULT_OPTIONS.engineer);
+  const tester = personWithDefaults(
+    { ...(options.tester || {}), ...(options.testerName ? { name: options.testerName } : {}) },
+    DEFAULT_OPTIONS.tester,
+  );
+  const finance = personWithDefaults(
+    { ...(options.finance || {}), ...(options.financeRecipientName ? { name: options.financeRecipientName } : {}) },
+    DEFAULT_OPTIONS.finance,
+  );
 
   await bindUser(client, assistant);
   await bindUser(client, director);
   await bindUser(client, engineer);
+  await bindUser(client, tester);
+  await bindUser(client, finance);
 
   const assistantToken = await login(client, assistant.feishuUserId);
   const directorToken = await login(client, director.feishuUserId);
   const engineerToken = await login(client, engineer.feishuUserId);
+  const testerToken = await login(client, tester.feishuUserId);
+  const financeToken = await login(client, finance.feishuUserId);
 
   const sampleRequest = await client.post("/api/v1/sample-requests", {
     productName: options.productName || DEFAULT_OPTIONS.productName,
@@ -80,14 +102,14 @@ export async function runDemoTaskFlow(options = {}) {
   const versionId = experimentForm.data.versionId;
 
   const submittedTest = await client.post(`/api/v1/experiment-forms/${experimentFormId}/submit-test`, {
-    testerName: options.testerName || DEFAULT_OPTIONS.testerName,
+    testerName: tester.name,
   }, { token: engineerToken });
   const testAssignmentId = submittedTest.data.testAssignment.id;
 
   const passedTest = await client.post(`/api/v1/test-assignments/${testAssignmentId}/pass`, {
-    testerName: options.testerName || DEFAULT_OPTIONS.testerName,
+    testerName: tester.name,
     comment: options.testComment || "口味、口感、复热状态通过，可以进入寄样/核价。",
-  }, { token: engineerToken });
+  }, { token: testerToken });
   const lockedVersionId = passedTest.data.experimentForm.versionId || versionId;
 
   const shipment = await client.post(`/api/v1/sample-versions/${lockedVersionId}/shipments`, {
@@ -95,23 +117,23 @@ export async function runDemoTaskFlow(options = {}) {
     receiverName: options.shipmentReceiverName || "销售内勤",
     trackingNo: options.trackingNo || "SF202606180001",
     remark: options.shipmentRemark || "寄客户确认复热效果",
-  }, { token: directorToken });
+  }, { token: assistantToken });
   const shipmentId = shipment.data.id;
 
   const feedback = await client.post(`/api/v1/shipments/${shipmentId}/feedback`, {
     feedbackBy: options.feedbackBy || "业务员",
     result: "PASSED",
     comment: options.feedbackComment || "客户确认通过，可以进入核价。",
-  }, { token: directorToken });
+  }, { token: assistantToken });
   const customerFeedbackId = feedback.data.feedback.id;
 
-  const pricingFile = await client.post(`/api/v1/sample-versions/${lockedVersionId}/pricing-files`, {}, { token: directorToken });
+  const pricingFile = await client.post(`/api/v1/sample-versions/${lockedVersionId}/pricing-files`, {}, { token: assistantToken });
   const pricingFileId = pricingFile.data.id;
 
   const financeNotification = await client.post(`/api/v1/pricing-files/${pricingFileId}/notify-finance`, {
-    recipientName: options.financeRecipientName || DEFAULT_OPTIONS.financeRecipientName,
+    recipientName: finance.name,
     remark: options.financeRemark || "请按研发核价清单核算报价。",
-  }, { token: directorToken });
+  }, { token: financeToken });
   const financeNotificationId = financeNotification.data.notification.id;
 
   const pending = await client.get("/api/v1/feishu/notifications/pending", { token: directorToken });
@@ -168,7 +190,7 @@ export function validateDemoTaskOptions(options = {}) {
   }
 }
 
-class ApiClient {
+export class ApiClient {
   constructor(baseUrl) {
     this.baseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   }

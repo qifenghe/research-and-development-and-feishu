@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Write UTF-8 mobile SVG prototypes and export PNG previews."""
+
+from __future__ import annotations
+
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+PAGES = ROOT / "pages"
+PNG = PAGES / "png"
+PNG.mkdir(exist_ok=True)
+
+try:
+    import cairosvg
+except OSError as exc:
+    cairosvg = None
+    print("warn: cairosvg unavailable:", exc)
+
+PHONE = """<defs><filter id="shadow" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#334155" flood-opacity="0.16"/></filter></defs>
+<rect width="100%" height="100%" fill="#F6F8FB"/>
+<g filter="url(#shadow)"><rect x="52" y="92" width="416" height="820" rx="42" fill="#101828"/><rect x="68" y="110" width="384" height="784" rx="32" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/></g>
+<rect x="202" y="124" width="116" height="14" rx="7" fill="#0F172A"/>"""
+
+FONT = "PingFang SC, Microsoft YaHei, sans-serif"
+
+SVG_FILES = {
+    "01_手机端_我的待办.svg": f"""<svg xmlns="http://www.w3.org/2000/svg" width="520" height="980" viewBox="0 0 520 980">{PHONE}
+<text x="260" y="50" text-anchor="middle" font-family="{FONT}" font-size="32" font-weight="800" fill="#111827">我的待办</text>
+<text x="92" y="176" font-family="{FONT}" font-size="27" font-weight="800" fill="#111827">我的待办</text>
+<text x="92" y="208" font-family="{FONT}" font-size="17" fill="#64748B">黄丽金 / 研发人员</text>
+<rect x="92" y="232" width="126" height="36" rx="18" fill="#EAF2FF"/><text x="155" y="257" text-anchor="middle" font-family="{FONT}" font-size="17" font-weight="700" fill="#246BFE">今日待办 5</text>
+<rect x="232" y="232" width="90" height="36" rx="18" fill="#FFF4E5"/><text x="277" y="257" text-anchor="middle" font-family="{FONT}" font-size="17" font-weight="700" fill="#F59E0B">逾期 1</text>
+<text x="92" y="296" font-family="{FONT}" font-size="20" font-weight="800" fill="#111827">继续处理</text>
+<rect x="92" y="308" width="336" height="118" rx="18" fill="#246BFE"/>
+<text x="114" y="342" font-family="{FONT}" font-size="20" font-weight="800" fill="#FFFFFF">500g香卤大肠头 A0</text>
+<text x="114" y="370" font-family="{FONT}" font-size="16" fill="#DBEAFE">打样中实验单 · 草稿已保存</text>
+<rect x="268" y="378" width="136" height="40" rx="20" fill="#FFFFFF"/><text x="336" y="404" text-anchor="middle" font-family="{FONT}" font-size="16" font-weight="800" fill="#246BFE">继续填写</text>
+<text x="92" y="456" font-family="{FONT}" font-size="13" font-weight="700" fill="#64748B">待接受任务</text>
+<rect x="92" y="468" width="336" height="98" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="114" y="502" font-family="{FONT}" font-size="20" font-weight="800" fill="#111827">黑椒鸡柳料理包</text>
+<text x="114" y="530" font-family="{FONT}" font-size="16" fill="#64748B">A0 · 待接受 · 截止 06-22</text>
+<rect x="268" y="510" width="72" height="36" rx="18" fill="#EAF2FF"/><text x="304" y="535" text-anchor="middle" font-family="{FONT}" font-size="16" font-weight="700" fill="#246BFE">接受</text>
+<rect x="68" y="822" width="384" height="72" fill="#FFFFFF" stroke="#E5EAF2"/>
+<text x="122" y="878" text-anchor="middle" font-family="{FONT}" font-size="15" font-weight="700" fill="#246BFE">待办</text>
+<text x="210" y="878" text-anchor="middle" font-family="{FONT}" font-size="15" fill="#64748B">样品</text>
+<text x="298" y="878" text-anchor="middle" font-family="{FONT}" font-size="15" fill="#64748B">我的</text>
+</svg>""",
+    "02_手机端_任务详情.svg": f"""<svg xmlns="http://www.w3.org/2000/svg" width="520" height="980" viewBox="0 0 520 980">{PHONE}
+<text x="260" y="50" text-anchor="middle" font-family="{FONT}" font-size="32" font-weight="800" fill="#111827">任务详情</text>
+<text x="92" y="162" font-family="{FONT}" font-size="22" font-weight="800" fill="#111827">任务详情</text>
+<text x="92" y="200" font-family="{FONT}" font-size="27" font-weight="800" fill="#111827">黑椒鸡柳料理包</text>
+<rect x="92" y="218" width="92" height="32" rx="16" fill="#FFF7ED"/><text x="138" y="240" text-anchor="middle" font-family="{FONT}" font-size="15" font-weight="700" fill="#F59E0B">待接受</text>
+<rect x="92" y="268" width="336" height="280" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="114" y="300" font-family="{FONT}" font-size="16" font-weight="700" fill="#64748B">样品信息</text>
+<text x="114" y="332" font-family="{FONT}" font-size="15" fill="#64748B">客户</text><text x="300" y="332" text-anchor="end" font-family="{FONT}" font-size="16" font-weight="600" fill="#111827">连锁餐饮客户B</text>
+<text x="114" y="364" font-family="{FONT}" font-size="15" fill="#64748B">样品版本</text><text x="300" y="364" text-anchor="end" font-family="{FONT}" font-size="16" font-weight="600" fill="#111827">A0</text>
+<text x="114" y="396" font-family="{FONT}" font-size="15" fill="#64748B">规格</text><text x="300" y="396" text-anchor="end" font-family="{FONT}" font-size="16" font-weight="600" fill="#111827">300g/袋，24袋/箱</text>
+<text x="114" y="428" font-family="{FONT}" font-size="15" fill="#64748B">需求说明</text>
+<text x="114" y="456" font-family="{FONT}" font-size="15" fill="#111827">复热后保持嫩度，黑椒风味明显。</text>
+<text x="114" y="518" font-family="{FONT}" font-size="15" fill="#64748B">研发总监备注</text>
+<text x="114" y="546" font-family="{FONT}" font-size="15" fill="#111827">优先保水与复热稳定性。</text>
+<rect x="92" y="820" width="336" height="50" rx="14" fill="#246BFE"/><text x="260" y="853" text-anchor="middle" font-family="{FONT}" font-size="17" font-weight="800" fill="#FFFFFF">接受任务</text>
+<rect x="92" y="878" width="336" height="50" rx="14" fill="#FFFFFF" stroke="#246BFE" stroke-width="2"/><text x="260" y="911" text-anchor="middle" font-family="{FONT}" font-size="17" font-weight="800" fill="#246BFE">开始填写实验单</text>
+</svg>""",
+    "09_手机端_寄样反馈.svg": f"""<svg xmlns="http://www.w3.org/2000/svg" width="520" height="980" viewBox="0 0 520 980">{PHONE}
+<text x="260" y="50" text-anchor="middle" font-family="{FONT}" font-size="32" font-weight="800" fill="#111827">寄样反馈</text>
+<text x="92" y="162" font-family="{FONT}" font-size="22" font-weight="800" fill="#111827">寄样反馈</text>
+<text x="92" y="200" font-family="{FONT}" font-size="27" font-weight="800" fill="#111827">调理鸡排 A2</text>
+<rect x="92" y="218" width="110" height="32" rx="16" fill="#EAF2FF"/><text x="147" y="240" text-anchor="middle" font-family="{FONT}" font-size="15" font-weight="700" fill="#246BFE">已寄样待反馈</text>
+<rect x="92" y="290" width="336" height="120" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="114" y="322" font-family="{FONT}" font-size="15" fill="#64748B">寄样数量</text><text x="300" y="322" text-anchor="end" font-family="{FONT}" font-size="16" font-weight="600" fill="#111827">6 袋</text>
+<text x="114" y="354" font-family="{FONT}" font-size="15" fill="#64748B">收件人</text><text x="300" y="354" text-anchor="end" font-family="{FONT}" font-size="16" font-weight="600" fill="#111827">张经理</text>
+<text x="114" y="386" font-family="{FONT}" font-size="15" fill="#64748B">快递单号</text><text x="300" y="386" text-anchor="end" font-family="{FONT}" font-size="16" font-weight="600" fill="#111827">SF1234567890</text>
+<rect x="92" y="478" width="336" height="80" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="110" y="512" font-family="{FONT}" font-size="16" fill="#94A3B8">客户试吃后反馈…</text>
+<rect x="92" y="604" width="104" height="46" rx="14" fill="#FFFFFF" stroke="#16A34A" stroke-width="2"/><text x="144" y="634" text-anchor="middle" font-family="{FONT}" font-size="16" font-weight="800" fill="#16A34A">客户通过</text>
+<rect x="208" y="604" width="104" height="46" rx="14" fill="#FFFFFF" stroke="#F59E0B" stroke-width="2"/><text x="260" y="634" text-anchor="middle" font-family="{FONT}" font-size="16" font-weight="800" fill="#F59E0B">继续打样</text>
+<rect x="324" y="604" width="104" height="46" rx="14" fill="#FFFFFF" stroke="#EF4444" stroke-width="2"/><text x="376" y="634" text-anchor="middle" font-family="{FONT}" font-size="16" font-weight="800" fill="#EF4444">停止打样</text>
+<rect x="92" y="820" width="336" height="50" rx="14" fill="#246BFE"/><text x="260" y="853" text-anchor="middle" font-family="{FONT}" font-size="17" font-weight="800" fill="#FFFFFF">客户通过，生成核价文件</text>
+</svg>""",
+    "10_手机端_样品搜索.svg": f"""<svg xmlns="http://www.w3.org/2000/svg" width="520" height="980" viewBox="0 0 520 980">{PHONE}
+<text x="260" y="50" text-anchor="middle" font-family="{FONT}" font-size="32" font-weight="800" fill="#111827">样品</text>
+<text x="92" y="176" font-family="{FONT}" font-size="27" font-weight="800" fill="#111827">样品</text>
+<rect x="92" y="196" width="336" height="44" rx="22" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="128" y="225" font-family="{FONT}" font-size="16" fill="#94A3B8">搜索产品名称 / 样品编号</text>
+<rect x="92" y="256" width="56" height="32" rx="16" fill="#246BFE"/><text x="120" y="278" text-anchor="middle" font-family="{FONT}" font-size="14" font-weight="700" fill="#FFFFFF">全部</text>
+<rect x="156" y="256" width="72" height="32" rx="16" fill="#FFFFFF" stroke="#E2E8F0"/><text x="192" y="278" text-anchor="middle" font-family="{FONT}" font-size="14" fill="#64748B">打样中</text>
+<rect x="236" y="256" width="72" height="32" rx="16" fill="#FFFFFF" stroke="#E2E8F0"/><text x="272" y="278" text-anchor="middle" font-family="{FONT}" font-size="14" fill="#64748B">待测试</text>
+<rect x="92" y="308" width="336" height="88" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="114" y="342" font-family="{FONT}" font-size="20" font-weight="800" fill="#111827">500g香卤大肠头</text>
+<text x="114" y="370" font-family="{FONT}" font-size="16" fill="#64748B">A0 · 打样中 · 客户A</text>
+<rect x="68" y="822" width="384" height="72" fill="#FFFFFF" stroke="#E5EAF2"/>
+<text x="210" y="878" text-anchor="middle" font-family="{FONT}" font-size="15" font-weight="700" fill="#246BFE">样品</text>
+</svg>""",
+    "11_手机端_我的.svg": f"""<svg xmlns="http://www.w3.org/2000/svg" width="520" height="980" viewBox="0 0 520 980">{PHONE}
+<text x="260" y="50" text-anchor="middle" font-family="{FONT}" font-size="32" font-weight="800" fill="#111827">我的</text>
+<text x="92" y="176" font-family="{FONT}" font-size="27" font-weight="800" fill="#111827">我的</text>
+<rect x="92" y="200" width="336" height="100" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<circle cx="140" cy="250" r="28" fill="#EAF2FF"/><text x="140" y="258" text-anchor="middle" font-family="{FONT}" font-size="22" font-weight="800" fill="#246BFE">黄</text>
+<text x="184" y="238" font-family="{FONT}" font-size="20" font-weight="800" fill="#111827">黄丽金</text>
+<text x="184" y="264" font-family="{FONT}" font-size="16" fill="#64748B">研发人员 · 飞书已绑定</text>
+<rect x="92" y="320" width="336" height="56" rx="14" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/><text x="114" y="355" font-family="{FONT}" font-size="17" font-weight="700" fill="#111827">我的草稿实验单</text>
+<rect x="92" y="386" width="336" height="56" rx="14" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/><text x="114" y="421" font-family="{FONT}" font-size="17" font-weight="700" fill="#111827">我的已完成记录</text>
+<rect x="92" y="452" width="336" height="56" rx="14" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/><text x="114" y="487" font-family="{FONT}" font-size="17" font-weight="700" fill="#111827">帮助与反馈</text>
+<rect x="68" y="822" width="384" height="72" fill="#FFFFFF" stroke="#E5EAF2"/>
+<text x="298" y="878" text-anchor="middle" font-family="{FONT}" font-size="15" font-weight="700" fill="#246BFE">我的</text>
+</svg>""",
+    "12_手机端_实验单历史.svg": f"""<svg xmlns="http://www.w3.org/2000/svg" width="520" height="980" viewBox="0 0 520 980">{PHONE}
+<text x="260" y="50" text-anchor="middle" font-family="{FONT}" font-size="32" font-weight="800" fill="#111827">实验单历史</text>
+<text x="92" y="162" font-family="{FONT}" font-size="22" font-weight="800" fill="#111827">实验单历史</text>
+<text x="92" y="200" font-family="{FONT}" font-size="27" font-weight="800" fill="#111827">500g香卤大肠头</text>
+<line x1="118" y1="260" x2="118" y="700" stroke="#E2E8F0" stroke-width="3"/>
+<circle cx="118" cy="290" r="10" fill="#246BFE"/>
+<rect x="140" y="268" width="288" height="80" rx="18" fill="#FFFFFF" stroke="#246BFE" stroke-width="2"/>
+<text x="162" y="300" font-family="{FONT}" font-size="20" font-weight="800" fill="#111827">A2 · 打样中</text>
+<text x="162" y="328" font-family="{FONT}" font-size="15" fill="#64748B">草稿 · 06-21 14:20</text>
+<circle cx="118" cy="410" r="10" fill="#16A34A"/>
+<rect x="140" y="388" width="288" height="80" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="162" y="420" font-family="{FONT}" font-size="20" font-weight="800" fill="#111827">A1 · 已锁定</text>
+<text x="162" y="448" font-family="{FONT}" font-size="15" fill="#64748B">测试不通过复打样</text>
+<circle cx="118" cy="530" r="10" fill="#64748B"/>
+<rect x="140" y="508" width="288" height="80" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="162" y="540" font-family="{FONT}" font-size="20" font-weight="800" fill="#111827">A0 · 已锁定</text>
+<text x="162" y="568" font-family="{FONT}" font-size="15" fill="#64748B">内部测试通过</text>
+</svg>""",
+    "13_手机端_需求审核.svg": f"""<svg xmlns="http://www.w3.org/2000/svg" width="520" height="980" viewBox="0 0 520 980">{PHONE}
+<text x="260" y="50" text-anchor="middle" font-family="{FONT}" font-size="32" font-weight="800" fill="#111827">审核需求</text>
+<text x="92" y="176" font-family="{FONT}" font-size="27" font-weight="800" fill="#111827">审核需求</text>
+<rect x="92" y="210" width="336" height="220" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="114" y="244" font-family="{FONT}" font-size="20" font-weight="800" fill="#111827">黑椒鸡柳料理包</text>
+<text x="114" y="276" font-family="{FONT}" font-size="15" fill="#64748B">客户：连锁餐饮客户B</text>
+<text x="114" y="308" font-family="{FONT}" font-size="15" fill="#64748B">规格：300g/袋，24袋/箱</text>
+<rect x="92" y="820" width="336" height="50" rx="14" fill="#246BFE"/><text x="260" y="853" text-anchor="middle" font-family="{FONT}" font-size="17" font-weight="800" fill="#FFFFFF">审核通过</text>
+</svg>""",
+    "14_手机端_任务分发.svg": f"""<svg xmlns="http://www.w3.org/2000/svg" width="520" height="980" viewBox="0 0 520 980">{PHONE}
+<text x="260" y="50" text-anchor="middle" font-family="{FONT}" font-size="32" font-weight="800" fill="#111827">任务分发</text>
+<text x="92" y="176" font-family="{FONT}" font-size="27" font-weight="800" fill="#111827">任务分发</text>
+<rect x="92" y="210" width="336" height="98" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="114" y="244" font-family="{FONT}" font-size="20" font-weight="800" fill="#111827">500g香卤大肠头 A0</text>
+<text x="114" y="272" font-family="{FONT}" font-size="16" fill="#64748B">待分发 · 截止 06-25</text>
+<rect x="92" y="820" width="336" height="50" rx="14" fill="#246BFE"/><text x="260" y="853" text-anchor="middle" font-family="{FONT}" font-size="17" font-weight="800" fill="#FFFFFF">确认分发</text>
+</svg>""",
+}
+
+EXPORT = [
+    "01_手机端_我的待办.svg",
+    "02_手机端_样品需求录入.svg",
+    "02_手机端_任务详情.svg",
+    "03_手机端_打样实验单.svg",
+    "04_手机端_测试确认.svg",
+    "09_手机端_寄样反馈.svg",
+    "10_手机端_样品搜索.svg",
+    "11_手机端_我的.svg",
+    "12_手机端_实验单历史.svg",
+    "13_手机端_需求审核.svg",
+    "14_手机端_任务分发.svg",
+    "05_PC端-首页看板.svg",
+    "06_PC端-研发任务分发.svg",
+    "07_PC端-核价文件.svg",
+    "08_PC端-产品档案.svg",
+]
+
+
+def export_png(svg_path: Path, png_path: Path, scale: float = 2.0) -> str | None:
+    if cairosvg is not None:
+        cairosvg.svg2png(url=str(svg_path), write_to=str(png_path), scale=scale)
+        return "cairosvg"
+
+    rsvg = shutil.which("rsvg-convert")
+    if rsvg:
+        width = int(svg_path.stat().st_size and 1040)
+        subprocess.run(
+            [rsvg, "-f", "png", "-o", str(png_path), str(svg_path), "-z", str(scale)],
+            check=True,
+            capture_output=True,
+        )
+        return "rsvg-convert"
+
+    inkscape = shutil.which("inkscape")
+    if inkscape:
+        subprocess.run(
+            [
+                inkscape,
+                str(svg_path),
+                "--export-type=png",
+                f"--export-filename={png_path}",
+                f"--export-dpi={96 * scale}",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        return "inkscape"
+
+    if sys.platform == "darwin" and shutil.which("qlmanage"):
+        tmp = png_path.with_suffix(".tmp.png")
+        subprocess.run(
+            ["qlmanage", "-t", "-s", str(int(520 * scale)), "-o", str(tmp.parent), str(svg_path)],
+            check=True,
+            capture_output=True,
+        )
+        generated = tmp.parent / f"{svg_path.name}.png"
+        if generated.exists():
+            generated.replace(png_path)
+            return "qlmanage"
+        if tmp.exists():
+            tmp.replace(png_path)
+            return "qlmanage"
+
+    return None
+
+
+def main() -> None:
+    for name, content in SVG_FILES.items():
+        (PAGES / name).write_text(content.strip() + "\n", encoding="utf-8")
+        print("wrote svg:", name)
+
+    exporter: str | None = None
+    exported = 0
+    skipped = 0
+
+    for name in EXPORT:
+        svg_path = PAGES / name
+        if not svg_path.exists():
+            print("skip missing svg:", name)
+            skipped += 1
+            continue
+        png_path = PNG / name.replace(".svg", ".png")
+        try:
+            used = export_png(svg_path, png_path)
+        except subprocess.CalledProcessError as exc:
+            print("png export failed:", name, exc.stderr.decode("utf-8", errors="ignore"))
+            continue
+        if used:
+            exporter = exporter or used
+            exported += 1
+            print("wrote png:", png_path.name, f"via {used}")
+        else:
+            print("png export unavailable for:", name)
+
+    if exported == 0:
+        print("done (svg only) ->", PAGES)
+        print("hint: brew install cairo pango librsvg  # then pip install cairosvg")
+        print("  or ensure rsvg-convert / inkscape / qlmanage is on PATH")
+        return
+
+    index_svg = PAGES / "00_手机端_页面总览.svg"
+    lines = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200" viewBox="0 0 1600 1200">',
+        f'<rect width="100%" height="100%" fill="#F6F8FB"/>',
+        f'<text x="800" y="48" text-anchor="middle" font-family="{FONT}" font-size="34" font-weight="800" fill="#111827">Mobile/PC 原型 PNG 索引</text>',
+    ]
+    for i, name in enumerate(EXPORT):
+        col = i % 4
+        row = i // 4
+        x = 40 + col * 390
+        yy = 80 + row * 520
+        png_name = name.replace(".svg", ".png")
+        lines.append(f'<rect x="{x}" y="{yy}" width="370" height="500" rx="16" fill="#FFFFFF" stroke="#D8E0EA"/>')
+        lines.append(
+            f'<text x="{x + 16}" y="{yy + 32}" font-family="{FONT}" font-size="18" font-weight="800" fill="#111827">{png_name}</text>'
+        )
+        lines.append(
+            f'<image href="png/{png_name}" x="{x + 16}" y="{yy + 44}" width="338" height="440" preserveAspectRatio="xMidYMid meet"/>'
+        )
+    lines.append("</svg>")
+    index_svg.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        export_png(index_svg, PNG / "00_手机端_页面总览.png", scale=1.5)
+        print("wrote png: 00_手机端_页面总览.png")
+    except subprocess.CalledProcessError:
+        print("index png skipped")
+
+    print(f"done -> {PNG} ({exported} png via {exporter}, {skipped} missing svg)")
+
+
+if __name__ == "__main__":
+    main()

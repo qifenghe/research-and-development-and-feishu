@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="980" viewBox="0 0 520 980"><defs><filter id="shadow" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#334155" flood-opacity="0.16"/></filter></defs>
+<rect width="100%" height="100%" fill="#F6F8FB"/>
+<g filter="url(#shadow)"><rect x="52" y="92" width="416" height="820" rx="42" fill="#101828"/><rect x="68" y="110" width="384" height="784" rx="32" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/></g>
+<rect x="202" y="124" width="116" height="14" rx="7" fill="#0F172A"/>
+<text x="260" y="50" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="32" font-weight="800" fill="#111827">任务详情</text>
+<text x="92" y="162" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="800" fill="#111827">任务详情</text>
+<text x="92" y="200" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="27" font-weight="800" fill="#111827">黑椒鸡柳料理包</text>
+<rect x="92" y="218" width="92" height="32" rx="16" fill="#FFF7ED"/><text x="138" y="240" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="700" fill="#F59E0B">待接受</text>
+<rect x="92" y="268" width="336" height="280" rx="18" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<text x="114" y="300" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#64748B">样品信息</text>
+<text x="114" y="332" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="15" fill="#64748B">客户</text><text x="300" y="332" text-anchor="end" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600" fill="#111827">连锁餐饮客户B</text>
+<text x="114" y="364" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="15" fill="#64748B">样品版本</text><text x="300" y="364" text-anchor="end" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600" fill="#111827">A0</text>
+<text x="114" y="396" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="15" fill="#64748B">规格</text><text x="300" y="396" text-anchor="end" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600" fill="#111827">300g/袋，24袋/箱</text>
+<text x="114" y="428" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="15" fill="#64748B">需求说明</text>
+<text x="114" y="456" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="15" fill="#111827">复热后保持嫩度，黑椒风味明显。</text>
+<text x="114" y="518" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="15" fill="#64748B">研发总监备注</text>
+<text x="114" y="546" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="15" fill="#111827">优先保水与复热稳定性。</text>
+<rect x="92" y="820" width="336" height="50" rx="14" fill="#246BFE"/><text x="260" y="853" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="800" fill="#FFFFFF">接受任务</text>
+<rect x="92" y="878" width="336" height="50" rx="14" fill="#FFFFFF" stroke="#246BFE" stroke-width="2"/><text x="260" y="911" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="800" fill="#246BFE">开始填写实验单</text>
+</svg>

@@ -1,0 +1,24 @@
+.mobile-shell {
+  background: var(--mobile-bg);
+}
+
+.mobile-shell .van-tabbar {
+  border-top: 1px solid var(--mobile-border);
+}
+
+.mobile-shell .van-tabbar-item--active {
+  color: var(--mobile-primary);
+}
+
+.mobile-shell .van-collapse-item__content {
+  padding-top: 0;
+}
+
+.mobile-form .van-cell-group--inset {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.fixed-footer .van-button + .van-button {
+  margin-top: 8px;
+}

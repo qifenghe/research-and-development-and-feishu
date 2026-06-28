@@ -11,6 +11,8 @@ public record SampleProject(
         String productType,
         String customerName,
         String specification,
+        String applicationScenario,
+        String flavorRequirement,
         SampleStatus status,
         LocalDateTime createdAt
 ) {

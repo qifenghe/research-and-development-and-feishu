@@ -12,6 +12,8 @@ public record SampleVersion(
         String productName,
         String productType,
         String specification,
+        String applicationScenario,
+        String flavorRequirement,
         String versionNo,
         Integer versionNumber,
         String versionCode,
@@ -34,6 +36,8 @@ public record SampleVersion(
         private String productName;
         private String productType;
         private String specification;
+        private String applicationScenario;
+        private String flavorRequirement;
         private String versionNo;
         private Integer versionNumber;
         private String versionCode;
@@ -72,6 +76,16 @@ public record SampleVersion(
 
         public Builder specification(String specification) {
             this.specification = specification;
+            return this;
+        }
+
+        public Builder applicationScenario(String applicationScenario) {
+            this.applicationScenario = applicationScenario;
+            return this;
+        }
+
+        public Builder flavorRequirement(String flavorRequirement) {
+            this.flavorRequirement = flavorRequirement;
             return this;
         }
 
@@ -133,6 +147,8 @@ public record SampleVersion(
                     productName,
                     productType,
                     specification,
+                    applicationScenario,
+                    flavorRequirement,
                     versionNo,
                     versionNumber,
                     versionCode == null ? versionNo : versionCode,

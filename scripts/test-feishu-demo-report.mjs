@@ -70,6 +70,60 @@ assert.deepEqual(validateDemoReport(validReport), {
 
 assert.deepEqual(validateDemoReport({
   ...validReport,
+  checklist: [
+    {
+      ...validReport.checklist[0],
+      url: "https://rnd.example.com/admin/dashboard",
+    },
+    {
+      ...validReport.checklist[1],
+      url: "https://rnd.example.com/admin/rnd",
+    },
+    {
+      ...validReport.checklist[2],
+      url: "https://rnd.example.com/admin/rnd/history/VER-0001",
+    },
+    {
+      ...validReport.checklist[3],
+      url: "https://rnd.example.com/admin/shipment",
+    },
+    {
+      ...validReport.checklist[4],
+      url: "https://rnd.example.com/admin/pricing/list",
+    },
+    {
+      ...validReport.checklist[5],
+      url: "https://rnd.example.com/admin/pricing/PRICE-0001",
+    },
+  ],
+}), {
+  valid: true,
+  errors: [],
+  advice: "演示报告完整，可以按核对清单进行演示。",
+  checklistCount: 6,
+});
+
+assert.deepEqual(validateDemoReport({
+  ...validReport,
+  checklist: [
+    {
+      ...validReport.checklist[0],
+      route: "#dashboard",
+      url: "https://rnd.example.com/admin/pricing/list",
+    },
+    ...validReport.checklist.slice(1),
+  ],
+}), {
+  valid: false,
+  errors: [
+    "checklist[0].url path 与 route 不一致：/admin/pricing/list != #dashboard",
+  ],
+  advice: "请修正演示报告 JSON，或重新运行 node scripts/feishu-demo-wizard.mjs --json 生成完整报告。",
+  checklistCount: 6,
+});
+
+assert.deepEqual(validateDemoReport({
+  ...validReport,
   ids: {
     ...validReport.ids,
     pricingFileId: "",
@@ -154,7 +208,7 @@ assert.deepEqual(validateDemoReport({
   errors: [
     "checklist[0].route 指向不存在的页面：#missing-page",
   ],
-  advice: "请确认 --prototype-app 指向最新 prototype-app/app.js，或修正报告中的 route。",
+  advice: "请确认 --prototype-app / --pc-router / --mobile-router 指向最新前端路由文件，或修正报告中的 route。",
   checklistCount: 6,
 });
 

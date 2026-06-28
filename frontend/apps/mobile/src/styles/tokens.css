@@ -1,0 +1,19 @@
+:root {
+  --mobile-bg: #f6f8fb;
+  --mobile-card: #ffffff;
+  --mobile-border: #e2e8f0;
+  --mobile-primary: #246bfe;
+  --mobile-primary-soft: #eaf2ff;
+  --mobile-success: #16a34a;
+  --mobile-success-soft: #ecfdf5;
+  --mobile-warning: #f59e0b;
+  --mobile-warning-soft: #fff4e5;
+  --mobile-danger: #ef4444;
+  --mobile-text: #111827;
+  --mobile-muted: #64748b;
+  --mobile-radius: 18px;
+  --mobile-radius-sm: 14px;
+  color: var(--mobile-text);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--mobile-bg);
+}

@@ -72,6 +72,13 @@ export function validateDemoReport(report, options = {}) {
         if (urlRoute && routeIdFromHash(urlRoute) !== routeIdFromHash(item.route)) {
           errors.push(`checklist[${index}].url hash 与 route 不一致：${urlRoute} != ${item.route}`);
         }
+        const urlPath = pathFromUrl(item.url);
+        if (!urlRoute && urlPath) {
+          const expectedRoute = routeFromPath(urlPath);
+          if (expectedRoute && routeIdFromHash(expectedRoute) !== routeIdFromHash(item.route)) {
+            errors.push(`checklist[${index}].url path 与 route 不一致：${urlPath} != ${item.route}`);
+          }
+        }
       }
     }
   });
@@ -88,7 +95,7 @@ function buildAdvice(errors) {
     return "演示报告完整，可以按核对清单进行演示。";
   }
   if (errors.some((error) => error.includes("route 指向不存在的页面"))) {
-    return "请确认 --prototype-app 指向最新 prototype-app/app.js，或修正报告中的 route。";
+    return "请确认 --prototype-app / --pc-router / --mobile-router 指向最新前端路由文件，或修正报告中的 route。";
   }
   return "请修正演示报告 JSON，或重新运行 node scripts/feishu-demo-wizard.mjs --json 生成完整报告。";
 }
@@ -96,6 +103,31 @@ function buildAdvice(errors) {
 export function loadPrototypeRoutes(filePath) {
   const content = fs.readFileSync(filePath, "utf8");
   return [...content.matchAll(/\bid:\s*"([^"]+)"/g)].map((match) => match[1]);
+}
+
+export function loadFrontendRoutes(filePath) {
+  const content = fs.readFileSync(filePath, "utf8");
+  return [...content.matchAll(/name:\s*"([^"]+)"/g)].map((match) => match[1]);
+}
+
+export function loadKnownRoutes(options = {}) {
+  const routes = new Set();
+  if (options.prototypeApp) {
+    for (const route of loadPrototypeRoutes(options.prototypeApp)) {
+      routes.add(route);
+    }
+  }
+  if (options.pcRouter) {
+    for (const route of loadFrontendRoutes(options.pcRouter)) {
+      routes.add(route);
+    }
+  }
+  if (options.mobileRouter) {
+    for (const route of loadFrontendRoutes(options.mobileRouter)) {
+      routes.add(route);
+    }
+  }
+  return routes.size > 0 ? routes : null;
 }
 
 function normalizeKnownRoutes(routes) {
@@ -111,6 +143,32 @@ function routeIdFromHash(route) {
 
 function routeFromUrl(value) {
   return new URL(value).hash;
+}
+
+function pathFromUrl(value) {
+  return new URL(value).pathname;
+}
+
+function routeFromPath(pathname) {
+  if (pathname.endsWith("/admin/dashboard")) {
+    return "#dashboard";
+  }
+  if (pathname.endsWith("/admin/rnd")) {
+    return "#rnd-module";
+  }
+  if (pathname.includes("/admin/rnd/history/")) {
+    return "#experiment-history";
+  }
+  if (pathname.endsWith("/admin/shipment")) {
+    return "#shipment-pricing-module";
+  }
+  if (pathname.endsWith("/admin/pricing/list")) {
+    return "#pricing-list";
+  }
+  if (pathname.includes("/admin/pricing/")) {
+    return "#pricing-detail";
+  }
+  return "";
 }
 
 function isValidUrl(value) {
@@ -138,6 +196,10 @@ function parseArgs(argv) {
       options.file = argv[++index];
     } else if (arg === "--prototype-app") {
       options.prototypeApp = argv[++index];
+    } else if (arg === "--pc-router") {
+      options.pcRouter = argv[++index];
+    } else if (arg === "--mobile-router") {
+      options.mobileRouter = argv[++index];
     } else if (arg === "--help" || arg === "-h") {
       options.help = true;
     }
@@ -156,12 +218,16 @@ function printHelp() {
   console.log(`用法：
   node scripts/feishu-demo-wizard.mjs --json > /tmp/feishu-demo-report.json
   node scripts/feishu-demo-report.mjs --file /tmp/feishu-demo-report.json
+  node scripts/feishu-demo-report.mjs --file /tmp/feishu-demo-report.json \\
+    --pc-router frontend/apps/pc/src/router/index.ts \\
+    --mobile-router frontend/apps/mobile/src/router/index.ts
   node scripts/feishu-demo-report.mjs --file /tmp/feishu-demo-report.json --prototype-app prototype-app/app.js
 
 说明：
   - 校验飞书联调向导 JSON 报告是否包含完整关键 ID 和核对清单。
   - 也可以通过 stdin 传入 JSON。
-  - 使用 --prototype-app 时会校验核对项 route 是否存在于原型页面。`);
+  - 推荐使用 --pc-router / --mobile-router 校验 Vue 双前端页面。
+  - --prototype-app 仅用于旧静态原型对照。`);
 }
 
 function printResult(result) {
@@ -182,8 +248,8 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     printHelp();
   } else {
     try {
-      const knownRoutes = options.prototypeApp ? loadPrototypeRoutes(options.prototypeApp) : undefined;
-      printResult(validateDemoReport(parseReportJson(readReportText(options.file)), { knownRoutes }));
+      const knownRoutes = loadKnownRoutes(options);
+      printResult(validateDemoReport(parseReportJson(readReportText(options.file)), { knownRoutes: knownRoutes ? [...knownRoutes] : undefined }));
     } catch (error) {
       console.error(`飞书演示报告校验失败：${error.message}`);
       process.exitCode = 1;

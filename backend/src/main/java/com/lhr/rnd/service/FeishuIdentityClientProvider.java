@@ -35,6 +35,7 @@ public class FeishuIdentityClientProvider {
         return new FeishuIntegrationStatus(
                 properties.normalizedMode(),
                 properties.getBaseUrl(),
+                properties.getAppId(),
                 properties.appIdConfigured(),
                 properties.appSecretConfigured(),
                 properties.readyForOpenApi()
