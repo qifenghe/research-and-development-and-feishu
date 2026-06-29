@@ -52,14 +52,25 @@ import { api } from "../services/api";
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
-const feishuUserId = ref("5a6d46c2");
+const feishuUserId = ref("ou_demo_assistant");
 const integration = ref<{ mode: string } | null>(null);
 const demoAccounts = [
-  { label: "研发内勤", name: "赵内勤", feishuUserId: "5a6d46c2" },
+  { label: "研发内勤", name: "赵内勤", feishuUserId: "ou_demo_assistant" },
   { label: "研发总监", name: "赵总监", feishuUserId: "ou_demo_director" },
   { label: "研发人员", name: "张研发", feishuUserId: "ou_demo_engineer" },
+  { label: "内部测试", name: "李测试", feishuUserId: "ou_demo_tester" },
   { label: "财务", name: "钱财务", feishuUserId: "ou_demo_finance" },
 ];
+
+function resolvePostLoginRedirect(userId: string, redirectQuery: unknown): string {
+  if (typeof redirectQuery === "string" && redirectQuery.trim()) {
+    return redirectQuery;
+  }
+  if (userId === "ou_demo_tester") {
+    return "/rnd/pending-tests";
+  }
+  return "/dashboard";
+}
 
 onMounted(async () => {
   try {
@@ -67,11 +78,22 @@ onMounted(async () => {
   } catch {
     integration.value = null;
   }
+  if (integration.value?.mode !== "OPENAPI") {
+    await ensureDemoUsers();
+  }
   const code = typeof route.query.code === "string" ? route.query.code : "";
   if (code) {
     router.replace({ name: "login-callback", query: { ...route.query } });
   }
 });
+
+async function ensureDemoUsers() {
+  try {
+    await fetch("/api/v1/demo/seed-users", { method: "POST" });
+  } catch {
+    // 后端未启动或旧版本无该接口时，仍允许用户手动重试登录
+  }
+}
 
 async function onMockLogin() {
   await loginAs(feishuUserId.value.trim());
@@ -82,7 +104,7 @@ async function loginAs(userId: string) {
     feishuUserId.value = userId;
     await auth.mockLogin(userId);
     message.success("登录成功");
-    const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "/dashboard";
+    const redirect = resolvePostLoginRedirect(userId, route.query.redirect);
     router.replace(redirect);
   } catch (error) {
     if (error instanceof ApiError && error.code === "FEISHU_USER_NOT_BOUND") {

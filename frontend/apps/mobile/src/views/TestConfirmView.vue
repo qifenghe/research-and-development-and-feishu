@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="page-with-footer">
     <van-skeleton title :row="5" :loading="loading">
       <PageHeader :title="headerTitle" compact>
         <StatusBadge label="待测试" variant="primary" />
@@ -7,21 +7,50 @@
 
       <InfoCard title="实验单摘要">
         <div class="info-row">
-          <span class="info-row__value" style="max-width: 100%; text-align: left">{{ experimentSummary }}</span>
+          <span class="info-row__value" style="max-width: 100%; text-align: left; white-space: pre-wrap">
+            {{ experimentSummary }}
+          </span>
         </div>
       </InfoCard>
 
-      <van-field v-model="form.reheatMethod" label="复热方式" placeholder="微波 / 水浴" required />
-      <van-field v-model="form.tasteScore" label="口味评分" placeholder="8.5 / 10" required />
-      <van-field v-model="form.textureComment" rows="2" autosize type="textarea" label="口感评价" placeholder="鸡肉嫩度合适" required />
-      <van-field v-model="form.waterRelease" label="出水情况" placeholder="轻微出水，可接受" />
+      <div class="form-panel">
+        <van-field v-model="form.reheatMethod" label="复热方式" placeholder="微波 / 水浴" required />
+        <van-field v-model="form.tasteScore" label="口味评分" placeholder="8.5 / 10" required />
+        <van-field
+          v-model="form.textureComment"
+          rows="2"
+          autosize
+          type="textarea"
+          label="口感评价"
+          placeholder="鸡肉嫩度合适"
+          required
+        />
+        <van-field v-model="form.waterRelease" label="出水情况" placeholder="轻微出水，可接受" />
+      </div>
 
       <div class="section-title">测试结论</div>
       <ConclusionButtons v-model="conclusion" :options="conclusionOptions" />
     </van-skeleton>
 
-    <FixedActionBar>
-      <van-button type="primary" block :loading="submitting" @click="submitResult">提交测试结果</van-button>
+    <FixedActionBar :with-tabbar="false">
+      <van-button
+        v-if="conclusion === 'PASS'"
+        plain
+        type="primary"
+        block
+        :loading="submitting && pendingAction === 'resample'"
+        @click="submitResample"
+      >
+        不通过，复打样
+      </van-button>
+      <van-button
+        type="primary"
+        block
+        :loading="submitting && pendingAction !== 'resample'"
+        @click="submitPrimary"
+      >
+        {{ primaryButtonLabel }}
+      </van-button>
     </FixedActionBar>
   </div>
 </template>
@@ -44,6 +73,7 @@ const router = useRouter();
 const auth = useAuthStore();
 const loading = ref(false);
 const submitting = ref(false);
+const pendingAction = ref<"pass" | "resample" | "stop">("pass");
 const conclusion = ref("PASS");
 const detail = ref<RndTaskDetailView | null>(null);
 const form = reactive({
@@ -66,6 +96,12 @@ const headerTitle = computed(() => {
 
 const experimentSummary = computed(() => detail.value?.currentExperimentForm?.summary || "暂无实验单摘要");
 
+const primaryButtonLabel = computed(() => {
+  if (conclusion.value === "STOP") return "提交停止建议";
+  if (conclusion.value === "RESAMPLE") return "不通过，复打样";
+  return "测试通过并锁版";
+});
+
 function buildComment() {
   return [
     `复热方式：${form.reheatMethod}`,
@@ -77,47 +113,40 @@ function buildComment() {
     .join("\n");
 }
 
-async function submitResult() {
+function validateForm() {
   if (!form.reheatMethod || !form.tasteScore || !form.textureComment) {
     showFailToast("请填写完整测试项");
+    return false;
+  }
+  return true;
+}
+
+async function submitPrimary() {
+  if (!validateForm()) return;
+  pendingAction.value = conclusion.value === "STOP" ? "stop" : "pass";
+  if (conclusion.value === "STOP") {
+    await submitStop();
     return;
   }
+  if (conclusion.value === "RESAMPLE") {
+    await submitResample();
+    return;
+  }
+  await submitPass();
+}
 
+async function submitPass() {
   const testId = detail.value?.currentTestAssignment?.id;
   if (!testId) {
     showFailToast("未找到测试任务");
     return;
   }
-
-  if (conclusion.value === "STOP") {
-    await showConfirmDialog({
-      title: "建议停止",
-      message: "内部测试建议停止后，请由研发总监在 PC 端停止/废弃项目池确认。当前仅记录测试意见。",
-    });
-    submitting.value = true;
-    try {
-      await api.task.failInternalTest(testId, auth.displayName, `[建议停止]\n${buildComment()}`);
-      showSuccessToast("已记录停止建议");
-      router.push("/todo");
-    } catch (error) {
-      showFailToast(error instanceof Error ? error.message : "提交失败");
-    } finally {
-      submitting.value = false;
-    }
-    return;
-  }
-
   submitting.value = true;
+  pendingAction.value = "pass";
   try {
-    const comment = buildComment();
-    const testerName = detail.value?.currentTestAssignment?.testerName || "内部测试员";
-    if (conclusion.value === "PASS") {
-      await api.task.passInternalTest(testId, testerName, comment);
-      showSuccessToast("测试通过，版本已锁定");
-    } else {
-      await api.task.failInternalTest(testId, testerName, comment);
-      showSuccessToast("已退回复打样");
-    }
+    const testerName = detail.value?.currentTestAssignment?.testerName || auth.displayName;
+    await api.task.passInternalTest(testId, testerName, buildComment());
+    showSuccessToast("测试通过，版本已锁定");
     router.push("/todo");
   } catch (error) {
     showFailToast(error instanceof Error ? error.message : "操作失败");
@@ -126,10 +155,54 @@ async function submitResult() {
   }
 }
 
+async function submitResample() {
+  if (!validateForm()) return;
+  const testId = detail.value?.currentTestAssignment?.id;
+  if (!testId) {
+    showFailToast("未找到测试任务");
+    return;
+  }
+  submitting.value = true;
+  pendingAction.value = "resample";
+  try {
+    const testerName = detail.value?.currentTestAssignment?.testerName || auth.displayName;
+    await api.task.failInternalTest(testId, testerName, buildComment());
+    showSuccessToast("已退回复打样");
+    router.push("/todo");
+  } catch (error) {
+    showFailToast(error instanceof Error ? error.message : "操作失败");
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function submitStop() {
+  const testId = detail.value?.currentTestAssignment?.id;
+  if (!testId) {
+    showFailToast("未找到测试任务");
+    return;
+  }
+  await showConfirmDialog({
+    title: "建议停止",
+    message: "内部测试建议停止后，请由研发总监在 PC 端停止/废弃项目池确认。当前仅记录测试意见。",
+  });
+  submitting.value = true;
+  pendingAction.value = "stop";
+  try {
+    await api.task.failInternalTest(testId, auth.displayName, `[建议停止]\n${buildComment()}`);
+    showSuccessToast("已记录停止建议");
+    router.push("/todo");
+  } catch (error) {
+    showFailToast(error instanceof Error ? error.message : "提交失败");
+  } finally {
+    submitting.value = false;
+  }
+}
+
 onMounted(async () => {
   loading.value = true;
   try {
-    detail.value = await api.task.detail(String(route.params.id), auth.role);
+    detail.value = await api.task.detail(String(route.params.id), auth.role, auth.displayName);
   } finally {
     loading.value = false;
   }

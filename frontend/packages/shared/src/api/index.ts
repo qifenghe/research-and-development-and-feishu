@@ -9,6 +9,7 @@ import type {
   ShipmentRecord,
 } from "../types";
 import { RND_TASK_STATUS_LABELS } from "../types";
+import { canAccessRoute } from "../permissions";
 import { createSessionApi, createDashboardApi } from "./session";
 import { createSampleApi } from "./sample";
 import { createTaskApi } from "./task";
@@ -22,6 +23,24 @@ const TASK_GROUPS: Array<{ key: string; title: string; statuses: RndTaskStatus[]
 ];
 
 const HERO_PRIORITY = ["sampling", "accept", "test", "shipment-feedback", "pricing"];
+const ASSISTANT_HERO_PRIORITY = ["shipment-feedback", "pricing", "sampling"];
+
+function heroPriorityForRole(role: string): string[] {
+  return role === "RND_ASSISTANT" ? ASSISTANT_HERO_PRIORITY : HERO_PRIORITY;
+}
+
+function taskGroupsForRole(role: string): Array<{ key: string; title: string; statuses: RndTaskStatus[] }> {
+  if (role === "RND_ASSISTANT") {
+    return TASK_GROUPS.filter((group) => group.key === "sampling");
+  }
+  if (role === "TESTER" || role === "QA_TESTER") {
+    return TASK_GROUPS.filter((group) => group.key === "test");
+  }
+  if (role === "RND_ENGINEER" || role === "RND_DIRECTOR" || role === "RND") {
+    return TASK_GROUPS.filter((group) => group.key !== "test");
+  }
+  return TASK_GROUPS;
+}
 
 function taskToItem(task: RndTask): MobileTodoItem {
   return {
@@ -51,21 +70,28 @@ function shipmentToItem(shipment: ShipmentRecord, actionLabel: string): MobileTo
 }
 
 export async function fetchMobileTodoBoard(deps: {
+  role?: string | null;
   listTasks: (params: { status?: string }) => Promise<RndTask[]>;
   listShipments: (params: { status?: string }) => Promise<ShipmentRecord[]>;
   listPricingFiles: (params: { status?: string }) => Promise<PricingFileRecord[]>;
 }): Promise<MobileTodoBoard> {
+  const role = deps.role ?? "";
+  const canLoadShipments = role === "RND_ASSISTANT"
+    || canAccessRoute(role, "/shipments/SHIP-0001", "mobile");
+  const canLoadPricing = canLoadShipments;
+
+  const visibleTaskGroups = taskGroupsForRole(role);
   const [taskGroupsRaw, shipped, feedbackPassed, pricingGenerated] = await Promise.all([
     Promise.all(
-      TASK_GROUPS.map(async ({ key, title, statuses }) => {
+      visibleTaskGroups.map(async ({ key, title, statuses }) => {
         const batches = await Promise.all(statuses.map((status) => deps.listTasks({ status })));
         const items = batches.flat().map(taskToItem);
         return { key, title, items } satisfies MobileTodoGroup;
       }),
     ),
-    deps.listShipments({ status: "SHIPPED" }),
-    deps.listShipments({ status: "FEEDBACK_PASSED" }),
-    deps.listPricingFiles({ status: "GENERATED" }),
+    canLoadShipments ? deps.listShipments({ status: "SHIPPED" }) : Promise.resolve([]),
+    canLoadShipments ? deps.listShipments({ status: "FEEDBACK_PASSED" }) : Promise.resolve([]),
+    canLoadPricing ? deps.listPricingFiles({ status: "GENERATED" }) : Promise.resolve([]),
   ]);
 
   const shipmentFeedbackGroup: MobileTodoGroup = {
@@ -83,9 +109,12 @@ export async function fetchMobileTodoBoard(deps: {
     items: pricingPending.map((s) => shipmentToItem(s, "生成核价")),
   };
 
-  const groups = [...taskGroupsRaw, shipmentFeedbackGroup, pricingGroup].filter(
-    (group) => group.items.length > 0,
-  );
+  const groups = [...taskGroupsRaw, shipmentFeedbackGroup, pricingGroup]
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => canAccessRoute(role, item.route, "mobile")),
+    }))
+    .filter((group) => group.items.length > 0);
 
   const totalCount = groups.reduce((sum, group) => sum + group.items.length, 0);
   const overdueCount = taskGroupsRaw
@@ -94,7 +123,7 @@ export async function fetchMobileTodoBoard(deps: {
     .length;
 
   let hero: MobileTodoItem | null = null;
-  for (const key of HERO_PRIORITY) {
+  for (const key of heroPriorityForRole(role)) {
     const group = groups.find((entry) => entry.key === key);
     if (group?.items[0]) {
       hero = group.items[0];

@@ -1,47 +1,60 @@
 <template>
   <div>
-    <PageHeader :title="'我的待办'" :subtitle="`${auth.displayName} / ${roleLabel}`">
-      <template #stats>
-        <span class="stat-chip stat-chip--primary">今日待办 {{ board?.totalCount ?? 0 }}</span>
-        <span v-if="(board?.overdueCount ?? 0) > 0" class="stat-chip stat-chip--warning">
-          逾期 {{ board?.overdueCount }}
-        </span>
-      </template>
-    </PageHeader>
-
-    <van-pull-refresh v-model="refreshing" @refresh="load">
-      <RoleEntryGrid v-if="roleEntries.length" :entries="roleEntries" @select="router.push" />
+    <van-skeleton title :row="4" :loading="loading">
+      <PageHeader :title="'我的待办'" :subtitle="`${auth.displayName} / ${roleLabel}`">
+        <template #stats>
+          <span class="stat-chip stat-chip--primary">今日待办 {{ board?.totalCount ?? 0 }}</span>
+          <span v-if="(board?.overdueCount ?? 0) > 0" class="stat-chip stat-chip--warning">
+            逾期 {{ board?.overdueCount }}
+          </span>
+        </template>
+      </PageHeader>
 
       <HeroCard
-        v-if="board?.hero"
-        eyebrow="继续处理"
+        v-if="board?.hero?.route"
+        :to="board.hero.route"
+        :eyebrow="heroEyebrow"
         :title="`${board.hero.productName} · ${board.hero.versionCode}`"
-        :subtitle="board.hero.subtitle ?? board.hero.statusLabel"
+        :subtitle="heroSubtitle"
         :action-label="board.hero.actionLabel"
-        @action="router.push(board.hero!.route)"
       />
 
+      <div v-if="roleEntries.length" class="todo-entries">
+        <RoleEntryGrid :entries="roleEntries" />
+      </div>
+
       <div v-for="group in displayGroups" :key="group.key">
-        <div class="section-title">{{ group.title }}</div>
+        <div class="section-header">
+          <div class="section-title">{{ group.title }}</div>
+          <span class="section-count">{{ group.items.length }}</span>
+        </div>
         <TaskCard
           v-for="item in group.items"
           :key="`${group.key}-${item.id}`"
+          :to="item.route"
           :title="item.productName"
           :meta="taskMeta(item)"
           :action-label="item.actionLabel"
-          @action="router.push(item.route)"
         />
       </div>
 
-      <van-empty v-if="!loading && (board?.totalCount ?? 0) === 0" description="暂无待办任务" />
-    </van-pull-refresh>
+      <van-empty
+        v-if="!loading && (board?.totalCount ?? 0) === 0"
+        :description="emptyDescription"
+      />
+    </van-skeleton>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
-import { fetchMobileTodoBoard, type MobileTodoBoard, type MobileTodoItem } from "@rnd/shared";
+import {
+  fetchMobileTodoBoard,
+  roleLabel as sharedRoleLabel,
+  shouldFilterTasksByAssignee,
+  type MobileTodoBoard,
+  type MobileTodoItem,
+} from "@rnd/shared";
 import PageHeader from "../components/PageHeader.vue";
 import HeroCard from "../components/HeroCard.vue";
 import TaskCard from "../components/TaskCard.vue";
@@ -50,31 +63,55 @@ import { useAuthStore } from "../stores/auth";
 import { api } from "../services/api";
 
 const auth = useAuthStore();
-const router = useRouter();
 const loading = ref(false);
-const refreshing = ref(false);
 const board = ref<MobileTodoBoard | null>(null);
 
-const roleLabel = computed(() => {
-  const map: Record<string, string> = {
-    RND_ENGINEER: "研发人员",
-    RND_ASSISTANT: "研发内勤",
-    TESTER: "测试人员",
-    QA_TESTER: "测试人员",
-    RND_DIRECTOR: "研发总监",
-  };
-  return map[auth.role] ?? auth.role ?? "未知";
+const roleLabel = computed(() => sharedRoleLabel(auth.role));
+
+const heroEyebrow = computed(() => {
+  const hero = board.value?.hero;
+  if (!hero) return "继续处理";
+  if (hero.kind === "shipment") {
+    return hero.statusLabel === "待核价" ? "待生成核价" : "待寄样反馈";
+  }
+  if (hero.kind === "task") {
+    if (hero.subtitle?.includes("打样")) return "打样中";
+    if (hero.subtitle?.includes("测试")) return "待内部测试";
+    if (hero.subtitle?.includes("接受")) return "待接受任务";
+  }
+  return "继续处理";
+});
+
+const heroSubtitle = computed(() => {
+  const hero = board.value?.hero;
+  if (!hero) return "";
+  return [hero.subtitle ?? hero.statusLabel, hero.actionLabel].filter(Boolean).join(" · ");
+});
+
+const emptyDescription = computed(() => {
+  if (auth.role === "RND_ASSISTANT") {
+    return "暂无待办，可先录入需求或登记寄样";
+  }
+  return "暂无待办任务";
 });
 
 const roleEntries = computed(() => {
   const entries: Array<{ label: string; title: string; desc: string; route: string }> = [];
   if (auth.role === "RND_ASSISTANT") {
-    entries.push({
-      label: "研发内勤",
-      title: "录入需求",
-      desc: "提交样品清单",
-      route: "/request/new",
-    });
+    entries.push(
+      {
+        label: "研发内勤",
+        title: "录入需求",
+        desc: "提交样品清单",
+        route: "/request/new",
+      },
+      {
+        label: "研发内勤",
+        title: "登记寄样/反馈",
+        desc: "维护寄样与客户反馈表",
+        route: "/shipments/record",
+      },
+    );
   }
   if (auth.role === "RND_DIRECTOR") {
     entries.push(
@@ -104,6 +141,14 @@ const roleEntries = computed(() => {
       title: "接任务/打样",
       desc: "接受任务并填写实验单",
       route: "/samples",
+    });
+  }
+  if (auth.role === "TESTER" || auth.role === "QA_TESTER") {
+    entries.push({
+      label: "测试人员",
+      title: "内部测试",
+      desc: "在下方「待内部测试」列表处理",
+      route: "/todo",
     });
   }
   if (auth.role === "FINANCE") {
@@ -139,14 +184,15 @@ function taskMeta(item: MobileTodoItem) {
 async function load() {
   loading.value = true;
   try {
+    const assigneeName = shouldFilterTasksByAssignee(auth.role) ? auth.displayName : undefined;
     board.value = await fetchMobileTodoBoard({
-      listTasks: (params) => api.task.list(params) as Promise<import("@rnd/shared").RndTask[]>,
+      role: auth.role,
+      listTasks: (params) => api.task.list({ ...params, assigneeName }) as Promise<import("@rnd/shared").RndTask[]>,
       listShipments: (params) => api.shipment.list(params),
       listPricingFiles: (params) => api.shipment.pricingFiles(params) as Promise<import("@rnd/shared").PricingFileRecord[]>,
     });
   } finally {
     loading.value = false;
-    refreshing.value = false;
   }
 }
 

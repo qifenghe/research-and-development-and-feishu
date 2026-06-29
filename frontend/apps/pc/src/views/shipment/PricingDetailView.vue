@@ -4,7 +4,7 @@
     <a-spin :spinning="loading">
       <a-row :gutter="16" v-if="detail">
         <a-col :span="16">
-          <a-card v-for="group in detail.fieldGroups" :key="group.title" :title="group.title" class="page-card">
+          <a-card v-for="group in resolvedGroups" :key="group.title" :title="group.title" class="page-card">
             <a-descriptions bordered size="small" :column="2">
               <a-descriptions-item v-for="field in group.fields" :key="field.label" :label="field.label">
                 {{ field.value }}
@@ -27,10 +27,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { message } from "ant-design-vue";
-import type { PricingFileDetailView } from "@rnd/shared";
+import { resolvePricingDetailFields, type PricingFileDetailView } from "@rnd/shared";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
 
@@ -39,6 +39,7 @@ const auth = useAuthStore();
 const loading = ref(false);
 const detail = ref<PricingFileDetailView | null>(null);
 const recipientName = ref("财务部");
+const resolvedGroups = computed(() => (detail.value ? resolvePricingDetailFields(detail.value) : []));
 
 async function load() {
   loading.value = true;

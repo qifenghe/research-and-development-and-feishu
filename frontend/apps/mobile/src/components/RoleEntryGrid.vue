@@ -1,20 +1,23 @@
 <template>
   <section class="role-entry-grid">
-    <button
+    <a
       v-for="entry in entries"
       :key="entry.route"
-      type="button"
+      :href="resolveHref(entry.route)"
       class="role-entry-card"
-      @click="$emit('select', entry.route)"
+      @click="onClick($event, entry.route)"
     >
       <span class="role-entry-card__label">{{ entry.label }}</span>
       <strong class="role-entry-card__title">{{ entry.title }}</strong>
       <span class="role-entry-card__desc">{{ entry.desc }}</span>
-    </button>
+    </a>
   </section>
 </template>
 
 <script setup lang="ts">
+import { useRouter } from "vue-router";
+import { resolveMobileHref, spaNavigate } from "../utils/navigate";
+
 export interface RoleEntry {
   label: string;
   title: string;
@@ -23,5 +26,15 @@ export interface RoleEntry {
 }
 
 defineProps<{ entries: RoleEntry[] }>();
-defineEmits<{ select: [route: string] }>();
+
+const router = useRouter();
+
+function resolveHref(route: string) {
+  return resolveMobileHref(router, route);
+}
+
+function onClick(event: MouseEvent, route: string) {
+  event.preventDefault();
+  spaNavigate(router, route);
+}
 </script>

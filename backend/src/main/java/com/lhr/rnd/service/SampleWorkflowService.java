@@ -28,6 +28,7 @@ import com.lhr.rnd.model.PricingFileRecord;
 import com.lhr.rnd.model.PricingFileDetailView;
 import com.lhr.rnd.model.PricingFileStatus;
 import com.lhr.rnd.model.SampleProject;
+import com.lhr.rnd.model.SampleProjectSummary;
 import com.lhr.rnd.model.SampleRequest;
 import com.lhr.rnd.model.SampleVersion;
 import com.lhr.rnd.model.ShipmentDetailView;
@@ -566,8 +567,13 @@ public class SampleWorkflowService {
     }
 
     public synchronized List<RndTask> tasks(String status, String keyword) {
+        return tasks(status, keyword, null);
+    }
+
+    public synchronized List<RndTask> tasks(String status, String keyword, String assigneeName) {
         return tasks.values().stream()
                 .filter(task -> matchesStatus(status, task.status().name()))
+                .filter(task -> matchesAssignee(assigneeName, task.assigneeName()))
                 .filter(task -> matchesKeyword(
                         keyword,
                         task.id(),
@@ -581,8 +587,19 @@ public class SampleWorkflowService {
     }
 
     public synchronized PagedResult<RndTask> tasks(String status, String keyword, Integer page, Integer size, String sort) {
+        return tasks(status, keyword, null, page, size, sort);
+    }
+
+    public synchronized PagedResult<RndTask> tasks(
+            String status,
+            String keyword,
+            String assigneeName,
+            Integer page,
+            Integer size,
+            String sort
+    ) {
         return paginate(
-                tasks(status, keyword),
+                tasks(status, keyword, assigneeName),
                 page,
                 size,
                 sort,
@@ -590,18 +607,24 @@ public class SampleWorkflowService {
         );
     }
 
-    public synchronized RndTaskDetailView rndTaskDetail(String taskId, String role) {
+    public synchronized boolean hasWorkflowData() {
+        return !tasks.isEmpty();
+    }
+
+    public synchronized RndTaskDetailView rndTaskDetail(String taskId, String role, String operatorName) {
         var task = requiredTask(taskId);
         var version = requiredVersion(task.versionId());
+        var project = SampleProjectSummary.from(projects.get(task.projectId()));
         var currentExperimentForm = currentExperimentForm(taskId);
         var currentTestAssignment = currentTestAssignment(taskId);
         return new RndTaskDetailView(
                 task,
                 version,
+                project,
                 currentExperimentForm,
                 currentTestAssignment,
-                detailFieldGroups(currentExperimentForm, currentTestAssignment),
-                detailActions(task, currentExperimentForm, currentTestAssignment, role)
+                detailFieldGroups(task, version, currentExperimentForm, currentTestAssignment),
+                detailActions(task, currentExperimentForm, currentTestAssignment, role, operatorName)
         );
     }
 
@@ -762,6 +785,13 @@ public class SampleWorkflowService {
 
     private boolean matchesStatus(String expectedStatus, String actualStatus) {
         return expectedStatus == null || expectedStatus.isBlank() || expectedStatus.equals(actualStatus);
+    }
+
+    private boolean matchesAssignee(String expectedAssigneeName, String actualAssigneeName) {
+        if (expectedAssigneeName == null || expectedAssigneeName.isBlank()) {
+            return true;
+        }
+        return expectedAssigneeName.equals(actualAssigneeName);
     }
 
     private boolean matchesKeyword(String keyword, String... values) {
@@ -925,6 +955,8 @@ public class SampleWorkflowService {
     }
 
     private List<DetailFieldGroup> detailFieldGroups(
+            RndTask task,
+            SampleVersion version,
             ExperimentForm currentExperimentForm,
             TestAssignment currentTestAssignment
     ) {
@@ -932,6 +964,9 @@ public class SampleWorkflowService {
         groups.add(new DetailFieldGroup("基础信息", List.of(
                 "sampleNo",
                 "productName",
+                "productType",
+                "customerName",
+                "specification",
                 "versionCode",
                 "applicationScenario",
                 "flavorRequirement"
@@ -967,7 +1002,8 @@ public class SampleWorkflowService {
             RndTask task,
             ExperimentForm currentExperimentForm,
             TestAssignment currentTestAssignment,
-            String role
+            String role,
+            String operatorName
     ) {
         if (role == null || role.isBlank()) {
             return List.of();
@@ -976,42 +1012,61 @@ public class SampleWorkflowService {
             case PENDING_ASSIGNMENT -> hasRole(role, "RND_DIRECTOR")
                     ? List.of(action("ASSIGN_TASK", "分发任务", "POST", "/api/v1/rnd-tasks/" + task.id() + "/assign", true))
                     : List.of();
-            case PENDING_ACCEPTANCE -> hasRole(role, "RND_ENGINEER", "RND")
+            case PENDING_ACCEPTANCE -> canEngineerOperate(task, role, operatorName)
                     ? List.of(action("ACCEPT_TASK", "接受任务", "POST", "/api/v1/rnd-tasks/" + task.id() + "/accept", true))
                     : List.of();
-            case SAMPLING -> samplingActions(task, currentExperimentForm, role);
-            case PENDING_TEST -> testActions(currentTestAssignment, role);
+            case SAMPLING -> samplingActions(task, currentExperimentForm, role, operatorName);
+            case PENDING_TEST -> testActions(currentTestAssignment, role, operatorName);
             case COMPLETED -> completedActions(task, role);
         };
     }
 
-    private List<DetailAction> samplingActions(RndTask task, ExperimentForm currentExperimentForm, String role) {
-        if (!hasRole(role, "RND_ENGINEER", "RND")) {
-            return List.of();
+    private boolean canEngineerOperate(RndTask task, String role, String operatorName) {
+        if (!hasRole(role, "RND_ENGINEER", "RND_DIRECTOR", "RND")) {
+            return false;
         }
+        if (operatorName == null || operatorName.isBlank()) {
+            return true;
+        }
+        return operatorName.equals(task.assigneeName());
+    }
+
+    private List<DetailAction> samplingActions(
+            RndTask task,
+            ExperimentForm currentExperimentForm,
+            String role,
+            String operatorName
+    ) {
         var actions = new ArrayList<DetailAction>();
-        actions.add(action(
-                "SAVE_EXPERIMENT_DRAFT",
-                "保存实验单",
-                "POST",
-                "/api/v1/rnd-tasks/" + task.id() + "/experiment-form/draft",
-                true
-        ));
-        if (currentExperimentForm != null && currentExperimentForm.status() == ExperimentFormStatus.DRAFT) {
+        if (canEngineerOperate(task, role, operatorName)) {
+            actions.add(action(
+                    "OPEN_EXPERIMENT_FORM",
+                    currentExperimentForm == null ? "开始填写打样实验单" : "继续填写打样实验单",
+                    "GET",
+                    "/rnd/tasks/" + task.id() + "/experiment",
+                    true
+            ));
+        }
+        if (currentExperimentForm != null && currentExperimentForm.status() == ExperimentFormStatus.DRAFT
+                && (canEngineerOperate(task, role, operatorName) || hasRole(role, "RND_ASSISTANT"))) {
             actions.add(action(
                     "SUBMIT_EXPERIMENT_TEST",
-                    "提交内部测试",
+                    hasRole(role, "RND_ASSISTANT") ? "通知内部测试" : "提交内部测试",
                     "POST",
                     "/api/v1/experiment-forms/" + currentExperimentForm.id() + "/submit-test",
-                    true
+                    hasRole(role, "RND_ASSISTANT")
             ));
         }
         return actions;
     }
 
-    private List<DetailAction> testActions(TestAssignment currentTestAssignment, String role) {
+    private List<DetailAction> testActions(TestAssignment currentTestAssignment, String role, String operatorName) {
         if (!hasRole(role, "TESTER", "QA_TESTER") || currentTestAssignment == null
                 || currentTestAssignment.status() != TestAssignmentStatus.PENDING_TEST) {
+            return List.of();
+        }
+        if (operatorName != null && !operatorName.isBlank()
+                && !operatorName.equals(currentTestAssignment.testerName())) {
             return List.of();
         }
         return List.of(
@@ -1260,7 +1315,10 @@ public class SampleWorkflowService {
                 .materials(lockedForm.materials())
                 .createdAt(version.createdAt())
                 .build();
-        var generated = pricingFileService.generate(versionWithMaterials, pricingVersionNo);
+        var customerName = projects.containsKey(version.projectId())
+                ? projects.get(version.projectId()).customerName()
+                : "LHYC";
+        var generated = pricingFileService.generate(versionWithMaterials, pricingVersionNo, customerName);
         var record = new PricingFileRecord(
                 "PRICE-%04d".formatted(pricingFileSequence++),
                 version.id(),

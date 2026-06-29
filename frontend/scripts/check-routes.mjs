@@ -15,12 +15,15 @@ const pcRoutes = [
   "request-review",
   "rnd-module",
   "task-pool",
+  "my-tasks",
+  "pending-tests",
   "task-assign",
   "task-detail",
   "stopped",
   "experiment-history",
   "shipment-pricing-module",
   "shipment-list",
+  "shipment-record",
   "shipment-detail",
   "pricing-list",
   "pricing-detail",
@@ -43,7 +46,12 @@ const mobileRoutes = [
   "experiment-form",
   "test-confirm",
   "shipment-feedback",
+  "shipment-record",
+  "task-customer-feedback",
+  "request-review",
+  "task-assign",
   "sample-history",
+  "forbidden",
 ];
 
 function read(file) {

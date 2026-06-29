@@ -783,7 +783,8 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.versionId").value(versionId))
                 .andExpect(jsonPath("$.data.pricingVersion").value("A0-核价V1"))
                 .andExpect(jsonPath("$.data.status").value("GENERATED"))
-                .andExpect(jsonPath("$.data.fileName").value("500g香卤大肠头-核价原料清单-A0-V1.xlsx"))
+                .andExpect(jsonPath("$.data.fileName").value(org.hamcrest.Matchers.matchesPattern(
+                        "500g香卤大肠头-LHYC（核价）原料清单A0 \\d{4}\\.\\d{2}\\.\\d{2}\\.xlsx")))
                 .andReturn()
                 .getResponse()
                 .getContentAsString()
@@ -794,15 +795,17 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("pricing_file", pricingFileId, "version_id")).isEqualTo(versionId);
         assertThat(valueById("pricing_file", pricingFileId, "pricing_version")).isEqualTo("A0-核价V1");
         assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("GENERATED");
-        assertThat(valueById("pricing_file", pricingFileId, "file_name")).isEqualTo("500g香卤大肠头-核价原料清单-A0-V1.xlsx");
+        assertThat(valueById("pricing_file", pricingFileId, "file_name"))
+                .matches("500g香卤大肠头-LHYC（核价）原料清单A0 \\d{4}\\.\\d{2}\\.\\d{2}\\.xlsx");
+        var generatedFileName = valueById("pricing_file", pricingFileId, "file_name");
         assertThat(countByColumn("archive_file", "business_id", pricingFileId)).isEqualTo(1);
         assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "business_type")).isEqualTo("PRICING_FILE");
         assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "version_id")).isEqualTo(versionId);
         assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "file_name"))
-                .isEqualTo("500g香卤大肠头-核价原料清单-A0-V1.xlsx");
+                .isEqualTo(generatedFileName);
         var archivedSampleNo = valueById("pricing_file", pricingFileId, "sample_no");
         assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "file_path"))
-                .isEqualTo(archivedSampleNo + "/A0/核价/500g香卤大肠头-核价原料清单-A0-V1.xlsx");
+                .isEqualTo(archivedSampleNo + "/A0/核价/" + generatedFileName);
         assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "file_status")).isEqualTo("ARCHIVED");
         var archivedPath = Path.of("target/rnd-archive")
                 .resolve(valueByColumn("archive_file", "business_id", pricingFileId, "file_path"));
@@ -816,17 +819,19 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data[0].id").value(archiveFileId))
                 .andExpect(jsonPath("$.data[0].businessType").value("PRICING_FILE"))
                 .andExpect(jsonPath("$.data[0].businessId").value(pricingFileId))
-                .andExpect(jsonPath("$.data[0].fileName").value("500g香卤大肠头-核价原料清单-A0-V1.xlsx"))
+                .andExpect(jsonPath("$.data[0].fileName").value(generatedFileName))
                 .andExpect(jsonPath("$.data[0].fileStatus").value("ARCHIVED"));
 
         mockMvc.perform(get("/api/v1/archive-files/{id}/download", archiveFileId))
                 .andExpect(status().isOk())
                 .andExpect(content().bytes(Files.readAllBytes(archivedPath)));
 
+        var encodedPricingFileName = java.net.URLEncoder.encode(generatedFileName, java.nio.charset.StandardCharsets.UTF_8)
+                .replace("+", "%20");
         mockMvc.perform(get("/api/v1/pricing-files/{id}/download", pricingFileId))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename*=UTF-8''500g%E9%A6%99%E5%8D%A4%E5%A4%A7%E8%82%A0%E5%A4%B4-%E6%A0%B8%E4%BB%B7%E5%8E%9F%E6%96%99%E6%B8%85%E5%8D%95-A0-V1.xlsx"))
+                        "attachment; filename*=UTF-8''" + encodedPricingFileName))
                 .andExpect(content().bytes(Files.readAllBytes(archivedPath)));
 
         var financeNotificationId = mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
@@ -1210,7 +1215,7 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.task.id").value(taskId))
                 .andExpect(jsonPath("$.data.version.versionCode").value("A0"))
                 .andExpect(jsonPath("$.data.fieldGroups[0].title").value("基础信息"))
-                .andExpect(jsonPath("$.data.fieldGroups[0].fields", hasItems("applicationScenario", "flavorRequirement")))
+                .andExpect(jsonPath("$.data.fieldGroups[0].fields", hasItems("applicationScenario", "flavorRequirement", "customerName", "productType")))
                 .andExpect(jsonPath("$.data.fieldGroups[1].title").value("任务信息"))
                 .andExpect(jsonPath("$.data.availableActions", hasSize(1)))
                 .andExpect(jsonPath("$.data.availableActions[0].code").value("ASSIGN_TASK"))
@@ -1219,35 +1224,50 @@ class SampleWorkflowControllerTest {
         assignTask(taskId);
 
         mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
-                        .param("role", "RND_ENGINEER"))
+                        .param("role", "RND_ENGINEER")
+                        .param("operatorName", "张研发"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.task.status").value("PENDING_ACCEPTANCE"))
                 .andExpect(jsonPath("$.data.availableActions", hasSize(1)))
                 .andExpect(jsonPath("$.data.availableActions[0].code").value("ACCEPT_TASK"));
 
+        mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                        .param("role", "RND_ENGINEER")
+                        .param("operatorName", "李研发"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.availableActions", hasSize(0)));
+
         acceptTask(taskId);
         var experimentFormId = saveExperimentDraft(taskId);
 
         mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
-                        .param("role", "RND_ENGINEER"))
+                        .param("role", "RND_ENGINEER")
+                        .param("operatorName", "张研发"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.task.status").value("SAMPLING"))
                 .andExpect(jsonPath("$.data.currentExperimentForm.id").value(experimentFormId))
                 .andExpect(jsonPath("$.data.fieldGroups[2].title").value("实验单"))
                 .andExpect(jsonPath("$.data.availableActions", hasSize(2)))
-                .andExpect(jsonPath("$.data.availableActions[0].code").value("SAVE_EXPERIMENT_DRAFT"))
+                .andExpect(jsonPath("$.data.availableActions[0].code").value("OPEN_EXPERIMENT_FORM"))
                 .andExpect(jsonPath("$.data.availableActions[1].code").value("SUBMIT_EXPERIMENT_TEST"));
 
         var testAssignmentId = submitExperimentForTest(experimentFormId);
 
         mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
-                        .param("role", "TESTER"))
+                        .param("role", "TESTER")
+                        .param("operatorName", "内部测试员"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.task.status").value("PENDING_TEST"))
                 .andExpect(jsonPath("$.data.currentTestAssignment.id").value(testAssignmentId))
                 .andExpect(jsonPath("$.data.availableActions", hasSize(2)))
                 .andExpect(jsonPath("$.data.availableActions[0].code").value("PASS_INTERNAL_TEST"))
                 .andExpect(jsonPath("$.data.availableActions[1].code").value("FAIL_RESAMPLE"));
+
+        mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                        .param("role", "TESTER")
+                        .param("operatorName", "其他测试员"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.availableActions", hasSize(0)));
 
         mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
                         .param("role", "MANAGER"))

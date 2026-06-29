@@ -77,7 +77,7 @@ import { useAuthStore } from "../stores/auth";
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
-const feishuUserId = ref("5a6d46c2");
+const feishuUserId = ref("ou_demo_assistant");
 const integration = ref<{ mode: string; appId?: string } | null>(null);
 const integrationError = ref(false);
 const requestingFeishuCode = ref(false);
@@ -86,9 +86,10 @@ const debugInfo = ref("等待检测飞书 JS SDK...");
 const trustedDomainTip = ref("");
 const loginError = ref("");
 const demoAccounts = [
-  { label: "研发内勤", name: "赵内勤", feishuUserId: "5a6d46c2" },
+  { label: "研发内勤", name: "赵内勤", feishuUserId: "ou_demo_assistant" },
   { label: "研发总监", name: "赵总监", feishuUserId: "ou_demo_director" },
   { label: "研发人员", name: "张研发", feishuUserId: "ou_demo_engineer" },
+  { label: "内部测试", name: "李测试", feishuUserId: "ou_demo_tester" },
   { label: "财务", name: "钱财务", feishuUserId: "ou_demo_finance" },
 ];
 
@@ -128,6 +129,9 @@ onMounted(async () => {
     integration.value = isFeishuWebView() ? { mode: "OPENAPI" } : null;
     integrationError.value = true;
   }
+  if (integration.value?.mode !== "OPENAPI") {
+    await ensureDemoUsers();
+  }
   const code = typeof route.query.code === "string" ? route.query.code : "";
   if (code) {
     try {
@@ -155,12 +159,21 @@ async function login() {
   await loginAs(feishuUserId.value.trim());
 }
 
+async function ensureDemoUsers() {
+  try {
+    await fetch("/api/v1/demo/seed-users", { method: "POST" });
+  } catch {
+    // 后端未启动或旧版本无该接口时忽略
+  }
+}
+
 async function loginAs(userId: string) {
   try {
     feishuUserId.value = userId;
     await auth.mockLogin(userId);
+    await auth.fetchMe().catch(() => undefined);
     showSuccessToast("登录成功");
-    window.location.assign(`${window.location.origin}/m/todo`);
+    await router.replace("/todo");
   } catch (error) {
     if (error instanceof ApiError && error.code === "FEISHU_USER_NOT_BOUND") {
       showFailToast("该 user_id 尚未绑定");

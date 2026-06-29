@@ -8,7 +8,7 @@
             <a-tag>{{ SAMPLE_STATUS_LABELS[record.status as keyof typeof SAMPLE_STATUS_LABELS] ?? record.status }}</a-tag>
           </template>
           <template v-else-if="column.key === 'action'">
-            <a-button type="primary" size="small" @click="approve(record.id)">审核通过</a-button>
+            <a-button v-if="canApprove" type="primary" size="small" @click="approve(record.id)">审核通过</a-button>
           </template>
         </template>
       </a-table>
@@ -17,15 +17,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { message } from "ant-design-vue";
-import { SAMPLE_STATUS_LABELS, type SampleRequest } from "@rnd/shared";
+import { canPerformAction, SAMPLE_STATUS_LABELS, type SampleRequest } from "@rnd/shared";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
 
 const auth = useAuthStore();
 const loading = ref(false);
 const rows = ref<SampleRequest[]>([]);
+const canApprove = computed(() => canPerformAction(auth.role, "APPROVE_REQUEST"));
 
 const columns = [
   { title: "样品编号", dataIndex: "sampleNo", key: "sampleNo" },

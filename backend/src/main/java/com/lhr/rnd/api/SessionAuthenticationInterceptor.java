@@ -13,7 +13,8 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 @Component
 public class SessionAuthenticationInterceptor implements HandlerInterceptor {
-    private static final String SESSION_ATTRIBUTE = "sessionPrincipal";
+    public static final String SESSION_PRINCIPAL_ATTRIBUTE = "sessionPrincipal";
+    private static final String SESSION_ATTRIBUTE = SESSION_PRINCIPAL_ATTRIBUTE;
     private final SessionProperties sessionProperties;
     private final SessionTokenService sessionTokenService;
     private final RolePermissionService rolePermissionService;
@@ -61,6 +62,7 @@ public class SessionAuthenticationInterceptor implements HandlerInterceptor {
                 || uri.equals("/api/v1/feishu/integration/status")
                 || uri.equals("/api/v1/feishu/users/bind")
                 || uri.equals("/api/v1/feishu/oauth/callback")
+                || uri.equals("/api/v1/demo/seed-users")
                 || uri.equals("/api/v1/feishu/card-actions")
                 || uri.equals("/api/v1/feishu/events");
     }

@@ -114,7 +114,15 @@ async function main() {
   const gateway = spawnLogged(
     "gateway",
     "node",
-    ["scripts/dev-gateway.mjs", "--port", String(GATEWAY_PORT), "--backend", `http://127.0.0.1:${BACKEND_PORT}`],
+    [
+      "scripts/dev-gateway.mjs",
+      "--port",
+      String(GATEWAY_PORT),
+      "--host",
+      "0.0.0.0",
+      "--backend",
+      `http://127.0.0.1:${BACKEND_PORT}`,
+    ],
     { env: process.env },
   );
 
@@ -166,6 +174,8 @@ async function main() {
     console.log("\n未检测到 cloudflared。本地可先访问：");
     console.log(`  http://127.0.0.1:${GATEWAY_PORT}/admin/dashboard`);
     console.log(`  http://127.0.0.1:${GATEWAY_PORT}/m/todo`);
+    const { spawnSync } = await import("node:child_process");
+    spawnSync("node", ["scripts/print-lan-urls.mjs"], { cwd: ROOT, stdio: "inherit" });
     console.log("\n飞书真实联调需要 HTTPS，请安装 cloudflared 后重试：");
     console.log("  brew install cloudflared");
     console.log("\n或手动把 FEISHU_APP_URL 改成你的 HTTPS 域名后运行：");

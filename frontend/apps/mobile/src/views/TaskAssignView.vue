@@ -1,6 +1,6 @@
 <template>
   <div>
-    <PageHeader title="任务分发" subtitle="研发总监把任务池里的样品分给具体研发人员" />
+    <PageHeader title="任务分发" subtitle="研发总监从人员列表中选择具体研发人员" />
 
     <van-pull-refresh v-model="refreshing" @refresh="load">
       <div v-for="task in rows" :key="task.id" class="task-card">
@@ -13,10 +13,13 @@
         </div>
 
         <van-field
-          v-model="assignForms[task.id].assigneeName"
+          :model-value="assignForms[task.id]?.assigneeName"
+          is-link
+          readonly
           label="研发人员"
-          placeholder="填写研发人员姓名"
+          placeholder="选择研发人员"
           input-align="right"
+          @click="openPicker(task.id)"
         />
         <van-field
           v-model="assignForms[task.id].dueDate"
@@ -24,28 +27,50 @@
           type="date"
           input-align="right"
         />
-        <van-button block round type="primary" :loading="assigningId === task.id" @click="assign(task.id)">
+        <van-button
+          v-if="canAssign"
+          block
+          round
+          type="primary"
+          :loading="assigningId === task.id"
+          @click="assign(task.id)"
+        >
           分配任务
         </van-button>
       </div>
 
       <van-empty v-if="!loading && rows.length === 0" description="暂无待分发任务" />
     </van-pull-refresh>
+
+    <van-popup v-model:show="pickerOpen" position="bottom" round>
+      <van-picker
+        :columns="engineerColumns"
+        @confirm="onPickEngineer"
+        @cancel="pickerOpen = false"
+      />
+    </van-popup>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { showFailToast, showSuccessToast } from "vant";
-import type { RndTask } from "@rnd/shared";
+import { canPerformAction, isRndAssigneeRole, type RndTask, type UserAccount } from "@rnd/shared";
 import PageHeader from "../components/PageHeader.vue";
 import StatusBadge from "../components/StatusBadge.vue";
+import { useAuthStore } from "../stores/auth";
 import { api } from "../services/api";
+
+const auth = useAuthStore();
+const canAssign = computed(() => canPerformAction(auth.role, "ASSIGN_TASK"));
 
 const loading = ref(false);
 const refreshing = ref(false);
 const assigningId = ref("");
+const pickerOpen = ref(false);
+const activeTaskId = ref("");
 const rows = ref<RndTask[]>([]);
+const engineerColumns = ref<Array<{ text: string; value: string }>>([]);
 const assignForms = reactive<Record<string, { assigneeName: string; dueDate: string }>>({});
 
 function defaultDueDate() {
@@ -54,13 +79,36 @@ function defaultDueDate() {
   return date.toISOString().slice(0, 10);
 }
 
+function openPicker(taskId: string) {
+  activeTaskId.value = taskId;
+  pickerOpen.value = true;
+}
+
+function onPickEngineer({ selectedOptions }: { selectedOptions: Array<{ text: string; value: string }> }) {
+  const option = selectedOptions[0];
+  if (activeTaskId.value && option) {
+    assignForms[activeTaskId.value].assigneeName = option.value;
+  }
+  pickerOpen.value = false;
+}
+
 async function load() {
   loading.value = true;
   try {
-    rows.value = (await api.task.list({ status: "PENDING_ASSIGNMENT" })) as RndTask[];
+    const [pool, users] = await Promise.all([
+      api.task.list({ status: "PENDING_ASSIGNMENT" }) as Promise<RndTask[]>,
+      api.settings.users(),
+    ]);
+    rows.value = pool;
+    engineerColumns.value = users
+      .filter((user: UserAccount) => user.status === "ACTIVE" && isRndAssigneeRole(user.role))
+      .map((user) => ({
+        text: `${user.name} · ${user.departmentName || "研发部"}`,
+        value: user.name,
+      }));
     for (const task of rows.value) {
       assignForms[task.id] ??= {
-        assigneeName: "张研发",
+        assigneeName: engineerColumns.value[0]?.value ?? "",
         dueDate: defaultDueDate(),
       };
     }
@@ -73,13 +121,13 @@ async function load() {
 async function assign(id: string) {
   const form = assignForms[id];
   if (!form?.assigneeName || !form.dueDate) {
-    showFailToast("请填写研发人员和截止日期");
+    showFailToast("请选择研发人员并填写截止日期");
     return;
   }
   assigningId.value = id;
   try {
     await api.task.assign(id, form.assigneeName, form.dueDate);
-    showSuccessToast("任务已分配");
+    showSuccessToast(`任务已分配给 ${form.assigneeName}`);
     await load();
   } catch (error) {
     showFailToast(error instanceof Error ? error.message : "分配失败");

@@ -1,23 +1,32 @@
 <template>
-  <section class="hero-card">
+  <a :href="href" class="hero-card" @click="onClick">
     <p class="section-title" style="color: #bfdbfe; margin-top: 0">{{ eyebrow }}</p>
     <h2 class="hero-card__title">{{ title }}</h2>
     <p class="hero-card__subtitle">{{ subtitle }}</p>
     <div class="hero-card__footer">
-      <van-button round type="default" size="small" @click="$emit('action')">
-        {{ actionLabel }}
-      </van-button>
+      <span class="hero-card__action">{{ actionLabel }}</span>
     </div>
-  </section>
+  </a>
 </template>
 
 <script setup lang="ts">
-defineProps<{
+import { computed } from "vue";
+import { useRouter } from "vue-router";
+import { resolveMobileHref, spaNavigate } from "../utils/navigate";
+
+const props = defineProps<{
+  to: string;
   eyebrow?: string;
   title: string;
   subtitle: string;
   actionLabel: string;
 }>();
 
-defineEmits<{ action: [] }>();
+const router = useRouter();
+const href = computed(() => resolveMobileHref(router, props.to));
+
+function onClick(event: MouseEvent) {
+  event.preventDefault();
+  spaNavigate(router, props.to);
+}
 </script>

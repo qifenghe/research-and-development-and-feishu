@@ -1,5 +1,5 @@
 <template>
-  <div class="mobile-shell">
+  <div class="mobile-shell" :class="{ 'mobile-shell--subpage': !showTabbar }">
     <van-nav-bar
       v-if="!showTabbar"
       :title="title"
@@ -7,11 +7,13 @@
       @click-left="goBack"
     />
     <main class="mobile-page">
-      <RouterView />
+      <RouterView v-slot="{ Component }">
+        <component :is="Component" />
+      </RouterView>
     </main>
     <van-tabbar v-if="showTabbar" route active-color="#246BFE" inactive-color="#64748B">
       <van-tabbar-item replace to="/todo" icon="todo-list-o">待办</van-tabbar-item>
-      <van-tabbar-item replace to="/samples" icon="search">样品</van-tabbar-item>
+      <van-tabbar-item v-if="showSamplesTab" replace to="/samples" icon="search">样品</van-tabbar-item>
       <van-tabbar-item replace to="/profile" icon="user-o">我的</van-tabbar-item>
     </van-tabbar>
   </div>
@@ -20,12 +22,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { canAccessRoute } from "@rnd/shared";
+import { useAuthStore } from "../stores/auth";
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 
 const showTabbar = computed(() => Boolean(route.meta.tab));
 const showBack = computed(() => !route.meta.tab);
+const showSamplesTab = computed(() => canAccessRoute(auth.role, "/samples", "mobile"));
 
 const titleMap: Record<string, string> = {
   todo: "我的待办",
@@ -52,5 +58,9 @@ function goBack() {
 .mobile-shell {
   min-height: 100vh;
   padding-bottom: 50px;
+}
+
+.mobile-shell--subpage .mobile-page {
+  padding-bottom: 120px;
 }
 </style>

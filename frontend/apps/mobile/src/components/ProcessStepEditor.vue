@@ -1,13 +1,13 @@
 <template>
   <div>
     <div v-for="(step, index) in model" :key="index" class="task-card process-step-card">
-      <van-field v-model="step.processName" label="工序" placeholder="清洗 / 卤制 / 包装" />
-      <van-field v-model="step.beforeWeightKg" label="前重kg" type="number" placeholder="100" />
-      <van-field v-model="step.afterWeightKg" label="后重kg" type="number" placeholder="92" />
+      <van-field v-model="step.processName" label="工序" placeholder="清洗 / 卤制 / 包装" :readonly="readonly" />
+      <van-field v-model="step.beforeWeightKg" label="前重kg" type="number" placeholder="100" :readonly="readonly" />
+      <van-field v-model="step.afterWeightKg" label="后重kg" type="number" placeholder="92" :readonly="readonly" />
       <p v-if="lossRate(step)" class="process-step-card__loss">损耗率：{{ lossRate(step) }}%</p>
-      <van-field v-model="step.remark" label="备注" placeholder="可选" />
+      <van-field v-model="step.remark" label="备注" placeholder="可选" :readonly="readonly" />
     </div>
-    <van-button block plain type="primary" size="small" @click="addStep">+ 添加工序行</van-button>
+    <van-button v-if="!readonly" block plain type="primary" size="small" @click="addStep">+ 添加工序行</van-button>
   </div>
 </template>
 
@@ -22,6 +22,8 @@ export type EditableProcessStep = {
 };
 
 const model = defineModel<EditableProcessStep[]>({ required: true });
+
+withDefaults(defineProps<{ readonly?: boolean }>(), { readonly: false });
 
 function blankStep(): EditableProcessStep {
   return { processName: "", beforeWeightKg: "", afterWeightKg: "", remark: "" };

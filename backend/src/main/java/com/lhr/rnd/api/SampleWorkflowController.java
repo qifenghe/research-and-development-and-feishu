@@ -19,7 +19,9 @@ import com.lhr.rnd.service.NotifyFinanceResult;
 import com.lhr.rnd.service.PassInternalTestResult;
 import com.lhr.rnd.service.SampleWorkflowService;
 import com.lhr.rnd.service.ShipmentFeedbackResult;
+import com.lhr.rnd.service.SessionPrincipal;
 import com.lhr.rnd.service.SubmitExperimentForTestResult;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -102,22 +104,37 @@ public class SampleWorkflowController {
     public ApiResponse<?> rndTasks(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String assigneeName,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
-            @RequestParam(required = false) String sort
+            @RequestParam(required = false) String sort,
+            HttpServletRequest request
     ) {
+        var resolvedAssigneeName = resolveTaskAssigneeFilter(assigneeName, request);
         if (page != null || size != null) {
-            return ApiResponse.success(workflowService.tasks(status, keyword, page, size, sort));
+            return ApiResponse.success(workflowService.tasks(status, keyword, resolvedAssigneeName, page, size, sort));
         }
-        return ApiResponse.success(workflowService.tasks(status, keyword));
+        return ApiResponse.success(workflowService.tasks(status, keyword, resolvedAssigneeName));
+    }
+
+    private String resolveTaskAssigneeFilter(String assigneeName, HttpServletRequest request) {
+        if (assigneeName != null && !assigneeName.isBlank()) {
+            return assigneeName.trim();
+        }
+        var principal = (SessionPrincipal) request.getAttribute(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE);
+        if (principal != null && "RND_ENGINEER".equals(principal.role())) {
+            return principal.name();
+        }
+        return null;
     }
 
     @GetMapping("/rnd-tasks/{id}/detail")
     public ApiResponse<RndTaskDetailView> rndTaskDetail(
             @PathVariable String id,
-            @RequestParam(required = false) String role
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String operatorName
     ) {
-        return ApiResponse.success(workflowService.rndTaskDetail(id, role));
+        return ApiResponse.success(workflowService.rndTaskDetail(id, role, operatorName));
     }
 
     @PostMapping("/rnd-tasks/{id}/assign")

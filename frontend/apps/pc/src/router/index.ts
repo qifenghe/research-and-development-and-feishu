@@ -3,6 +3,7 @@ import {
   createWebHistory,
   type RouteRecordRaw,
 } from "vue-router";
+import { canAccessRoute } from "@rnd/shared";
 import { useAuthStore } from "../stores/auth";
 import AdminLayout from "../layouts/AdminLayout.vue";
 
@@ -31,16 +32,22 @@ const routes: RouteRecordRaw[] = [
       { path: "demand", name: "demand-module", component: () => import("../views/demand/DemandModuleView.vue") },
       { path: "demand/new", name: "request-new", component: () => import("../views/demand/RequestNewView.vue") },
       { path: "demand/list", name: "demand-list", component: () => import("../views/demand/DemandListView.vue") },
-      { path: "demand/:id", name: "demand-detail", component: () => import("../views/demand/DemandDetailView.vue") },
       { path: "demand/review", name: "request-review", component: () => import("../views/demand/RequestReviewView.vue") },
+      { path: "demand/:id", name: "demand-detail", component: () => import("../views/demand/DemandDetailView.vue") },
       { path: "rnd", name: "rnd-module", component: () => import("../views/rnd/RndModuleView.vue") },
       { path: "rnd/pool", name: "task-pool", component: () => import("../views/rnd/TaskPoolView.vue") },
+      { path: "rnd/my-tasks", name: "my-tasks", component: () => import("../views/rnd/MyTasksView.vue") },
+      { path: "rnd/pending-tests", name: "pending-tests", component: () => import("../views/rnd/PendingTestsView.vue") },
       { path: "rnd/assign", name: "task-assign", component: () => import("../views/rnd/TaskAssignView.vue") },
       { path: "rnd/tasks/:id", name: "task-detail", component: () => import("../views/rnd/TaskDetailView.vue") },
+      { path: "rnd/tasks/:id/experiment", name: "experiment-form", component: () => import("../views/rnd/ExperimentFormView.vue") },
+      { path: "rnd/tasks/:id/test", name: "test-confirm", component: () => import("../views/rnd/TestConfirmView.vue") },
+      { path: "rnd/tasks/:id/feedback", name: "customer-feedback", component: () => import("../views/rnd/CustomerFeedbackView.vue") },
       { path: "rnd/stopped", name: "stopped", component: () => import("../views/rnd/StoppedProjectsView.vue") },
       { path: "rnd/history/:versionId", name: "experiment-history", component: () => import("../views/rnd/ExperimentHistoryView.vue") },
       { path: "shipment", name: "shipment-pricing-module", component: () => import("../views/shipment/ShipmentPricingModuleView.vue") },
       { path: "shipment/list", name: "shipment-list", component: () => import("../views/shipment/ShipmentListView.vue") },
+      { path: "shipment/record", name: "shipment-record", component: () => import("../views/shipment/ShipmentRecordView.vue") },
       { path: "shipment/:id", name: "shipment-detail", component: () => import("../views/shipment/ShipmentDetailView.vue") },
       { path: "pricing/list", name: "pricing-list", component: () => import("../views/shipment/PricingListView.vue") },
       { path: "pricing/:id", name: "pricing-detail", component: () => import("../views/shipment/PricingDetailView.vue") },
@@ -88,6 +95,9 @@ router.beforeEach(async (to) => {
     if (!restored) {
       return { name: "login", query: { redirect: to.fullPath } };
     }
+  }
+  if (!canAccessRoute(auth.role, to.path, "pc")) {
+    return { name: "forbidden" };
   }
   return true;
 });

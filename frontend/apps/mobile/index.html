@@ -2,12 +2,25 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="format-detection" content="telephone=no" />
     <title>研发样品管理系统 · 手机端</title>
   </head>
   <body>
     <div id="app"></div>
-    <script src="https://lf1-cdn-tos.bytegoofy.com/goofy/lark/op/h5-js-sdk-1.5.26.js"></script>
+    <script>
+      // Safari 直连调试时不加载飞书 SDK，避免无关脚本干扰页面
+      if (/Lark|Feishu|LarkShell/i.test(navigator.userAgent)) {
+        var sdk = document.createElement("script");
+        sdk.src = "https://lf1-cdn-tos.bytegoofy.com/goofy/lark/op/h5-js-sdk-1.5.26.js";
+        sdk.async = true;
+        document.head.appendChild(sdk);
+      }
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

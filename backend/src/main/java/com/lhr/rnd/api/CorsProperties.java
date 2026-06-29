@@ -13,7 +13,10 @@ public class CorsProperties {
             "http://127.0.0.1:8787",
             "http://localhost:5173",
             "http://localhost:5174",
-            "http://localhost:8787"
+            "http://localhost:8787",
+            "http://192.168.*:*",
+            "http://10.*:*",
+            "http://172.16.*:*"
     ));
     private boolean allowCredentials;
 

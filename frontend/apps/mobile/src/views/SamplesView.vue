@@ -21,11 +21,10 @@
       <TaskCard
         v-for="task in rows"
         :key="task.id"
+        :to="taskPrimaryRoute(task)"
         :title="task.productName"
         :meta="`${task.versionCode} · ${taskStatusLabel(task.status)}`"
-        action-label="历史"
-        @click="openSample(task)"
-        @action="openHistory(task)"
+        action-label="打开"
       />
     </van-list>
 
@@ -35,14 +34,15 @@
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { taskPrimaryRoute, taskStatusLabel, type RndTask } from "@rnd/shared";
+import { useRoute } from "vue-router";
+import { shouldFilterTasksByAssignee, taskPrimaryRoute, taskStatusLabel, type RndTask } from "@rnd/shared";
 import PageHeader from "../components/PageHeader.vue";
 import TaskCard from "../components/TaskCard.vue";
+import { useAuthStore } from "../stores/auth";
 import { api } from "../services/api";
 
-const router = useRouter();
 const route = useRoute();
+const auth = useAuthStore();
 const keyword = ref("");
 const activeStatus = ref("");
 const loading = ref(false);
@@ -53,23 +53,12 @@ const chips = [
   { label: "全部", value: "" },
   { label: "打样中", value: "SAMPLING" },
   { label: "待测试", value: "PENDING_TEST" },
-  { label: "待寄样", value: "PENDING_ACCEPTANCE" },
+  { label: "待接受", value: "PENDING_ACCEPTANCE" },
 ];
 
 function selectStatus(value: string) {
   activeStatus.value = value;
   load();
-}
-
-function openSample(task: RndTask) {
-  router.push(taskPrimaryRoute(task));
-}
-
-function openHistory(task: RndTask) {
-  router.push({
-    path: `/samples/${task.versionId}/history`,
-    query: { projectId: task.projectId, productName: task.productName },
-  });
 }
 
 async function load() {
@@ -78,6 +67,7 @@ async function load() {
     rows.value = (await api.task.list({
       keyword: keyword.value || undefined,
       status: activeStatus.value || undefined,
+      assigneeName: shouldFilterTasksByAssignee(auth.role) ? auth.displayName : undefined,
     })) as RndTask[];
   } finally {
     loading.value = false;

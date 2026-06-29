@@ -12,6 +12,8 @@ const ROLE_BY_KEY = {
   FEISHU_DEMO_ASSISTANT_USER_ID: { role: "RND_ASSISTANT", nameKey: "FEISHU_DEMO_ASSISTANT_NAME", fallbackName: "研发内勤" },
   FEISHU_DEMO_DIRECTOR_USER_ID: { role: "RND_DIRECTOR", nameKey: "FEISHU_DEMO_DIRECTOR_NAME", fallbackName: "研发总监" },
   FEISHU_DEMO_ENGINEER_USER_ID: { role: "RND_ENGINEER", nameKey: "FEISHU_DEMO_ENGINEER_NAME", fallbackName: "研发人员" },
+  FEISHU_DEMO_TESTER_USER_ID: { role: "TESTER", nameKey: "FEISHU_DEMO_TESTER_NAME", fallbackName: "李测试", departmentName: "品控部" },
+  FEISHU_DEMO_FINANCE_USER_ID: { role: "FINANCE", nameKey: "FEISHU_DEMO_FINANCE_NAME", fallbackName: "钱财务", departmentName: "财务部" },
 };
 
 function usersFromEnv(env) {
@@ -23,7 +25,7 @@ function usersFromEnv(env) {
       feishuUserId,
       role: meta.role,
       name: env[meta.nameKey]?.trim() || meta.fallbackName,
-      departmentName: "研发部",
+      departmentName: meta.departmentName || "研发部",
     });
   }
   return users;

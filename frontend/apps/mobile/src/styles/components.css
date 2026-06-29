@@ -5,6 +5,8 @@
 body {
   margin: 0;
   background: var(--mobile-bg);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .mobile-page {
@@ -57,15 +59,80 @@ body {
   color: var(--mobile-muted);
   font-size: 13px;
   font-weight: 700;
+  margin: 0;
+}
+
+.section-header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
   margin: 18px 0 10px;
+}
+
+.section-count {
+  background: var(--mobile-primary-soft);
+  border-radius: 999px;
+  color: var(--mobile-primary);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  min-width: 22px;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+.page-with-footer {
+  padding-bottom: 120px;
+}
+
+.form-panel {
+  background: var(--mobile-card);
+  border: 1px solid var(--mobile-border);
+  border-radius: var(--mobile-radius);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.form-panel .van-cell {
+  background: transparent;
+}
+
+.notice-banner {
+  margin-bottom: 12px;
+}
+
+.mobile-form-collapse {
+  margin-bottom: 12px;
+}
+
+.mobile-form-collapse .van-collapse-item__content {
+  padding-bottom: 8px;
 }
 
 .hero-card {
   background: var(--mobile-primary);
   border-radius: var(--mobile-radius);
   color: #fff;
+  cursor: pointer;
+  display: block;
   margin-bottom: 8px;
   padding: 16px;
+  position: relative;
+  text-decoration: none;
+  touch-action: manipulation;
+  z-index: 2;
+}
+
+.hero-card__action {
+  background: #fff;
+  border-radius: 999px;
+  color: var(--mobile-primary);
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 8px 16px;
 }
 
 .hero-card__title {
@@ -91,6 +158,25 @@ body {
   border-radius: var(--mobile-radius);
   margin-bottom: 12px;
   padding: 14px 16px;
+}
+
+.task-card--link {
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  text-decoration: none;
+  touch-action: manipulation;
+}
+
+.task-card__action {
+  background: var(--mobile-primary-soft);
+  border-radius: 999px;
+  color: var(--mobile-primary);
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 8px 14px;
 }
 
 .task-card__row {
@@ -163,14 +249,22 @@ body {
   margin-bottom: 14px;
 }
 
+.todo-entries {
+  margin-bottom: 8px;
+}
+
 .role-entry-card {
   background: var(--mobile-card);
   border: 1px solid var(--mobile-border);
   border-radius: var(--mobile-radius-sm);
   color: var(--mobile-text);
+  cursor: pointer;
+  display: block;
   min-height: 116px;
   padding: 13px;
   text-align: left;
+  text-decoration: none;
+  touch-action: manipulation;
 }
 
 .role-entry-card__label {

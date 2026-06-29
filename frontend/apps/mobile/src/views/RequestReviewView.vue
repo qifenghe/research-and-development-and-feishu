@@ -17,7 +17,14 @@
           <p><strong>口味/风味：</strong>{{ request.flavorRequirement }}</p>
           <p><strong>申请人：</strong>{{ request.creatorName }}</p>
         </div>
-        <van-button block round type="primary" :loading="approvingId === request.id" @click="approve(request.id)">
+        <van-button
+          v-if="canApprove"
+          block
+          round
+          type="primary"
+          :loading="approvingId === request.id"
+          @click="approve(request.id)"
+        >
           审核通过
         </van-button>
       </div>
@@ -28,15 +35,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { showFailToast, showSuccessToast } from "vant";
-import type { SampleRequest } from "@rnd/shared";
+import { canPerformAction, type SampleRequest } from "@rnd/shared";
 import PageHeader from "../components/PageHeader.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import { useAuthStore } from "../stores/auth";
 import { api } from "../services/api";
 
 const auth = useAuthStore();
+const canApprove = computed(() => canPerformAction(auth.role, "APPROVE_REQUEST"));
 const loading = ref(false);
 const refreshing = ref(false);
 const approvingId = ref("");

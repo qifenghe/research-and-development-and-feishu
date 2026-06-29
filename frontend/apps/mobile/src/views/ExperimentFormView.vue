@@ -1,54 +1,108 @@
 <template>
-  <div>
-    <PageHeader :title="headerTitle" compact>
-      <StatusBadge label="打样中" variant="success" />
-      <StatusBadge v-if="draftSaved" label="草稿已保存" variant="primary" style="margin-left: 8px" />
-    </PageHeader>
+  <div class="page-with-footer">
+    <van-skeleton title :row="8" :loading="loading">
+      <van-empty v-if="loadError" image="error" :description="loadError">
+        <van-button round type="primary" @click="loadDetail">重试</van-button>
+        <van-button round plain style="margin-top: 8px" @click="router.replace('/todo')">返回待办</van-button>
+      </van-empty>
 
-    <van-collapse v-model="activeSections">
-      <van-collapse-item title="基本信息" name="basic">
-        <van-field v-model="form.productName" label="产品名称" readonly />
-        <van-field v-model="form.specification" label="产品规格" readonly />
-        <van-field v-model="form.summary" rows="2" autosize type="textarea" label="实验摘要" placeholder="填写本次打样说明" />
-      </van-collapse-item>
-      <van-collapse-item title="原辅料/包材" name="materials">
-        <div v-for="(material, index) in materials" :key="index" class="task-card" style="margin-bottom: 8px">
-          <van-field v-model="material.stage" label="工段" placeholder="清洗/卤制/包装" />
-          <van-field v-model="material.materialCode" label="物料编码" placeholder="可选" />
-          <van-field v-model="material.materialName" label="物料名称" placeholder="冻猪大肠头" />
-          <van-field v-model="material.weightKg" label="用量kg" type="number" placeholder="100" />
-          <van-field v-model="material.utilizationRate" label="利用率%" type="number" placeholder="95" />
-          <van-field v-model="material.remark" label="备注" placeholder="可选" />
-        </div>
-        <van-button block plain type="primary" size="small" @click="addMaterial">+ 添加物料行</van-button>
-      </van-collapse-item>
-      <van-collapse-item title="工序记录" name="process">
-        <ProcessStepEditor v-model="processSteps" />
-      </van-collapse-item>
-      <van-collapse-item title="成品出成" name="yield">
-        <van-field v-model="form.yieldQty" label="研发参考出成" type="number" placeholder="89" />
-        <van-field v-model="form.yieldUnit" label="单位" placeholder="kg" />
-      </van-collapse-item>
-      <van-collapse-item title="照片附件" name="photos">
-        <van-uploader v-model="fileList" :after-read="afterRead" />
-      </van-collapse-item>
-      <van-collapse-item title="备注" name="remark">
-        <van-field v-model="form.remark" rows="3" autosize type="textarea" placeholder="补充现场说明" />
-      </van-collapse-item>
-    </van-collapse>
+      <template v-else>
+        <PageHeader :title="headerTitle" compact>
+          <StatusBadge label="打样中" variant="success" />
+          <StatusBadge v-if="draftSaved" label="草稿已保存" variant="primary" style="margin-left: 8px" />
+        </PageHeader>
 
-    <FixedActionBar>
-      <van-button block plain type="primary" :loading="saving" @click="saveDraft">保存草稿</van-button>
-      <van-button type="primary" block :loading="submitting" @click="notifyTest">通知测试</van-button>
-    </FixedActionBar>
+        <van-notice-bar
+          v-if="readOnly"
+          class="notice-banner"
+          color="#246BFE"
+          background="#EAF2FF"
+          left-icon="info-o"
+          text="当前为只读查看，确认无误后点击下方「通知测试」。"
+        />
+
+        <van-collapse v-model="activeSections" class="mobile-form-collapse">
+          <van-collapse-item title="基本信息" name="basic">
+            <van-field v-model="form.productName" label="产品名称" readonly />
+            <van-field v-model="form.specification" label="产品规格" readonly />
+            <van-field
+              v-model="form.summary"
+              rows="2"
+              autosize
+              type="textarea"
+              label="实验摘要"
+              placeholder="填写本次打样说明"
+              :readonly="readOnly"
+            />
+          </van-collapse-item>
+          <van-collapse-item title="原辅料/包材" name="materials">
+            <div v-for="(material, index) in materials" :key="index" class="task-card" style="margin-bottom: 8px">
+              <van-field v-model="material.stage" label="工段" placeholder="清洗/卤制/包装" :readonly="readOnly" />
+              <van-field v-model="material.materialCode" label="物料编码" placeholder="可选" :readonly="readOnly" />
+              <van-field v-model="material.materialName" label="物料名称" placeholder="冻猪大肠头" :readonly="readOnly" />
+              <van-field v-model="material.weightKg" label="用量kg" type="number" placeholder="100" :readonly="readOnly" />
+              <van-field v-model="material.utilizationRate" label="利用率%" type="number" placeholder="95" :readonly="readOnly" />
+              <van-field v-model="material.remark" label="备注" placeholder="可选" :readonly="readOnly" />
+            </div>
+            <van-button v-if="!readOnly" block plain type="primary" size="small" @click="addMaterial">
+              + 添加物料行
+            </van-button>
+          </van-collapse-item>
+          <van-collapse-item title="工序记录" name="process">
+            <ProcessStepEditor v-model="processSteps" :readonly="readOnly" />
+          </van-collapse-item>
+          <van-collapse-item title="成品出成" name="yield">
+            <van-field v-model="form.yieldQty" label="研发参考出成" type="number" placeholder="89" :readonly="readOnly" />
+            <van-field v-model="form.yieldUnit" label="单位" placeholder="kg" :readonly="readOnly" />
+          </van-collapse-item>
+          <van-collapse-item title="照片附件" name="photos">
+            <van-uploader v-if="!readOnly" v-model="fileList" :after-read="afterRead" />
+            <div v-else class="mobile-detail-block">照片由研发人员在打样现场上传。</div>
+          </van-collapse-item>
+          <van-collapse-item title="备注" name="remark">
+            <van-field
+              v-model="form.remark"
+              rows="3"
+              autosize
+              type="textarea"
+              placeholder="补充现场说明"
+              :readonly="readOnly"
+            />
+          </van-collapse-item>
+        </van-collapse>
+
+        <FixedActionBar v-if="canSaveDraft || canNotify" :with-tabbar="false">
+          <van-button
+            v-if="canSaveDraft"
+            block
+            plain
+            type="primary"
+            :loading="saving"
+            @click="saveDraft"
+          >
+            保存草稿
+          </van-button>
+          <van-button
+            v-if="canNotify"
+            type="primary"
+            block
+            :loading="submitting"
+            @click="notifyTest"
+          >
+            通知测试
+          </van-button>
+        </FixedActionBar>
+      </template>
+    </van-skeleton>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { showFailToast, showSuccessToast } from "vant";
 import type { ExperimentMaterial, RndTaskDetailView } from "@rnd/shared";
+import { canEditExperiment, canNotifyInternalTest } from "@rnd/shared";
 import PageHeader from "../components/PageHeader.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import FixedActionBar from "../components/FixedActionBar.vue";
@@ -65,6 +119,8 @@ const router = useRouter();
 const auth = useAuthStore();
 const activeSections = ref(["basic"]);
 const detail = ref<RndTaskDetailView | null>(null);
+const loading = ref(true);
+const loadError = ref("");
 const saving = ref(false);
 const submitting = ref(false);
 const draftSaved = ref(false);
@@ -100,18 +156,31 @@ const form = reactive({
 
 const headerTitle = ref("实验单录入");
 
-onMounted(async () => {
-  detail.value = await api.task.detail(String(route.params.id), auth.role);
-  form.productName = detail.value.task.productName;
-  headerTitle.value = `${detail.value.task.productName} ${detail.value.task.versionCode}`;
-  const specField = detail.value.fieldGroups.flatMap((g) => g.fields).find((f) => f.label.includes("规格"));
-  form.specification = specField?.value ?? "";
-  if (detail.value.currentExperimentForm?.summary) {
-    form.summary = detail.value.currentExperimentForm.summary;
+const canSaveDraft = computed(() =>
+  detail.value ? canEditExperiment(detail.value, auth.displayName, auth.role) : false,
+);
+const canNotify = computed(() =>
+  detail.value ? canNotifyInternalTest(detail.value, auth.displayName, auth.role) : false,
+);
+const readOnly = computed(() => !canSaveDraft.value);
+
+async function ensureAuthReady() {
+  if (!auth.principal) {
+    await auth.fetchMe().catch(() => undefined);
+  }
+}
+
+function applyDetail(data: RndTaskDetailView) {
+  detail.value = data;
+  form.productName = data.task.productName;
+  headerTitle.value = `${data.task.productName} ${data.task.versionCode}`;
+  form.specification = data.version.specification ?? data.project?.specification ?? "";
+  if (data.currentExperimentForm?.summary) {
+    form.summary = data.currentExperimentForm.summary;
     draftSaved.value = true;
   }
-  if (detail.value.currentExperimentForm?.materials?.length) {
-    materials.value = detail.value.currentExperimentForm.materials.map((item) => ({
+  if (data.currentExperimentForm?.materials?.length) {
+    materials.value = data.currentExperimentForm.materials.map((item) => ({
       stage: item.stage || "原料",
       materialCode: item.materialCode || "",
       materialName: item.materialName,
@@ -120,15 +189,40 @@ onMounted(async () => {
       remark: item.remark || "",
     }));
   }
-  if (detail.value.currentExperimentForm?.processSteps?.length) {
-    processSteps.value = fromProcessSteps(detail.value.currentExperimentForm.processSteps);
-  } else {
-    const steps = await api.sample.processSteps(detail.value.task.versionId);
+  if (data.currentExperimentForm?.processSteps?.length) {
+    processSteps.value = fromProcessSteps(data.currentExperimentForm.processSteps);
+  }
+}
+
+async function loadProcessTemplate(versionId: string) {
+  try {
+    const steps = await api.sample.processSteps(versionId);
     if (steps.length) {
       processSteps.value = fromProcessSteps(steps);
     }
+  } catch {
+    // 工序模板加载失败不阻断实验单录入
   }
-});
+}
+
+async function loadDetail() {
+  loading.value = true;
+  loadError.value = "";
+  try {
+    await ensureAuthReady();
+    const data = await api.task.detail(String(route.params.id), auth.role, auth.displayName);
+    applyDetail(data);
+    if (!data.currentExperimentForm?.processSteps?.length && !readOnly.value) {
+      await loadProcessTemplate(data.task.versionId);
+    }
+  } catch (error) {
+    loadError.value = error instanceof Error ? error.message : "无法打开实验单";
+  } finally {
+    loading.value = false;
+  }
+}
+
+onMounted(loadDetail);
 
 function addMaterial() {
   materials.value.push(blankMaterial());
@@ -195,7 +289,7 @@ async function afterRead(item: { file?: File } | Array<{ file?: File }>) {
 }
 
 async function notifyTest() {
-  if (!detail.value?.currentExperimentForm?.id) {
+  if (!detail.value?.currentExperimentForm?.id && canSaveDraft.value) {
     await saveDraft();
   }
   const experimentId = detail.value?.currentExperimentForm?.id;

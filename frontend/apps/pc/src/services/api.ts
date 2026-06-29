@@ -21,6 +21,7 @@ const client = createApiClient({
 });
 
 export const api: RndApi = createRndApi(client);
+export { client };
 
 export function persistLogin(accessToken: string, user: Parameters<typeof setStoredUser>[0]) {
   setAccessToken(accessToken);

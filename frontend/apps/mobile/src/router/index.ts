@@ -1,6 +1,9 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
+import { canAccessRoute } from "@rnd/shared";
 import { useAuthStore } from "../stores/auth";
 import MobileLayout from "../layouts/MobileLayout.vue";
+import ExperimentFormView from "../views/ExperimentFormView.vue";
+import TaskDetailView from "../views/TaskDetailView.vue";
 
 const DEMO_BYPASS_AUTH = false;
 
@@ -28,11 +31,14 @@ const routes: RouteRecordRaw[] = [
       { path: "tasks/assign", name: "task-assign", component: () => import("../views/TaskAssignView.vue") },
       { path: "samples", name: "samples", component: () => import("../views/SamplesView.vue"), meta: { tab: "samples" } },
       { path: "profile", name: "profile", component: () => import("../views/ProfileView.vue"), meta: { tab: "profile" } },
-      { path: "tasks/:id", name: "task-detail", component: () => import("../views/TaskDetailView.vue") },
-      { path: "experiments/:id", name: "experiment-form", component: () => import("../views/ExperimentFormView.vue") },
+      { path: "tasks/:id", name: "task-detail", component: TaskDetailView },
+      { path: "experiments/:id", name: "experiment-form", component: ExperimentFormView },
       { path: "tests/:id", name: "test-confirm", component: () => import("../views/TestConfirmView.vue") },
+      { path: "shipments/record", name: "shipment-record", component: () => import("../views/ShipmentRecordView.vue") },
       { path: "shipments/:id", name: "shipment-feedback", component: () => import("../views/ShipmentFeedbackView.vue") },
+      { path: "tasks/:id/feedback", name: "task-customer-feedback", component: () => import("../views/TaskCustomerFeedbackView.vue") },
       { path: "samples/:versionId/history", name: "sample-history", component: () => import("../views/SampleHistoryView.vue") },
+      { path: "403", name: "forbidden", component: () => import("../views/ForbiddenView.vue"), meta: { public: true } },
     ],
   },
 ];
@@ -66,6 +72,12 @@ router.beforeEach(async (to) => {
     if (!restored) {
       return { name: "login" };
     }
+  } else if (!auth.principal) {
+    // 后台拉取用户信息，不阻塞页面跳转（避免手机端点击无反应）
+    void auth.fetchMe().catch(() => undefined);
+  }
+  if (!canAccessRoute(auth.role, to.path, "mobile")) {
+    return { name: "forbidden" };
   }
   return true;
 });

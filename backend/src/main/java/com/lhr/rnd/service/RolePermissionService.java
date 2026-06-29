@@ -73,7 +73,11 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 26),
                         rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 30),
                         rule("POST", "/api/v1/sample-versions/*/shipments", "登记寄样", 40),
+                        rule("GET", "/api/v1/shipments", "查看寄样列表", 45),
                         rule("GET", "/api/v1/shipments/*/detail", "查看寄样详情", 50),
+                        rule("GET", "/api/v1/rnd-tasks", "查看待寄样任务", 48),
+                        rule("GET", "/api/v1/rnd-tasks/*/detail", "查看任务详情", 49),
+                        rule("POST", "/api/v1/experiment-forms/*/submit-test", "通知内部测试", 49),
                         rule("POST", "/api/v1/shipments/*/feedback", "登记客户反馈", 60),
                         rule("POST", "/api/v1/sample-versions/*/pricing-files", "生成核价文件", 70),
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 80),
@@ -81,7 +85,8 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 100),
                         rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 110),
                         rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 120),
-                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 130)
+                        rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 130),
+                        rule("POST", "/api/v1/demo/seed-feedback", "初始化寄样反馈演示数据", 200)
                 )),
                 new RolePermissionConfig("RND_DIRECTOR", List.of(
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
@@ -93,6 +98,11 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 50),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 60),
                         rule("POST", "/api/v1/rnd-tasks/*/assign", "分发研发任务", 70),
+                        rule("POST", "/api/v1/rnd-tasks/*/accept", "接受研发任务", 75),
+                        rule("GET", "/api/v1/sample-versions/*/process-steps", "查看工序步骤", 76),
+                        rule("POST", "/api/v1/rnd-tasks/*/experiment-form/draft", "保存实验单草稿", 77),
+                        rule("POST", "/api/v1/experiment-forms/*/submit-test", "提交内部测试", 78),
+                        rule("POST", "/api/v1/experiment-forms/*/attachments", "上传实验附件", 79),
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 80),
                         rule("GET", "/api/v1/shipments/*/detail", "查看寄样详情", 90),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 100),
@@ -103,6 +113,7 @@ public class RolePermissionService {
                 )),
                 new RolePermissionConfig("RND_ENGINEER", List.of(
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
+                        rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 12),
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 15),
                         rule("GET", "/api/v1/sample-versions/*/process-steps", "查看工序步骤", 16),
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 20),
@@ -116,6 +127,8 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 100)
                 )),
                 new RolePermissionConfig("TESTER", List.of(
+                        rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 3),
+                        rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 8),
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 5),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 10),
                         rule("POST", "/api/v1/test-assignments/*/pass", "提交测试通过", 20),
@@ -124,6 +137,8 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 50)
                 )),
                 new RolePermissionConfig("QA_TESTER", List.of(
+                        rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 3),
+                        rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 8),
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 5),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 10),
                         rule("POST", "/api/v1/test-assignments/*/pass", "提交测试通过", 20),
@@ -132,6 +147,8 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 50)
                 )),
                 new RolePermissionConfig("FINANCE", List.of(
+                        rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 5),
+                        rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 8),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 10),
                         rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 20),
                         rule("POST", "/api/v1/pricing-files/*/notify-finance", "处理核价通知", 30),
@@ -196,13 +213,13 @@ public class RolePermissionService {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
         }
         if (isDashboardRead(method, uri)) {
-            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER");
         }
         if (isTaskList(method, uri)) {
-            return hasAnyRole(role, "RND_DIRECTOR", "RND_ENGINEER", "MANAGER");
+            return hasAnyRole(role, "RND_DIRECTOR", "RND_ENGINEER", "RND_ASSISTANT", "TESTER", "QA_TESTER", "MANAGER");
         }
         if (isTaskDetail(method, uri)) {
-            return hasAnyRole(role, "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "MANAGER");
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "MANAGER");
         }
         if (isShipmentDetail(method, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
@@ -211,7 +228,7 @@ public class RolePermissionService {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
         }
         if (isPricingList(method, uri)) {
-            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "FINANCE", "MANAGER");
         }
         if (isPricingDetail(method, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "FINANCE", "MANAGER");
@@ -231,6 +248,9 @@ public class RolePermissionService {
         return switch (role) {
             case "RND_ASSISTANT" -> isSampleRequestCreate(method, uri)
                     || isSampleRequestList(method, uri)
+                    || isTaskList(method, uri)
+                    || isTaskDetail(method, uri)
+                    || isSubmitExperimentForTest(method, uri)
                     || isShipmentWrite(method, uri)
                     || isCustomerFeedbackWrite(method, uri)
                     || isPricingWrite(method, uri)
@@ -239,6 +259,8 @@ public class RolePermissionService {
                     || isSampleRequestApprove(method, uri)
                     || isTaskPool(method, uri)
                     || isTaskAssign(method, uri)
+                    || isTaskAccept(method, uri)
+                    || isExperimentWrite(method, uri)
                     || isFeishuOperation(method, uri);
             case "RND_ENGINEER" -> isTaskPool(method, uri)
                     || isSampleRequestList(method, uri)
@@ -308,8 +330,12 @@ public class RolePermissionService {
     private boolean isExperimentWrite(String method, String uri) {
         return "POST".equals(method)
                 && (uri.matches("^/api/v1/rnd-tasks/[^/]+/experiment-form/draft$")
-                || uri.matches("^/api/v1/experiment-forms/[^/]+/submit-test$")
+                || isSubmitExperimentForTest(method, uri)
                 || uri.matches("^/api/v1/experiment-forms/[^/]+/attachments$"));
+    }
+
+    private boolean isSubmitExperimentForTest(String method, String uri) {
+        return "POST".equals(method) && uri.matches("^/api/v1/experiment-forms/[^/]+/submit-test$");
     }
 
     private boolean isTestWrite(String method, String uri) {

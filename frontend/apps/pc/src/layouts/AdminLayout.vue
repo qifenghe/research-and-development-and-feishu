@@ -9,12 +9,25 @@
         </div>
       </div>
       <div class="topbar-actions">
-        <a-tag color="blue">{{ auth.displayName }}</a-tag>
+        <a-tag color="blue">{{ roleLabel(auth.role) }}</a-tag>
+        <a-tag>{{ auth.displayName }}</a-tag>
         <a-button size="small" @click="signOut">退出</a-button>
       </div>
     </a-layout-header>
     <a-layout>
-      <a-layout-sider width="220" theme="light" class="sidebar">
+      <a-layout-sider width="240" theme="light" class="sidebar">
+        <div v-if="panel" class="context-panel">
+          <p class="context-panel__eyebrow">当前样品项目</p>
+          <h3 class="context-panel__title">{{ panel.title }}</h3>
+          <p v-if="panel.subtitle" class="context-panel__subtitle">{{ panel.subtitle }}</p>
+          <a-tag v-if="panel.statusLabel" :color="panelTone">{{ panel.statusLabel }}</a-tag>
+          <div class="context-panel__rows">
+            <div v-for="row in panel.rows" :key="row.label" class="context-row">
+              <span>{{ row.label }}</span>
+              <strong>{{ row.value }}</strong>
+            </div>
+          </div>
+        </div>
         <a-menu
           v-model:selectedKeys="selectedKeys"
           v-model:openKeys="openKeys"
@@ -25,24 +38,27 @@
             <span>工作台</span>
           </a-menu-item>
           <a-sub-menu key="demand" title="样品需求">
-            <a-menu-item key="/demand">模块首页</a-menu-item>
-            <a-menu-item key="/demand/new">录入需求</a-menu-item>
-            <a-menu-item key="/demand/review">需求审核</a-menu-item>
+            <a-menu-item v-if="canSee('/demand')" key="/demand">模块首页</a-menu-item>
+            <a-menu-item v-if="canSee('/demand/new')" key="/demand/new">录入需求</a-menu-item>
+            <a-menu-item v-if="canSee('/demand/review')" key="/demand/review">需求审核</a-menu-item>
           </a-sub-menu>
           <a-sub-menu key="rnd" title="研发任务">
-            <a-menu-item key="/rnd">模块首页</a-menu-item>
-            <a-menu-item key="/rnd/pool">任务池</a-menu-item>
-            <a-menu-item key="/rnd/assign">任务分发</a-menu-item>
-            <a-menu-item key="/rnd/stopped">停止项目池</a-menu-item>
+            <a-menu-item v-if="canSee('/rnd')" key="/rnd">模块首页</a-menu-item>
+            <a-menu-item v-if="canSee('/rnd/my-tasks')" key="/rnd/my-tasks">我的打样任务</a-menu-item>
+            <a-menu-item v-if="canSee('/rnd/pending-tests')" key="/rnd/pending-tests">内部测试待办</a-menu-item>
+            <a-menu-item v-if="canSee('/rnd/pool')" key="/rnd/pool">任务池</a-menu-item>
+            <a-menu-item v-if="canSee('/rnd/assign')" key="/rnd/assign">任务分发</a-menu-item>
+            <a-menu-item v-if="canSee('/rnd/stopped')" key="/rnd/stopped">停止项目池</a-menu-item>
           </a-sub-menu>
           <a-sub-menu key="shipment" title="寄样核价">
-            <a-menu-item key="/shipment">模块首页</a-menu-item>
-            <a-menu-item key="/shipment/list">寄样反馈</a-menu-item>
-            <a-menu-item key="/pricing/list">核价文件</a-menu-item>
-            <a-menu-item key="/finance">通知财务</a-menu-item>
-            <a-menu-item key="/archive">文件归档</a-menu-item>
+            <a-menu-item v-if="canSee('/shipment')" key="/shipment">模块首页</a-menu-item>
+            <a-menu-item v-if="canSee('/shipment/list')" key="/shipment/list">寄样反馈</a-menu-item>
+            <a-menu-item v-if="canSee('/shipment/record')" key="/shipment/record">录入反馈</a-menu-item>
+            <a-menu-item v-if="canSee('/pricing/list')" key="/pricing/list">核价文件</a-menu-item>
+            <a-menu-item v-if="canSee('/finance')" key="/finance">通知财务</a-menu-item>
+            <a-menu-item v-if="canSee('/archive')" key="/archive">文件归档</a-menu-item>
           </a-sub-menu>
-          <a-sub-menu key="settings" title="系统设置">
+          <a-sub-menu v-if="canSee('/settings')" key="settings" title="系统设置">
             <a-menu-item key="/settings">配置中心</a-menu-item>
             <a-menu-item key="/settings/users">人员权限</a-menu-item>
             <a-menu-item key="/settings/form-fields">表单字段</a-menu-item>
@@ -66,11 +82,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { canAccessRoute, roleLabel } from "@rnd/shared";
 import { useAuthStore } from "../stores/auth";
+import { useAdminContext } from "../composables/adminContext";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const { panel } = useAdminContext();
+
+function canSee(path: string) {
+  return canAccessRoute(auth.role, path, "pc");
+}
 
 const selectedKeys = ref<string[]>([route.path]);
 const openKeys = ref<string[]>([]);
@@ -81,6 +104,21 @@ const moduleOpenKey = computed(() => {
   if (route.path.startsWith("/shipment") || route.path.startsWith("/pricing") || route.path === "/finance" || route.path === "/archive") return "shipment";
   if (route.path.startsWith("/settings")) return "settings";
   return "";
+});
+
+const panelTone = computed(() => {
+  switch (panel.value?.statusTone) {
+    case "success":
+      return "green";
+    case "warning":
+      return "orange";
+    case "error":
+      return "red";
+    case "processing":
+      return "blue";
+    default:
+      return "default";
+  }
 });
 
 watch(
@@ -152,6 +190,54 @@ function signOut() {
 
 .sidebar {
   border-right: 1px solid #e5e7eb;
+}
+
+.context-panel {
+  background: linear-gradient(180deg, #eef4ff, #fff);
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 8px;
+  padding: 16px 16px 12px;
+}
+
+.context-panel__eyebrow {
+  color: #64748b;
+  font-size: 12px;
+  margin: 0 0 4px;
+}
+
+.context-panel__title {
+  font-size: 16px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.context-panel__subtitle {
+  color: #64748b;
+  font-size: 12px;
+  margin: 4px 0 8px;
+}
+
+.context-panel__rows {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.context-row {
+  display: flex;
+  font-size: 12px;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.context-row span {
+  color: #64748b;
+}
+
+.context-row strong {
+  color: #0f172a;
+  font-weight: 600;
+  text-align: right;
 }
 
 .content {

@@ -35,6 +35,7 @@ export function createTaskApi(client: ApiClient) {
     list: (params?: {
       status?: RndTaskStatus | string;
       keyword?: string;
+      assigneeName?: string;
       page?: number;
       size?: number;
       sort?: string;
@@ -42,6 +43,7 @@ export function createTaskApi(client: ApiClient) {
       const query = new URLSearchParams();
       if (params?.status) query.set("status", params.status);
       if (params?.keyword) query.set("keyword", params.keyword);
+      if (params?.assigneeName) query.set("assigneeName", params.assigneeName);
       if (params?.page !== undefined) query.set("page", String(params.page));
       if (params?.size !== undefined) query.set("size", String(params.size));
       if (params?.sort) query.set("sort", params.sort);
@@ -51,8 +53,11 @@ export function createTaskApi(client: ApiClient) {
       }
       return client.get<RndTask[]>(`/rnd-tasks${suffix}`);
     },
-    detail: (id: string, role?: string) => {
-      const suffix = role ? `?role=${encodeURIComponent(role)}` : "";
+    detail: (id: string, role?: string, operatorName?: string) => {
+      const query = new URLSearchParams();
+      if (role) query.set("role", role);
+      if (operatorName) query.set("operatorName", operatorName);
+      const suffix = query.toString() ? `?${query}` : "";
       return client.get<RndTaskDetailView>(`/rnd-tasks/${id}/detail${suffix}`);
     },
     assign: (id: string, assigneeName: string, dueDate: string) =>

@@ -126,6 +126,11 @@ export interface SampleVersion {
   versionCode: string;
   versionNo: number;
   status: string;
+  sampleNo?: string;
+  productName?: string;
+  specification?: string;
+  applicationScenario?: string;
+  flavorRequirement?: string;
 }
 
 export interface ExperimentMaterial {
@@ -193,9 +198,14 @@ export interface TestAssignment {
   status: string;
 }
 
+export interface DetailField {
+  label: string;
+  value: string;
+}
+
 export interface DetailFieldGroup {
   title: string;
-  fields: Array<{ label: string; value: string }>;
+  fields: Array<string | DetailField>;
 }
 
 export interface DetailAction {
@@ -206,9 +216,22 @@ export interface DetailAction {
   primary: boolean;
 }
 
+export interface SampleProjectSummary {
+  id: string;
+  sampleNo: string;
+  productName: string;
+  productType: string;
+  customerName: string;
+  specification: string;
+  applicationScenario: string;
+  flavorRequirement: string;
+  status: string;
+}
+
 export interface RndTaskDetailView {
   task: RndTask;
   version: SampleVersion;
+  project: SampleProjectSummary | null;
   currentExperimentForm: ExperimentForm | null;
   currentTestAssignment: TestAssignment | null;
   fieldGroups: DetailFieldGroup[];
@@ -237,6 +260,10 @@ export interface ShipmentRecord {
   versionCode: string;
   status: string;
   shippedAt: string;
+  quantity?: number;
+  receiverName?: string;
+  trackingNo?: string;
+  remark?: string;
 }
 
 export interface CustomerFeedback {
@@ -261,6 +288,7 @@ export interface PricingFileRecord {
   sampleNo: string;
   productName: string;
   versionCode: string;
+  pricingVersion: string;
   fileName: string;
   status: PricingFileStatus;
   generatedAt: string;
@@ -270,6 +298,7 @@ export interface FinanceNotification {
   id: string;
   pricingFileId: string;
   recipientName: string;
+  remark?: string;
   status: string;
   notifiedAt: string;
 }

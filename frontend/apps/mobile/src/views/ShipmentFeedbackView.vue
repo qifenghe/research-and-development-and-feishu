@@ -1,29 +1,36 @@
 <template>
-  <div>
+  <div class="page-with-footer">
     <van-skeleton title :row="5" :loading="loading">
       <PageHeader :title="headerTitle" compact>
-        <StatusBadge label="已寄样待反馈" variant="primary" />
+        <StatusBadge :label="statusBadge.label" :variant="statusBadge.variant" />
       </PageHeader>
 
       <InfoCard title="寄样信息" :rows="shipmentFields" />
 
-      <van-field v-model="feedback.comment" rows="3" autosize type="textarea" label="反馈备注" placeholder="客户试吃后反馈…" />
+      <div class="form-panel">
+        <van-field
+          v-model="feedback.comment"
+          rows="3"
+          autosize
+          type="textarea"
+          label="反馈备注"
+          placeholder="客户试吃后反馈…"
+        />
+      </div>
 
       <div class="section-title">处理结论</div>
       <ConclusionButtons v-model="feedback.result" :options="conclusionOptions" />
     </van-skeleton>
 
-    <FixedActionBar>
+    <FixedActionBar :with-tabbar="false">
       <van-button
-        v-if="feedback.result === 'PASSED'"
         type="primary"
         block
         :loading="submitting"
-        @click="submitAndCreatePricing"
+        @click="feedback.result === 'PASSED' ? submitAndCreatePricing() : submitFeedback()"
       >
-        客户通过，生成核价文件
+        {{ primaryButtonLabel }}
       </van-button>
-      <van-button v-else type="primary" block :loading="submitting" @click="submitFeedback">提交寄样反馈</van-button>
     </FixedActionBar>
   </div>
 </template>
@@ -33,6 +40,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { showFailToast, showSuccessToast } from "vant";
 import type { ShipmentDetailView } from "@rnd/shared";
+import { resolveShipmentDetailFields } from "@rnd/shared";
 import PageHeader from "../components/PageHeader.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import InfoCard from "../components/InfoCard.vue";
@@ -63,7 +71,29 @@ const headerTitle = computed(() => {
   return `${detail.value.shipment.productName} ${detail.value.shipment.versionCode}`;
 });
 
-const shipmentFields = computed(() => detail.value?.fieldGroups.flatMap((group) => group.fields) ?? []);
+const statusBadge = computed(() => {
+  const status = detail.value?.shipment.status;
+  if (status === "FEEDBACK_PASSED") {
+    return { label: "客户已通过", variant: "success" as const };
+  }
+  if (status === "SHIPPED") {
+    return { label: "已寄样待反馈", variant: "primary" as const };
+  }
+  return { label: "寄样反馈", variant: "warning" as const };
+});
+
+const primaryButtonLabel = computed(() => {
+  if (feedback.result === "PASSED") return "客户通过，生成核价文件";
+  if (feedback.result === "FAILED_RESAMPLE") return "提交并继续打样";
+  return "提交并停止打样";
+});
+
+const shipmentFields = computed(() => {
+  if (!detail.value) return [];
+  return resolveShipmentDetailFields(detail.value)
+    .flatMap((group) => group.fields)
+    .filter((field) => field.label !== "寄样记录编号");
+});
 
 onMounted(async () => {
   loading.value = true;

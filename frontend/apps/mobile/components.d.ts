@@ -7,8 +7,17 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    ConclusionButtons: typeof import('./src/components/ConclusionButtons.vue')['default']
+    FixedActionBar: typeof import('./src/components/FixedActionBar.vue')['default']
+    HeroCard: typeof import('./src/components/HeroCard.vue')['default']
+    InfoCard: typeof import('./src/components/InfoCard.vue')['default']
+    PageHeader: typeof import('./src/components/PageHeader.vue')['default']
+    ProcessStepEditor: typeof import('./src/components/ProcessStepEditor.vue')['default']
+    RoleEntryGrid: typeof import('./src/components/RoleEntryGrid.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    StatusBadge: typeof import('./src/components/StatusBadge.vue')['default']
+    TaskCard: typeof import('./src/components/TaskCard.vue')['default']
     VanButton: typeof import('vant/es')['Button']
     VanCell: typeof import('vant/es')['Cell']
     VanCellGroup: typeof import('vant/es')['CellGroup']
@@ -22,11 +31,14 @@ declare module 'vue' {
     VanLoading: typeof import('vant/es')['Loading']
     VanNavBar: typeof import('vant/es')['NavBar']
     VanNoticeBar: typeof import('vant/es')['NoticeBar']
+    VanPicker: typeof import('vant/es')['Picker']
+    VanPopup: typeof import('vant/es')['Popup']
     VanPullRefresh: typeof import('vant/es')['PullRefresh']
     VanSearch: typeof import('vant/es')['Search']
     VanSkeleton: typeof import('vant/es')['Skeleton']
     VanTabbar: typeof import('vant/es')['Tabbar']
     VanTabbarItem: typeof import('vant/es')['TabbarItem']
     VanUploader: typeof import('vant/es')['Uploader']
+    VersionTimeline: typeof import('./src/components/VersionTimeline.vue')['default']
   }
 }

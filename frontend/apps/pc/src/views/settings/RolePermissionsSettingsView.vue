@@ -1,6 +1,12 @@
 <template>
   <div>
     <a-page-header title="角色权限" sub-title="配置菜单、按钮和数据范围权限" />
+    <a-alert
+      type="info"
+      show-icon
+      style="margin-bottom: 16px"
+      message="当前 PC/手机菜单权限由系统内置矩阵控制；下方展示的是 API 接口权限配置。"
+    />
     <a-card>
       <a-space style="margin-bottom: 16px">
         <a-input v-model:value="roleCode" placeholder="角色编码，如 RND_DIRECTOR" style="width: 260px" />

@@ -6,7 +6,7 @@ const DEFAULT_PORT = 8787;
 const DEFAULT_BACKEND = "http://127.0.0.1:8080";
 const DEFAULT_PC = "http://localhost:5173";
 const DEFAULT_MOBILE = "http://localhost:5174";
-const DEFAULT_HOST = "127.0.0.1";
+const DEFAULT_HOST = "0.0.0.0";
 
 export function parseGatewayArgs(argv) {
   const options = {
@@ -118,7 +118,9 @@ export function startGateway(options = {}) {
 
 function printHelp() {
   console.log(`用法：
-  node scripts/dev-gateway.mjs [--port 8787] [--host 127.0.0.1] [--backend http://127.0.0.1:8080] [--pc http://127.0.0.1:5173] [--mobile http://127.0.0.1:5174]`);
+  node scripts/dev-gateway.mjs [--port 8787] [--host 0.0.0.0] [--backend http://127.0.0.1:8080] [--pc http://127.0.0.1:5173] [--mobile http://127.0.0.1:5174]
+
+手机联调请使用 --host 0.0.0.0，然后访问 http://<电脑局域网IP>:8787/m/todo`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -50,6 +50,10 @@ export const useAuthStore = defineStore("auth", {
         await this.fetchMe();
         return true;
       } catch {
+        // Safari 偶发网络抖动时，保留本地已登录用户，避免误踢回登录页
+        if (this.user?.role) {
+          return true;
+        }
         this.signOut();
         return false;
       }

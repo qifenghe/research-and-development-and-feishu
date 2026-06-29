@@ -18,7 +18,28 @@ pnpm dev:pc      # http://localhost:5173/admin/
 pnpm dev:mobile  # http://localhost:5174/m/
 ```
 
-后端默认代理到 `http://localhost:8080`。
+后端默认代理到 `http://127.0.0.1:8080`。
+
+### 手机局域网联调
+
+**方式 A（推荐，单端口）**
+
+```bash
+# 在项目根目录
+node scripts/run-feishu-dev.mjs
+node scripts/print-lan-urls.mjs
+# 手机浏览器打开：http://<电脑局域网IP>:8787/m/todo
+```
+
+**方式 B（直连 Vite）**
+
+```bash
+pnpm dev:mobile
+node scripts/print-lan-urls.mjs
+# 手机：http://<电脑局域网IP>:5174/m/
+```
+
+确保 Mac 防火墙允许 5174 / 8787 端口。MOCK 模式下需先在电脑完成演示用户 bind，再在手机选择对应角色登录。
 
 ## 飞书主页配置
 

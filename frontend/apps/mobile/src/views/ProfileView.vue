@@ -11,8 +11,19 @@
     </div>
 
     <div class="menu-card">
-      <van-cell title="我的草稿实验单" is-link :value="`${draftCount} 项`" @click="router.push('/samples?status=SAMPLING')" />
-      <van-cell title="我的已完成记录" is-link @click="router.push('/samples?status=COMPLETED')" />
+      <van-cell
+        v-if="showDraftLink"
+        title="我的草稿实验单"
+        is-link
+        :value="`${draftCount} 项`"
+        @click="router.push('/samples?status=SAMPLING')"
+      />
+      <van-cell
+        v-if="showSamplesLink"
+        title="我的已完成记录"
+        is-link
+        @click="router.push('/samples?status=COMPLETED')"
+      />
       <van-cell title="帮助与反馈" is-link />
     </div>
 
@@ -25,6 +36,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import { canAccessRoute, shouldFilterTasksByAssignee } from "@rnd/shared";
 import PageHeader from "../components/PageHeader.vue";
 import { useAuthStore } from "../stores/auth";
 import { api } from "../services/api";
@@ -34,6 +46,9 @@ const router = useRouter();
 const draftCount = ref(0);
 
 const avatarText = computed(() => auth.displayName.slice(0, 1) || "我");
+const showSamplesLink = computed(() => canAccessRoute(auth.role, "/samples", "mobile"));
+const showDraftLink = computed(() => showSamplesLink.value && shouldFilterTasksByAssignee(auth.role));
+
 const roleLabel = computed(() => {
   const map: Record<string, string> = {
     RND_ENGINEER: "研发人员",
@@ -41,13 +56,18 @@ const roleLabel = computed(() => {
     TESTER: "测试人员",
     QA_TESTER: "测试人员",
     RND_DIRECTOR: "研发总监",
+    FINANCE: "财务",
   };
   return map[auth.role] ?? auth.role ?? "未知";
 });
 
 onMounted(async () => {
+  if (!showDraftLink.value) return;
   try {
-    const tasks = (await api.task.list({ status: "SAMPLING" })) as import("@rnd/shared").RndTask[];
+    const tasks = (await api.task.list({
+      status: "SAMPLING",
+      assigneeName: auth.displayName,
+    })) as import("@rnd/shared").RndTask[];
     draftCount.value = tasks.length;
   } catch {
     draftCount.value = 0;
