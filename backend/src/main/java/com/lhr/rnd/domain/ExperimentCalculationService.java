@@ -9,27 +9,55 @@ public final class ExperimentCalculationService {
     private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
 
     public ProcessLoss processLoss(BigDecimal inputWeight, BigDecimal outputWeight, BigDecimal residualWeight) {
-        var safeResidualWeight = residualWeight == null ? BigDecimal.ZERO : residualWeight;
-        var lossWeight = inputWeight.subtract(outputWeight).subtract(safeResidualWeight);
-        if (lossWeight.signum() < 0) {
+        requireNonNegative(inputWeight, "inputWeight");
+        requireNonNegative(outputWeight, "outputWeight");
+        requireNonNegative(residualWeight, "residualWeight");
+        var normalizedInputWeight = normalizeWeight(inputWeight);
+        var normalizedOutputWeight = normalizeWeight(outputWeight);
+        var normalizedResidualWeight = normalizeWeight(residualWeight);
+
+        if (normalizedInputWeight == null || normalizedOutputWeight == null) {
+            return new ProcessLoss(null, null);
+        }
+
+        var safeResidualWeight = normalizedResidualWeight == null
+                ? BigDecimal.ZERO.setScale(WEIGHT_SCALE, ROUNDING_MODE)
+                : normalizedResidualWeight;
+        var lossWeightKg = normalizedInputWeight.subtract(normalizedOutputWeight).subtract(safeResidualWeight);
+        if (lossWeightKg.signum() < 0) {
             throw new IllegalArgumentException("Output plus residual weight cannot exceed input weight");
         }
 
-        var lossRate = inputWeight.signum() == 0
+        var lossRate = normalizedInputWeight.signum() == 0
                 ? null
-                : lossWeight.divide(inputWeight, RATE_SCALE, ROUNDING_MODE);
-        return new ProcessLoss(
-                lossWeight.setScale(WEIGHT_SCALE, ROUNDING_MODE),
-                lossRate);
+                : lossWeightKg.divide(normalizedInputWeight, RATE_SCALE, ROUNDING_MODE);
+        return new ProcessLoss(lossWeightKg.setScale(WEIGHT_SCALE, ROUNDING_MODE), lossRate);
     }
 
     public BigDecimal finishedYield(BigDecimal finishedProductOutput, BigDecimal primaryRawMaterialInput) {
-        if (primaryRawMaterialInput == null || primaryRawMaterialInput.signum() <= 0) {
+        requireNonNegative(finishedProductOutput, "finishedProductOutput");
+        requireNonNegative(primaryRawMaterialInput, "primaryRawMaterialInput");
+        var normalizedFinishedProductOutput = normalizeWeight(finishedProductOutput);
+        var normalizedPrimaryRawMaterialInput = normalizeWeight(primaryRawMaterialInput);
+
+        if (normalizedFinishedProductOutput == null
+                || normalizedPrimaryRawMaterialInput == null
+                || normalizedPrimaryRawMaterialInput.signum() == 0) {
             return null;
         }
-        return finishedProductOutput.divide(primaryRawMaterialInput, RATE_SCALE, ROUNDING_MODE);
+        return normalizedFinishedProductOutput.divide(normalizedPrimaryRawMaterialInput, RATE_SCALE, ROUNDING_MODE);
     }
 
-    public record ProcessLoss(BigDecimal lossWeight, BigDecimal lossRate) {
+    private BigDecimal normalizeWeight(BigDecimal weight) {
+        return weight == null ? null : weight.setScale(WEIGHT_SCALE, ROUNDING_MODE);
+    }
+
+    private void requireNonNegative(BigDecimal weight, String fieldName) {
+        if (weight != null && weight.signum() < 0) {
+            throw new IllegalArgumentException(fieldName + " must not be negative");
+        }
+    }
+
+    public record ProcessLoss(BigDecimal lossWeightKg, BigDecimal lossRate) {
     }
 }
