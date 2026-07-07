@@ -52,6 +52,11 @@ class ExperimentCalculationServiceTest {
     }
 
     @Test
+    void returnsNoFinishedYieldWhenPrimaryRawMaterialInputIsNegative() {
+        assertThat(service.finishedYield(new BigDecimal("10"), new BigDecimal("-1"))).isNull();
+    }
+
+    @Test
     void rejectsOutputAndResidualThatExceedInput() {
         assertThatThrownBy(() -> service.processLoss(
                 new BigDecimal("10"),
