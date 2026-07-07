@@ -23,6 +23,7 @@ backend/.env.feishu.local
 .idea/
 .vscode/
 .superpowers/
+.worktrees/
 
 # Node
 node_modules/
