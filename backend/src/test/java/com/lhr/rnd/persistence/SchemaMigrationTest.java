@@ -74,6 +74,15 @@ class SchemaMigrationTest {
         assertColumnExists("workflow_rule_config", "action_code");
         assertColumnExists("workflow_rule_config", "next_status");
         assertColumnExists("workflow_rule_config", "notify_feishu");
+        assertColumnExists("experiment_material", "material_category");
+        assertColumnExists("experiment_material", "is_primary_material");
+        assertColumnExists("experiment_material", "formula_ratio");
+        assertColumnExists("experiment_material", "input_unit");
+        assertColumnExists("experiment_process", "remaining_weight_kg");
+        assertColumnExists("experiment_process", "remaining_disposition");
+        assertColumnExists("experiment_process", "loss_weight_kg");
+        assertColumnExists("experiment_form", "finished_output_weight_kg");
+        assertColumnExists("experiment_form", "finished_yield_ratio");
     }
 
     private void assertTableExists(String tableName) {
