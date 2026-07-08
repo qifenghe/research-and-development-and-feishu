@@ -1,5 +1,6 @@
 package com.lhr.rnd.model;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -16,6 +17,8 @@ public record ExperimentForm(
         String summary,
         List<ExperimentMaterial> materials,
         List<ExperimentProcessStep> processSteps,
+        BigDecimal finishedOutputWeightKg,
+        BigDecimal finishedYieldRatio,
         LocalDateTime savedAt,
         LocalDateTime submittedAt
 ) {
@@ -33,6 +36,8 @@ public record ExperimentForm(
                 summary,
                 materials,
                 processSteps,
+                finishedOutputWeightKg,
+                finishedYieldRatio,
                 savedAt,
                 submittedAt
         );
@@ -52,6 +57,8 @@ public record ExperimentForm(
                 summary,
                 materials,
                 processSteps,
+                finishedOutputWeightKg,
+                finishedYieldRatio,
                 savedAt,
                 submittedAt
         );

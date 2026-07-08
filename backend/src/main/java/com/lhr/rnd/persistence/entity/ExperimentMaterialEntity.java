@@ -37,6 +37,18 @@ public class ExperimentMaterialEntity {
     @Column(name = "remark")
     private String remark;
 
+    @Column(name = "material_category", nullable = false)
+    private String materialCategory;
+
+    @Column(name = "is_primary_material", nullable = false)
+    private Boolean primaryMaterial;
+
+    @Column(name = "formula_ratio")
+    private BigDecimal formulaRatio;
+
+    @Column(name = "input_unit", nullable = false)
+    private String inputUnit;
+
     protected ExperimentMaterialEntity() {
     }
 
@@ -49,7 +61,11 @@ public class ExperimentMaterialEntity {
             String materialName,
             BigDecimal weightKg,
             BigDecimal utilizationRate,
-            String remark
+            String remark,
+            String materialCategory,
+            Boolean primaryMaterial,
+            BigDecimal formulaRatio,
+            String inputUnit
     ) {
         this.id = id;
         this.experimentFormId = experimentFormId;
@@ -60,5 +76,25 @@ public class ExperimentMaterialEntity {
         this.weightKg = weightKg;
         this.utilizationRate = utilizationRate;
         this.remark = remark;
+        this.materialCategory = materialCategory;
+        this.primaryMaterial = primaryMaterial;
+        this.formulaRatio = formulaRatio;
+        this.inputUnit = inputUnit;
+    }
+
+    public String getMaterialCategory() {
+        return materialCategory;
+    }
+
+    public Boolean getPrimaryMaterial() {
+        return primaryMaterial;
+    }
+
+    public BigDecimal getFormulaRatio() {
+        return formulaRatio;
+    }
+
+    public String getInputUnit() {
+        return inputUnit;
     }
 }

@@ -163,7 +163,9 @@ public class SampleWorkflowController {
                 request.operatorName(),
                 request.summary(),
                 request.materials(),
-                request.processSteps()
+                request.processSteps(),
+                request.finishedOutputWeightKg(),
+                request.finishedYieldRatio()
         )));
     }
 

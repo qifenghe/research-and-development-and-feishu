@@ -28,6 +28,15 @@ public class ExperimentProcessEntity {
     @Column(name = "after_weight_kg")
     private BigDecimal afterWeightKg;
 
+    @Column(name = "remaining_weight_kg")
+    private BigDecimal remainingWeightKg;
+
+    @Column(name = "remaining_disposition")
+    private String remainingDisposition;
+
+    @Column(name = "loss_weight_kg")
+    private BigDecimal lossWeightKg;
+
     @Column(name = "loss_rate")
     private BigDecimal lossRate;
 
@@ -44,6 +53,9 @@ public class ExperimentProcessEntity {
             String processName,
             BigDecimal beforeWeightKg,
             BigDecimal afterWeightKg,
+            BigDecimal remainingWeightKg,
+            String remainingDisposition,
+            BigDecimal lossWeightKg,
             BigDecimal lossRate,
             String remark
     ) {
@@ -53,6 +65,9 @@ public class ExperimentProcessEntity {
         this.processName = processName;
         this.beforeWeightKg = beforeWeightKg;
         this.afterWeightKg = afterWeightKg;
+        this.remainingWeightKg = remainingWeightKg;
+        this.remainingDisposition = remainingDisposition;
+        this.lossWeightKg = lossWeightKg;
         this.lossRate = lossRate;
         this.remark = remark;
     }
@@ -71,6 +86,18 @@ public class ExperimentProcessEntity {
 
     public java.math.BigDecimal getAfterWeightKg() {
         return afterWeightKg;
+    }
+
+    public BigDecimal getRemainingWeightKg() {
+        return remainingWeightKg;
+    }
+
+    public String getRemainingDisposition() {
+        return remainingDisposition;
+    }
+
+    public BigDecimal getLossWeightKg() {
+        return lossWeightKg;
     }
 
     public java.math.BigDecimal getLossRate() {

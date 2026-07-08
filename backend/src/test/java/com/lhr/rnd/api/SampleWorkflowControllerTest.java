@@ -63,6 +63,7 @@ class SampleWorkflowControllerTest {
                 "shipment_record",
                 "test_record",
                 "test_assignment",
+                "experiment_process",
                 "experiment_material",
                 "experiment_form",
                 "feishu_notification",
@@ -184,6 +185,130 @@ class SampleWorkflowControllerTest {
                         .content("{\"acceptedBy\":\"张研发\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
+    }
+
+    @Test
+    void savesStructuredExperimentDraftAndRecalculatesFormulaLossAndYield() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        var response = mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "张研发",
+                                  "summary": "结构化实验草稿",
+                                  "materials": [
+                                    {
+                                      "stage": "原料",
+                                      "sequence": 1,
+                                      "materialCode": "RAW-001",
+                                      "materialName": "主原料",
+                                      "weightKg": 10,
+                                      "materialCategory": "RAW",
+                                      "primaryMaterial": true,
+                                      "formulaRatio": 99
+                                    },
+                                    {
+                                      "stage": "辅料",
+                                      "sequence": 2,
+                                      "materialCode": "AUX-001",
+                                      "materialName": "辅料",
+                                      "weightKg": 2
+                                    }
+                                  ],
+                                  "processSteps": [
+                                    {
+                                      "sequence": 1,
+                                      "processName": "蒸煮",
+                                      "beforeWeightKg": 10,
+                                      "afterWeightKg": 8,
+                                      "remainingWeightKg": 0.5,
+                                      "remainingDisposition": "RETURNED",
+                                      "lossWeightKg": 99,
+                                      "lossRate": 99
+                                    }
+                                  ],
+                                  "finishedOutputWeightKg": 8,
+                                  "finishedYieldRatio": 99
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.materials[0].materialCategory").value("RAW"))
+                .andExpect(jsonPath("$.data.materials[0].primaryMaterial").value(true))
+                .andExpect(jsonPath("$.data.materials[0].utilizationRate").value(1.0))
+                .andExpect(jsonPath("$.data.materials[0].formulaRatio").value(1.0))
+                .andExpect(jsonPath("$.data.materials[0].inputUnit").value("kg"))
+                .andExpect(jsonPath("$.data.materials[1].materialCategory").value("AUXILIARY"))
+                .andExpect(jsonPath("$.data.materials[1].formulaRatio").value(0.2))
+                .andExpect(jsonPath("$.data.processSteps[0].remainingWeightKg").value(0.5))
+                .andExpect(jsonPath("$.data.processSteps[0].remainingDisposition").value("RETURNED"))
+                .andExpect(jsonPath("$.data.processSteps[0].lossWeightKg").value(1.5))
+                .andExpect(jsonPath("$.data.processSteps[0].lossRate").value(0.15))
+                .andExpect(jsonPath("$.data.finishedOutputWeightKg").value(8.0))
+                .andExpect(jsonPath("$.data.finishedYieldRatio").value(0.8))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        var formId = objectMapper.readTree(response).path("data").path("id").asText();
+        assertThat(jdbcTemplate.queryForObject(
+                "select finished_yield_ratio from experiment_form where id = ?",
+                java.math.BigDecimal.class,
+                formId
+        )).isEqualByComparingTo("0.8");
+        assertThat(jdbcTemplate.queryForObject(
+                "select formula_ratio from experiment_material where experiment_form_id = ? and sequence = 2",
+                java.math.BigDecimal.class,
+                formId
+        )).isEqualByComparingTo("0.2");
+        assertThat(jdbcTemplate.queryForObject(
+                "select loss_weight_kg from experiment_process where experiment_form_id = ? and sequence = 1",
+                java.math.BigDecimal.class,
+                formId
+        )).isEqualByComparingTo("1.5");
+    }
+
+    @Test
+    void rejectsExperimentDraftWithDuplicatedPrimaryMaterials() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "张研发",
+                                  "materials": [
+                                    {"stage":"原料","sequence":1,"materialName":"原料A","weightKg":10,"materialCategory":"RAW","primaryMaterial":true},
+                                    {"stage":"原料","sequence":2,"materialName":"原料B","weightKg":5,"materialCategory":"RAW","primaryMaterial":true}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRIMARY_MATERIAL_DUPLICATED"));
+    }
+
+    @Test
+    void rejectsExperimentDraftWithPackagingPrimaryMaterial() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "张研发",
+                                  "materials": [
+                                    {"stage":"包材","sequence":1,"materialName":"包装袋","weightKg":1,"materialCategory":"PACKAGING","primaryMaterial":true}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRIMARY_MATERIAL_INVALID"));
     }
 
     @Test

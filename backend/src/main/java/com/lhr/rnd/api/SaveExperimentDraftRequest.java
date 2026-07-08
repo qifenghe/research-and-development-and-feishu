@@ -5,12 +5,15 @@ import com.lhr.rnd.model.ExperimentProcessStep;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 public record SaveExperimentDraftRequest(
         @NotBlank String operatorName,
         String summary,
         @Valid List<ExperimentMaterial> materials,
-        @Valid List<ExperimentProcessStep> processSteps
+        @Valid List<ExperimentProcessStep> processSteps,
+        BigDecimal finishedOutputWeightKg,
+        BigDecimal finishedYieldRatio
 ) {
 }

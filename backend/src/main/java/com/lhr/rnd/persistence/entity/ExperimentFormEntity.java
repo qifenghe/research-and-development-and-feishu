@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -40,6 +41,12 @@ public class ExperimentFormEntity {
     @Column(name = "summary")
     private String summary;
 
+    @Column(name = "finished_output_weight_kg")
+    private BigDecimal finishedOutputWeightKg;
+
+    @Column(name = "finished_yield_ratio")
+    private BigDecimal finishedYieldRatio;
+
     @Column(name = "saved_at", nullable = false)
     private LocalDateTime savedAt;
 
@@ -60,6 +67,8 @@ public class ExperimentFormEntity {
             String status,
             String operatorName,
             String summary,
+            BigDecimal finishedOutputWeightKg,
+            BigDecimal finishedYieldRatio,
             LocalDateTime savedAt,
             LocalDateTime submittedAt
     ) {
@@ -73,6 +82,8 @@ public class ExperimentFormEntity {
         this.status = status;
         this.operatorName = operatorName;
         this.summary = summary;
+        this.finishedOutputWeightKg = finishedOutputWeightKg;
+        this.finishedYieldRatio = finishedYieldRatio;
         this.savedAt = savedAt;
         this.submittedAt = submittedAt;
     }
@@ -102,7 +113,20 @@ public class ExperimentFormEntity {
         return versionCode;
     }
 
+    public String getStatus() {
+        return status;
+    }
+
+    public BigDecimal getFinishedOutputWeightKg() {
+        return finishedOutputWeightKg;
+    }
+
+    public BigDecimal getFinishedYieldRatio() {
+        return finishedYieldRatio;
+    }
+
     public LocalDateTime getSavedAt() {
         return savedAt;
     }
+
 }

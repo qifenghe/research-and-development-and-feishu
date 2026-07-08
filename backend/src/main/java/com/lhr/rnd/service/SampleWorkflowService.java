@@ -2,6 +2,7 @@ package com.lhr.rnd.service;
 
 import com.lhr.rnd.api.BusinessException;
 import com.lhr.rnd.domain.SampleAction;
+import com.lhr.rnd.domain.ExperimentCalculationService;
 import com.lhr.rnd.domain.SampleStatus;
 import com.lhr.rnd.domain.SampleStatusMachine;
 import com.lhr.rnd.domain.SampleVersionCode;
@@ -71,6 +72,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -78,6 +81,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.Set;
 import java.util.UUID;
@@ -96,6 +100,7 @@ public class SampleWorkflowService {
 
     private final Clock clock;
     private final PricingFileService pricingFileService = new PricingFileService();
+    private final ExperimentCalculationService experimentCalculationService = new ExperimentCalculationService();
     private final LocalArchiveStorageService archiveStorageService;
     private final FeishuIntegrationService feishuIntegrationService;
     private final WorkflowDrivenSampleStatusMachine workflowStatusMachine;
@@ -385,7 +390,18 @@ public class SampleWorkflowService {
                 .filter(form -> form.taskId().equals(command.taskId()))
                 .findFirst();
         var id = existing.map(ExperimentForm::id).orElse("EXP-%04d".formatted(experimentSequence++));
-        var processSteps = command.processSteps() == null ? List.<ExperimentProcessStep>of() : List.copyOf(command.processSteps());
+        var materials = normalizeExperimentMaterials(command.materials());
+        validatePrimaryMaterial(materials);
+        materials = recalculateFormulaRatios(materials);
+        var processSteps = recalculateProcessLosses(command.processSteps());
+        var primaryInput = materials.stream()
+                .filter(ExperimentMaterial::primaryMaterial)
+                .map(ExperimentMaterial::weightKg)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+        var finishedYieldRatio = experimentCalculationService.finishedYield(
+                command.finishedOutputWeightKg(), primaryInput);
         var draft = new ExperimentForm(
                 id,
                 task.id(),
@@ -397,8 +413,10 @@ public class SampleWorkflowService {
                 ExperimentFormStatus.DRAFT,
                 command.operatorName(),
                 command.summary(),
-                command.materials() == null ? List.of() : List.copyOf(command.materials()),
+                materials,
                 processSteps,
+                command.finishedOutputWeightKg(),
+                finishedYieldRatio,
                 now(),
                 null
         );
@@ -847,6 +865,9 @@ public class SampleWorkflowService {
                         entity.getProcessName(),
                         entity.getBeforeWeightKg(),
                         entity.getAfterWeightKg(),
+                        entity.getRemainingWeightKg(),
+                        entity.getRemainingDisposition(),
+                        entity.getLossWeightKg(),
                         entity.getLossRate(),
                         entity.getRemark()
                 ))
@@ -1704,6 +1725,109 @@ public class SampleWorkflowService {
         rndTaskRepository.save(taskEntity);
     }
 
+    private List<ExperimentMaterial> normalizeExperimentMaterials(List<ExperimentMaterial> requestedMaterials) {
+        if (requestedMaterials == null) {
+            return List.of();
+        }
+        return requestedMaterials.stream()
+                .filter(Objects::nonNull)
+                .map(material -> new ExperimentMaterial(
+                        material.stage(),
+                        material.sequence(),
+                        material.materialCode(),
+                        material.materialName(),
+                        material.weightKg(),
+                        material.utilizationRate() == null ? BigDecimal.ONE : material.utilizationRate(),
+                        material.remark(),
+                        material.materialCategory() == null
+                                ? categoryFromStage(material.stage())
+                                : material.materialCategory(),
+                        material.primaryMaterial(),
+                        null,
+                        material.inputUnit() == null ? "kg" : material.inputUnit()
+                ))
+                .toList();
+    }
+
+    private void validatePrimaryMaterial(List<ExperimentMaterial> materials) {
+        var primary = materials.stream().filter(ExperimentMaterial::primaryMaterial).toList();
+        if (primary.size() > 1) {
+            throw new BusinessException("PRIMARY_MATERIAL_DUPLICATED", "只能指定一个主原料");
+        }
+        if (primary.stream().anyMatch(material -> "PACKAGING".equals(material.materialCategory()))) {
+            throw new BusinessException("PRIMARY_MATERIAL_INVALID", "包材不能设为主原料");
+        }
+    }
+
+    private List<ExperimentMaterial> recalculateFormulaRatios(List<ExperimentMaterial> materials) {
+        var primaryWeight = materials.stream()
+                .filter(ExperimentMaterial::primaryMaterial)
+                .map(ExperimentMaterial::weightKg)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+        return materials.stream()
+                .map(material -> new ExperimentMaterial(
+                        material.stage(),
+                        material.sequence(),
+                        material.materialCode(),
+                        material.materialName(),
+                        material.weightKg(),
+                        material.utilizationRate(),
+                        material.remark(),
+                        material.materialCategory(),
+                        material.primaryMaterial(),
+                        formulaRatio(material.weightKg(), primaryWeight),
+                        material.inputUnit()
+                ))
+                .toList();
+    }
+
+    private BigDecimal formulaRatio(BigDecimal materialWeight, BigDecimal primaryWeight) {
+        if (materialWeight == null || primaryWeight == null || primaryWeight.signum() == 0) {
+            return null;
+        }
+        return materialWeight.divide(primaryWeight, 6, RoundingMode.HALF_UP);
+    }
+
+    private List<ExperimentProcessStep> recalculateProcessLosses(List<ExperimentProcessStep> requestedSteps) {
+        if (requestedSteps == null) {
+            return List.of();
+        }
+        return requestedSteps.stream()
+                .filter(Objects::nonNull)
+                .map(step -> {
+                    var loss = experimentCalculationService.processLoss(
+                            step.beforeWeightKg(), step.afterWeightKg(), step.remainingWeightKg());
+                    return new ExperimentProcessStep(
+                            step.sequence(),
+                            step.processName(),
+                            step.beforeWeightKg(),
+                            step.afterWeightKg(),
+                            step.remainingWeightKg(),
+                            step.remainingDisposition(),
+                            loss.lossWeightKg(),
+                            loss.lossRate(),
+                            step.remark()
+                    );
+                })
+                .toList();
+    }
+
+    private String categoryFromStage(String stage) {
+        if (stage == null) {
+            return "RAW";
+        }
+        var normalized = stage.trim().toUpperCase();
+        if (normalized.equals("AUXILIARY") || normalized.equals("AUX") || stage.contains("辅")) {
+            return "AUXILIARY";
+        }
+        if (normalized.equals("PACKAGING") || normalized.equals("PACKAGE") || stage.contains("包")) {
+            return "PACKAGING";
+        }
+        return "RAW";
+    }
+
     private void persistExperimentDraft(ExperimentForm draft) {
         if (experimentFormRepository == null || experimentMaterialRepository == null) {
             return;
@@ -1719,6 +1843,8 @@ public class SampleWorkflowService {
                 draft.status().name(),
                 draft.operatorName(),
                 draft.summary(),
+                draft.finishedOutputWeightKg(),
+                draft.finishedYieldRatio(),
                 draft.savedAt(),
                 draft.submittedAt()
         ));
@@ -1734,7 +1860,11 @@ public class SampleWorkflowService {
                     material.materialName(),
                     material.weightKg(),
                     material.utilizationRate(),
-                    material.remark()
+                    material.remark(),
+                    material.materialCategory(),
+                    material.primaryMaterial(),
+                    material.formulaRatio(),
+                    material.inputUnit()
             ));
         }
         experimentMaterialRepository.saveAll(materialEntities);
@@ -1749,6 +1879,9 @@ public class SampleWorkflowService {
                         step.processName(),
                         step.beforeWeightKg(),
                         step.afterWeightKg(),
+                        step.remainingWeightKg(),
+                        step.remainingDisposition(),
+                        step.lossWeightKg(),
                         step.lossRate(),
                         step.remark()
                 ));
@@ -2151,8 +2284,19 @@ public class SampleWorkflowService {
             String operatorName,
             String summary,
             List<ExperimentMaterial> materials,
-            List<ExperimentProcessStep> processSteps
+            List<ExperimentProcessStep> processSteps,
+            BigDecimal finishedOutputWeightKg,
+            BigDecimal finishedYieldRatio
     ) {
+        public SaveExperimentDraftCommand(
+                String taskId,
+                String operatorName,
+                String summary,
+                List<ExperimentMaterial> materials,
+                List<ExperimentProcessStep> processSteps
+        ) {
+            this(taskId, operatorName, summary, materials, processSteps, null, null);
+        }
     }
 
     public record CreateShipmentCommand(
