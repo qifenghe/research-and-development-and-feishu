@@ -1,11 +1,15 @@
 package com.lhr.rnd.persistence;
 
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
+
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -92,6 +96,33 @@ class SchemaMigrationTest {
         assertNumericColumn("experiment_process", "loss_weight_kg", 14, 4);
         assertNumericColumn("experiment_form", "finished_output_weight_kg", 14, 4);
         assertNumericColumn("experiment_form", "finished_yield_ratio", 10, 6);
+    }
+
+    @Test
+    void backfillsMaterialCategoryFromLegacyStageValues() {
+        String databaseUrl = "jdbc:h2:mem:material-backfill-" + UUID.randomUUID()
+                + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
+        var legacyFlyway = Flyway.configure()
+                .dataSource(databaseUrl, "sa", "")
+                .locations("classpath:db/migration")
+                .target("7")
+                .load();
+        legacyFlyway.migrate();
+
+        var legacyJdbcTemplate = new JdbcTemplate(new DriverManagerDataSource(databaseUrl, "sa", ""));
+        insertLegacyExperimentMaterials(legacyJdbcTemplate);
+
+        Flyway.configure()
+                .dataSource(databaseUrl, "sa", "")
+                .locations("classpath:db/migration")
+                .target("9")
+                .load()
+                .migrate();
+
+        assertThat(legacyJdbcTemplate.queryForList(
+                "select material_category from experiment_material order by sequence",
+                String.class
+        )).containsExactly("RAW", "AUXILIARY", "PACKAGING", "RAW");
     }
 
     private void assertTableExists(String tableName) {
@@ -201,5 +232,43 @@ class SchemaMigrationTest {
         assertThat(((Number) metadata.get("NUMERIC_SCALE")).intValue())
                 .as("column %s.%s scale", tableName, columnName)
                 .isEqualTo(scale);
+    }
+
+    private void insertLegacyExperimentMaterials(JdbcTemplate template) {
+        template.update("""
+                insert into sample_project (
+                    id, sample_no, product_name, product_type, customer_name, specification, status, created_at
+                ) values ('PROJECT-LEGACY', 'SAMPLE-LEGACY', 'Legacy product', 'TEST', 'Legacy customer',
+                          'Legacy spec', 'SAMPLING', current_timestamp)
+                """);
+        template.update("""
+                insert into sample_version (
+                    id, project_id, sample_no, product_name, product_type, specification, version_no,
+                    version_number, version_code, created_at
+                ) values ('VERSION-LEGACY', 'PROJECT-LEGACY', 'SAMPLE-LEGACY', 'Legacy product', 'TEST',
+                          'Legacy spec', 'A0', 1, 'A0', current_timestamp)
+                """);
+        template.update("""
+                insert into rnd_task (
+                    id, project_id, version_id, sample_no, product_name, version_code, status, created_at
+                ) values ('TASK-LEGACY', 'PROJECT-LEGACY', 'VERSION-LEGACY', 'SAMPLE-LEGACY',
+                          'Legacy product', 'A0', 'SAMPLING', current_timestamp)
+                """);
+        template.update("""
+                insert into experiment_form (
+                    id, task_id, project_id, version_id, sample_no, product_name, version_code, status,
+                    operator_name, saved_at
+                ) values ('FORM-LEGACY', 'TASK-LEGACY', 'PROJECT-LEGACY', 'VERSION-LEGACY', 'SAMPLE-LEGACY',
+                          'Legacy product', 'A0', 'DRAFT', 'Legacy operator', current_timestamp)
+                """);
+        template.update("""
+                insert into experiment_material (
+                    id, experiment_form_id, stage, sequence, material_name, weight_kg, utilization_rate
+                ) values
+                    ('MATERIAL-RAW', 'FORM-LEGACY', '原料', 1, 'Raw material', 10, 1),
+                    ('MATERIAL-AUX', 'FORM-LEGACY', '辅料', 2, 'Auxiliary material', 2, 1),
+                    ('MATERIAL-PACKAGING', 'FORM-LEGACY', '包材', 3, 'Packaging material', 1, 1),
+                    ('MATERIAL-DEFAULT', 'FORM-LEGACY', null, 4, 'Default material', 1, 1)
+                """);
     }
 }
