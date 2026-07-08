@@ -10,6 +10,9 @@ set material_category = case
     else 'RAW'
 end;
 
+alter table experiment_material alter column material_category set default 'RAW';
+alter table experiment_material alter column material_category set not null;
+
 alter table experiment_process add column remaining_weight_kg numeric(14, 4);
 alter table experiment_process add column remaining_disposition varchar(30);
 alter table experiment_process add column loss_weight_kg numeric(14, 4);
