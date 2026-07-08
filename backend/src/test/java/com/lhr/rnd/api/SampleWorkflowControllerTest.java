@@ -271,6 +271,59 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void readsCompleteExperimentFormFromPersistenceAfterMemoryCacheIsCleared() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "张研发",
+                                  "summary": "持久化回读",
+                                  "materials": [
+                                    {"stage":"辅料","sequence":2,"materialCode":"AUX-001","materialName":"辅料","weightKg":2},
+                                    {"stage":"原料","sequence":1,"materialCode":"RAW-001","materialName":"主原料","weightKg":10,"materialCategory":"RAW","primaryMaterial":true}
+                                  ],
+                                  "processSteps": [
+                                    {"sequence":2,"processName":"冷却","beforeWeightKg":8,"afterWeightKg":7.5,"remainingWeightKg":0.2,"remainingDisposition":"DISCARDED"},
+                                    {"sequence":1,"processName":"蒸煮","beforeWeightKg":10,"afterWeightKg":8,"remainingWeightKg":0.5,"remainingDisposition":"RETURNED"}
+                                  ],
+                                  "finishedOutputWeightKg":8,
+                                  "finishedYieldRatio":99
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        ((Map<?, ?>) ReflectionTestUtils.getField(workflowService, "experimentForms")).clear();
+
+        mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                        .param("role", "RND_ENGINEER")
+                        .param("operatorName", "张研发"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentExperimentForm.taskId").value(taskId))
+                .andExpect(jsonPath("$.data.currentExperimentForm.operatorName").value("张研发"))
+                .andExpect(jsonPath("$.data.currentExperimentForm.summary").value("持久化回读"))
+                .andExpect(jsonPath("$.data.currentExperimentForm.status").value("DRAFT"))
+                .andExpect(jsonPath("$.data.currentExperimentForm.finishedOutputWeightKg").value(8.0))
+                .andExpect(jsonPath("$.data.currentExperimentForm.finishedYieldRatio").value(0.8))
+                .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].sequence").value(1))
+                .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].materialCategory").value("RAW"))
+                .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].primaryMaterial").value(true))
+                .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].formulaRatio").value(1.0))
+                .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].inputUnit").value("kg"))
+                .andExpect(jsonPath("$.data.currentExperimentForm.materials[1].sequence").value(2))
+                .andExpect(jsonPath("$.data.currentExperimentForm.materials[1].materialCategory").value("AUXILIARY"))
+                .andExpect(jsonPath("$.data.currentExperimentForm.materials[1].utilizationRate").value(1.0))
+                .andExpect(jsonPath("$.data.currentExperimentForm.processSteps[0].sequence").value(1))
+                .andExpect(jsonPath("$.data.currentExperimentForm.processSteps[0].remainingWeightKg").value(0.5))
+                .andExpect(jsonPath("$.data.currentExperimentForm.processSteps[0].remainingDisposition").value("RETURNED"))
+                .andExpect(jsonPath("$.data.currentExperimentForm.processSteps[0].lossWeightKg").value(1.5))
+                .andExpect(jsonPath("$.data.currentExperimentForm.processSteps[1].sequence").value(2));
+    }
+
+    @Test
     void rejectsExperimentDraftWithDuplicatedPrimaryMaterials() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);

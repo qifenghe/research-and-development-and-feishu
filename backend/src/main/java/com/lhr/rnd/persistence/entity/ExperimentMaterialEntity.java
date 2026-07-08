@@ -82,6 +82,34 @@ public class ExperimentMaterialEntity {
         this.inputUnit = inputUnit;
     }
 
+    public String getStage() {
+        return stage;
+    }
+
+    public Integer getSequence() {
+        return sequence;
+    }
+
+    public String getMaterialCode() {
+        return materialCode;
+    }
+
+    public String getMaterialName() {
+        return materialName;
+    }
+
+    public BigDecimal getWeightKg() {
+        return weightKg;
+    }
+
+    public BigDecimal getUtilizationRate() {
+        return utilizationRate;
+    }
+
+    public String getRemark() {
+        return remark;
+    }
+
     public String getMaterialCategory() {
         return materialCategory;
     }

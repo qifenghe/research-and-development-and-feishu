@@ -948,10 +948,75 @@ public class SampleWorkflowService {
     }
 
     private ExperimentForm currentExperimentForm(String taskId) {
-        return experimentForms.values().stream()
+        var cached = experimentForms.values().stream()
                 .filter(form -> form.taskId().equals(taskId))
                 .max(Comparator.comparing(ExperimentForm::savedAt))
                 .orElse(null);
+        if (cached != null || experimentFormRepository == null) {
+            return cached;
+        }
+        return experimentFormRepository.findFirstByTaskIdOrderBySavedAtDesc(taskId)
+                .map(this::hydrateExperimentForm)
+                .map(form -> {
+                    experimentForms.put(form.id(), form);
+                    return form;
+                })
+                .orElse(null);
+    }
+
+    private ExperimentForm hydrateExperimentForm(ExperimentFormEntity entity) {
+        var materials = experimentMaterialRepository == null
+                ? List.<ExperimentMaterial>of()
+                : experimentMaterialRepository.findByExperimentFormIdOrderBySequenceAsc(entity.getId()).stream()
+                .map(material -> new ExperimentMaterial(
+                        material.getStage(),
+                        material.getSequence(),
+                        material.getMaterialCode(),
+                        material.getMaterialName(),
+                        material.getWeightKg(),
+                        material.getUtilizationRate() == null ? BigDecimal.ONE : material.getUtilizationRate(),
+                        material.getRemark(),
+                        material.getMaterialCategory() == null
+                                ? categoryFromStage(material.getStage())
+                                : material.getMaterialCategory(),
+                        Boolean.TRUE.equals(material.getPrimaryMaterial()),
+                        material.getFormulaRatio(),
+                        material.getInputUnit() == null ? "kg" : material.getInputUnit()
+                ))
+                .toList();
+        var processSteps = experimentProcessRepository == null
+                ? List.<ExperimentProcessStep>of()
+                : experimentProcessRepository.findByExperimentFormIdOrderBySequenceAsc(entity.getId()).stream()
+                .map(process -> new ExperimentProcessStep(
+                        process.getSequence(),
+                        process.getProcessName(),
+                        process.getBeforeWeightKg(),
+                        process.getAfterWeightKg(),
+                        process.getRemainingWeightKg(),
+                        process.getRemainingDisposition(),
+                        process.getLossWeightKg(),
+                        process.getLossRate(),
+                        process.getRemark()
+                ))
+                .toList();
+        return new ExperimentForm(
+                entity.getId(),
+                entity.getTaskId(),
+                entity.getProjectId(),
+                entity.getVersionId(),
+                entity.getSampleNo(),
+                entity.getProductName(),
+                entity.getVersionCode(),
+                ExperimentFormStatus.valueOf(entity.getStatus()),
+                entity.getOperatorName(),
+                entity.getSummary(),
+                materials,
+                processSteps,
+                entity.getFinishedOutputWeightKg(),
+                entity.getFinishedYieldRatio(),
+                entity.getSavedAt(),
+                entity.getSubmittedAt()
+        );
     }
 
     private TestAssignment currentTestAssignment(String taskId) {

@@ -101,6 +101,14 @@ public class ExperimentFormEntity {
         return id;
     }
 
+    public String getTaskId() {
+        return taskId;
+    }
+
+    public String getProjectId() {
+        return projectId;
+    }
+
     public String getVersionId() {
         return versionId;
     }
@@ -109,12 +117,24 @@ public class ExperimentFormEntity {
         return sampleNo;
     }
 
+    public String getProductName() {
+        return productName;
+    }
+
     public String getVersionCode() {
         return versionCode;
     }
 
     public String getStatus() {
         return status;
+    }
+
+    public String getOperatorName() {
+        return operatorName;
+    }
+
+    public String getSummary() {
+        return summary;
     }
 
     public BigDecimal getFinishedOutputWeightKg() {
@@ -129,4 +149,7 @@ public class ExperimentFormEntity {
         return savedAt;
     }
 
+    public LocalDateTime getSubmittedAt() {
+        return submittedAt;
+    }
 }
