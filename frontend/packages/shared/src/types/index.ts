@@ -30,33 +30,43 @@ export type ExperimentFormStatus =
   | "SUBMITTED_FOR_TEST"
   | "LOCKED";
 
+export type MaterialCategory = "RAW" | "AUXILIARY" | "PACKAGING";
+
+export type RemainingDisposition = "REUSE" | "RETURN" | "DISCARD";
+
 export type PricingFileStatus =
   | "GENERATED"
   | "FINANCE_NOTIFIED";
 
 export interface UserAccount {
   id: string;
+  username?: string;
   name: string;
-  feishuUserId: string;
+  feishuUserId?: string;
   role: string;
   departmentName: string;
   status: string;
+  lastLoginAt?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface SessionPrincipal {
   userId: string;
+  username?: string;
   name: string;
-  feishuUserId: string;
+  feishuUserId?: string;
   role: string;
   expiresAt: string;
 }
 
-export interface FeishuLoginResult {
-  feishuUserId: string;
+export interface AuthLoginResult {
   user: UserAccount;
   accessToken: string;
+}
+
+export interface FeishuLoginResult extends AuthLoginResult {
+  feishuUserId: string;
 }
 
 export interface SampleRequest {
@@ -142,6 +152,10 @@ export interface ExperimentMaterial {
   weightKg: number;
   utilizationRate?: number;
   remark?: string;
+  materialCategory?: MaterialCategory;
+  primaryMaterial?: boolean;
+  formulaRatio?: number;
+  inputUnit?: string;
 }
 
 export interface ExperimentProcessStep {
@@ -149,6 +163,9 @@ export interface ExperimentProcessStep {
   processName: string;
   beforeWeightKg?: number;
   afterWeightKg?: number;
+  remainingWeightKg?: number;
+  remainingDisposition?: RemainingDisposition;
+  lossWeightKg?: number;
   lossRate?: number;
   remark?: string;
 }
@@ -166,6 +183,8 @@ export interface ExperimentForm {
   summary: string;
   materials: ExperimentMaterial[];
   processSteps?: ExperimentProcessStep[];
+  finishedOutputWeightKg?: number;
+  finishedYieldRatio?: number;
   savedAt: string;
   submittedAt: string;
 }
