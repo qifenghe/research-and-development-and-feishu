@@ -59,4 +59,32 @@ public class TestAssignmentEntity {
     public void failForResample() {
         this.status = "FAILED_RESAMPLE";
     }
+
+    public String getId() {
+        return id;
+    }
+
+    public String getExperimentFormId() {
+        return experimentFormId;
+    }
+
+    public String getTaskId() {
+        return taskId;
+    }
+
+    public String getVersionId() {
+        return versionId;
+    }
+
+    public String getTesterName() {
+        return testerName;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public LocalDateTime getAssignedAt() {
+        return assignedAt;
+    }
 }

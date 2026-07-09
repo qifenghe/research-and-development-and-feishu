@@ -116,7 +116,11 @@ public class FeedbackDemoSeedService {
                         "主原料",
                         new BigDecimal("100"),
                         new BigDecimal("0.82"),
-                        "按实际投入量记录"
+                        "按实际投入量记录",
+                        "RAW",
+                        true,
+                        null,
+                        "kg"
                 )
         );
     }

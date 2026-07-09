@@ -70,6 +70,8 @@ import com.lhr.rnd.persistence.repository.TestRecordRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Clock;
 import java.math.BigDecimal;
@@ -378,18 +380,13 @@ public class SampleWorkflowService {
 
     @Transactional
     public synchronized ExperimentForm saveExperimentDraft(SaveExperimentDraftCommand command) {
-        var task = tasks.get(command.taskId());
-        if (task == null) {
-            throw new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在");
-        }
+        var task = requiredTask(command.taskId());
         if (task.status() != RndTaskStatus.SAMPLING) {
             throw new BusinessException("RND_TASK_STATUS_ILLEGAL", "任务接受后才能填写实验单");
         }
 
-        var existing = experimentForms.values().stream()
-                .filter(form -> form.taskId().equals(command.taskId()))
-                .findFirst();
-        var id = existing.map(ExperimentForm::id).orElse("EXP-%04d".formatted(experimentSequence++));
+        var existing = currentExperimentForm(command.taskId(), task.versionId());
+        var id = existing == null ? nextExperimentFormId() : existing.id();
         var materials = normalizeExperimentMaterials(command.materials());
         validatePrimaryMaterial(materials);
         materials = recalculateFormulaRatios(materials);
@@ -420,31 +417,34 @@ public class SampleWorkflowService {
                 now(),
                 null
         );
-        experimentForms.put(draft.id(), draft);
         persistExperimentDraft(draft);
         if (auditLogService != null) {
             auditLogService.record("EXPERIMENT_FORM", draft.id(), "SAVE_DRAFT", command.operatorName(),
                     "taskId=" + task.id() + ", processSteps=" + processSteps.size());
         }
+        cacheAfterCommit(() -> experimentForms.put(draft.id(), draft));
         return draft;
     }
 
     @Transactional
     public synchronized SubmitExperimentForTestResult submitExperimentForTest(String experimentFormId, String testerName) {
-        var form = experimentForms.get(experimentFormId);
-        if (form == null) {
-            throw new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在");
-        }
+        var form = requiredExperimentForm(experimentFormId);
         if (form.status() != ExperimentFormStatus.DRAFT) {
             throw new BusinessException("EXPERIMENT_FORM_STATUS_ILLEGAL", "只有草稿实验单可以提交测试");
         }
+        validateSubmittablePrimaryMaterial(form.materials());
         var nextTaskStatus = taskStatusAfter(SampleStatus.SAMPLING, SampleAction.SUBMIT_EXPERIMENT);
         var submitted = form.submit(now());
-        experimentForms.put(submitted.id(), submitted);
 
         var task = tasks.get(submitted.taskId());
+        if (task == null && rndTaskRepository != null) {
+            task = rndTaskRepository.findById(submitted.taskId())
+                    .map(this::hydrateRndTask)
+                    .orElse(null);
+        }
+        RndTask pendingTestTask = null;
         if (task != null) {
-            tasks.put(task.id(), new RndTask(
+            pendingTestTask = new RndTask(
                     task.id(),
                     task.projectId(),
                     task.versionId(),
@@ -456,11 +456,11 @@ public class SampleWorkflowService {
                     task.dueDate(),
                     task.createdAt(),
                     task.assignedAt()
-            ));
+            );
         }
 
         var assignment = new TestAssignment(
-                "TEST-%04d".formatted(testAssignmentSequence++),
+                nextTestAssignmentId(),
                 submitted.id(),
                 submitted.taskId(),
                 submitted.versionId(),
@@ -468,32 +468,44 @@ public class SampleWorkflowService {
                 TestAssignmentStatus.PENDING_TEST,
                 now()
         );
-        testAssignments.put(assignment.id(), assignment);
         persistSubmittedExperiment(submitted, assignment);
+        var taskToCache = pendingTestTask;
+        cacheAfterCommit(() -> {
+            experimentForms.put(submitted.id(), submitted);
+            testAssignments.put(assignment.id(), assignment);
+            if (taskToCache != null) {
+                tasks.put(taskToCache.id(), taskToCache);
+            }
+        });
         return new SubmitExperimentForTestResult(submitted, assignment);
     }
 
     @Transactional
     public synchronized PassInternalTestResult passInternalTest(String testAssignmentId, String testerName, String comment) {
         var assignment = pendingTestAssignment(testAssignmentId, testerName);
-        var form = experimentForms.get(assignment.experimentFormId());
-        if (form == null) {
-            throw new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在");
-        }
+        var form = requiredExperimentForm(assignment.experimentFormId());
         ensureWorkflowAllows(SampleStatus.PENDING_TEST, SampleAction.TEST_PASS);
         var locked = form.lock();
-        experimentForms.put(locked.id(), locked);
 
         var passed = assignment.withStatus(TestAssignmentStatus.PASSED);
-        testAssignments.put(passed.id(), passed);
         var record = testRecord(passed, testerName, TestAssignmentStatus.PASSED, comment);
 
         var task = tasks.get(assignment.taskId());
-        var completedTask = task == null ? null : task.withStatus(RndTaskStatus.COMPLETED);
-        if (completedTask != null) {
-            tasks.put(completedTask.id(), completedTask);
+        if (task == null && rndTaskRepository != null) {
+            task = rndTaskRepository.findById(assignment.taskId())
+                    .map(this::hydrateRndTask)
+                    .orElse(null);
         }
+        var completedTask = task == null ? null : task.withStatus(RndTaskStatus.COMPLETED);
         persistPassedInternalTest(locked, passed, record, completedTask);
+        var taskToCache = completedTask;
+        cacheAfterCommit(() -> {
+            experimentForms.put(locked.id(), locked);
+            testAssignments.put(passed.id(), passed);
+            if (taskToCache != null) {
+                tasks.put(taskToCache.id(), taskToCache);
+            }
+        });
         return new PassInternalTestResult(locked, passed, record, completedTask);
     }
 
@@ -626,7 +638,10 @@ public class SampleWorkflowService {
     }
 
     public synchronized boolean hasWorkflowData() {
-        return !tasks.isEmpty();
+        if (!tasks.isEmpty()) {
+            return true;
+        }
+        return rndTaskRepository != null && rndTaskRepository.count() > 0;
     }
 
     public synchronized RndTaskDetailView rndTaskDetail(String taskId, String role, String operatorName) {
@@ -825,12 +840,56 @@ public class SampleWorkflowService {
         return false;
     }
 
+    private String nextExperimentFormId() {
+        while (true) {
+            var id = "EXP-%04d".formatted(experimentSequence++);
+            var existsInDatabase = experimentFormRepository != null && experimentFormRepository.existsById(id);
+            if (!experimentForms.containsKey(id) && !existsInDatabase) {
+                return id;
+            }
+        }
+    }
+
+    private String nextTestAssignmentId() {
+        while (true) {
+            var id = "TEST-%04d".formatted(testAssignmentSequence++);
+            var existsInDatabase = testAssignmentRepository != null && testAssignmentRepository.existsById(id);
+            if (!testAssignments.containsKey(id) && !existsInDatabase) {
+                return id;
+            }
+        }
+    }
+
+    private void cacheAfterCommit(Runnable cacheUpdate) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            cacheUpdate.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                synchronized (SampleWorkflowService.this) {
+                    cacheUpdate.run();
+                }
+            }
+        });
+    }
+
     private RndTask requiredTask(String taskId) {
         var task = tasks.get(taskId);
-        if (task == null) {
+        if (task != null) {
+            return task;
+        }
+        if (rndTaskRepository == null) {
             throw new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在");
         }
-        return task;
+        return rndTaskRepository.findById(taskId)
+                .map(this::hydrateRndTask)
+                .map(hydrated -> {
+                    tasks.put(hydrated.id(), hydrated);
+                    return hydrated;
+                })
+                .orElseThrow(() -> new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在"));
     }
 
     private ShipmentRecord requiredShipment(String shipmentId) {
@@ -962,6 +1021,56 @@ public class SampleWorkflowService {
                     return form;
                 })
                 .orElse(null);
+    }
+
+    private ExperimentForm currentExperimentForm(String taskId, String versionId) {
+        var cached = experimentForms.values().stream()
+                .filter(form -> form.taskId().equals(taskId) && form.versionId().equals(versionId))
+                .max(Comparator.comparing(ExperimentForm::savedAt))
+                .orElse(null);
+        if (cached != null || experimentFormRepository == null) {
+            return cached;
+        }
+        return experimentFormRepository.findFirstByTaskIdAndVersionIdOrderBySavedAtDesc(taskId, versionId)
+                .map(this::hydrateExperimentForm)
+                .map(form -> {
+                    experimentForms.put(form.id(), form);
+                    return form;
+                })
+                .orElse(null);
+    }
+
+    private ExperimentForm requiredExperimentForm(String experimentFormId) {
+        var cached = experimentForms.get(experimentFormId);
+        if (cached != null) {
+            return cached;
+        }
+        if (experimentFormRepository == null) {
+            throw new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在");
+        }
+        return experimentFormRepository.findById(experimentFormId)
+                .map(this::hydrateExperimentForm)
+                .map(form -> {
+                    experimentForms.put(form.id(), form);
+                    return form;
+                })
+                .orElseThrow(() -> new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在"));
+    }
+
+    private RndTask hydrateRndTask(RndTaskEntity entity) {
+        return new RndTask(
+                entity.getId(),
+                entity.getProjectId(),
+                entity.getVersionId(),
+                entity.getSampleNo(),
+                entity.getProductName(),
+                entity.getVersionCode(),
+                RndTaskStatus.valueOf(entity.getStatus()),
+                entity.getAssigneeName(),
+                entity.getDueDate(),
+                entity.getCreatedAt(),
+                entity.getAcceptedAt() == null ? entity.getAssignedAt() : entity.getAcceptedAt()
+        );
     }
 
     private ExperimentForm hydrateExperimentForm(ExperimentFormEntity entity) {
@@ -1824,13 +1933,24 @@ public class SampleWorkflowService {
         }
     }
 
+    private void validateSubmittablePrimaryMaterial(List<ExperimentMaterial> materials) {
+        var primary = materials.stream().filter(ExperimentMaterial::primaryMaterial).toList();
+        if (primary.isEmpty()) {
+            throw new BusinessException("PRIMARY_MATERIAL_REQUIRED", "提交内部测试前必须指定一个主原料");
+        }
+        if (primary.size() > 1) {
+            throw new BusinessException("PRIMARY_MATERIAL_DUPLICATED", "只能指定一个主原料");
+        }
+        if (primary.stream().anyMatch(material -> "PACKAGING".equals(material.materialCategory()))) {
+            throw new BusinessException("PRIMARY_MATERIAL_INVALID", "包材不能设为主原料");
+        }
+    }
+
     private List<ExperimentMaterial> recalculateFormulaRatios(List<ExperimentMaterial> materials) {
-        var primaryWeight = materials.stream()
-                .filter(ExperimentMaterial::primaryMaterial)
+        var formulaInputWeight = materials.stream()
                 .map(ExperimentMaterial::weightKg)
                 .filter(Objects::nonNull)
-                .findFirst()
-                .orElse(null);
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         return materials.stream()
                 .map(material -> new ExperimentMaterial(
                         material.stage(),
@@ -1842,17 +1962,17 @@ public class SampleWorkflowService {
                         material.remark(),
                         material.materialCategory(),
                         material.primaryMaterial(),
-                        formulaRatio(material.weightKg(), primaryWeight),
+                        formulaRatio(material.weightKg(), formulaInputWeight),
                         material.inputUnit()
                 ))
                 .toList();
     }
 
-    private BigDecimal formulaRatio(BigDecimal materialWeight, BigDecimal primaryWeight) {
-        if (materialWeight == null || primaryWeight == null || primaryWeight.signum() == 0) {
+    private BigDecimal formulaRatio(BigDecimal materialWeight, BigDecimal formulaInputWeight) {
+        if (materialWeight == null || formulaInputWeight == null || formulaInputWeight.signum() == 0) {
             return null;
         }
-        return materialWeight.divide(primaryWeight, 6, RoundingMode.HALF_UP);
+        return materialWeight.divide(formulaInputWeight, 6, RoundingMode.HALF_UP);
     }
 
     private List<ExperimentProcessStep> recalculateProcessLosses(List<ExperimentProcessStep> requestedSteps) {
@@ -2244,11 +2364,25 @@ public class SampleWorkflowService {
     }
 
     private ExperimentForm lockedExperimentForm(String versionId) {
-        return experimentForms.values().stream()
+        var cached = experimentForms.values().stream()
                 .filter(form -> form.versionId().equals(versionId))
                 .filter(form -> form.status() == ExperimentFormStatus.LOCKED)
                 .findFirst()
-                .orElseThrow(() -> new BusinessException("SAMPLE_VERSION_NOT_READY_FOR_PRICING", "实验单锁定后才能生成核价文件"));
+                .orElse(null);
+        if (cached != null) {
+            return cached;
+        }
+        if (experimentFormRepository != null) {
+            var persisted = experimentFormRepository
+                    .findFirstByVersionIdAndStatusOrderBySavedAtDesc(versionId, ExperimentFormStatus.LOCKED.name())
+                    .map(this::hydrateExperimentForm)
+                    .orElse(null);
+            if (persisted != null) {
+                experimentForms.put(persisted.id(), persisted);
+                return persisted;
+            }
+        }
+        throw new BusinessException("SAMPLE_VERSION_NOT_READY_FOR_PRICING", "实验单锁定后才能生成核价文件");
     }
 
     private ExperimentFormArchiveContext experimentFormArchiveContext(String experimentFormId) {
@@ -2292,9 +2426,9 @@ public class SampleWorkflowService {
     }
 
     private void ensureReadyForShipment(String versionId) {
-        var hasLockedExperimentForm = experimentForms.values().stream()
-                .anyMatch(form -> form.versionId().equals(versionId) && form.status() == ExperimentFormStatus.LOCKED);
-        if (!hasLockedExperimentForm) {
+        try {
+            lockedExperimentForm(versionId);
+        } catch (BusinessException exception) {
             throw new BusinessException("SAMPLE_VERSION_NOT_READY_FOR_SHIPMENT", "实验单锁定后才能寄样");
         }
     }
@@ -2308,7 +2442,16 @@ public class SampleWorkflowService {
     private TestAssignment pendingTestAssignment(String testAssignmentId, String testerName) {
         var assignment = testAssignments.get(testAssignmentId);
         if (assignment == null) {
-            throw new BusinessException("TEST_ASSIGNMENT_NOT_FOUND", "内部测试任务不存在");
+            if (testAssignmentRepository == null) {
+                throw new BusinessException("TEST_ASSIGNMENT_NOT_FOUND", "内部测试任务不存在");
+            }
+            assignment = testAssignmentRepository.findById(testAssignmentId)
+                    .map(this::hydrateTestAssignment)
+                    .map(persisted -> {
+                        testAssignments.put(persisted.id(), persisted);
+                        return persisted;
+                    })
+                    .orElseThrow(() -> new BusinessException("TEST_ASSIGNMENT_NOT_FOUND", "内部测试任务不存在"));
         }
         if (assignment.status() != TestAssignmentStatus.PENDING_TEST) {
             throw new BusinessException("TEST_ASSIGNMENT_STATUS_ILLEGAL", "当前测试任务状态不可确认");
@@ -2317,6 +2460,18 @@ public class SampleWorkflowService {
             throw new BusinessException("TEST_ASSIGNMENT_TESTER_MISMATCH", "只能由被配置的测试人员确认");
         }
         return assignment;
+    }
+
+    private TestAssignment hydrateTestAssignment(TestAssignmentEntity entity) {
+        return new TestAssignment(
+                entity.getId(),
+                entity.getExperimentFormId(),
+                entity.getTaskId(),
+                entity.getVersionId(),
+                entity.getTesterName(),
+                TestAssignmentStatus.valueOf(entity.getStatus()),
+                entity.getAssignedAt()
+        );
     }
 
     private TestRecord testRecord(TestAssignment assignment, String testerName, TestAssignmentStatus result, String comment) {

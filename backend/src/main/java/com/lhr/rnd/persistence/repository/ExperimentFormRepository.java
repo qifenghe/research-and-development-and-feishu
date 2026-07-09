@@ -7,4 +7,8 @@ import java.util.Optional;
 
 public interface ExperimentFormRepository extends JpaRepository<ExperimentFormEntity, String> {
     Optional<ExperimentFormEntity> findFirstByTaskIdOrderBySavedAtDesc(String taskId);
+
+    Optional<ExperimentFormEntity> findFirstByTaskIdAndVersionIdOrderBySavedAtDesc(String taskId, String versionId);
+
+    Optional<ExperimentFormEntity> findFirstByVersionIdAndStatusOrderBySavedAtDesc(String versionId, String status);
 }

@@ -238,10 +238,10 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.materials[0].materialCategory").value("RAW"))
                 .andExpect(jsonPath("$.data.materials[0].primaryMaterial").value(true))
                 .andExpect(jsonPath("$.data.materials[0].utilizationRate").value(1.0))
-                .andExpect(jsonPath("$.data.materials[0].formulaRatio").value(1.0))
+                .andExpect(jsonPath("$.data.materials[0].formulaRatio").value(0.833333))
                 .andExpect(jsonPath("$.data.materials[0].inputUnit").value("kg"))
                 .andExpect(jsonPath("$.data.materials[1].materialCategory").value("AUXILIARY"))
-                .andExpect(jsonPath("$.data.materials[1].formulaRatio").value(0.2))
+                .andExpect(jsonPath("$.data.materials[1].formulaRatio").value(0.166667))
                 .andExpect(jsonPath("$.data.processSteps[0].remainingWeightKg").value(0.5))
                 .andExpect(jsonPath("$.data.processSteps[0].remainingDisposition").value("RETURNED"))
                 .andExpect(jsonPath("$.data.processSteps[0].lossWeightKg").value(1.5))
@@ -262,7 +262,12 @@ class SampleWorkflowControllerTest {
                 "select formula_ratio from experiment_material where experiment_form_id = ? and sequence = 2",
                 java.math.BigDecimal.class,
                 formId
-        )).isEqualByComparingTo("0.2");
+        )).isEqualByComparingTo("0.166667");
+        assertThat(jdbcTemplate.queryForObject(
+                "select sum(formula_ratio) from experiment_material where experiment_form_id = ?",
+                java.math.BigDecimal.class,
+                formId
+        )).isEqualByComparingTo("1.000000");
         assertThat(jdbcTemplate.queryForObject(
                 "select loss_weight_kg from experiment_process where experiment_form_id = ? and sequence = 1",
                 java.math.BigDecimal.class,
@@ -311,7 +316,7 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].sequence").value(1))
                 .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].materialCategory").value("RAW"))
                 .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].primaryMaterial").value(true))
-                .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].formulaRatio").value(1.0))
+                .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].formulaRatio").value(0.833333))
                 .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].inputUnit").value("kg"))
                 .andExpect(jsonPath("$.data.currentExperimentForm.materials[1].sequence").value(2))
                 .andExpect(jsonPath("$.data.currentExperimentForm.materials[1].materialCategory").value("AUXILIARY"))
@@ -673,6 +678,106 @@ class SampleWorkflowControllerTest {
                 .isEqualTo("冻猪大肠头（预煮）");
         assertThat(valueByColumn("experiment_material", "experiment_form_id", experimentFormId, "weight_kg"))
                 .isEqualTo("100.0000");
+    }
+
+    @Test
+    void savingDraftWithoutPrimaryMaterialSucceedsButSubmittingRejectsIt() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        var response = mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "张研发",
+                                  "summary": "先保存现场草稿，稍后补主料",
+                                  "materials": [
+                                    {"stage":"辅料","sequence":1,"materialName":"香辛料","weightKg":2}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DRAFT"))
+                .andExpect(jsonPath("$.data.materials", hasSize(1)))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        var experimentFormId = objectMapper.readTree(response).path("data").path("id").asText();
+
+        mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", experimentFormId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRIMARY_MATERIAL_REQUIRED"));
+    }
+
+    @Test
+    void savingDraftAfterMemoryCacheIsClearedUpdatesExistingCurrentExperiment() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+
+        clearWorkflowServiceMemory();
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "张研发",
+                                  "summary": "重启后继续编辑",
+                                  "materials": [
+                                    {"stage":"原料","sequence":1,"materialName":"主原料","weightKg":12,"materialCategory":"RAW","primaryMaterial":true}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(experimentFormId))
+                .andExpect(jsonPath("$.data.summary").value("重启后继续编辑"))
+                .andExpect(jsonPath("$.data.materials[0].formulaRatio").value(1.0));
+
+        assertThat(countByColumn("experiment_form", "task_id", taskId)).isEqualTo(1);
+        assertThat(valueById("experiment_form", experimentFormId, "summary")).isEqualTo("重启后继续编辑");
+        assertThat(countByColumn("experiment_material", "experiment_form_id", experimentFormId)).isEqualTo(1);
+    }
+
+    @Test
+    void submittingDraftAfterMemoryCacheIsClearedReadsExperimentFromDatabase() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+
+        clearWorkflowServiceMemory();
+
+        var testAssignmentId = submitExperimentForTest(experimentFormId);
+
+        assertThat(valueById("experiment_form", experimentFormId, "status")).isEqualTo("SUBMITTED_FOR_TEST");
+        assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("PENDING_TEST");
+        assertThat(valueById("test_assignment", testAssignmentId, "experiment_form_id")).isEqualTo(experimentFormId);
+    }
+
+    @Test
+    void passingInternalTestAfterMemoryCacheIsClearedReadsAssignmentFormAndTaskFromDatabase() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+        var testAssignmentId = submitExperimentForTest(experimentFormId);
+
+        clearWorkflowServiceMemory();
+
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"口味和复热状态通过\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.experimentForm.status").value("LOCKED"))
+                .andExpect(jsonPath("$.data.task.status").value("COMPLETED"));
+
+        assertThat(valueById("experiment_form", experimentFormId, "status")).isEqualTo("LOCKED");
+        assertThat(valueById("test_assignment", testAssignmentId, "status")).isEqualTo("PASSED");
+        assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("COMPLETED");
     }
 
     @Test
@@ -1539,6 +1644,8 @@ class SampleWorkflowControllerTest {
                       "materialName": "冻猪大肠头（预煮）",
                       "weightKg": 100,
                       "utilizationRate": 0.95,
+                      "materialCategory": "RAW",
+                      "primaryMaterial": true,
                       "remark": "前处理车间配制"
                     }
                   ]
