@@ -1,8 +1,8 @@
 <template>
   <div>
-    <a-page-header
+      <a-page-header
       :title="headerTitle"
-      sub-title="现场录入原辅料、工序称重、出成和照片附件"
+      sub-title="现场录入配方、工序损耗、成品出成和照片附件"
       @back="router.back()"
     />
 
@@ -14,7 +14,51 @@
         message="当前为只读查看模式。确认研发草稿无误后，可在右侧通知内部测试。"
         style="margin-bottom: 16px"
       />
-      <a-row :gutter="16">
+      <a-card v-if="experimentPhase === 'mode'" title="选择本次打样方式" class="page-card mode-chooser-card">
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <button class="mode-choice mode-choice--recommended" @click="startQuickMode">
+              <span>推荐 · 操作最少</span>
+              <strong>快速打样</strong>
+              <small>使用系统推荐工序，直接填写本次实际数据。</small>
+            </button>
+          </a-col>
+          <a-col :span="12">
+            <button class="mode-choice" @click="startArrangeMode">
+              <span>灵活 · 先确认工艺</span>
+              <strong>编排后打样</strong>
+              <small>先调整工序顺序和内容，确认后开始打样。</small>
+            </button>
+          </a-col>
+        </a-row>
+      </a-card>
+
+      <a-card v-else-if="experimentPhase === 'arrange'" title="编排本次打样工序" class="page-card">
+        <a-table :columns="processColumns" :data-source="processSteps" row-key="key" :pagination="false" size="small">
+          <template #bodyCell="{ column, record, index }">
+            <template v-if="column.key === 'processName'"><a-input v-model:value="record.processName" /></template>
+            <template v-else-if="column.key === 'beforeWeightKg'">—</template>
+            <template v-else-if="column.key === 'afterWeightKg'">—</template>
+            <template v-else-if="column.key === 'lossRate'">—</template>
+            <template v-else-if="column.key === 'remark'"><a-input v-model:value="record.remark" placeholder="控制要点（可选）" /></template>
+            <template v-else-if="column.key === 'action'">
+              <a-space :size="0">
+                <a-button type="link" :disabled="index === 0" @click="moveProcess(index, index - 1)">上移</a-button>
+                <a-button type="link" :disabled="index === processSteps.length - 1" @click="moveProcess(index, index + 1)">下移</a-button>
+                <a-button type="link" @click="copyProcess(index)">复制</a-button>
+                <a-button type="link" danger :disabled="processSteps.length === 1" @click="removeProcess(index)">删除</a-button>
+              </a-space>
+            </template>
+          </template>
+        </a-table>
+        <a-button type="dashed" block style="margin-top:12px" @click="addProcess">+ 新增工序</a-button>
+        <a-space style="margin-top:16px">
+          <a-button @click="experimentPhase='mode'">返回</a-button>
+          <a-button type="primary" @click="confirmArrangement">确认工序并开始打样</a-button>
+        </a-space>
+      </a-card>
+
+      <a-row v-else :gutter="16">
         <a-col :span="16">
           <a-card title="基本信息" class="page-card">
             <a-form layout="vertical">
@@ -26,40 +70,20 @@
             </a-form>
           </a-card>
 
-          <a-card title="原辅料 / 包材" class="page-card">
-            <a-table :columns="materialColumns" :data-source="materials" row-key="key" :pagination="false" size="small">
-              <template #bodyCell="{ column, record, index }">
-                <template v-if="column.key === 'stage'"><a-input v-model:value="record.stage" :disabled="readOnly" /></template>
-                <template v-else-if="column.key === 'materialCode'"><a-input v-model:value="record.materialCode" :disabled="readOnly" /></template>
-                <template v-else-if="column.key === 'materialName'"><a-input v-model:value="record.materialName" :disabled="readOnly" /></template>
-                <template v-else-if="column.key === 'weightKg'"><a-input-number v-model:value="record.weightKg" :min="0" style="width: 100%" :disabled="readOnly" /></template>
-                <template v-else-if="column.key === 'utilizationRate'"><a-input-number v-model:value="record.utilizationRate" :min="0" :max="100" style="width: 100%" :disabled="readOnly" /></template>
-                <template v-else-if="column.key === 'remark'"><a-input v-model:value="record.remark" :disabled="readOnly" /></template>
-                <template v-else-if="column.key === 'action'"><a-button type="link" danger :disabled="readOnly" @click="removeMaterial(index)">删除</a-button></template>
-              </template>
-            </a-table>
-            <a-button v-if="!readOnly" type="dashed" block style="margin-top: 12px" @click="addMaterial">+ 添加物料行</a-button>
+          <a-card title="配方" class="page-card">
+            <FormulaEditor v-model="materials" :readonly="readOnly" :create-row="blankMaterial" />
           </a-card>
 
-          <a-card title="工序记录" class="page-card">
-            <a-table :columns="processColumns" :data-source="processSteps" row-key="key" :pagination="false" size="small">
-              <template #bodyCell="{ column, record, index }">
-                <template v-if="column.key === 'processName'"><a-input v-model:value="record.processName" :disabled="readOnly" /></template>
-                <template v-else-if="column.key === 'beforeWeightKg'"><a-input-number v-model:value="record.beforeWeightKg" :min="0" style="width: 100%" :disabled="readOnly" /></template>
-                <template v-else-if="column.key === 'afterWeightKg'"><a-input-number v-model:value="record.afterWeightKg" :min="0" style="width: 100%" :disabled="readOnly" /></template>
-                <template v-else-if="column.key === 'lossRate'">{{ formatLossRate(record) }}</template>
-                <template v-else-if="column.key === 'remark'"><a-input v-model:value="record.remark" :disabled="readOnly" /></template>
-                <template v-else-if="column.key === 'action'"><a-button type="link" danger :disabled="readOnly" @click="removeProcess(index)">删除</a-button></template>
-              </template>
-            </a-table>
-            <a-button v-if="!readOnly" type="dashed" block style="margin-top: 12px" @click="addProcess">+ 添加工序行</a-button>
+          <a-card title="工序损耗" class="page-card">
+            <ProcessTabsEditor v-model="processSteps" :readonly="readOnly" :create-row="blankProcess" />
           </a-card>
 
           <a-card title="成品出成与备注" class="page-card">
-            <a-row :gutter="16">
-              <a-col :span="8"><a-form-item label="研发参考出成"><a-input-number v-model:value="form.yieldQty" :min="0" style="width: 100%" :disabled="readOnly" /></a-form-item></a-col>
-              <a-col :span="8"><a-form-item label="单位"><a-input v-model:value="form.yieldUnit" :disabled="readOnly" /></a-form-item></a-col>
-            </a-row>
+            <FinishedYieldEditor
+              v-model="form.finishedOutputWeightKg"
+              :primary-input-weight="primaryInputWeight"
+              :readonly="readOnly"
+            />
             <a-form-item label="备注"><a-textarea v-model:value="form.remark" :rows="2" :disabled="readOnly" /></a-form-item>
           </a-card>
 
@@ -83,6 +107,14 @@
               {{ readOnly ? "确认研发草稿后，内勤可通知内部测试。" : "先保存草稿，再提交打样记录通知内部测试。" }}
             </a-typography-text>
             <a-space direction="vertical" style="width: 100%; margin-top: 16px">
+              <a-button
+                v-if="detail?.currentExperimentForm?.id"
+                block
+                :loading="exporting"
+                @click="exportExperimentForm"
+              >
+                导出实验单 Excel
+              </a-button>
               <a-button v-if="canSaveDraft" block :loading="saving" @click="saveDraft">① 保存打样草稿</a-button>
               <a-button
                 v-if="canNotifyTest"
@@ -105,18 +137,29 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { message } from "ant-design-vue";
-import type { ExperimentMaterial, ExperimentProcessStep, RndTaskDetailView } from "@rnd/shared";
+import type {
+  ExperimentMaterial,
+  ExperimentProcessStep,
+  MaterialCategory,
+  RemainingDisposition,
+  RndTaskDetailView,
+} from "@rnd/shared";
 import { canEditExperiment, canNotifyInternalTest } from "@rnd/shared";
+import FinishedYieldEditor from "../../components/FinishedYieldEditor.vue";
+import FormulaEditor from "../../components/FormulaEditor.vue";
+import ProcessTabsEditor from "../../components/ProcessTabsEditor.vue";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
 
 type MaterialRow = {
   key: number;
-  stage: string;
+  materialCategory: MaterialCategory;
+  primaryMaterial: boolean;
   materialCode: string;
   materialName: string;
   weightKg: number | null;
-  utilizationRate: number | null;
+  inputUnit: string;
+  utilizationRate: number;
   remark: string;
 };
 
@@ -125,6 +168,8 @@ type ProcessRow = {
   processName: string;
   beforeWeightKg: number | null;
   afterWeightKg: number | null;
+  remainingWeightKg: number | null;
+  remainingDisposition: RemainingDisposition;
   remark: string;
 };
 
@@ -134,8 +179,11 @@ const auth = useAuthStore();
 const loading = ref(false);
 const saving = ref(false);
 const submitting = ref(false);
+const exporting = ref(false);
 const draftSaved = ref(false);
 const uploadHint = ref("");
+const experimentPhase = ref<"mode" | "arrange" | "form">("mode");
+const samplingMode = ref<"quick" | "arrange">("quick");
 const detail = ref<RndTaskDetailView | null>(null);
 const headerTitle = ref("打样实验单");
 let rowKey = 1;
@@ -152,23 +200,13 @@ const form = reactive({
   productName: "",
   specification: "",
   summary: "",
-  yieldQty: null as number | null,
-  yieldUnit: "kg",
+  finishedOutputWeightKg: null as number | null,
   remark: "",
 });
 
-const materials = ref<MaterialRow[]>([blankMaterial()]);
+const materials = ref<MaterialRow[]>([blankMaterial(true)]);
 const processSteps = ref<ProcessRow[]>([blankProcess()]);
-
-const materialColumns = [
-  { title: "工段", key: "stage" },
-  { title: "物料编码", key: "materialCode" },
-  { title: "物料名称", key: "materialName" },
-  { title: "用量kg", key: "weightKg" },
-  { title: "利用率%", key: "utilizationRate" },
-  { title: "备注", key: "remark" },
-  { title: "操作", key: "action", width: 80 },
-];
+const primaryInputWeight = computed(() => materials.value.find((item) => item.primaryMaterial)?.weightKg ?? 0);
 
 const processColumns = [
   { title: "工序", key: "processName" },
@@ -179,21 +217,30 @@ const processColumns = [
   { title: "操作", key: "action", width: 80 },
 ];
 
-function blankMaterial(): MaterialRow {
-  return { key: rowKey++, stage: "原料", materialCode: "", materialName: "", weightKg: null, utilizationRate: null, remark: "" };
+function blankMaterial(primaryMaterial = false): MaterialRow {
+  return {
+    key: rowKey++,
+    materialCategory: "RAW",
+    primaryMaterial,
+    materialCode: "",
+    materialName: "",
+    weightKg: null,
+    inputUnit: "kg",
+    utilizationRate: 100,
+    remark: "",
+  };
 }
 
 function blankProcess(): ProcessRow {
-  return { key: rowKey++, processName: "", beforeWeightKg: null, afterWeightKg: null, remark: "" };
-}
-
-function addMaterial() {
-  materials.value.push(blankMaterial());
-}
-
-function removeMaterial(index: number) {
-  materials.value.splice(index, 1);
-  if (materials.value.length === 0) addMaterial();
+  return {
+    key: rowKey++,
+    processName: "",
+    beforeWeightKg: null,
+    afterWeightKg: null,
+    remainingWeightKg: null,
+    remainingDisposition: "REUSE",
+    remark: "",
+  };
 }
 
 function addProcess() {
@@ -205,23 +252,69 @@ function removeProcess(index: number) {
   if (processSteps.value.length === 0) addProcess();
 }
 
-function formatLossRate(record: ProcessRow) {
-  const before = record.beforeWeightKg ?? 0;
-  const after = record.afterWeightKg ?? 0;
-  if (!before) return "—";
-  return `${(((before - after) / before) * 100).toFixed(1)}%`;
+function moveProcess(fromIndex: number, toIndex: number) {
+  if (fromIndex === toIndex || toIndex < 0 || toIndex >= processSteps.value.length) return;
+  const next = [...processSteps.value];
+  const [step] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, step);
+  processSteps.value = next;
+}
+
+function copyProcess(index: number) {
+  const source = processSteps.value[index];
+  if (!source) return;
+  processSteps.value.splice(index + 1, 0, {
+    ...source,
+    key: rowKey++,
+    processName: `${source.processName}（副本）`,
+  });
+}
+
+function startQuickMode() {
+  samplingMode.value = "quick";
+  experimentPhase.value = "form";
+}
+
+function startArrangeMode() {
+  samplingMode.value = "arrange";
+  experimentPhase.value = "arrange";
+}
+
+function confirmArrangement() {
+  const valid = processSteps.value.filter((step) => step.processName.trim());
+  if (!valid.length) {
+    message.warning("请至少填写一个工序");
+    return;
+  }
+  processSteps.value = valid;
+  experimentPhase.value = "form";
+}
+
+function categoryLabel(category: MaterialCategory) {
+  if (category === "AUXILIARY") return "辅料";
+  if (category === "PACKAGING") return "包材";
+  return "原料";
+}
+
+function categoryFromStage(stage?: string): MaterialCategory {
+  if (stage === "辅料" || stage === "AUXILIARY") return "AUXILIARY";
+  if (stage === "包材" || stage === "PACKAGING") return "PACKAGING";
+  return "RAW";
 }
 
 function buildMaterials(): ExperimentMaterial[] {
   return materials.value
     .filter((item) => item.materialName.trim())
     .map((item, index) => ({
-      stage: item.stage.trim() || "原料",
+      stage: categoryLabel(item.materialCategory),
       sequence: index + 1,
       materialCode: item.materialCode.trim() || undefined,
       materialName: item.materialName.trim(),
       weightKg: item.weightKg ?? 0,
-      utilizationRate: item.utilizationRate != null ? item.utilizationRate / 100 : undefined,
+      utilizationRate: item.utilizationRate / 100,
+      materialCategory: item.materialCategory,
+      primaryMaterial: item.primaryMaterial,
+      inputUnit: item.inputUnit || "kg",
       remark: item.remark.trim() || undefined,
     }));
 }
@@ -237,7 +330,8 @@ function buildProcessSteps(): ExperimentProcessStep[] {
         processName: step.processName.trim(),
         beforeWeightKg: before || undefined,
         afterWeightKg: after || undefined,
-        lossRate: before > 0 ? (before - after) / before : undefined,
+        remainingWeightKg: step.remainingWeightKg ?? undefined,
+        remainingDisposition: step.remainingDisposition,
         remark: step.remark.trim() || undefined,
       };
     });
@@ -246,7 +340,7 @@ function buildProcessSteps(): ExperimentProcessStep[] {
 function buildSummary() {
   return [
     form.summary,
-    form.yieldQty != null ? `出成：${form.yieldQty}${form.yieldUnit}` : "",
+    form.finishedOutputWeightKg != null ? `成品实际产出：${form.finishedOutputWeightKg}kg` : "",
     form.remark ? `备注：${form.remark}` : "",
   ]
     .filter(Boolean)
@@ -264,14 +358,22 @@ onMounted(async () => {
       form.summary = detail.value.currentExperimentForm.summary;
       draftSaved.value = true;
     }
+    if (detail.value.currentExperimentForm?.finishedOutputWeightKg != null) {
+      form.finishedOutputWeightKg = detail.value.currentExperimentForm.finishedOutputWeightKg;
+    }
+    if (detail.value.currentExperimentForm || readOnly.value) {
+      experimentPhase.value = "form";
+    }
     if (detail.value.currentExperimentForm?.materials?.length) {
       materials.value = detail.value.currentExperimentForm.materials.map((item) => ({
         key: rowKey++,
-        stage: item.stage || "原料",
+        materialCategory: item.materialCategory ?? categoryFromStage(item.stage),
+        primaryMaterial: item.primaryMaterial ?? false,
         materialCode: item.materialCode || "",
         materialName: item.materialName,
         weightKg: item.weightKg ?? null,
-        utilizationRate: item.utilizationRate != null ? item.utilizationRate * 100 : null,
+        inputUnit: item.inputUnit || "kg",
+        utilizationRate: item.utilizationRate != null ? item.utilizationRate * 100 : 100,
         remark: item.remark || "",
       }));
     }
@@ -281,6 +383,8 @@ onMounted(async () => {
         processName: step.processName,
         beforeWeightKg: step.beforeWeightKg ?? null,
         afterWeightKg: step.afterWeightKg ?? null,
+        remainingWeightKg: step.remainingWeightKg ?? null,
+        remainingDisposition: step.remainingDisposition ?? "REUSE",
         remark: step.remark || "",
       }));
     } else if (canEditExperiment(detail.value, auth.displayName, auth.role)) {
@@ -291,6 +395,8 @@ onMounted(async () => {
           processName: step.processName,
           beforeWeightKg: step.beforeWeightKg ?? null,
           afterWeightKg: step.afterWeightKg ?? null,
+          remainingWeightKg: step.remainingWeightKg ?? null,
+          remainingDisposition: step.remainingDisposition ?? "REUSE",
           remark: step.remark || "",
         }));
       }
@@ -308,6 +414,7 @@ async function saveDraft() {
       summary: buildSummary(),
       materials: buildMaterials(),
       processSteps: buildProcessSteps(),
+      finishedOutputWeightKg: form.finishedOutputWeightKg ?? undefined,
     });
     detail.value = { ...detail.value!, currentExperimentForm: saved };
     draftSaved.value = true;
@@ -344,6 +451,10 @@ async function onFileChange(event: Event) {
 }
 
 async function submitSamplingRecord() {
+  if (!buildMaterials().some((item) => item.primaryMaterial)) {
+    message.warning("提交测试前请先在配方中选择一个主原料");
+    return;
+  }
   if (canSaveDraft.value && !detail.value?.currentExperimentForm?.id) {
     await saveDraft();
   }
@@ -363,4 +474,35 @@ async function submitSamplingRecord() {
     submitting.value = false;
   }
 }
+
+async function exportExperimentForm() {
+  const experimentId = detail.value?.currentExperimentForm?.id;
+  if (!experimentId) {
+    message.warning("请先保存实验单草稿");
+    return;
+  }
+  exporting.value = true;
+  try {
+    const blob = await api.report.exportExperimentForm(experimentId);
+    download(blob, `${detail.value?.task.productName ?? "实验单"}-${detail.value?.task.versionCode ?? ""}-打样实验单.xlsx`);
+    message.success("实验单已导出");
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : "导出失败");
+  } finally {
+    exporting.value = false;
+  }
+}
+
+function download(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 </script>
+
+<style scoped>
+.mode-chooser-card{max-width:920px;margin:24px auto}.mode-choice{width:100%;min-height:180px;padding:24px;text-align:left;background:#fff;border:1px solid #dbe3ef;border-radius:8px}.mode-choice--recommended{border:2px solid #246bfe;background:#f7faff}.mode-choice span,.mode-choice strong,.mode-choice small{display:block}.mode-choice span{margin-bottom:14px;color:#246bfe;font-size:12px;font-weight:700}.mode-choice strong{margin-bottom:8px;font-size:22px}.mode-choice small{color:#64748b;font-size:14px;line-height:1.7}
+</style>

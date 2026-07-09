@@ -1,7 +1,9 @@
 import type { ApiClient } from "./client";
 import type {
   ExperimentForm,
+  MaterialCategory,
   PagedResult,
+  RemainingDisposition,
   RndTask,
   RndTaskDetailView,
   RndTaskStatus,
@@ -17,6 +19,10 @@ export interface SaveExperimentDraftPayload {
     materialName: string;
     weightKg: number;
     utilizationRate?: number;
+    materialCategory?: MaterialCategory;
+    primaryMaterial?: boolean;
+    formulaRatio?: number;
+    inputUnit?: string;
     remark?: string;
   }>;
   processSteps?: Array<{
@@ -25,8 +31,13 @@ export interface SaveExperimentDraftPayload {
     beforeWeightKg?: number;
     afterWeightKg?: number;
     lossRate?: number;
+    remainingWeightKg?: number;
+    remainingDisposition?: RemainingDisposition;
+    lossWeightKg?: number;
     remark?: string;
   }>;
+  finishedOutputWeightKg?: number;
+  finishedYieldRatio?: number;
 }
 
 export function createTaskApi(client: ApiClient) {
