@@ -15,6 +15,7 @@ import { createSampleApi } from "./sample";
 import { createTaskApi } from "./task";
 import { createShipmentApi } from "./shipment";
 import { createSettingsApi } from "./settings";
+import { createReportApi } from "./report";
 
 const TASK_GROUPS: Array<{ key: string; title: string; statuses: RndTaskStatus[] }> = [
   { key: "accept", title: "待接受任务", statuses: ["PENDING_ACCEPTANCE"] },
@@ -69,6 +70,19 @@ function shipmentToItem(shipment: ShipmentRecord, actionLabel: string): MobileTo
   };
 }
 
+function pricingToItem(pricing: PricingFileRecord): MobileTodoItem {
+  return {
+    id: pricing.id,
+    kind: "pricing",
+    productName: pricing.productName,
+    versionCode: pricing.versionCode,
+    statusLabel: pricing.status === "FINANCE_NOTIFIED" ? "已通知财务" : "待财务核价",
+    actionLabel: "查看/下载",
+    route: `/pricing/${pricing.id}`,
+    subtitle: pricing.pricingVersion,
+  };
+}
+
 export async function fetchMobileTodoBoard(deps: {
   role?: string | null;
   listTasks: (params: { status?: string }) => Promise<RndTask[]>;
@@ -78,7 +92,7 @@ export async function fetchMobileTodoBoard(deps: {
   const role = deps.role ?? "";
   const canLoadShipments = role === "RND_ASSISTANT"
     || canAccessRoute(role, "/shipments/SHIP-0001", "mobile");
-  const canLoadPricing = canLoadShipments;
+  const canLoadPricing = canAccessRoute(role, "/pricing/PRICE-0001", "mobile");
 
   const visibleTaskGroups = taskGroupsForRole(role);
   const [taskGroupsRaw, shipped, feedbackPassed, pricingGenerated] = await Promise.all([
@@ -105,8 +119,10 @@ export async function fetchMobileTodoBoard(deps: {
   );
   const pricingGroup: MobileTodoGroup = {
     key: "pricing",
-    title: "待生成核价",
-    items: pricingPending.map((s) => shipmentToItem(s, "生成核价")),
+    title: role === "FINANCE" ? "核价文件" : "待生成核价",
+    items: role === "FINANCE"
+      ? pricingGenerated.map(pricingToItem)
+      : pricingPending.map((s) => shipmentToItem(s, "生成核价")),
   };
 
   const groups = [...taskGroupsRaw, shipmentFeedbackGroup, pricingGroup]
@@ -200,6 +216,7 @@ export { createSampleApi } from "./sample";
 export { createTaskApi } from "./task";
 export { createShipmentApi } from "./shipment";
 export { createSettingsApi } from "./settings";
+export { createReportApi } from "./report";
 
 export function createRndApi(client: ApiClient) {
   return {
@@ -209,6 +226,7 @@ export function createRndApi(client: ApiClient) {
     task: createTaskApi(client),
     shipment: createShipmentApi(client),
     settings: createSettingsApi(client),
+    report: createReportApi(client),
   };
 }
 
