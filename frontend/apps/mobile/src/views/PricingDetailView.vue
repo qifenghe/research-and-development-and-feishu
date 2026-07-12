@@ -130,7 +130,7 @@ async function load() {
   loading.value = true;
   loadError.value = "";
   try {
-    detail.value = await api.shipment.pricingDetail(String(route.params.id), auth.role);
+    detail.value = await api.shipment.pricingDetail(String(route.params.id));
   } catch (error) {
     detail.value = null;
     loadError.value = error instanceof Error ? error.message : "核价文件加载失败";
@@ -170,7 +170,6 @@ async function review(decision: "APPROVE" | "REJECT") {
   try {
     await api.shipment.reviewPricingFile(String(route.params.id), {
       decision,
-      reviewerName: auth.displayName,
       comment: reviewComment.value.trim() || undefined,
     });
     showSuccessToast(decision === "APPROVE" ? "核价已审核通过" : "核价已退回");

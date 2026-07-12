@@ -38,12 +38,14 @@ class RolePermissionServiceTest {
         assertThat(service.hasPermission("FINANCE", "GET", "/api/v1/rnd-tasks/TASK-0001/detail")).isFalse();
         assertThat(service.hasPermission("RND_ASSISTANT", "GET", "/api/v1/pricing-files")).isTrue();
         assertThat(service.hasPermission("FINANCE", "GET", "/api/v1/pricing-files")).isTrue();
+        assertThat(service.hasPermission("RND_ENGINEER", "GET", "/api/v1/pricing-files")).isTrue();
         assertThat(service.hasPermission("RND_ASSISTANT", "GET", "/api/v1/shipments/SHIP-0001/detail")).isTrue();
         assertThat(service.hasPermission("RND_DIRECTOR", "GET", "/api/v1/shipments/SHIP-0001/detail")).isTrue();
         assertThat(service.hasPermission("FINANCE", "GET", "/api/v1/shipments/SHIP-0001/detail")).isFalse();
         assertThat(service.hasPermission("RND_ASSISTANT", "GET", "/api/v1/pricing-files/PRICE-0001/detail")).isTrue();
         assertThat(service.hasPermission("RND_DIRECTOR", "GET", "/api/v1/pricing-files/PRICE-0001/detail")).isTrue();
         assertThat(service.hasPermission("FINANCE", "GET", "/api/v1/pricing-files/PRICE-0001/detail")).isTrue();
+        assertThat(service.hasPermission("RND_ENGINEER", "GET", "/api/v1/pricing-files/PRICE-0001/detail")).isTrue();
         assertThat(service.hasPermission("RND_ASSISTANT", "GET", "/api/v1/pricing-files/PRICE-0001/download")).isTrue();
         assertThat(service.hasPermission("RND_ASSISTANT", "POST", "/api/v1/experiment-forms/EXP-0001/submit-test")).isTrue();
         assertThat(service.hasPermission("RND_ENGINEER", "POST", "/api/v1/experiment-forms/EXP-0001/submit-test")).isTrue();

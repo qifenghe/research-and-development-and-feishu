@@ -1511,6 +1511,105 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void pricingReviewRequiresServerSessionPrincipalInsteadOfClientReviewerName() throws Exception {
+        var pricingFileId = generatePricingFile(createLockedSampleVersion());
+
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"张研发\",\"comment\":\"伪造审核人\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SESSION_PRINCIPAL_REQUIRED"));
+
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"伪造审核人\",\"comment\":\"核价无误\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reviewedBy").value("张研发"));
+    }
+
+    @Test
+    void productOwnerCanOnlyReadOwnPricingFiles() throws Exception {
+        var pricingFileId = generatePricingFile(createLockedSampleVersion());
+
+        mockMvc.perform(get("/api/v1/pricing-files")
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].id").value(pricingFileId));
+        mockMvc.perform(get("/api/v1/pricing-files/{id}/detail", pricingFileId)
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pricingFile.id").value(pricingFileId));
+
+        mockMvc.perform(get("/api/v1/pricing-files")
+                        .requestAttr("sessionPrincipal", principal("其他研发", "RND_ENGINEER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(0)));
+        mockMvc.perform(get("/api/v1/pricing-files/{id}/detail", pricingFileId)
+                        .requestAttr("sessionPrincipal", principal("其他研发", "RND_ENGINEER")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRICING_FILE_NOT_AVAILABLE_FOR_RND_ENGINEER"));
+    }
+
+    @Test
+    void financeCannotBypassPricingReviewThroughExportsOrArchives() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var pricingFileId = generatePricingFile(versionId);
+        var archiveFileId = valueByColumn("archive_file", "business_id", pricingFileId, "id");
+        jdbcTemplate.update(
+                """
+                        insert into archive_file (
+                            id, business_type, business_id, version_id, file_name, file_path,
+                            file_status, archived_at
+                        ) values (?, ?, ?, ?, ?, ?, ?, current_timestamp)
+                        """,
+                "ARCH-NON-PRICING-001",
+                "EXPERIMENT_ATTACHMENT",
+                "FORM-NON-PRICING-001",
+                versionId,
+                "实验照片.jpg",
+                "attachments/non-pricing.jpg",
+                "ARCHIVED"
+        );
+        var finance = principal("钱财务", "FINANCE");
+
+        mockMvc.perform(get("/api/v1/reports/pricing-files/{id}/export", pricingFileId)
+                        .requestAttr("sessionPrincipal", finance))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRICING_FILE_NOT_AVAILABLE_FOR_FINANCE"));
+        mockMvc.perform(get("/api/v1/sample-versions/{id}/archive-files", versionId)
+                        .requestAttr("sessionPrincipal", finance))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].businessType").value("EXPERIMENT_ATTACHMENT"));
+        mockMvc.perform(get("/api/v1/archive-files/{id}/download", archiveFileId)
+                        .requestAttr("sessionPrincipal", finance))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRICING_FILE_NOT_AVAILABLE_FOR_FINANCE"));
+    }
+
+    @Test
+    void notifyingFinanceIsIdempotentAfterTheFirstSuccessfulHandoff() throws Exception {
+        var pricingFileId = generatePricingFile(createLockedSampleVersion());
+        approvePricingFile(pricingFileId);
+
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recipientName\":\"钱财务\",\"remark\":\"请接收核价文件\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pricingFile.status").value("FINANCE_NOTIFIED"));
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recipientName\":\"另一位财务\",\"remark\":\"重复请求\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pricingFile.status").value("FINANCE_NOTIFIED"))
+                .andExpect(jsonPath("$.data.notification.recipientName").value("钱财务"));
+
+        assertThat(countByColumn("finance_notification", "pricing_file_id", pricingFileId)).isEqualTo(1);
+    }
+
+    @Test
     void pricingRejectionRequiresReasonAndCreatesNextPricingVersion() throws Exception {
         var versionId = createLockedSampleVersion();
         var firstPricingFileId = generatePricingFile(versionId);
@@ -1996,7 +2095,7 @@ class SampleWorkflowControllerTest {
         var pricingFileId = generatePricingFile(versionId);
 
         mockMvc.perform(get("/api/v1/pricing-files/{id}/detail", pricingFileId)
-                        .param("role", "RND_ASSISTANT"))
+                        .requestAttr("sessionPrincipal", principal("研发内勤", "RND_ASSISTANT")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pricingFile.id").value(pricingFileId))
                 .andExpect(jsonPath("$.data.version.versionCode").value("A0"))
@@ -2005,7 +2104,7 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.availableActions[0].code").value("DOWNLOAD_PRICING_FILE"));
 
         mockMvc.perform(get("/api/v1/pricing-files/{id}/detail", pricingFileId)
-                        .param("role", "FINANCE"))
+                        .requestAttr("sessionPrincipal", principal("钱财务", "FINANCE")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("PRICING_FILE_NOT_AVAILABLE_FOR_FINANCE"));
 
@@ -2017,7 +2116,7 @@ class SampleWorkflowControllerTest {
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/pricing-files/{id}/detail", pricingFileId)
-                        .param("role", "RND_ASSISTANT"))
+                        .requestAttr("sessionPrincipal", principal("研发内勤", "RND_ASSISTANT")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.financeNotification.recipientName").value("财务核价员"))
                 .andExpect(jsonPath("$.data.availableActions", hasSize(1)))

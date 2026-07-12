@@ -2,6 +2,8 @@ package com.lhr.rnd.api;
 
 import com.lhr.rnd.service.ReportExportFile;
 import com.lhr.rnd.service.ReportExportService;
+import com.lhr.rnd.service.SessionPrincipal;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -36,8 +38,9 @@ public class ReportExportController {
     }
 
     @GetMapping("/pricing-files/{id}/export")
-    public ResponseEntity<byte[]> exportPricingFile(@PathVariable String id) {
-        return file(reportExportService.exportPricingFile(id));
+    public ResponseEntity<byte[]> exportPricingFile(@PathVariable String id, HttpServletRequest request) {
+        var principal = (SessionPrincipal) request.getAttribute(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE);
+        return file(reportExportService.exportPricingFile(id, principal == null ? null : principal.role()));
     }
 
     @GetMapping("/rnd-tasks/export")

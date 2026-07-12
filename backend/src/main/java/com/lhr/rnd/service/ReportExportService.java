@@ -185,8 +185,8 @@ public class ReportExportService {
         return new ReportExportFile(fileName, EXCEL_CONTENT_TYPE, content);
     }
 
-    public ReportExportFile exportPricingFile(String pricingFileId) {
-        var file = workflowService.downloadPricingFile(pricingFileId);
+    public ReportExportFile exportPricingFile(String pricingFileId, String role) {
+        var file = workflowService.downloadPricingFile(pricingFileId, role);
         return new ReportExportFile(file.fileName(), EXCEL_CONTENT_TYPE, file.content());
     }
 

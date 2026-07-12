@@ -59,7 +59,7 @@ const canNotifyFinance = computed(() => auth.role === "RND_ASSISTANT"
 async function load() {
   loading.value = true;
   try {
-    detail.value = await api.shipment.pricingDetail(String(route.params.id), auth.role);
+    detail.value = await api.shipment.pricingDetail(String(route.params.id));
   } finally {
     loading.value = false;
   }
@@ -113,7 +113,6 @@ async function review(decision: "APPROVE" | "REJECT") {
   try {
     await api.shipment.reviewPricingFile(String(route.params.id), {
       decision,
-      reviewerName: auth.displayName,
       comment: reviewComment.value.trim() || undefined,
     });
     message.success(decision === "APPROVE" ? "核价审核通过" : "核价已退回");

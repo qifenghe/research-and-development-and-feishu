@@ -49,13 +49,10 @@ export function createShipmentApi(client: ApiClient) {
       client.post<PricingFileRecord>(`/sample-versions/${versionId}/pricing-files`),
     pricingReadyVersions: () =>
       client.get<PricingReadyVersion[]>("/sample-versions/pricing-ready"),
-    pricingDetail: (id: string, role?: string) => {
-      const suffix = role ? `?role=${encodeURIComponent(role)}` : "";
-      return client.get<PricingFileDetailView>(`/pricing-files/${id}/detail${suffix}`);
-    },
+    pricingDetail: (id: string) => client.get<PricingFileDetailView>(`/pricing-files/${id}/detail`),
     notifyFinance: (id: string, recipientName: string) =>
       client.post(`/pricing-files/${id}/notify-finance`, { recipientName }),
-    reviewPricingFile: (id: string, payload: { decision: "APPROVE" | "REJECT"; reviewerName: string; comment?: string }) =>
+    reviewPricingFile: (id: string, payload: { decision: "APPROVE" | "REJECT"; comment?: string }) =>
       client.post<PricingFileRecord>(`/pricing-files/${id}/review`, payload),
     receivePricingFile: (id: string, receivedBy: string) =>
       client.post<PricingFileRecord>(`/pricing-files/${id}/receive`, { receivedBy }),

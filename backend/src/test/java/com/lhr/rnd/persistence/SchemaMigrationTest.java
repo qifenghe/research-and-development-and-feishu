@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.ActiveProfiles;
+import com.lhr.rnd.domain.SampleStatus;
 
 import java.util.UUID;
 
@@ -201,6 +202,93 @@ class SchemaMigrationTest {
                 "select finished_yield_percent from experiment_form where id = 'FORM-OWNER-LEGACY'",
                 java.math.BigDecimal.class
         )).isEqualByComparingTo("120");
+    }
+
+    @Test
+    void v13MigratesLegacyPricingWorkflowRulesToReviewablePricingStates() {
+        String databaseUrl = "jdbc:h2:mem:pricing-review-workflow-" + UUID.randomUUID()
+                + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
+        Flyway.configure()
+                .dataSource(databaseUrl, "sa", "")
+                .locations("classpath:db/migration")
+                .target("12")
+                .load()
+                .migrate();
+
+        var legacyJdbcTemplate = new JdbcTemplate(new DriverManagerDataSource(databaseUrl, "sa", ""));
+        insertLegacyPricingWorkflowRules(legacyJdbcTemplate);
+
+        Flyway.configure()
+                .dataSource(databaseUrl, "sa", "")
+                .locations("classpath:db/migration")
+                .target("13")
+                .load()
+                .migrate();
+
+        var generatedPricingTarget = legacyJdbcTemplate.queryForObject(
+                "select next_status from workflow_rule_config where workflow_code = ? and current_status = ? and action_code = ?",
+                String.class,
+                "SAMPLE_RND_FLOW",
+                "SAMPLE_COMPLETED",
+                "REQUEST_PRICING"
+        );
+        assertThat(generatedPricingTarget).isEqualTo("PENDING_PRICING_REVIEW");
+        assertThat(SampleStatus.valueOf(generatedPricingTarget)).isEqualTo(SampleStatus.PENDING_PRICING_REVIEW);
+        assertThat(legacyJdbcTemplate.queryForObject(
+                "select current_status from workflow_rule_config where workflow_code = ? and action_code = ?",
+                String.class,
+                "SAMPLE_RND_FLOW",
+                "NOTIFY_FINANCE"
+        )).isEqualTo("PRICING_APPROVED");
+        assertThat(legacyJdbcTemplate.queryForObject(
+                "select count(*) from workflow_rule_config where workflow_code = ? and current_status = ? and action_code in (?, ?)",
+                Integer.class,
+                "SAMPLE_RND_FLOW",
+                "PENDING_PRICING_REVIEW",
+                "APPROVE_PRICING",
+                "REJECT_PRICING"
+        )).isEqualTo(2);
+    }
+
+    private void insertLegacyPricingWorkflowRules(JdbcTemplate legacyJdbcTemplate) {
+        legacyJdbcTemplate.update(
+                """
+                        insert into workflow_rule_config (
+                            id, workflow_code, current_status, action_code, action_label, next_status,
+                            enabled, notify_feishu, notify_role, sort_order, remark, updated_at
+                        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)
+                        """,
+                "FLOW-LEGACY-REQUEST-PRICING",
+                "SAMPLE_RND_FLOW",
+                "SAMPLE_COMPLETED",
+                "REQUEST_PRICING",
+                "生成核价",
+                "PRICING_FILE_GENERATED",
+                true,
+                true,
+                "FINANCE",
+                110,
+                "旧版生成核价"
+        );
+        legacyJdbcTemplate.update(
+                """
+                        insert into workflow_rule_config (
+                            id, workflow_code, current_status, action_code, action_label, next_status,
+                            enabled, notify_feishu, notify_role, sort_order, remark, updated_at
+                        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)
+                        """,
+                "FLOW-LEGACY-NOTIFY-FINANCE",
+                "SAMPLE_RND_FLOW",
+                "PRICING_FILE_GENERATED",
+                "NOTIFY_FINANCE",
+                "通知财务",
+                "FINANCE_NOTIFIED",
+                true,
+                true,
+                "FINANCE",
+                120,
+                "旧版通知财务"
+        );
     }
 
     private void assertTableExists(String tableName) {

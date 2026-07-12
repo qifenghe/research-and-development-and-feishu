@@ -108,6 +108,14 @@ public class ArchiveFileEntity {
         return fileName;
     }
 
+    public String getBusinessType() {
+        return businessType;
+    }
+
+    public String getBusinessId() {
+        return businessId;
+    }
+
     public String getFilePath() {
         return filePath;
     }

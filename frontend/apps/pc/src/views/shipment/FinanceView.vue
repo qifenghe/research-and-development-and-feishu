@@ -33,7 +33,11 @@ const columns = [
 onMounted(async () => {
   loading.value = true;
   try {
-    rows.value = await api.shipment.pricingFiles({ status: "GENERATED" }) as PricingFileRecord[];
+    const [notified, received] = await Promise.all([
+      api.shipment.pricingFiles({ status: "FINANCE_NOTIFIED" }) as Promise<PricingFileRecord[]>,
+      api.shipment.pricingFiles({ status: "FINANCE_RECEIVED" }) as Promise<PricingFileRecord[]>,
+    ]);
+    rows.value = [...notified, ...received];
   } finally {
     loading.value = false;
   }

@@ -288,20 +288,26 @@ public class SampleWorkflowController {
             @RequestParam(required = false) String sort,
             HttpServletRequest request
     ) {
-        var role = resolvedRole(null, request);
+        var principal = sessionPrincipal(request);
+        var role = principal == null ? null : principal.role();
+        var operatorName = principal == null ? null : principal.name();
         if (page != null || size != null) {
-            return ApiResponse.success(workflowService.pricingFiles(status, keyword, page, size, sort, role));
+            return ApiResponse.success(workflowService.pricingFiles(status, keyword, page, size, sort, role, operatorName));
         }
-        return ApiResponse.success(workflowService.pricingFiles(status, keyword, role));
+        return ApiResponse.success(workflowService.pricingFiles(status, keyword, role, operatorName));
     }
 
     @GetMapping("/pricing-files/{id}/detail")
     public ApiResponse<PricingFileDetailView> pricingFileDetail(
             @PathVariable String id,
-            @RequestParam(required = false) String role,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(workflowService.pricingFileDetail(id, resolvedRole(role, request)));
+        var principal = sessionPrincipal(request);
+        return ApiResponse.success(workflowService.pricingFileDetail(
+                id,
+                principal == null ? null : principal.role(),
+                principal == null ? null : principal.name()
+        ));
     }
 
     @PostMapping("/pricing-files/{id}/review")
@@ -310,11 +316,9 @@ public class SampleWorkflowController {
             @Valid @RequestBody ReviewPricingFileRequest request,
             HttpServletRequest servletRequest
     ) {
-        var principal = (SessionPrincipal) servletRequest.getAttribute(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE);
-        var reviewerName = principal == null ? request.reviewerName() : principal.name();
-        var reviewerRole = principal == null ? "RND_ENGINEER" : principal.role();
+        var principal = requiredSessionPrincipal(servletRequest);
         return ApiResponse.success(workflowService.reviewPricingFile(
-                id, request.decision(), reviewerName, reviewerRole, request.comment()));
+                id, request.decision(), principal.name(), principal.role(), request.comment()));
     }
 
     @PostMapping("/pricing-files/{id}/notify-finance")
@@ -335,7 +339,7 @@ public class SampleWorkflowController {
 
     @GetMapping("/pricing-files/{id}/download")
     public ResponseEntity<byte[]> downloadPricingFile(@PathVariable String id, HttpServletRequest request) {
-        var file = workflowService.downloadPricingFile(id, resolvedRole(null, request));
+        var file = workflowService.downloadPricingFile(id, resolvedRole(request));
         var encodedFileName = URLEncoder.encode(file.fileName(), StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
@@ -343,9 +347,21 @@ public class SampleWorkflowController {
                 .body(file.content());
     }
 
-    private String resolvedRole(String requestedRole, HttpServletRequest request) {
-        var principal = (SessionPrincipal) request.getAttribute(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE);
-        return principal == null ? requestedRole : principal.role();
+    private String resolvedRole(HttpServletRequest request) {
+        var principal = sessionPrincipal(request);
+        return principal == null ? null : principal.role();
+    }
+
+    private SessionPrincipal sessionPrincipal(HttpServletRequest request) {
+        return (SessionPrincipal) request.getAttribute(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE);
+    }
+
+    private SessionPrincipal requiredSessionPrincipal(HttpServletRequest request) {
+        var principal = sessionPrincipal(request);
+        if (principal == null) {
+            throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "核价审核必须使用服务端会话身份");
+        }
+        return principal;
     }
 
     @GetMapping("/sample-versions/{id}/process-steps")
@@ -364,13 +380,13 @@ public class SampleWorkflowController {
     }
 
     @GetMapping("/sample-versions/{id}/archive-files")
-    public ApiResponse<List<ArchiveFileView>> archiveFiles(@PathVariable String id) {
-        return ApiResponse.success(workflowService.archiveFiles(id));
+    public ApiResponse<List<ArchiveFileView>> archiveFiles(@PathVariable String id, HttpServletRequest request) {
+        return ApiResponse.success(workflowService.archiveFiles(id, resolvedRole(request)));
     }
 
     @GetMapping("/archive-files/{id}/download")
-    public ResponseEntity<byte[]> downloadArchiveFile(@PathVariable String id) {
-        var file = workflowService.downloadArchiveFile(id);
+    public ResponseEntity<byte[]> downloadArchiveFile(@PathVariable String id, HttpServletRequest request) {
+        var file = workflowService.downloadArchiveFile(id, resolvedRole(request));
         var encodedFileName = URLEncoder.encode(file.fileName(), StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)

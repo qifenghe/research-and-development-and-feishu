@@ -46,4 +46,11 @@ public class FinanceNotificationEntity {
         this.status = status;
         this.notifiedAt = notifiedAt;
     }
+
+    public String getId() { return id; }
+    public String getPricingFileId() { return pricingFileId; }
+    public String getRecipientName() { return recipientName; }
+    public String getRemark() { return remark; }
+    public String getStatus() { return status; }
+    public LocalDateTime getNotifiedAt() { return notifiedAt; }
 }

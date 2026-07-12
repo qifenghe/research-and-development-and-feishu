@@ -86,6 +86,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.UUID;
@@ -684,12 +685,22 @@ public class SampleWorkflowService {
     }
 
     public synchronized List<PricingFileRecord> pricingFiles(String status, String keyword) {
-        return pricingFiles(status, keyword, null);
+        return pricingFiles(status, keyword, null, null);
     }
 
     public synchronized List<PricingFileRecord> pricingFiles(String status, String keyword, String role) {
+        return pricingFiles(status, keyword, role, null);
+    }
+
+    public synchronized List<PricingFileRecord> pricingFiles(
+            String status,
+            String keyword,
+            String role,
+            String operatorName
+    ) {
         return pricingFiles.values().stream()
                 .filter(pricingFile -> !hasRole(role, "FINANCE") || isFinanceVisible(pricingFile))
+                .filter(pricingFile -> !hasRole(role, "RND_ENGINEER") || isPricingOwner(pricingFile, operatorName))
                 .filter(pricingFile -> matchesStatus(status, pricingFile.status().name()))
                 .filter(pricingFile -> matchesKeyword(
                         keyword,
@@ -775,8 +786,20 @@ public class SampleWorkflowService {
             String sort,
             String role
     ) {
+        return pricingFiles(status, keyword, page, size, sort, role, null);
+    }
+
+    public synchronized PagedResult<PricingFileRecord> pricingFiles(
+            String status,
+            String keyword,
+            Integer page,
+            Integer size,
+            String sort,
+            String role,
+            String operatorName
+    ) {
         return paginate(
-                pricingFiles(status, keyword, role),
+                pricingFiles(status, keyword, role, operatorName),
                 page,
                 size,
                 sort,
@@ -798,9 +821,20 @@ public class SampleWorkflowService {
     }
 
     public synchronized PricingFileDetailView pricingFileDetail(String pricingFileId, String role) {
+        return pricingFileDetail(pricingFileId, role, null);
+    }
+
+    public synchronized PricingFileDetailView pricingFileDetail(
+            String pricingFileId,
+            String role,
+            String operatorName
+    ) {
         var pricingFile = requiredPricingFile(pricingFileId);
         if (hasRole(role, "FINANCE") && !isFinanceVisible(pricingFile)) {
             throw new BusinessException("PRICING_FILE_NOT_AVAILABLE_FOR_FINANCE", "财务只能查看已通过审核并通知的核价文件");
+        }
+        if (hasRole(role, "RND_ENGINEER") && !isPricingOwner(pricingFile, operatorName)) {
+            throw new BusinessException("PRICING_FILE_NOT_AVAILABLE_FOR_RND_ENGINEER", "研发人员只能查看本人负责产品的核价文件");
         }
         var version = requiredVersion(pricingFile.versionId());
         var financeNotification = currentFinanceNotification(pricingFile.id());
@@ -1249,7 +1283,10 @@ public class SampleWorkflowService {
         return financeNotifications.values().stream()
                 .filter(notification -> notification.pricingFileId().equals(pricingFileId))
                 .max(Comparator.comparing(FinanceNotification::notifiedAt))
-                .orElse(null);
+                .orElseGet(() -> financeNotificationRepository == null ? null : financeNotificationRepository
+                        .findFirstByPricingFileIdOrderByNotifiedAtDesc(pricingFileId)
+                        .map(this::toFinanceNotification)
+                        .orElse(null));
     }
 
     private List<DetailFieldGroup> detailFieldGroups(
@@ -1654,6 +1691,13 @@ public class SampleWorkflowService {
     @Transactional
     public synchronized NotifyFinanceResult notifyFinance(String pricingFileId, String recipientName, String remark) {
         var pricingFile = requiredPricingFile(pricingFileId);
+        if (pricingFile.status() == PricingFileStatus.FINANCE_NOTIFIED) {
+            var notification = currentFinanceNotification(pricingFileId);
+            if (notification == null) {
+                throw new BusinessException("FINANCE_NOTIFICATION_NOT_FOUND", "核价文件通知记录不存在");
+            }
+            return new NotifyFinanceResult(pricingFile, notification);
+        }
         if (pricingFile.status() != PricingFileStatus.PRICING_APPROVED) {
             throw new BusinessException("PRICING_FILE_REVIEW_REQUIRED", "核价文件审核通过后才能通知财务");
         }
@@ -1748,20 +1792,32 @@ public class SampleWorkflowService {
     }
 
     public synchronized List<ArchiveFileView> archiveFiles(String versionId) {
+        return archiveFiles(versionId, null);
+    }
+
+    public synchronized List<ArchiveFileView> archiveFiles(String versionId, String role) {
         if (archiveFileRepository == null) {
             return List.of();
         }
         return archiveFileRepository.findByVersionIdOrderByArchivedAtDesc(versionId).stream()
+                .filter(archiveFile -> !hasRole(role, "FINANCE") || isFinanceVisibleArchiveFile(archiveFile))
                 .map(ArchiveFileEntity::toView)
                 .toList();
     }
 
     public synchronized ArchiveFileDownload downloadArchiveFile(String archiveFileId) {
+        return downloadArchiveFile(archiveFileId, null);
+    }
+
+    public synchronized ArchiveFileDownload downloadArchiveFile(String archiveFileId, String role) {
         if (archiveFileRepository == null) {
             throw new BusinessException("ARCHIVE_FILE_NOT_FOUND", "归档文件不存在");
         }
         var archiveFile = archiveFileRepository.findById(archiveFileId)
                 .orElseThrow(() -> new BusinessException("ARCHIVE_FILE_NOT_FOUND", "归档文件不存在"));
+        if (hasRole(role, "FINANCE") && !isFinanceVisibleArchiveFile(archiveFile)) {
+            throw new BusinessException("PRICING_FILE_NOT_AVAILABLE_FOR_FINANCE", "财务只能下载已通过审核并通知的核价文件");
+        }
         return new ArchiveFileDownload(
                 archiveFile.getFileName(),
                 archiveStorageService.read(archiveFile.getFilePath())
@@ -2761,22 +2817,48 @@ public class SampleWorkflowService {
                 || pricingFile.status() == PricingFileStatus.FINANCE_RECEIVED;
     }
 
+    private boolean isFinanceVisibleArchiveFile(ArchiveFileEntity archiveFile) {
+        if (!"PRICING_FILE".equals(archiveFile.getBusinessType())) {
+            return true;
+        }
+        var pricingFile = pricingFiles.get(archiveFile.getBusinessId());
+        if (pricingFile == null && pricingFileRepository != null) {
+            pricingFile = pricingFileRepository.findById(archiveFile.getBusinessId())
+                    .map(this::toPricingFileRecord)
+                    .orElse(null);
+        }
+        return pricingFile != null && isFinanceVisible(pricingFile);
+    }
+
+    private boolean isPricingOwner(PricingFileRecord pricingFile, String operatorName) {
+        if (operatorName == null || operatorName.isBlank()) {
+            return false;
+        }
+        return pricingTask(pricingFile.versionId())
+                .map(RndTask::productOwnerName)
+                .filter(operatorName::equals)
+                .isPresent();
+    }
+
     private void ensurePricingReviewer(PricingFileRecord pricingFile, String reviewerName, String reviewerRole) {
         if (hasRole(reviewerRole, "RND_DIRECTOR")) {
             return;
         }
-        var task = tasks.values().stream()
-                .filter(candidate -> candidate.versionId().equals(pricingFile.versionId()))
-                .findFirst()
-                .orElseGet(() -> rndTaskRepository == null ? null : rndTaskRepository.findAll().stream()
-                        .filter(candidate -> candidate.getVersionId().equals(pricingFile.versionId()))
-                        .findFirst()
-                        .map(this::hydrateRndTask)
-                        .orElse(null));
+        var task = pricingTask(pricingFile.versionId()).orElse(null);
         if (!hasRole(reviewerRole, "RND_ENGINEER", "RND") || task == null
                 || !reviewerName.equals(task.productOwnerName())) {
             throw new BusinessException("PRICING_FILE_REVIEW_FORBIDDEN", "仅研发总监或产品负责人可审核核价文件");
         }
+    }
+
+    private Optional<RndTask> pricingTask(String versionId) {
+        return tasks.values().stream()
+                .filter(candidate -> candidate.versionId().equals(versionId))
+                .findFirst()
+                .or(() -> rndTaskRepository == null ? Optional.empty() : rndTaskRepository.findAll().stream()
+                        .filter(candidate -> candidate.getVersionId().equals(versionId))
+                        .findFirst()
+                        .map(this::hydrateRndTask));
     }
 
     private PricingFileRecord toPricingFileRecord(com.lhr.rnd.persistence.entity.PricingFileEntity entity) {
@@ -2785,6 +2867,17 @@ public class SampleWorkflowService {
                 entity.getVersionCode(), entity.getPricingVersion(), entity.getFileName(),
                 PricingFileStatus.valueOf(entity.getStatus()), entity.getContentLength(), entity.getGeneratedAt(),
                 entity.getReviewedBy(), entity.getReviewedAt(), entity.getReviewComment(), entity.getRejectionReason()
+        );
+    }
+
+    private FinanceNotification toFinanceNotification(FinanceNotificationEntity entity) {
+        return new FinanceNotification(
+                entity.getId(),
+                entity.getPricingFileId(),
+                entity.getRecipientName(),
+                entity.getRemark(),
+                FinanceNotificationStatus.valueOf(entity.getStatus()),
+                entity.getNotifiedAt()
         );
     }
 
