@@ -51,3 +51,29 @@ The full Playwright command cannot launch the configured system Chrome inside th
 ## Commit
 
 `test: verify H5 pricing workflow`
+
+## Final Review Repair (2026-07-12)
+
+### Authorization Boundary
+
+- Protected `/api/v1/**` routes now require a verified Bearer session and execute RBAC even when `rnd.session.auth-required=false`; only the explicit `test` profile enables `rnd.session.test-business-api-authentication-bypass` for legacy controller fixtures.
+- Login and health/public integration endpoints remain anonymous. Regression coverage proves an anonymous business request is `401`, an unauthorized role is `403`, and the permitted role succeeds in the optional-auth configuration.
+- Pricing review, finance notification, and receipt require a server principal. Receipt ignores a client-provided `receivedBy` value and persists the authenticated finance user's name.
+- The H5 task-assignment and finance todo flows were reconciled with enforced RBAC: directors receive the two read-only APIs needed to load their assignment screen, while finance todo no longer asks for unrelated R&D task APIs.
+- `V14__grant_director_h5_assignment_reads.sql` backfills those two reads only for an already-configured director role, leaving a fresh database to receive the complete default permission matrix.
+
+### Real H5/API Evidence
+
+- Added `mobile-pricing-security-version.spec.ts`, using real `/auth/login` sessions and HTTP requests. It verifies: pre-review notify fails with `PRICING_FILE_REVIEW_REQUIRED`; finance review is `403`; rejection preserves `A0-核价V1` and produces `A0-核价V2`; a failed test locks A0 and creates A1.
+- The five-role browser loop now passes with RBAC enabled from request creation through finance download and receipt.
+
+### Final Verification
+
+| Command | Result |
+| --- | --- |
+| `cd backend && mvn -q test` | PASS |
+| `cd frontend && node --test tests/*.test.mts` | PASS: 27 tests |
+| `cd frontend && pnpm typecheck && pnpm build` | PASS |
+| `cd frontend && pnpm check:api-contracts && pnpm check:routes` | PASS |
+| `node scripts/run-mobile-closed-loop.mjs` | PASS: five-role browser closure |
+| `cd frontend && pnpm exec playwright test --workers=1` | PASS: 14 PC/mobile tests |

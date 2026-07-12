@@ -40,6 +40,9 @@ function taskGroupsForRole(role: string): Array<{ key: string; title: string; st
   if (role === "RND_ENGINEER" || role === "RND_DIRECTOR" || role === "RND") {
     return TASK_GROUPS.filter((group) => group.key !== "test");
   }
+  if (role === "FINANCE") {
+    return [];
+  }
   return TASK_GROUPS;
 }
 

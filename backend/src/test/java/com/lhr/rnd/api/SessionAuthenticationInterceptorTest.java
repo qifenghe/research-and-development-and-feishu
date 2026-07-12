@@ -67,7 +67,9 @@ class SessionAuthenticationInterceptorTest {
     @Test
     void attachesBearerPrincipalWhenAuthorizationIsOptional() throws Exception {
         var authRequired = sessionProperties.isAuthRequired();
+        var testBypass = sessionProperties.isTestBusinessApiAuthenticationBypass();
         sessionProperties.setAuthRequired(false);
+        sessionProperties.setTestBusinessApiAuthenticationBypass(false);
         try {
             var token = sessionTokenService.issue(new UserAccount(
                     "USER-H5-REVIEW",
@@ -94,6 +96,44 @@ class SessionAuthenticationInterceptorTest {
                     .isEqualTo("张研发");
         } finally {
             sessionProperties.setAuthRequired(authRequired);
+            sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);
+        }
+    }
+
+    @Test
+    void optionalAuthenticationStillRequiresSessionAndEnforcesRolePermissionsForBusinessApis() throws Exception {
+        var authRequired = sessionProperties.isAuthRequired();
+        var testBypass = sessionProperties.isTestBusinessApiAuthenticationBypass();
+        sessionProperties.setAuthRequired(false);
+        sessionProperties.setTestBusinessApiAuthenticationBypass(false);
+        try {
+            mockMvc.perform(get("/api/v1/sample-requests"))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("SESSION_TOKEN_REQUIRED"));
+
+            mockMvc.perform(post("/api/v1/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"username\":\"rnd_assistant\",\"password\":\"123456\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.accessToken").isNotEmpty());
+
+            var engineerToken = tokenFor("可选认证研发", "ou_optional_engineer", "RND_ENGINEER");
+            mockMvc.perform(post("/api/v1/sample-requests")
+                            .header("Authorization", "Bearer " + engineerToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(sampleRequestJson()))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("SESSION_ROLE_FORBIDDEN"));
+
+            var assistantToken = tokenFor("可选认证内勤", "ou_optional_assistant", "RND_ASSISTANT");
+            mockMvc.perform(post("/api/v1/sample-requests")
+                            .header("Authorization", "Bearer " + assistantToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(sampleRequestJson()))
+                    .andExpect(status().isOk());
+        } finally {
+            sessionProperties.setAuthRequired(authRequired);
+            sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);
         }
     }
 
@@ -191,6 +231,19 @@ class SessionAuthenticationInterceptorTest {
                         .content("{\"acceptedBy\":\"研发人员B\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("SAMPLING"));
+    }
+
+    @Test
+    void permitsDirectorToLoadTheShipmentListRequiredByTheH5TodoBoard() throws Exception {
+        var directorToken = tokenFor("待办总监", "ou_todo_director", "RND_DIRECTOR");
+
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", "Bearer " + directorToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/settings/users")
+                        .header("Authorization", "Bearer " + directorToken))
+                .andExpect(status().isOk());
     }
 
     private String tokenFor(String name, String feishuUserId, String role) throws Exception {

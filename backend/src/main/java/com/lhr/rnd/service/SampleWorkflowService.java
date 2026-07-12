@@ -535,6 +535,7 @@ public class SampleWorkflowService {
     public synchronized FailInternalTestResult failInternalTestForResample(String testAssignmentId, String testerName, String comment) {
         var assignment = pendingTestAssignment(testAssignmentId, testerName);
         ensureWorkflowAllows(SampleStatus.PENDING_TEST, SampleAction.TEST_FAIL_RESAMPLE);
+        var locked = requiredExperimentForm(assignment.experimentFormId()).lock();
         var failed = assignment.withStatus(TestAssignmentStatus.FAILED_RESAMPLE);
         testAssignments.put(failed.id(), failed);
         var record = testRecord(failed, testerName, TestAssignmentStatus.FAILED_RESAMPLE, comment);
@@ -583,7 +584,8 @@ public class SampleWorkflowService {
                 null
         );
         tasks.put(nextTask.id(), nextTask);
-        persistFailedInternalTest(failed, record, nextVersion, previousTask, nextTask);
+        persistFailedInternalTest(locked, failed, record, nextVersion, previousTask, nextTask);
+        experimentForms.put(locked.id(), locked);
         return new FailInternalTestResult(failed, record, nextVersion, nextTask);
     }
 
@@ -2446,16 +2448,21 @@ public class SampleWorkflowService {
     }
 
     private void persistFailedInternalTest(
+            ExperimentForm locked,
             TestAssignment failed,
             TestRecord record,
             SampleVersion nextVersion,
             RndTask previousTask,
             RndTask nextTask
     ) {
-        if (testAssignmentRepository == null || testRecordRepository == null
+        if (experimentFormRepository == null || testAssignmentRepository == null || testRecordRepository == null
                 || sampleVersionRepository == null || rndTaskRepository == null) {
             return;
         }
+        var formEntity = experimentFormRepository.findById(locked.id())
+                .orElseThrow(() -> new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在"));
+        formEntity.lock();
+        experimentFormRepository.save(formEntity);
         var assignmentEntity = testAssignmentRepository.findById(failed.id())
                 .orElseThrow(() -> new BusinessException("TEST_ASSIGNMENT_NOT_FOUND", "内部测试任务不存在"));
         assignmentEntity.failForResample();

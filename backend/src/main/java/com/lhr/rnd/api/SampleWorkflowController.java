@@ -324,17 +324,21 @@ public class SampleWorkflowController {
     @PostMapping("/pricing-files/{id}/notify-finance")
     public ApiResponse<NotifyFinanceResult> notifyFinance(
             @PathVariable String id,
-            @Valid @RequestBody NotifyFinanceRequest request
+            @Valid @RequestBody NotifyFinanceRequest request,
+            HttpServletRequest servletRequest
     ) {
+        requiredSessionPrincipal(servletRequest);
         return ApiResponse.success(workflowService.notifyFinance(id, request.recipientName(), request.remark()));
     }
 
     @PostMapping("/pricing-files/{id}/receive")
     public ApiResponse<PricingFileRecord> receivePricingFile(
             @PathVariable String id,
-            @Valid @RequestBody ReceivePricingFileRequest request
+            @Valid @RequestBody ReceivePricingFileRequest request,
+            HttpServletRequest servletRequest
     ) {
-        return ApiResponse.success(workflowService.receivePricingFile(id, request.receivedBy()));
+        var principal = requiredSessionPrincipal(servletRequest);
+        return ApiResponse.success(workflowService.receivePricingFile(id, principal.name()));
     }
 
     @GetMapping("/pricing-files/{id}/download")

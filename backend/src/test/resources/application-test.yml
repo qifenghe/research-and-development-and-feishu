@@ -15,6 +15,7 @@ spring:
 rnd:
   session:
     auth-required: false
+    test-business-api-authentication-bypass: true
   feishu:
     enabled: true
     mode: MOCK
