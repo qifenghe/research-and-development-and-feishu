@@ -75,6 +75,10 @@ Implementation commit: `690269c feat: add pure H5 login mode`
 - In the disabled OPENAPI test context, mocked `FeishuIdentityClientProvider` and asserted zero interactions after the OAuth callback returns `FEISHU_DISABLED`.
 - Updated the mobile smoke login contract to require username/password inputs and the login button, reject Feishu text, and require the test helper content to be collapsed by default.
 
+### Commit
+
+Fix commit: `a34d4b2 fix: complete pure H5 review follow-up`
+
 ### Red Evidence
 
 | Command | Result |
