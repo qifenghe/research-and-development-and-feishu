@@ -12,15 +12,6 @@
   </head>
   <body>
     <div id="app"></div>
-    <script>
-      // Safari 直连调试时不加载飞书 SDK，避免无关脚本干扰页面
-      if (/Lark|Feishu|LarkShell/i.test(navigator.userAgent)) {
-        var sdk = document.createElement("script");
-        sdk.src = "https://lf1-cdn-tos.bytegoofy.com/goofy/lark/op/h5-js-sdk-1.5.26.js";
-        sdk.async = true;
-        document.head.appendChild(sdk);
-      }
-    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

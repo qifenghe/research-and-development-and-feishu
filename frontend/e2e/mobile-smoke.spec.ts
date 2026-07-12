@@ -2,7 +2,12 @@ import { test, expect } from "@playwright/test";
 
 test("Mobile login page renders", async ({ page }) => {
   await page.goto("./login");
-  await expect(page.getByText("手机端登录")).toBeVisible();
+  await expect(page.locator('input[name="username"]')).toBeVisible();
+  await expect(page.locator('input[name="password"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: "登录", exact: true })).toBeVisible();
+  await expect(page.getByText(/飞书|Feishu/i)).toHaveCount(0);
+  await expect(page.getByText("测试辅助")).toBeVisible();
+  await expect(page.getByText("研发内勤")).toBeHidden();
 });
 
 test("Mobile mock login reaches todo tab with 3 tabs", async ({ page }) => {

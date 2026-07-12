@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -13,8 +14,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.verifyNoInteractions;
 
-@SpringBootTest(properties = "rnd.session.auth-required=true")
+@SpringBootTest(properties = {
+        "rnd.session.auth-required=true",
+        "rnd.feishu.enabled=false",
+        "rnd.feishu.mode=OPENAPI"
+})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class AuthControllerTest {
@@ -23,6 +29,9 @@ class AuthControllerTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @MockBean
+    private com.lhr.rnd.service.FeishuIdentityClientProvider feishuIdentityClientProvider;
 
     @Test
     void defaultAssistantAccountCanLoginWithUsernameAndPassword() throws Exception {
@@ -73,6 +82,8 @@ class AuthControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("FEISHU_DISABLED"));
+
+        verifyNoInteractions(feishuIdentityClientProvider);
     }
 
     @Test

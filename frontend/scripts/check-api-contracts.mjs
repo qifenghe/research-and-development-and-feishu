@@ -13,6 +13,7 @@ const taskApi = read("packages/shared/src/api/task.ts");
 const sharedTypes = read("packages/shared/src/types/index.ts");
 const experimentForm = read("apps/mobile/src/views/ExperimentFormView.vue");
 const mobileLogin = read("apps/mobile/src/views/LoginView.vue");
+const mobileEntryHtml = read("apps/mobile/index.html");
 const mobileRouter = read("apps/mobile/src/router/index.ts");
 const mobileProfile = read("apps/mobile/src/views/ProfileView.vue");
 const mobileAuthStore = read("apps/mobile/src/stores/auth.ts");
@@ -78,6 +79,10 @@ if (mobileLogin.includes("requestAccess") || mobileLogin.includes("trycloudflare
 
 if (mobileLogin.includes("飞书") || !mobileLogin.includes("van-collapse")) {
   throw new Error("Mobile web login must hide Feishu entry points and collapse test helpers by default");
+}
+
+if (mobileEntryHtml.includes("h5-js-sdk") || mobileEntryHtml.includes("bytegoofy.com")) {
+  throw new Error("Pure H5 entry must not load the external Feishu SDK based on the user agent");
 }
 
 if (!mobileLogin.includes("location.host") || !mobileLogin.includes("登录已过期")) {

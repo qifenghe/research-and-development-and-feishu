@@ -16,6 +16,7 @@ rnd:
   session:
     auth-required: false
   feishu:
+    enabled: true
     mode: MOCK
     base-url: https://open.feishu.cn
     card-action-secret: test-card-secret
