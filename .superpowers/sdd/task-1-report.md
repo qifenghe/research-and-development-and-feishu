@@ -56,7 +56,7 @@ Result: blocked before any test page or assertion executed. All four tests faile
 
 ## Commit
 
-`db3936a feat: add pure H5 login mode`
+Implementation commit: `690269c feat: add pure H5 login mode`
 
 ## Self-check and Remaining Concerns
 
