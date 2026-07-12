@@ -20,6 +20,7 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -303,6 +304,7 @@ class SampleWorkflowControllerTest {
                                 """))
                 .andExpect(status().isOk());
 
+        ((Map<?, ?>) ReflectionTestUtils.getField(workflowService, "tasks")).clear();
         ((Map<?, ?>) ReflectionTestUtils.getField(workflowService, "experimentForms")).clear();
 
         mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
@@ -312,6 +314,55 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.task.productOwnerName").value("张研发"))
                 .andExpect(jsonPath("$.data.currentExperimentForm.finishedOutputQuantity").value(17))
                 .andExpect(jsonPath("$.data.currentExperimentForm.finishedOutputUnit").value("袋"));
+    }
+
+    @Test
+    void normalizesOmittedAndBlankFinishedOutputUnitsToBag() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        for (String payload : new String[]{
+                "{\"operatorName\":\"张研发\"}",
+                "{\"operatorName\":\"张研发\",\"finishedOutputUnit\":\"\"}",
+                "{\"operatorName\":\"张研发\",\"finishedOutputUnit\":\"  \"}"
+        }) {
+            mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(payload))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.finishedOutputUnit").value("袋"));
+        }
+    }
+
+    @Test
+    void rejectsNonPositiveFinishedOutputQuantityAtServiceBoundary() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        assertThatThrownBy(() -> workflowService.saveExperimentDraft(
+                new com.lhr.rnd.service.SampleWorkflowService.SaveExperimentDraftCommand(
+                        taskId, "张研发", null, null, null, null, 0, "袋", null
+                )
+        )).isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).code())
+                .isEqualTo("FINISHED_OUTPUT_QUANTITY_INVALID");
+    }
+
+    @Test
+    void rejectsUnsupportedFinishedOutputUnitAtServiceBoundary() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        assertThatThrownBy(() -> workflowService.saveExperimentDraft(
+                new com.lhr.rnd.service.SampleWorkflowService.SaveExperimentDraftCommand(
+                        taskId, "张研发", null, null, null, null, null, "桶", null
+                )
+        )).isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).code())
+                .isEqualTo("FINISHED_OUTPUT_UNIT_INVALID");
     }
 
     @Test

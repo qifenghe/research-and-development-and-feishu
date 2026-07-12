@@ -90,6 +90,7 @@ import java.util.UUID;
 
 @Service
 public class SampleWorkflowService {
+    private static final Set<String> FINISHED_OUTPUT_UNITS = Set.of("袋", "盒", "份", "个", "盘");
     private static final int MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
     private static final Set<String> ALLOWED_ATTACHMENT_CONTENT_TYPES = Set.of(
             "image/jpeg",
@@ -403,6 +404,8 @@ public class SampleWorkflowService {
         validatePrimaryMaterial(materials);
         materials = recalculateFormulaRatios(materials);
         var processSteps = recalculateProcessLosses(command.processSteps());
+        var finishedOutputUnit = normalizeFinishedOutputUnit(command.finishedOutputUnit());
+        validateFinishedOutput(command.finishedOutputQuantity(), finishedOutputUnit);
         var primaryInput = materials.stream()
                 .filter(ExperimentMaterial::primaryMaterial)
                 .map(ExperimentMaterial::weightKg)
@@ -426,7 +429,7 @@ public class SampleWorkflowService {
                 processSteps,
                 command.finishedOutputWeightKg(),
                 command.finishedOutputQuantity(),
-                normalizeFinishedOutputUnit(command.finishedOutputUnit()),
+                finishedOutputUnit,
                 finishedYieldRatio,
                 now(),
                 null
@@ -2458,6 +2461,15 @@ public class SampleWorkflowService {
     private String normalizeFinishedOutputUnit(String finishedOutputUnit) {
         var normalized = normalizeOptional(finishedOutputUnit);
         return normalized == null ? "袋" : normalized;
+    }
+
+    private void validateFinishedOutput(Integer finishedOutputQuantity, String finishedOutputUnit) {
+        if (finishedOutputQuantity != null && finishedOutputQuantity <= 0) {
+            throw new BusinessException("FINISHED_OUTPUT_QUANTITY_INVALID", "成品数量必须为正数");
+        }
+        if (!FINISHED_OUTPUT_UNITS.contains(finishedOutputUnit)) {
+            throw new BusinessException("FINISHED_OUTPUT_UNIT_INVALID", "成品单位不受支持");
+        }
     }
 
     private void ensureReadyForShipment(String versionId) {

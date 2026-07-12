@@ -7,11 +7,13 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
@@ -126,6 +128,42 @@ class SchemaMigrationTest {
                 "select material_category from experiment_material order by sequence",
                 String.class
         )).containsExactly("RAW", "AUXILIARY", "PACKAGING", "RAW");
+    }
+
+    @Test
+    void v11BackfillsProductOwnerAndEnforcesFinishedOutputConstraints() {
+        String databaseUrl = "jdbc:h2:mem:product-owner-backfill-" + UUID.randomUUID()
+                + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
+        var legacyFlyway = Flyway.configure()
+                .dataSource(databaseUrl, "sa", "")
+                .locations("classpath:db/migration")
+                .target("10")
+                .load();
+        legacyFlyway.migrate();
+
+        var legacyJdbcTemplate = new JdbcTemplate(new DriverManagerDataSource(databaseUrl, "sa", ""));
+        insertLegacyAssignedTask(legacyJdbcTemplate);
+
+        Flyway.configure()
+                .dataSource(databaseUrl, "sa", "")
+                .locations("classpath:db/migration")
+                .target("11")
+                .load()
+                .migrate();
+
+        assertThat(legacyJdbcTemplate.queryForObject(
+                "select product_owner_name from rnd_task where id = 'TASK-OWNER-LEGACY'",
+                String.class
+        )).isEqualTo("Legacy assignee");
+        assertThat(legacyJdbcTemplate.update(
+                "update experiment_form set finished_output_quantity = null, finished_output_unit = '盒' where id = 'FORM-OWNER-LEGACY'"
+        )).isEqualTo(1);
+        assertThatThrownBy(() -> legacyJdbcTemplate.update(
+                "update experiment_form set finished_output_quantity = 0 where id = 'FORM-OWNER-LEGACY'"
+        )).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> legacyJdbcTemplate.update(
+                "update experiment_form set finished_output_unit = '桶' where id = 'FORM-OWNER-LEGACY'"
+        )).isInstanceOf(DataIntegrityViolationException.class);
     }
 
     private void assertTableExists(String tableName) {
@@ -272,6 +310,36 @@ class SchemaMigrationTest {
                     ('MATERIAL-AUX', 'FORM-LEGACY', '辅料', 2, 'Auxiliary material', 2, 1),
                     ('MATERIAL-PACKAGING', 'FORM-LEGACY', '包材', 3, 'Packaging material', 1, 1),
                     ('MATERIAL-DEFAULT', 'FORM-LEGACY', null, 4, 'Default material', 1, 1)
+                """);
+    }
+
+    private void insertLegacyAssignedTask(JdbcTemplate template) {
+        template.update("""
+                insert into sample_project (
+                    id, sample_no, product_name, product_type, customer_name, specification, status, created_at
+                ) values ('PROJECT-OWNER-LEGACY', 'SAMPLE-OWNER-LEGACY', 'Legacy product', 'TEST',
+                          'Legacy customer', 'Legacy spec', 'SAMPLING', current_timestamp)
+                """);
+        template.update("""
+                insert into sample_version (
+                    id, project_id, sample_no, product_name, product_type, specification, version_no,
+                    version_number, version_code, created_at
+                ) values ('VERSION-OWNER-LEGACY', 'PROJECT-OWNER-LEGACY', 'SAMPLE-OWNER-LEGACY',
+                          'Legacy product', 'TEST', 'Legacy spec', 'A0', 1, 'A0', current_timestamp)
+                """);
+        template.update("""
+                insert into rnd_task (
+                    id, project_id, version_id, sample_no, product_name, version_code, status, assignee_name, created_at
+                ) values ('TASK-OWNER-LEGACY', 'PROJECT-OWNER-LEGACY', 'VERSION-OWNER-LEGACY',
+                          'SAMPLE-OWNER-LEGACY', 'Legacy product', 'A0', 'SAMPLING', 'Legacy assignee', current_timestamp)
+                """);
+        template.update("""
+                insert into experiment_form (
+                    id, task_id, project_id, version_id, sample_no, product_name, version_code, status,
+                    operator_name, saved_at
+                ) values ('FORM-OWNER-LEGACY', 'TASK-OWNER-LEGACY', 'PROJECT-OWNER-LEGACY',
+                          'VERSION-OWNER-LEGACY', 'SAMPLE-OWNER-LEGACY', 'Legacy product', 'A0', 'DRAFT',
+                          'Legacy operator', current_timestamp)
                 """);
     }
 }
