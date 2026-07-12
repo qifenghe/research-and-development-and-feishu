@@ -59,7 +59,7 @@ The migration test confirmed Flyway applied V11. H2 exposes the Chinese default 
 
 ## Commit
 
-Pending staged diff review and commit.
+Task 2 implementation: `9686100 feat: persist experiment output and product owner`.
 
 ## Self-Check
 
