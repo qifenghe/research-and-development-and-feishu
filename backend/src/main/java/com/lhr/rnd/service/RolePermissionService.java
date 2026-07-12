@@ -138,6 +138,7 @@ public class RolePermissionService {
                         rule("POST", "/api/v1/pricing-files/*/review", "审核本人负责产品的核价文件", 75),
                         rule("GET", "/api/v1/pricing-files", "查看本人负责产品的核价文件", 76),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看本人负责产品的核价文件详情", 77),
+                        rule("GET", "/api/v1/pricing-files/*/download", "下载本人负责产品的核价文件", 78),
                         rule("POST", "/api/v1/experiment-forms/*/attachments", "上传实验附件", 80),
                         rule("GET", "/api/v1/reports/experiment-forms/*/export", "导出实验单", 85),
                         rule("GET", "/api/v1/reports/rnd-tasks/export", "导出打样任务列表", 86),
@@ -279,7 +280,7 @@ public class RolePermissionService {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER");
         }
         if (isPricingDownload(method, uri)) {
-            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "FINANCE", "MANAGER");
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER");
         }
         if (isVersionTimelineRead(method, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "MANAGER");

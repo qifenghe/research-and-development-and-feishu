@@ -250,6 +250,52 @@ class SchemaMigrationTest {
         )).isEqualTo(2);
     }
 
+    @Test
+    void v13AddsPricingReadAndDownloadPermissionsToExistingRndEngineerRole() {
+        String databaseUrl = "jdbc:h2:mem:pricing-owner-permission-" + UUID.randomUUID()
+                + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
+        Flyway.configure()
+                .dataSource(databaseUrl, "sa", "")
+                .locations("classpath:db/migration")
+                .target("12")
+                .load()
+                .migrate();
+
+        var legacyJdbcTemplate = new JdbcTemplate(new DriverManagerDataSource(databaseUrl, "sa", ""));
+        legacyJdbcTemplate.update(
+                """
+                        insert into role_permission (
+                            id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at
+                        ) values (?, ?, ?, ?, ?, ?, ?, current_timestamp)
+                        """,
+                "PERM-LEGACY-RND-TASK-READ",
+                "RND_ENGINEER",
+                "GET",
+                "/api/v1/rnd-tasks",
+                true,
+                "旧版研发任务读取权限",
+                30
+        );
+
+        Flyway.configure()
+                .dataSource(databaseUrl, "sa", "")
+                .locations("classpath:db/migration")
+                .target("13")
+                .load()
+                .migrate();
+
+        assertThat(legacyJdbcTemplate.queryForList(
+                "select path_pattern from role_permission where role_code = ? and http_method = ? order by path_pattern",
+                String.class,
+                "RND_ENGINEER",
+                "GET"
+        )).contains(
+                "/api/v1/pricing-files",
+                "/api/v1/pricing-files/*/detail",
+                "/api/v1/pricing-files/*/download"
+        );
+    }
+
     private void insertLegacyPricingWorkflowRules(JdbcTemplate legacyJdbcTemplate) {
         legacyJdbcTemplate.update(
                 """

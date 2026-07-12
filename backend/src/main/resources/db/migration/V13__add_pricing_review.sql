@@ -7,6 +7,54 @@ update pricing_file
 set status = 'PENDING_PRICING_REVIEW'
 where status = 'GENERATED';
 
+insert into role_permission (
+    id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at
+)
+select 'PERM-RND-PRICE-LIST-V13', 'RND_ENGINEER', 'GET', '/api/v1/pricing-files', true,
+       '查看本人负责产品的核价文件', 76, current_timestamp
+where not exists (
+    select 1 from role_permission
+    where role_code = 'RND_ENGINEER'
+      and http_method = 'GET'
+      and path_pattern = '/api/v1/pricing-files'
+)
+and exists (
+    select 1 from role_permission
+    where role_code = 'RND_ENGINEER'
+);
+
+insert into role_permission (
+    id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at
+)
+select 'PERM-RND-PRICE-DETAIL-V13', 'RND_ENGINEER', 'GET', '/api/v1/pricing-files/*/detail', true,
+       '查看本人负责产品的核价文件详情', 77, current_timestamp
+where not exists (
+    select 1 from role_permission
+    where role_code = 'RND_ENGINEER'
+      and http_method = 'GET'
+      and path_pattern = '/api/v1/pricing-files/*/detail'
+)
+and exists (
+    select 1 from role_permission
+    where role_code = 'RND_ENGINEER'
+);
+
+insert into role_permission (
+    id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at
+)
+select 'PERM-RND-PRICE-DOWNLOAD-V13', 'RND_ENGINEER', 'GET', '/api/v1/pricing-files/*/download', true,
+       '下载本人负责产品的核价文件', 78, current_timestamp
+where not exists (
+    select 1 from role_permission
+    where role_code = 'RND_ENGINEER'
+      and http_method = 'GET'
+      and path_pattern = '/api/v1/pricing-files/*/download'
+)
+and exists (
+    select 1 from role_permission
+    where role_code = 'RND_ENGINEER'
+);
+
 update workflow_rule_config
 set next_status = 'PENDING_PRICING_REVIEW',
     action_label = '生成核价',

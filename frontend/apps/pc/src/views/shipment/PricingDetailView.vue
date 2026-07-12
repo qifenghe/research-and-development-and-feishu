@@ -15,7 +15,7 @@
         <a-col :span="8">
           <a-card title="操作">
             <a-space direction="vertical" style="width: 100%">
-              <a-button block :loading="downloading" @click="download">下载核价文件</a-button>
+              <a-button v-if="canDownload" block :loading="downloading" @click="download">下载核价文件</a-button>
               <a-button block :loading="exporting" @click="exportPricing">导出核价报表</a-button>
               <template v-if="canReview">
                 <a-textarea v-model:value="reviewComment" placeholder="审核意见；退回时必填原因" :rows="3" />
@@ -51,6 +51,9 @@ const detail = ref<PricingFileDetailView | null>(null);
 const recipientName = ref("财务部");
 const reviewComment = ref("");
 const resolvedGroups = computed(() => (detail.value ? resolvePricingDetailFields(detail.value) : []));
+const canDownload = computed(() => [
+  "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER", "ADMIN", "SYSTEM_ADMIN",
+].includes(auth.role ?? ""));
 const canReview = computed(() => (auth.role === "RND_DIRECTOR" || auth.role === "RND_ENGINEER")
   && detail.value?.pricingFile.status === "PENDING_PRICING_REVIEW");
 const canNotifyFinance = computed(() => auth.role === "RND_ASSISTANT"

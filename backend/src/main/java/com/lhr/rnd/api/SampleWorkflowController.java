@@ -339,7 +339,12 @@ public class SampleWorkflowController {
 
     @GetMapping("/pricing-files/{id}/download")
     public ResponseEntity<byte[]> downloadPricingFile(@PathVariable String id, HttpServletRequest request) {
-        var file = workflowService.downloadPricingFile(id, resolvedRole(request));
+        var principal = sessionPrincipal(request);
+        var file = workflowService.downloadPricingFile(
+                id,
+                principal == null ? null : principal.role(),
+                principal == null ? null : principal.name()
+        );
         var encodedFileName = URLEncoder.encode(file.fileName(), StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
@@ -381,12 +386,22 @@ public class SampleWorkflowController {
 
     @GetMapping("/sample-versions/{id}/archive-files")
     public ApiResponse<List<ArchiveFileView>> archiveFiles(@PathVariable String id, HttpServletRequest request) {
-        return ApiResponse.success(workflowService.archiveFiles(id, resolvedRole(request)));
+        var principal = sessionPrincipal(request);
+        return ApiResponse.success(workflowService.archiveFiles(
+                id,
+                principal == null ? null : principal.role(),
+                principal == null ? null : principal.name()
+        ));
     }
 
     @GetMapping("/archive-files/{id}/download")
     public ResponseEntity<byte[]> downloadArchiveFile(@PathVariable String id, HttpServletRequest request) {
-        var file = workflowService.downloadArchiveFile(id, resolvedRole(request));
+        var principal = sessionPrincipal(request);
+        var file = workflowService.downloadArchiveFile(
+                id,
+                principal == null ? null : principal.role(),
+                principal == null ? null : principal.name()
+        );
         var encodedFileName = URLEncoder.encode(file.fileName(), StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)

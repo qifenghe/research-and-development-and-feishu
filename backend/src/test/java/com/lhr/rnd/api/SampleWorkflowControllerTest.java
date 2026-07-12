@@ -1553,6 +1553,49 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void productOwnerCanOnlyExportArchiveAndDownloadOwnPricingFiles() throws Exception {
+        var ownVersionId = createLockedSampleVersion();
+        var otherVersionId = createLockedSampleVersion("李研发");
+        var ownPricingFileId = generatePricingFile(ownVersionId);
+        var otherPricingFileId = generatePricingFile(otherVersionId);
+        var ownArchiveFileId = valueByColumn("archive_file", "business_id", ownPricingFileId, "id");
+        var otherArchiveFileId = valueByColumn("archive_file", "business_id", otherPricingFileId, "id");
+        var owner = principal("张研发", "RND_ENGINEER");
+
+        mockMvc.perform(get("/api/v1/pricing-files/{id}/download", ownPricingFileId)
+                        .requestAttr("sessionPrincipal", owner))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/reports/pricing-files/{id}/export", ownPricingFileId)
+                        .requestAttr("sessionPrincipal", owner))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/sample-versions/{id}/archive-files", ownVersionId)
+                        .requestAttr("sessionPrincipal", owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].businessId").value(ownPricingFileId));
+        mockMvc.perform(get("/api/v1/archive-files/{id}/download", ownArchiveFileId)
+                        .requestAttr("sessionPrincipal", owner))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/pricing-files/{id}/download", otherPricingFileId)
+                        .requestAttr("sessionPrincipal", owner))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRICING_FILE_NOT_AVAILABLE_FOR_RND_ENGINEER"));
+        mockMvc.perform(get("/api/v1/reports/pricing-files/{id}/export", otherPricingFileId)
+                        .requestAttr("sessionPrincipal", owner))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRICING_FILE_NOT_AVAILABLE_FOR_RND_ENGINEER"));
+        mockMvc.perform(get("/api/v1/sample-versions/{id}/archive-files", otherVersionId)
+                        .requestAttr("sessionPrincipal", owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(0)));
+        mockMvc.perform(get("/api/v1/archive-files/{id}/download", otherArchiveFileId)
+                        .requestAttr("sessionPrincipal", owner))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRICING_FILE_NOT_AVAILABLE_FOR_RND_ENGINEER"));
+    }
+
+    @Test
     void financeCannotBypassPricingReviewThroughExportsOrArchives() throws Exception {
         var versionId = createLockedSampleVersion();
         var pricingFileId = generatePricingFile(versionId);
@@ -2456,9 +2499,13 @@ class SampleWorkflowControllerTest {
     }
 
     private String createLockedSampleVersion() throws Exception {
+        return createLockedSampleVersion("张研发");
+    }
+
+    private String createLockedSampleVersion(String productOwnerName) throws Exception {
         var taskId = createApprovedRequest();
-        assignTask(taskId);
-        acceptTask(taskId);
+        assignTask(taskId, productOwnerName);
+        acceptTask(taskId, productOwnerName);
         var experimentFormId = saveExperimentDraft(taskId);
         var testAssignmentId = submitExperimentForTest(experimentFormId);
         return mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)

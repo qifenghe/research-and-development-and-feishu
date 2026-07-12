@@ -1796,11 +1796,17 @@ public class SampleWorkflowService {
     }
 
     public synchronized List<ArchiveFileView> archiveFiles(String versionId, String role) {
+        return archiveFiles(versionId, role, null);
+    }
+
+    public synchronized List<ArchiveFileView> archiveFiles(String versionId, String role, String operatorName) {
         if (archiveFileRepository == null) {
             return List.of();
         }
         return archiveFileRepository.findByVersionIdOrderByArchivedAtDesc(versionId).stream()
                 .filter(archiveFile -> !hasRole(role, "FINANCE") || isFinanceVisibleArchiveFile(archiveFile))
+                .filter(archiveFile -> !hasRole(role, "RND_ENGINEER")
+                        || isPricingOwnerForVersion(archiveFile.toView().versionId(), operatorName))
                 .map(ArchiveFileEntity::toView)
                 .toList();
     }
@@ -1810,6 +1816,10 @@ public class SampleWorkflowService {
     }
 
     public synchronized ArchiveFileDownload downloadArchiveFile(String archiveFileId, String role) {
+        return downloadArchiveFile(archiveFileId, role, null);
+    }
+
+    public synchronized ArchiveFileDownload downloadArchiveFile(String archiveFileId, String role, String operatorName) {
         if (archiveFileRepository == null) {
             throw new BusinessException("ARCHIVE_FILE_NOT_FOUND", "归档文件不存在");
         }
@@ -1817,6 +1827,10 @@ public class SampleWorkflowService {
                 .orElseThrow(() -> new BusinessException("ARCHIVE_FILE_NOT_FOUND", "归档文件不存在"));
         if (hasRole(role, "FINANCE") && !isFinanceVisibleArchiveFile(archiveFile)) {
             throw new BusinessException("PRICING_FILE_NOT_AVAILABLE_FOR_FINANCE", "财务只能下载已通过审核并通知的核价文件");
+        }
+        if (hasRole(role, "RND_ENGINEER")
+                && !isPricingOwnerForVersion(archiveFile.toView().versionId(), operatorName)) {
+            throw new BusinessException("PRICING_FILE_NOT_AVAILABLE_FOR_RND_ENGINEER", "研发人员只能下载本人负责产品的核价文件");
         }
         return new ArchiveFileDownload(
                 archiveFile.getFileName(),
@@ -1829,13 +1843,21 @@ public class SampleWorkflowService {
     }
 
     public synchronized ArchiveFileDownload downloadPricingFile(String pricingFileId, String role) {
+        return downloadPricingFile(pricingFileId, role, null);
+    }
+
+    public synchronized ArchiveFileDownload downloadPricingFile(String pricingFileId, String role, String operatorName) {
         if (pricingFileRepository == null || archiveFileRepository == null) {
             throw new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在");
         }
         var pricingFile = pricingFileRepository.findById(pricingFileId)
                 .orElseThrow(() -> new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在"));
-        if (hasRole(role, "FINANCE") && !isFinanceVisible(toPricingFileRecord(pricingFile))) {
+        var pricingFileRecord = toPricingFileRecord(pricingFile);
+        if (hasRole(role, "FINANCE") && !isFinanceVisible(pricingFileRecord)) {
             throw new BusinessException("PRICING_FILE_NOT_AVAILABLE_FOR_FINANCE", "财务只能下载已通过审核并通知的核价文件");
+        }
+        if (hasRole(role, "RND_ENGINEER") && !isPricingOwner(pricingFileRecord, operatorName)) {
+            throw new BusinessException("PRICING_FILE_NOT_AVAILABLE_FOR_RND_ENGINEER", "研发人员只能下载本人负责产品的核价文件");
         }
         var archiveFile = archiveFileRepository.findFirstByBusinessTypeAndBusinessIdOrderByArchivedAtDesc(
                         "PRICING_FILE",
@@ -2831,10 +2853,14 @@ public class SampleWorkflowService {
     }
 
     private boolean isPricingOwner(PricingFileRecord pricingFile, String operatorName) {
+        return isPricingOwnerForVersion(pricingFile.versionId(), operatorName);
+    }
+
+    private boolean isPricingOwnerForVersion(String versionId, String operatorName) {
         if (operatorName == null || operatorName.isBlank()) {
             return false;
         }
-        return pricingTask(pricingFile.versionId())
+        return pricingTask(versionId)
                 .map(RndTask::productOwnerName)
                 .filter(operatorName::equals)
                 .isPresent();

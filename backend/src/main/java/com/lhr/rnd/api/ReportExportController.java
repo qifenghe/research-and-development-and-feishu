@@ -40,7 +40,11 @@ public class ReportExportController {
     @GetMapping("/pricing-files/{id}/export")
     public ResponseEntity<byte[]> exportPricingFile(@PathVariable String id, HttpServletRequest request) {
         var principal = (SessionPrincipal) request.getAttribute(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE);
-        return file(reportExportService.exportPricingFile(id, principal == null ? null : principal.role()));
+        return file(reportExportService.exportPricingFile(
+                id,
+                principal == null ? null : principal.role(),
+                principal == null ? null : principal.name()
+        ));
     }
 
     @GetMapping("/rnd-tasks/export")

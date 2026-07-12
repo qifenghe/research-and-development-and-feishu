@@ -19,7 +19,7 @@
     </van-skeleton>
 
     <FixedActionBar :with-tabbar="false">
-      <van-button type="primary" block :loading="downloading" @click="download">
+      <van-button v-if="canDownload" type="primary" block :loading="downloading" @click="download">
         下载核价文件
       </van-button>
       <van-button
@@ -92,6 +92,9 @@ const canReceive = computed(() => (
 const canNotifyFinance = computed(() => (
   auth.role === "RND_ASSISTANT" && detail.value?.pricingFile.status === "PRICING_APPROVED"
 ));
+const canDownload = computed(() => [
+  "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER", "ADMIN", "SYSTEM_ADMIN",
+].includes(auth.role ?? ""));
 const canReview = computed(() => (
   (auth.role === "RND_DIRECTOR" || auth.role === "RND_ENGINEER")
   && detail.value?.pricingFile.status === "PENDING_PRICING_REVIEW"

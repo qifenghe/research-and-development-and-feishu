@@ -32,3 +32,15 @@ The plan named this migration `V12`, but a concurrent existing `V12__convert_fin
 - `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn -q -Dtest=SampleWorkflowControllerTest,RolePermissionServiceTest,SchemaMigrationTest,ReportExportControllerTest test` -- passed, 85 tests.
 - `node --test tests/mobile-finance-inbox.test.mts tests/pricing-review-access.test.mts` -- passed, 4 tests.
 - `pnpm typecheck` -- passed for shared, mobile, and PC workspaces.
+
+## Final Review Fixes
+
+- V13 now backfills pricing list, detail, and download permissions only when `RND_ENGINEER` already has persisted permissions. The V12-to-V13 migration regression test seeds a legacy permission row and verifies all three additions; fresh installations continue to initialize the complete default matrix.
+- Pricing export, direct download, archive list, and archive download now pass both the server-derived role and name. `RND_ENGINEER` access is limited to versions whose `productOwnerName` equals the session name, while R&D directors retain their existing access.
+- Added the RND engineer download permission to both the configured and fallback RBAC paths. PC and mobile pricing detail screens now render the download action only for roles allowed to use it, including the responsible R&D engineer.
+
+## Final Verification
+
+- `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn -q -Dtest=SchemaMigrationTest,SampleWorkflowControllerTest,RolePermissionServiceTest,ReportExportControllerTest test` -- passed, 87 tests.
+- `node --test tests/mobile-finance-inbox.test.mts tests/pricing-review-access.test.mts` -- passed, 5 tests.
+- `pnpm typecheck` -- passed for shared, mobile, and PC workspaces.
