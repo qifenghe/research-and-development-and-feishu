@@ -36,3 +36,10 @@
 - `node --test tests/mobile-login-and-pricing-review-contract.test.mts tests/pricing-review-access.test.mts tests/mobile-finance-inbox.test.mts` -- passed, 7 tests.
 - `pnpm check:api-contracts` -- passed.
 - `pnpm exec playwright test e2e/mobile-smoke.spec.ts --project=mobile-chromium --workers=1` -- passed, 4 tests, including credential login through the real local backend.
+
+## Final Route Closure
+
+- Registered the mobile `pricing-list` (`/pricing`) and `pricing-detail` (`/pricing/:id`) routes with the existing `PricingListView` and `PricingDetailView` components. They remain behind the router's existing `canAccessRoute(role, path, "mobile")` guard, using the Task 4 pricing permission matrix unchanged.
+- Added `mobile-pricing-routes.test.mts`: it verifies the pricing-card destination has registered list/detail targets, permits `RND_DIRECTOR`, `RND_ENGINEER` (product owner), and `FINANCE`, and rejects `TESTER` and `QA_TESTER`.
+- `pnpm check:routes` passed: 30 PC routes and 16 mobile routes. The focused Node suite passed 10/10, and `pnpm typecheck` passed for shared, mobile, and PC.
+- The requested current-run mobile smoke was attempted. In the sandbox Chrome could not launch (`SIGABRT`/`EPERM`); outside the sandbox it launched, but first failed because port 5174 was not running. After starting the existing Vite server, the login-page case passed while login-dependent cases failed because the existing Vite `/api` proxy targets `localhost:8080`, where no backend is listening. The available service on `8081` returns `403` for the login endpoint. This environment/proxy mismatch predates and is outside the pricing-route change.
