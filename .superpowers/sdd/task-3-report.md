@@ -62,3 +62,42 @@ Implementation commit: `24766c0 feat: add pricing-first experiment form`
 ## Concern
 
 No browser-driven visual regression or end-to-end run was performed in this task. Static frontend typechecking and focused backend/controller coverage passed; a later UI acceptance pass should confirm the tightened mobile layout on target devices.
+
+## Review Follow-up (2026-07-12)
+
+### Status
+
+Complete. Addressed all three Important findings from `task-3-review.md` without reverting unrelated workspace changes.
+
+### RED Evidence
+
+1. The backend calculation test failed to compile because `PricingPreview.primaryMaterialYieldPercent()` did not exist.
+2. The frontend quantity contract test failed because `normalizePositiveIntegerQuantity` was not exported.
+3. After the calculation contract was implemented, the controller suite reached the persisted-form submission regression. It rejected a tampered packaging primary with the existing, more specific `PRIMARY_MATERIAL_INVALID` code; the new assertion was corrected from the generic category code.
+
+### Fixes
+
+- Backend pricing preview now exposes `primaryMaterialYieldPercent` using the same percent scale and six-decimal final rounding as the frontend (`8.5 / 10 => 85`). Calculation operands are retained at their incoming precision until each result is rounded.
+- Formula validation now rejects all packaging, permits `RAW` only for the single primary material, and permits `AUXILIARY` for every non-primary material. It runs during draft saving and again before test submission; drafts with only valid auxiliary rows remain allowed.
+- Added API/controller coverage for posted packaging and additional non-primary RAW rows, plus a persisted-record submission revalidation case.
+- Added shared positive-integer quantity mapping. Mobile uses the digit keyboard and explicit validation; PC uses `min=1`, `precision=0`, and `step=1`, with both forms blocking invalid values before API requests.
+
+### Verification
+
+```text
+backend: mvn -Dtest=ExperimentCalculationServiceTest test
+  15 tests, 0 failures, 0 errors
+
+backend: mvn -Dtest=SampleWorkflowControllerTest test
+  66 tests, 0 failures, 0 errors
+
+frontend: node --test tests/experiment-calculations.test.mts tests/experiment-output-quantity-contract.test.mts
+  11 tests, 0 failures
+
+frontend: pnpm typecheck
+  shared, mobile, and PC typechecks passed
+```
+
+### Remaining Concern
+
+No browser-level UI run was performed. The focused page-contract tests and full typechecks protect the quantity controls, but mobile interaction on a physical target remains a useful acceptance check.

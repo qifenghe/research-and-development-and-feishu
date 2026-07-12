@@ -1955,18 +1955,23 @@ public class SampleWorkflowService {
         if (primary.stream().anyMatch(material -> "PACKAGING".equals(material.materialCategory()))) {
             throw new BusinessException("PRIMARY_MATERIAL_INVALID", "包材不能设为主原料");
         }
+        if (primary.stream().anyMatch(material -> !"RAW".equals(material.materialCategory()))) {
+            throw new BusinessException("PRIMARY_MATERIAL_INVALID", "主原料必须为原料");
+        }
+        if (materials.stream().anyMatch(material -> "PACKAGING".equals(material.materialCategory())
+                || (!material.primaryMaterial() && !"AUXILIARY".equals(material.materialCategory())))) {
+            throw new BusinessException("EXPERIMENT_MATERIAL_CATEGORY_INVALID", "实验配方只允许一个主原料和辅料");
+        }
     }
 
     private void validateSubmittablePrimaryMaterial(List<ExperimentMaterial> materials) {
+        validatePrimaryMaterial(materials);
         var primary = materials.stream().filter(ExperimentMaterial::primaryMaterial).toList();
         if (primary.isEmpty()) {
             throw new BusinessException("PRIMARY_MATERIAL_REQUIRED", "提交内部测试前必须指定一个主原料");
         }
         if (primary.size() > 1) {
             throw new BusinessException("PRIMARY_MATERIAL_DUPLICATED", "只能指定一个主原料");
-        }
-        if (primary.stream().anyMatch(material -> "PACKAGING".equals(material.materialCategory()))) {
-            throw new BusinessException("PRIMARY_MATERIAL_INVALID", "包材不能设为主原料");
         }
         if (primary.get(0).weightKg() == null || primary.get(0).weightKg().signum() <= 0) {
             throw new BusinessException("PRIMARY_MATERIAL_WEIGHT_REQUIRED", "提交内部测试前主料重量必须大于 0");

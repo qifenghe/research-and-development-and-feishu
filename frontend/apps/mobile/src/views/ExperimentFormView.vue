@@ -69,7 +69,7 @@
           <section class="form-section">
             <h2>成品产出</h2>
             <van-field v-model="form.finishedOutputWeightKg" label="成品重量" type="number" placeholder="请输入" :readonly="readOnly"><template #button>kg</template></van-field>
-            <van-field v-model="form.finishedOutputQuantity" label="成品数量" type="number" placeholder="请输入" :readonly="readOnly" />
+            <van-field v-model="form.finishedOutputQuantity" label="成品数量" type="digit" inputmode="numeric" placeholder="请输入正整数" :readonly="readOnly" @blur="validateFinishedOutputQuantity" />
             <van-field label="成品单位"><template #input><van-radio-group v-model="form.finishedOutputUnit" direction="horizontal" :disabled="readOnly"><van-radio name="袋">袋</van-radio><van-radio name="盒">盒</van-radio><van-radio name="份">份</van-radio><van-radio name="个">个</van-radio><van-radio name="盘">盘</van-radio></van-radio-group></template></van-field>
           </section>
           <section class="form-section pricing-preview">
@@ -96,7 +96,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { showFailToast, showSuccessToast } from "vant";
 import type { ExperimentMaterial, MaterialCategory, RndTaskDetailView } from "@rnd/shared";
-import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, formulaRatios } from "@rnd/shared";
+import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, formulaRatios, normalizePositiveIntegerQuantity } from "@rnd/shared";
 import PageHeader from "../components/PageHeader.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import FixedActionBar from "../components/FixedActionBar.vue";
@@ -236,9 +236,17 @@ function formulaRatioAt(index:number){
 
 function buildMaterials():ExperimentMaterial[]{return materials.value.filter(item=>item.materialName.trim()).map((item,index)=>({stage:categoryLabel(item.materialCategory),sequence:index+1,materialCode:item.materialCode.trim()||undefined,materialName:item.materialName.trim(),weightKg:Number(item.weightKg||0),utilizationRate:Number(item.utilizationRate||100)/100,materialCategory:item.primaryMaterial?"RAW":"AUXILIARY",primaryMaterial:item.primaryMaterial,inputUnit:"kg",remark:item.remark.trim()||undefined}))}
 
+function validateFinishedOutputQuantity(){
+  const quantity=normalizePositiveIntegerQuantity(form.finishedOutputQuantity);
+  if(form.finishedOutputQuantity!==""&&quantity===undefined){showFailToast("成品数量必须为正整数");return undefined}
+  return quantity;
+}
+
 async function saveDraft(){
+  const finishedOutputQuantity=validateFinishedOutputQuantity();
+  if(form.finishedOutputQuantity!==""&&finishedOutputQuantity===undefined)return;
   saving.value=true;
-  try{detail.value={...detail.value!,currentExperimentForm:await api.task.saveExperimentDraft(String(route.params.id),{operatorName:auth.displayName,summary:form.summary,materials:buildMaterials(),processSteps:toProcessSteps(processSteps.value),finishedOutputWeightKg:Number(form.finishedOutputWeightKg||0)||undefined,finishedOutputQuantity:Number(form.finishedOutputQuantity||0)||undefined,finishedOutputUnit:form.finishedOutputUnit})};draftSaved.value=true;showSuccessToast("草稿已保存")}
+  try{detail.value={...detail.value!,currentExperimentForm:await api.task.saveExperimentDraft(String(route.params.id),{operatorName:auth.displayName,summary:form.summary,materials:buildMaterials(),processSteps:toProcessSteps(processSteps.value),finishedOutputWeightKg:Number(form.finishedOutputWeightKg||0)||undefined,finishedOutputQuantity,finishedOutputUnit:form.finishedOutputUnit})};draftSaved.value=true;showSuccessToast("草稿已保存")}
   catch(error){showFailToast(error instanceof Error?error.message:"保存失败")}
   finally{saving.value=false}
 }
@@ -256,7 +264,8 @@ async function notifyTest(){
   if(primaryInputWeight.value<=0){showFailToast("通知测试前请填写主料重量");return}
   if(!processSteps.value.some(step=>step.processName.trim()&&Number(step.beforeWeightKg)>0)){showFailToast("通知测试前请至少完成一道有效工序");return}
   if(Number(form.finishedOutputWeightKg)<=0){showFailToast("通知测试前请填写成品重量");return}
-  if(Number(form.finishedOutputQuantity)<=0){showFailToast("通知测试前请填写成品数量");return}
+  if(form.finishedOutputQuantity===""){showFailToast("通知测试前请填写成品数量");return}
+  if(validateFinishedOutputQuantity()===undefined)return;
   if(!detail.value?.currentExperimentForm?.id&&canSaveDraft.value)await saveDraft();
   const experimentId=detail.value?.currentExperimentForm?.id;
   if(!experimentId){showFailToast("请先保存草稿");return}

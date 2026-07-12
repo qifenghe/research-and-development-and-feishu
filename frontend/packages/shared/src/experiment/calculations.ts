@@ -70,6 +70,12 @@ export function referenceQuantity(finishedOutputQuantity: number | null | undefi
   return round(Math.max(0, safeWeight(finishedOutputQuantity)), 4);
 }
 
+export function normalizePositiveIntegerQuantity(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") return undefined;
+  const quantity = typeof value === "string" ? Number(value) : value;
+  return Number.isInteger(quantity) && quantity > 0 ? quantity : undefined;
+}
+
 export function calculatePricingPreview(input: PricingPreviewInput): PricingPreview {
   const primaryMaterialWeightKg = Math.max(0, safeWeight(input.primaryMaterialWeightKg));
   const ingredientWeightKg = Math.max(0, safeWeight(input.ingredientWeightKg));

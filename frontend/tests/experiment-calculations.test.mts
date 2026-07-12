@@ -36,6 +36,20 @@ test("calculates a pricing preview for finished bags", () => {
   });
 });
 
+test("rounds pricing preview results without rounding input operands first", () => {
+  assert.deepEqual(calculatePricingPreview({
+    primaryMaterialWeightKg: 1,
+    ingredientWeightKg: 0.00004,
+    finishedOutputWeightKg: 1.00004,
+    finishedOutputQuantity: 1,
+  }), {
+    totalInputWeightKg: 1,
+    primaryMaterialYieldPercent: 100.004,
+    averageUnitWeightKg: 1,
+    referenceQuantity: 1,
+  });
+});
+
 test("calculates average unit weight and reference quantity", () => {
   assert.equal(averageUnitWeightKg(8.5, 17), 0.5);
   assert.equal(referenceQuantity(17), 17);

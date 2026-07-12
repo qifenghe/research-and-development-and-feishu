@@ -803,6 +803,64 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void savingDraftRejectsPackagingMaterialPostedOutsideTheForm() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "张研发",
+                                  "materials": [
+                                    {"stage":"原料","sequence":1,"materialName":"主料","weightKg":10,"materialCategory":"RAW","primaryMaterial":true},
+                                    {"stage":"包材","sequence":2,"materialName":"包装袋","weightKg":1,"materialCategory":"PACKAGING","primaryMaterial":false}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("EXPERIMENT_MATERIAL_CATEGORY_INVALID"));
+    }
+
+    @Test
+    void savingDraftRejectsAdditionalRawMaterialPostedOutsideTheForm() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "张研发",
+                                  "materials": [
+                                    {"stage":"原料","sequence":1,"materialName":"主料","weightKg":10,"materialCategory":"RAW","primaryMaterial":true},
+                                    {"stage":"原料","sequence":2,"materialName":"额外原料","weightKg":1,"materialCategory":"RAW","primaryMaterial":false}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("EXPERIMENT_MATERIAL_CATEGORY_INVALID"));
+    }
+
+    @Test
+    void submittingExperimentRevalidatesMaterialCategoriesLoadedFromPersistence() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+        jdbcTemplate.update("update experiment_material set material_category = 'PACKAGING' where experiment_form_id = ?", experimentFormId);
+        clearWorkflowServiceMemory();
+
+        mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", experimentFormId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"testerName\":\"内部测试员\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRIMARY_MATERIAL_INVALID"));
+    }
+
+    @Test
     void submittingExperimentRejectsPrimaryMaterialWithoutPositiveWeight() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);

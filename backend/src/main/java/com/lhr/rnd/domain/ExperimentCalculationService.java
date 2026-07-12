@@ -12,40 +12,31 @@ public final class ExperimentCalculationService {
         requireNonNegative(inputWeight, "inputWeight");
         requireNonNegative(outputWeight, "outputWeight");
         requireNonNegative(residualWeight, "residualWeight");
-        var normalizedInputWeight = normalizeWeight(inputWeight);
-        var normalizedOutputWeight = normalizeWeight(outputWeight);
-        var normalizedResidualWeight = normalizeWeight(residualWeight);
-
-        if (normalizedInputWeight == null || normalizedOutputWeight == null) {
+        if (inputWeight == null || outputWeight == null) {
             return new ProcessLoss(null, null);
         }
 
-        var safeResidualWeight = normalizedResidualWeight == null
-                ? BigDecimal.ZERO.setScale(WEIGHT_SCALE, ROUNDING_MODE)
-                : normalizedResidualWeight;
-        var lossWeightKg = normalizedInputWeight.subtract(normalizedOutputWeight).subtract(safeResidualWeight);
+        var safeResidualWeight = residualWeight == null ? BigDecimal.ZERO : residualWeight;
+        var lossWeightKg = inputWeight.subtract(outputWeight).subtract(safeResidualWeight);
         if (lossWeightKg.signum() < 0) {
             throw new IllegalArgumentException("Output plus residual weight cannot exceed input weight");
         }
 
-        var lossRate = normalizedInputWeight.signum() == 0
+        var lossRate = inputWeight.signum() == 0
                 ? null
-                : lossWeightKg.divide(normalizedInputWeight, RATE_SCALE, ROUNDING_MODE);
+                : lossWeightKg.divide(inputWeight, RATE_SCALE, ROUNDING_MODE);
         return new ProcessLoss(lossWeightKg.setScale(WEIGHT_SCALE, ROUNDING_MODE), lossRate);
     }
 
     public BigDecimal finishedYield(BigDecimal finishedProductOutput, BigDecimal primaryRawMaterialInput) {
         requireNonNegative(finishedProductOutput, "finishedProductOutput");
         requireNonNegative(primaryRawMaterialInput, "primaryRawMaterialInput");
-        var normalizedFinishedProductOutput = normalizeWeight(finishedProductOutput);
-        var normalizedPrimaryRawMaterialInput = normalizeWeight(primaryRawMaterialInput);
-
-        if (normalizedFinishedProductOutput == null
-                || normalizedPrimaryRawMaterialInput == null
-                || normalizedPrimaryRawMaterialInput.signum() == 0) {
+        if (finishedProductOutput == null
+                || primaryRawMaterialInput == null
+                || primaryRawMaterialInput.signum() == 0) {
             return null;
         }
-        return normalizedFinishedProductOutput.divide(normalizedPrimaryRawMaterialInput, RATE_SCALE, ROUNDING_MODE);
+        return finishedProductOutput.divide(primaryRawMaterialInput, RATE_SCALE, ROUNDING_MODE);
     }
 
     public PricingPreview pricingPreview(
@@ -58,15 +49,15 @@ public final class ExperimentCalculationService {
         requireNonNegative(finishedOutputWeight, "finishedOutputWeight");
         requireNonNegative(finishedOutputQuantity, "finishedOutputQuantity");
 
-        var primaryWeight = zeroWhenMissing(normalizeWeight(primaryMaterialWeight));
-        var ingredientTotal = zeroWhenMissing(normalizeWeight(ingredientWeight));
-        var outputWeight = zeroWhenMissing(normalizeWeight(finishedOutputWeight));
-        var outputQuantity = zeroWhenMissing(normalizeWeight(finishedOutputQuantity));
+        var primaryWeight = zeroWhenMissing(primaryMaterialWeight);
+        var ingredientTotal = zeroWhenMissing(ingredientWeight);
+        var outputWeight = zeroWhenMissing(finishedOutputWeight);
+        var outputQuantity = zeroWhenMissing(finishedOutputQuantity);
 
         return new PricingPreview(
                 primaryWeight.add(ingredientTotal).setScale(WEIGHT_SCALE, ROUNDING_MODE),
                 primaryWeight.signum() > 0
-                        ? outputWeight.divide(primaryWeight, RATE_SCALE, ROUNDING_MODE)
+                        ? outputWeight.multiply(BigDecimal.valueOf(100)).divide(primaryWeight, RATE_SCALE, ROUNDING_MODE)
                         : BigDecimal.ZERO.setScale(RATE_SCALE, ROUNDING_MODE),
                 averageUnitWeightKg(outputWeight, outputQuantity),
                 referenceQuantity(outputQuantity));
@@ -75,8 +66,8 @@ public final class ExperimentCalculationService {
     public BigDecimal averageUnitWeightKg(BigDecimal finishedOutputWeight, BigDecimal finishedOutputQuantity) {
         requireNonNegative(finishedOutputWeight, "finishedOutputWeight");
         requireNonNegative(finishedOutputQuantity, "finishedOutputQuantity");
-        var outputWeight = zeroWhenMissing(normalizeWeight(finishedOutputWeight));
-        var outputQuantity = zeroWhenMissing(normalizeWeight(finishedOutputQuantity));
+        var outputWeight = zeroWhenMissing(finishedOutputWeight);
+        var outputQuantity = zeroWhenMissing(finishedOutputQuantity);
         if (outputQuantity.signum() <= 0) {
             return BigDecimal.ZERO.setScale(WEIGHT_SCALE, ROUNDING_MODE);
         }
@@ -85,15 +76,11 @@ public final class ExperimentCalculationService {
 
     public BigDecimal referenceQuantity(BigDecimal finishedOutputQuantity) {
         requireNonNegative(finishedOutputQuantity, "finishedOutputQuantity");
-        return zeroWhenMissing(normalizeWeight(finishedOutputQuantity));
-    }
-
-    private BigDecimal normalizeWeight(BigDecimal weight) {
-        return weight == null ? null : weight.setScale(WEIGHT_SCALE, ROUNDING_MODE);
+        return zeroWhenMissing(finishedOutputQuantity).setScale(WEIGHT_SCALE, ROUNDING_MODE);
     }
 
     private BigDecimal zeroWhenMissing(BigDecimal value) {
-        return value == null ? BigDecimal.ZERO.setScale(WEIGHT_SCALE, ROUNDING_MODE) : value;
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     private void requireNonNegative(BigDecimal weight, String fieldName) {
@@ -107,7 +94,7 @@ public final class ExperimentCalculationService {
 
     public record PricingPreview(
             BigDecimal totalInputWeightKg,
-            BigDecimal primaryMaterialYield,
+            BigDecimal primaryMaterialYieldPercent,
             BigDecimal averageUnitWeightKg,
             BigDecimal referenceQuantity) {
     }

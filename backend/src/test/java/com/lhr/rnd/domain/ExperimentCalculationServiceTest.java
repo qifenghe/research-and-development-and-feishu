@@ -39,7 +39,7 @@ class ExperimentCalculationServiceTest {
                 new BigDecimal("17"));
 
         assertThat(preview.totalInputWeightKg()).isEqualTo(new BigDecimal("12.0000"));
-        assertThat(preview.primaryMaterialYield()).isEqualTo(new BigDecimal("0.850000"));
+        assertThat(preview.primaryMaterialYieldPercent()).isEqualTo(new BigDecimal("85.000000"));
         assertThat(preview.averageUnitWeightKg()).isEqualTo(new BigDecimal("0.5000"));
         assertThat(preview.referenceQuantity()).isEqualTo(new BigDecimal("17.0000"));
     }
@@ -53,6 +53,19 @@ class ExperimentCalculationServiceTest {
 
         assertThat(result.lossWeightKg()).isEqualTo(new BigDecimal("1.0000"));
         assertThat(result.lossRate()).isEqualTo(new BigDecimal("0.100000"));
+    }
+
+    @Test
+    void roundsPricingPreviewResultsOnlyAfterUsingPreciseOperands() {
+        var preview = service.pricingPreview(
+                new BigDecimal("1.00000"),
+                new BigDecimal("0.00004"),
+                new BigDecimal("1.00004"),
+                BigDecimal.ONE);
+
+        assertThat(preview.totalInputWeightKg()).isEqualTo(new BigDecimal("1.0000"));
+        assertThat(preview.primaryMaterialYieldPercent()).isEqualTo(new BigDecimal("100.004000"));
+        assertThat(preview.averageUnitWeightKg()).isEqualTo(new BigDecimal("1.0000"));
     }
 
     @Test
@@ -116,17 +129,17 @@ class ExperimentCalculationServiceTest {
     }
 
     @Test
-    void normalizesProcessWeightsToDatabaseScaleBeforeCalculating() {
+    void roundsProcessLossOnlyAfterCalculatingWithPreciseWeights() {
         var result = service.processLoss(new BigDecimal("1.00004"), new BigDecimal("1.00000"), null);
 
         assertThat(result.lossWeightKg()).isEqualTo(new BigDecimal("0.0000"));
-        assertThat(result.lossRate()).isEqualTo(new BigDecimal("0.000000"));
+        assertThat(result.lossRate()).isEqualTo(new BigDecimal("0.000040"));
     }
 
     @Test
-    void normalizesFinishedYieldWeightsToDatabaseScaleBeforeCalculating() {
+    void roundsFinishedYieldRatioOnlyAfterCalculatingWithPreciseWeights() {
         assertThat(service.finishedYield(new BigDecimal("1.00004"), new BigDecimal("1.00000")))
-                .isEqualTo(new BigDecimal("1.000000"));
+                .isEqualTo(new BigDecimal("1.000040"));
     }
 
     @Test

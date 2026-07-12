@@ -95,7 +95,7 @@
             <a-form layout="vertical">
               <a-row :gutter="16">
                 <a-col :span="8"><a-form-item label="成品重量"><a-input-number v-model:value="form.finishedOutputWeightKg" :disabled="readOnly" :min="0" :precision="4" addon-after="kg" style="width:100%" /></a-form-item></a-col>
-                <a-col :span="8"><a-form-item label="成品数量"><a-input-number v-model:value="form.finishedOutputQuantity" :disabled="readOnly" :min="0" :precision="4" style="width:100%" /></a-form-item></a-col>
+                <a-col :span="8"><a-form-item label="成品数量"><a-input-number v-model:value="form.finishedOutputQuantity" :disabled="readOnly" :min="1" :precision="0" :step="1" style="width:100%" /></a-form-item></a-col>
                 <a-col :span="8"><a-form-item label="成品单位"><a-select v-model:value="form.finishedOutputUnit" :disabled="readOnly" :options="outputUnitOptions" /></a-form-item></a-col>
               </a-row>
             </a-form>
@@ -170,7 +170,7 @@ import type {
   RemainingDisposition,
   RndTaskDetailView,
 } from "@rnd/shared";
-import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, formulaRatios } from "@rnd/shared";
+import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, formulaRatios, normalizePositiveIntegerQuantity } from "@rnd/shared";
 import ProcessTabsEditor from "../../components/ProcessTabsEditor.vue";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
@@ -500,7 +500,18 @@ onMounted(async () => {
   }
 });
 
+function validateFinishedOutputQuantity() {
+  const quantity = normalizePositiveIntegerQuantity(form.finishedOutputQuantity);
+  if (form.finishedOutputQuantity !== null && quantity === undefined) {
+    message.warning("成品数量必须为正整数");
+    return undefined;
+  }
+  return quantity;
+}
+
 async function saveDraft() {
+  const finishedOutputQuantity = validateFinishedOutputQuantity();
+  if (form.finishedOutputQuantity !== null && finishedOutputQuantity === undefined) return;
   saving.value = true;
   try {
     const saved = await api.task.saveExperimentDraft(String(route.params.id), {
@@ -509,7 +520,7 @@ async function saveDraft() {
       materials: buildMaterials(),
       processSteps: buildProcessSteps(),
       finishedOutputWeightKg: form.finishedOutputWeightKg ?? undefined,
-      finishedOutputQuantity: form.finishedOutputQuantity ?? undefined,
+      finishedOutputQuantity,
       finishedOutputUnit: form.finishedOutputUnit,
     });
     detail.value = { ...detail.value!, currentExperimentForm: saved };
@@ -559,10 +570,11 @@ async function submitSamplingRecord() {
     message.warning("通知测试前请填写成品重量");
     return;
   }
-  if ((form.finishedOutputQuantity ?? 0) <= 0) {
+  if (form.finishedOutputQuantity === null) {
     message.warning("通知测试前请填写成品数量");
     return;
   }
+  if (validateFinishedOutputQuantity() === undefined) return;
   if (canSaveDraft.value && !detail.value?.currentExperimentForm?.id) {
     await saveDraft();
   }
