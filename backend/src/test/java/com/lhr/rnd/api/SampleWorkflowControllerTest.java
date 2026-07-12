@@ -12,6 +12,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.lhr.rnd.service.SessionPrincipal;
+
+import java.time.Instant;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
@@ -1327,7 +1330,7 @@ class SampleWorkflowControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.versionId").value(versionId))
                 .andExpect(jsonPath("$.data.pricingVersion").value("A0-核价V1"))
-                .andExpect(jsonPath("$.data.status").value("GENERATED"))
+                .andExpect(jsonPath("$.data.status").value("PENDING_PRICING_REVIEW"))
                 .andExpect(jsonPath("$.data.fileName").value(org.hamcrest.Matchers.matchesPattern(
                         "500g香卤大肠头-LHYC（核价）原料清单A0 \\d{4}\\.\\d{2}\\.\\d{2}\\.xlsx")))
                 .andReturn()
@@ -1339,7 +1342,7 @@ class SampleWorkflowControllerTest {
         assertThat(countById("pricing_file", pricingFileId)).isEqualTo(1);
         assertThat(valueById("pricing_file", pricingFileId, "version_id")).isEqualTo(versionId);
         assertThat(valueById("pricing_file", pricingFileId, "pricing_version")).isEqualTo("A0-核价V1");
-        assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("GENERATED");
+        assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("PENDING_PRICING_REVIEW");
         assertThat(valueById("pricing_file", pricingFileId, "file_name"))
                 .matches("500g香卤大肠头-LHYC（核价）原料清单A0 \\d{4}\\.\\d{2}\\.\\d{2}\\.xlsx");
         var generatedFileName = valueById("pricing_file", pricingFileId, "file_name");
@@ -1379,6 +1382,7 @@ class SampleWorkflowControllerTest {
                         "attachment; filename*=UTF-8''" + encodedPricingFileName))
                 .andExpect(content().bytes(Files.readAllBytes(archivedPath)));
 
+        approvePricingFile(pricingFileId);
         var financeNotificationId = mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"recipientName\":\"财务核价员\",\"remark\":\"请按研发核价清单核算报价\"}"))
@@ -1406,6 +1410,7 @@ class SampleWorkflowControllerTest {
         assertThat(countByColumn("shipment_record", "version_id", versionId)).isZero();
 
         var pricingFileId = generatePricingFile(versionId);
+        approvePricingFile(pricingFileId);
         mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"recipientName\":\"钱财务\",\"remark\":\"请接收核价文件\"}"))
@@ -1440,6 +1445,7 @@ class SampleWorkflowControllerTest {
     @Test
     void financeCanAcknowledgeNotifiedPricingFileIdempotently() throws Exception {
         var pricingFileId = generatePricingFile(createLockedSampleVersion());
+        approvePricingFile(pricingFileId);
         mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"recipientName\":\"钱财务\",\"remark\":\"请接收核价文件\"}"))
@@ -1461,6 +1467,74 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("FINANCE_RECEIVED");
         assertThat(valueById("pricing_file", pricingFileId, "received_by")).isEqualTo("钱财务");
         assertThat(valueById("pricing_file", pricingFileId, "received_at")).isEqualTo(receivedAt);
+    }
+
+    @Test
+    void pricingRequiresOwnerOrDirectorReviewBeforeFinanceNotification() throws Exception {
+        var pricingFileId = generatePricingFile(createLockedSampleVersion());
+
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recipientName\":\"钱财务\",\"remark\":\"请接收核价文件\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRICING_FILE_REVIEW_REQUIRED"));
+
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
+                        .requestAttr("sessionPrincipal", principal("其他研发", "RND_ENGINEER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"其他研发\",\"comment\":\"核价无误\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRICING_FILE_REVIEW_FORBIDDEN"));
+
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"张研发\",\"comment\":\"配方与出成数据确认无误\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PRICING_APPROVED"))
+                .andExpect(jsonPath("$.data.reviewedBy").value("张研发"));
+
+        var reviewedAt = valueById("pricing_file", pricingFileId, "reviewed_at");
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"张研发\",\"comment\":\"重复提交\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PRICING_APPROVED"));
+        assertThat(valueById("pricing_file", pricingFileId, "reviewed_at")).isEqualTo(reviewedAt);
+
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recipientName\":\"钱财务\",\"remark\":\"请接收核价文件\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pricingFile.status").value("FINANCE_NOTIFIED"));
+    }
+
+    @Test
+    void pricingRejectionRequiresReasonAndCreatesNextPricingVersion() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var firstPricingFileId = generatePricingFile(versionId);
+
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/review", firstPricingFileId)
+                        .requestAttr("sessionPrincipal", principal("研发总监", "RND_DIRECTOR"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"REJECT\",\"reviewerName\":\"研发总监\",\"comment\":\"\"}"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/review", firstPricingFileId)
+                        .requestAttr("sessionPrincipal", principal("研发总监", "RND_DIRECTOR"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"REJECT\",\"reviewerName\":\"研发总监\",\"comment\":\"核价原料规格有误\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PRICING_REJECTED"))
+                .andExpect(jsonPath("$.data.rejectionReason").value("核价原料规格有误"));
+
+        mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files", versionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pricingVersion").value("A0-核价V2"))
+                .andExpect(jsonPath("$.data.status").value("PENDING_PRICING_REVIEW"));
+
+        assertThat(valueById("pricing_file", firstPricingFileId, "status")).isEqualTo("PRICING_REJECTED");
     }
 
     @Test
@@ -1500,7 +1574,8 @@ class SampleWorkflowControllerTest {
     void notifyingFinanceUsesWorkflowConfigAndRejectsDisabledAction() throws Exception {
         var versionId = createLockedSampleVersion();
         var pricingFileId = generatePricingFile(versionId);
-        disableWorkflowAction("PRICING_FILE_GENERATED", "NOTIFY_FINANCE", "FINANCE_NOTIFIED");
+        approvePricingFile(pricingFileId);
+        disableWorkflowAction("PRICING_APPROVED", "NOTIFY_FINANCE", "FINANCE_NOTIFIED");
 
         mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -1741,12 +1816,12 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data[0].id").value(pendingTaskId));
 
         mockMvc.perform(get("/api/v1/pricing-files")
-                        .param("status", "GENERATED")
+                        .param("status", "PENDING_PRICING_REVIEW")
                         .param("keyword", "香卤"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(1)))
                 .andExpect(jsonPath("$.data[0].id").value(pricingFileId))
-                .andExpect(jsonPath("$.data[0].status").value("GENERATED"));
+                .andExpect(jsonPath("$.data[0].status").value("PENDING_PRICING_REVIEW"));
     }
 
     @Test
@@ -1796,7 +1871,7 @@ class SampleWorkflowControllerTest {
         var secondPricingId = generatePricingFile(createLockedSampleVersion());
 
         mockMvc.perform(get("/api/v1/pricing-files")
-                        .param("status", "GENERATED")
+                        .param("status", "PENDING_PRICING_REVIEW")
                         .param("page", "0")
                         .param("size", "1"))
                 .andExpect(status().isOk())
@@ -1806,7 +1881,7 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.items[0].id").value(secondPricingId));
 
         mockMvc.perform(get("/api/v1/pricing-files")
-                        .param("status", "GENERATED")
+                        .param("status", "PENDING_PRICING_REVIEW")
                         .param("page", "0")
                         .param("size", "1")
                         .param("sort", "generatedAt,asc"))
@@ -1926,15 +2001,15 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.pricingFile.id").value(pricingFileId))
                 .andExpect(jsonPath("$.data.version.versionCode").value("A0"))
                 .andExpect(jsonPath("$.data.fieldGroups[0].title").value("核价文件"))
-                .andExpect(jsonPath("$.data.availableActions", hasSize(2)))
-                .andExpect(jsonPath("$.data.availableActions[0].code").value("DOWNLOAD_PRICING_FILE"))
-                .andExpect(jsonPath("$.data.availableActions[1].code").value("NOTIFY_FINANCE"));
+                .andExpect(jsonPath("$.data.availableActions", hasSize(1)))
+                .andExpect(jsonPath("$.data.availableActions[0].code").value("DOWNLOAD_PRICING_FILE"));
 
         mockMvc.perform(get("/api/v1/pricing-files/{id}/detail", pricingFileId)
                         .param("role", "FINANCE"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.availableActions", hasSize(1)))
-                .andExpect(jsonPath("$.data.availableActions[0].code").value("DOWNLOAD_PRICING_FILE"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRICING_FILE_NOT_AVAILABLE_FOR_FINANCE"));
+
+        approvePricingFile(pricingFileId);
 
         mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -2106,12 +2181,21 @@ class SampleWorkflowControllerTest {
     private String generatePricingFile(String versionId) throws Exception {
         return mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files", versionId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("GENERATED"))
+                .andExpect(jsonPath("$.data.status").value("PENDING_PRICING_REVIEW"))
                 .andReturn()
                 .getResponse()
                 .getContentAsString()
                 .split("\"id\":\"")[1]
                 .split("\"")[0];
+    }
+
+    private void approvePricingFile(String pricingFileId) throws Exception {
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"张研发\",\"comment\":\"核价无误\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PRICING_APPROVED"));
     }
 
     @Test
@@ -2188,6 +2272,10 @@ class SampleWorkflowControllerTest {
                         .content("{\"assigneeName\":\"%s\",\"dueDate\":\"2026-06-25\"}".formatted(assigneeName)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PENDING_ACCEPTANCE"));
+    }
+
+    private SessionPrincipal principal(String name, String role) {
+        return new SessionPrincipal("USER-" + name, name, name, null, role, Instant.parse("2026-07-12T00:00:00Z"));
     }
 
     private void bindFeishuUser(String name, String feishuUserId) throws Exception {

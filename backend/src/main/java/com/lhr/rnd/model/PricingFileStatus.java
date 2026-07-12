@@ -1,6 +1,9 @@
 package com.lhr.rnd.model;
 
 public enum PricingFileStatus {
-    GENERATED,
-    FINANCE_NOTIFIED
+    PENDING_PRICING_REVIEW,
+    PRICING_APPROVED,
+    PRICING_REJECTED,
+    FINANCE_NOTIFIED,
+    FINANCE_RECEIVED
 }

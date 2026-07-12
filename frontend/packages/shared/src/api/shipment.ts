@@ -4,6 +4,7 @@ import type {
   PagedResult,
   PricingFileDetailView,
   PricingFileRecord,
+  PricingReadyVersion,
   ShipmentDetailView,
   ShipmentRecord,
 } from "../types";
@@ -46,12 +47,18 @@ export function createShipmentApi(client: ApiClient) {
     },
     createPricingFile: (versionId: string) =>
       client.post<PricingFileRecord>(`/sample-versions/${versionId}/pricing-files`),
+    pricingReadyVersions: () =>
+      client.get<PricingReadyVersion[]>("/sample-versions/pricing-ready"),
     pricingDetail: (id: string, role?: string) => {
       const suffix = role ? `?role=${encodeURIComponent(role)}` : "";
       return client.get<PricingFileDetailView>(`/pricing-files/${id}/detail${suffix}`);
     },
     notifyFinance: (id: string, recipientName: string) =>
       client.post(`/pricing-files/${id}/notify-finance`, { recipientName }),
+    reviewPricingFile: (id: string, payload: { decision: "APPROVE" | "REJECT"; reviewerName: string; comment?: string }) =>
+      client.post<PricingFileRecord>(`/pricing-files/${id}/review`, payload),
+    receivePricingFile: (id: string, receivedBy: string) =>
+      client.post<PricingFileRecord>(`/pricing-files/${id}/receive`, { receivedBy }),
     downloadPricingFile: (id: string) => client.get<Blob>(`/pricing-files/${id}/download`),
     archiveFiles: (versionId: string) =>
       client.get<ArchiveFileView[]>(`/sample-versions/${versionId}/archive-files`),

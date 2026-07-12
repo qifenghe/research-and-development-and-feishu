@@ -107,8 +107,10 @@ public class WorkflowSettingsService {
                 item("SAMPLE_COMPLETED", "CUSTOMER_FEEDBACK_PASS", "客户通过", "SAMPLE_COMPLETED", true, "RND_ASSISTANT", 80, "客户确认样品通过"),
                 item("SAMPLE_COMPLETED", "CUSTOMER_FEEDBACK_RESAMPLE", "客户复打样", "RESAMPLING_REQUIRED", true, "RND_ENGINEER", 90, "客户反馈不通过，进入复打样"),
                 item("SAMPLE_COMPLETED", "CUSTOMER_FEEDBACK_STOP", "客户停止", "STOPPED", true, "RND_DIRECTOR", 100, "客户或业务确认停止打样"),
-                item("SAMPLE_COMPLETED", "REQUEST_PRICING", "生成核价", "PRICING_FILE_GENERATED", true, "FINANCE", 110, "生成核价文件"),
-                item("PRICING_FILE_GENERATED", "NOTIFY_FINANCE", "通知财务", "FINANCE_NOTIFIED", true, "FINANCE", 120, "飞书通知财务核价"),
+                item("SAMPLE_COMPLETED", "REQUEST_PRICING", "生成核价", "PENDING_PRICING_REVIEW", true, "RND_DIRECTOR", 110, "生成核价文件，进入待审核"),
+                item("PENDING_PRICING_REVIEW", "APPROVE_PRICING", "核价审核通过", "PRICING_APPROVED", true, "RND_DIRECTOR", 120, "产品负责人或研发总监审核通过"),
+                item("PENDING_PRICING_REVIEW", "REJECT_PRICING", "核价审核退回", "PRICING_REJECTED", true, "RND_DIRECTOR", 125, "退回后生成新的核价版本"),
+                item("PRICING_APPROVED", "NOTIFY_FINANCE", "通知财务", "FINANCE_NOTIFIED", true, "FINANCE", 130, "通知财务核价"),
                 item("FINANCE_NOTIFIED", "ARCHIVE", "归档", "ARCHIVED", false, null, 130, "流程归档")
         )));
     }

@@ -9,6 +9,7 @@ import com.lhr.rnd.model.ExperimentProcessStep;
 import com.lhr.rnd.model.SampleVersionTimelineItem;
 import com.lhr.rnd.model.PricingFileDetailView;
 import com.lhr.rnd.model.PricingFileRecord;
+import com.lhr.rnd.model.PricingReadyVersion;
 import com.lhr.rnd.model.SampleRequest;
 import com.lhr.rnd.model.ShipmentDetailView;
 import com.lhr.rnd.model.ShipmentRecord;
@@ -172,7 +173,7 @@ public class SampleWorkflowController {
                 request.finishedOutputWeightKg(),
                 request.finishedOutputQuantity(),
                 request.finishedOutputUnit(),
-                request.finishedYieldRatio()
+                request.finishedYieldPercent()
         )));
     }
 
@@ -273,26 +274,47 @@ public class SampleWorkflowController {
         return ApiResponse.success(workflowService.generatePricingFile(id));
     }
 
+    @GetMapping("/sample-versions/pricing-ready")
+    public ApiResponse<List<PricingReadyVersion>> pricingReadyVersions() {
+        return ApiResponse.success(workflowService.pricingReadyVersions());
+    }
+
     @GetMapping("/pricing-files")
     public ApiResponse<?> pricingFiles(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
-            @RequestParam(required = false) String sort
+            @RequestParam(required = false) String sort,
+            HttpServletRequest request
     ) {
+        var role = resolvedRole(null, request);
         if (page != null || size != null) {
-            return ApiResponse.success(workflowService.pricingFiles(status, keyword, page, size, sort));
+            return ApiResponse.success(workflowService.pricingFiles(status, keyword, page, size, sort, role));
         }
-        return ApiResponse.success(workflowService.pricingFiles(status, keyword));
+        return ApiResponse.success(workflowService.pricingFiles(status, keyword, role));
     }
 
     @GetMapping("/pricing-files/{id}/detail")
     public ApiResponse<PricingFileDetailView> pricingFileDetail(
             @PathVariable String id,
-            @RequestParam(required = false) String role
+            @RequestParam(required = false) String role,
+            HttpServletRequest request
     ) {
-        return ApiResponse.success(workflowService.pricingFileDetail(id, role));
+        return ApiResponse.success(workflowService.pricingFileDetail(id, resolvedRole(role, request)));
+    }
+
+    @PostMapping("/pricing-files/{id}/review")
+    public ApiResponse<PricingFileRecord> reviewPricingFile(
+            @PathVariable String id,
+            @Valid @RequestBody ReviewPricingFileRequest request,
+            HttpServletRequest servletRequest
+    ) {
+        var principal = (SessionPrincipal) servletRequest.getAttribute(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE);
+        var reviewerName = principal == null ? request.reviewerName() : principal.name();
+        var reviewerRole = principal == null ? "RND_ENGINEER" : principal.role();
+        return ApiResponse.success(workflowService.reviewPricingFile(
+                id, request.decision(), reviewerName, reviewerRole, request.comment()));
     }
 
     @PostMapping("/pricing-files/{id}/notify-finance")
@@ -303,14 +325,27 @@ public class SampleWorkflowController {
         return ApiResponse.success(workflowService.notifyFinance(id, request.recipientName(), request.remark()));
     }
 
+    @PostMapping("/pricing-files/{id}/receive")
+    public ApiResponse<PricingFileRecord> receivePricingFile(
+            @PathVariable String id,
+            @Valid @RequestBody ReceivePricingFileRequest request
+    ) {
+        return ApiResponse.success(workflowService.receivePricingFile(id, request.receivedBy()));
+    }
+
     @GetMapping("/pricing-files/{id}/download")
-    public ResponseEntity<byte[]> downloadPricingFile(@PathVariable String id) {
-        var file = workflowService.downloadPricingFile(id);
+    public ResponseEntity<byte[]> downloadPricingFile(@PathVariable String id, HttpServletRequest request) {
+        var file = workflowService.downloadPricingFile(id, resolvedRole(null, request));
         var encodedFileName = URLEncoder.encode(file.fileName(), StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
                 .body(file.content());
+    }
+
+    private String resolvedRole(String requestedRole, HttpServletRequest request) {
+        var principal = (SessionPrincipal) request.getAttribute(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE);
+        return principal == null ? requestedRole : principal.role();
     }
 
     @GetMapping("/sample-versions/{id}/process-steps")

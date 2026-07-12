@@ -35,7 +35,9 @@ export type MaterialCategory = "RAW" | "AUXILIARY" | "PACKAGING";
 export type RemainingDisposition = "REUSE" | "RETURN" | "DISCARD";
 
 export type PricingFileStatus =
-  | "GENERATED"
+  | "PENDING_PRICING_REVIEW"
+  | "PRICING_APPROVED"
+  | "PRICING_REJECTED"
   | "FINANCE_NOTIFIED"
   | "FINANCE_RECEIVED";
 
@@ -315,6 +317,10 @@ export interface PricingFileRecord {
   fileName: string;
   status: PricingFileStatus;
   generatedAt: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewComment?: string;
+  rejectionReason?: string;
 }
 
 export interface PricingReadyVersion {

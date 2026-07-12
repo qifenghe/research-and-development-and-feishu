@@ -49,6 +49,16 @@ class RolePermissionServiceTest {
         assertThat(service.hasPermission("RND_ENGINEER", "POST", "/api/v1/experiment-forms/EXP-0001/submit-test")).isTrue();
         assertThat(service.hasPermission("TESTER", "POST", "/api/v1/experiment-forms/EXP-0001/submit-test")).isFalse();
         assertThat(service.hasPermission("FINANCE", "GET", "/api/v1/pricing-files/PRICE-0001/download")).isTrue();
+        assertThat(service.hasPermission("FINANCE", "POST", "/api/v1/pricing-files/PRICE-0001/receive")).isTrue();
+        assertThat(service.hasPermission("RND_ASSISTANT", "POST", "/api/v1/pricing-files/PRICE-0001/receive")).isFalse();
+        assertThat(service.hasPermission("RND_ASSISTANT", "GET", "/api/v1/sample-versions/pricing-ready")).isTrue();
+        assertThat(service.hasPermission("FINANCE", "GET", "/api/v1/sample-versions/pricing-ready")).isFalse();
+        assertThat(service.hasPermission("RND_ASSISTANT", "POST", "/api/v1/pricing-files/PRICE-0001/notify-finance")).isTrue();
+        assertThat(service.hasPermission("FINANCE", "POST", "/api/v1/pricing-files/PRICE-0001/notify-finance")).isFalse();
+        assertThat(service.hasPermission("RND_DIRECTOR", "POST", "/api/v1/pricing-files/PRICE-0001/review")).isTrue();
+        assertThat(service.hasPermission("RND_ENGINEER", "POST", "/api/v1/pricing-files/PRICE-0001/review")).isTrue();
+        assertThat(service.hasPermission("RND_ASSISTANT", "POST", "/api/v1/pricing-files/PRICE-0001/review")).isFalse();
+        assertThat(service.hasPermission("FINANCE", "POST", "/api/v1/pricing-files/PRICE-0001/review")).isFalse();
         assertThat(service.hasPermission("TESTER", "GET", "/api/v1/pricing-files/PRICE-0001/download")).isFalse();
         assertThat(service.hasPermission("RND_ENGINEER", "GET", "/api/v1/sample-projects/PROJ-1/version-timeline")).isTrue();
         assertThat(service.hasPermission("RND_ENGINEER", "GET", "/api/v1/sample-versions/VER-1/process-steps")).isTrue();

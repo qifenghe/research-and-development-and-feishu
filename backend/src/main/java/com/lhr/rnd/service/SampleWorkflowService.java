@@ -684,7 +684,12 @@ public class SampleWorkflowService {
     }
 
     public synchronized List<PricingFileRecord> pricingFiles(String status, String keyword) {
+        return pricingFiles(status, keyword, null);
+    }
+
+    public synchronized List<PricingFileRecord> pricingFiles(String status, String keyword, String role) {
         return pricingFiles.values().stream()
+                .filter(pricingFile -> !hasRole(role, "FINANCE") || isFinanceVisible(pricingFile))
                 .filter(pricingFile -> matchesStatus(status, pricingFile.status().name()))
                 .filter(pricingFile -> matchesKeyword(
                         keyword,
@@ -712,10 +717,7 @@ public class SampleWorkflowService {
         }
 
         return lockedVersionIds.stream()
-                .filter(versionId -> pricingFiles.values().stream()
-                        .noneMatch(file -> file.versionId().equals(versionId)))
-                .filter(versionId -> pricingFileRepository == null
-                        || !pricingFileRepository.existsByVersionId(versionId))
+                .filter(this::canGenerateNextPricingVersion)
                 .map(this::pricingReadyVersion)
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(PricingReadyVersion::sampleNo).reversed())
@@ -762,8 +764,19 @@ public class SampleWorkflowService {
     }
 
     public synchronized PagedResult<PricingFileRecord> pricingFiles(String status, String keyword, Integer page, Integer size, String sort) {
+        return pricingFiles(status, keyword, page, size, sort, null);
+    }
+
+    public synchronized PagedResult<PricingFileRecord> pricingFiles(
+            String status,
+            String keyword,
+            Integer page,
+            Integer size,
+            String sort,
+            String role
+    ) {
         return paginate(
-                pricingFiles(status, keyword),
+                pricingFiles(status, keyword, role),
                 page,
                 size,
                 sort,
@@ -786,6 +799,9 @@ public class SampleWorkflowService {
 
     public synchronized PricingFileDetailView pricingFileDetail(String pricingFileId, String role) {
         var pricingFile = requiredPricingFile(pricingFileId);
+        if (hasRole(role, "FINANCE") && !isFinanceVisible(pricingFile)) {
+            throw new BusinessException("PRICING_FILE_NOT_AVAILABLE_FOR_FINANCE", "财务只能查看已通过审核并通知的核价文件");
+        }
         var version = requiredVersion(pricingFile.versionId());
         var financeNotification = currentFinanceNotification(pricingFile.id());
         return new PricingFileDetailView(
@@ -817,7 +833,7 @@ public class SampleWorkflowService {
                 .filter(task -> task.status() == RndTaskStatus.COMPLETED)
                 .count();
         var pendingPricingCount = pricingFiles.values().stream()
-                .filter(pricingFile -> pricingFile.status() == PricingFileStatus.GENERATED)
+                .filter(pricingFile -> pricingFile.status() == PricingFileStatus.PENDING_PRICING_REVIEW)
                 .count();
         var financeNotifiedCount = pricingFiles.values().stream()
                 .filter(pricingFile -> pricingFile.status() == PricingFileStatus.FINANCE_NOTIFIED)
@@ -832,7 +848,7 @@ public class SampleWorkflowService {
                 .map(this::dashboardTaskItem)
                 .toList();
         var pendingPricingFiles = pricingFiles.values().stream()
-                .filter(pricingFile -> pricingFile.status() == PricingFileStatus.GENERATED)
+                .filter(pricingFile -> pricingFile.status() == PricingFileStatus.PENDING_PRICING_REVIEW)
                 .sorted(Comparator.comparing(PricingFileRecord::generatedAt).reversed())
                 .limit(5)
                 .map(this::dashboardPricingFileItem)
@@ -1401,7 +1417,11 @@ public class SampleWorkflowService {
                 "pricingFile.pricingVersion",
                 "pricingFile.fileName",
                 "pricingFile.status",
-                "pricingFile.generatedAt"
+                "pricingFile.generatedAt",
+                "pricingFile.reviewedBy",
+                "pricingFile.reviewedAt",
+                "pricingFile.reviewComment",
+                "pricingFile.rejectionReason"
         )));
         if (financeNotification != null) {
             groups.add(new DetailFieldGroup("财务通知", List.of(
@@ -1438,7 +1458,7 @@ public class SampleWorkflowService {
     }
 
     private List<DetailAction> pricingFileActions(PricingFileRecord pricingFile, String role) {
-        if (!hasRole(role, "RND_ASSISTANT", "FINANCE")) {
+        if (!hasRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE")) {
             return List.of();
         }
         var actions = new ArrayList<DetailAction>();
@@ -1449,7 +1469,17 @@ public class SampleWorkflowService {
                 "/api/v1/pricing-files/" + pricingFile.id() + "/download",
                 true
         ));
-        if (hasRole(role, "RND_ASSISTANT") && pricingFile.status() == PricingFileStatus.GENERATED) {
+        if (hasRole(role, "RND_DIRECTOR", "RND_ENGINEER")
+                && pricingFile.status() == PricingFileStatus.PENDING_PRICING_REVIEW) {
+            actions.add(action(
+                    "REVIEW_PRICING_FILE",
+                    "审核核价文件",
+                    "POST",
+                    "/api/v1/pricing-files/" + pricingFile.id() + "/review",
+                    true
+            ));
+        }
+        if (hasRole(role, "RND_ASSISTANT") && pricingFile.status() == PricingFileStatus.PRICING_APPROVED) {
             actions.add(action(
                     "NOTIFY_FINANCE",
                     "通知财务核价",
@@ -1574,6 +1604,9 @@ public class SampleWorkflowService {
     public synchronized PricingFileRecord generatePricingFile(String versionId) {
         var version = requiredVersion(versionId);
         var lockedForm = lockedExperimentForm(versionId);
+        if (!canGenerateNextPricingVersion(versionId)) {
+            throw new BusinessException("PRICING_FILE_REVIEW_IN_PROGRESS", "当前核价文件待审核或已通过，不能生成新版本");
+        }
         ensureWorkflowAllows(SampleStatus.SAMPLE_COMPLETED, SampleAction.REQUEST_PRICING);
         ensurePricingArchiveAllowed();
         var pricingVersionNo = "V" + nextPricingVersionNumber(versionId);
@@ -1609,7 +1642,7 @@ public class SampleWorkflowService {
                 version.versionCode(),
                 generated.pricingVersion(),
                 generated.fileName(),
-                PricingFileStatus.GENERATED,
+                PricingFileStatus.PENDING_PRICING_REVIEW,
                 generated.content().length,
                 now()
         );
@@ -1620,11 +1653,11 @@ public class SampleWorkflowService {
 
     @Transactional
     public synchronized NotifyFinanceResult notifyFinance(String pricingFileId, String recipientName, String remark) {
-        var pricingFile = pricingFiles.get(pricingFileId);
-        if (pricingFile == null) {
-            throw new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在");
+        var pricingFile = requiredPricingFile(pricingFileId);
+        if (pricingFile.status() != PricingFileStatus.PRICING_APPROVED) {
+            throw new BusinessException("PRICING_FILE_REVIEW_REQUIRED", "核价文件审核通过后才能通知财务");
         }
-        ensureWorkflowAllows(SampleStatus.PRICING_FILE_GENERATED, SampleAction.NOTIFY_FINANCE);
+        ensureWorkflowAllows(SampleStatus.PRICING_APPROVED, SampleAction.NOTIFY_FINANCE);
         var notifiedPricingFile = pricingFile.withStatus(PricingFileStatus.FINANCE_NOTIFIED);
         pricingFiles.put(notifiedPricingFile.id(), notifiedPricingFile);
         var notification = new FinanceNotification(
@@ -1643,7 +1676,8 @@ public class SampleWorkflowService {
     @Transactional
     public synchronized PricingFileRecord receivePricingFile(String pricingFileId, String receivedBy) {
         var pricingFile = requiredPricingFile(pricingFileId);
-        if (pricingFile.status() == PricingFileStatus.GENERATED) {
+        if (pricingFile.status() != PricingFileStatus.FINANCE_NOTIFIED
+                && pricingFile.status() != PricingFileStatus.FINANCE_RECEIVED) {
             throw new BusinessException("PRICING_FILE_NOT_NOTIFIED", "核价文件通知财务后才能确认接收");
         }
         if (pricingFile.status() == PricingFileStatus.FINANCE_RECEIVED) {
@@ -1664,6 +1698,53 @@ public class SampleWorkflowService {
         }
         cacheAfterCommit(() -> pricingFiles.put(receivedPricingFile.id(), receivedPricingFile));
         return receivedPricingFile;
+    }
+
+    @Transactional
+    public synchronized PricingFileRecord reviewPricingFile(
+            String pricingFileId,
+            String decision,
+            String reviewerName,
+            String reviewerRole,
+            String comment
+    ) {
+        var pricingFile = requiredPricingFile(pricingFileId);
+        ensurePricingReviewer(pricingFile, reviewerName, reviewerRole);
+        if (pricingFile.status() == PricingFileStatus.PRICING_APPROVED
+                || pricingFile.status() == PricingFileStatus.PRICING_REJECTED) {
+            return pricingFile;
+        }
+        if (pricingFile.status() != PricingFileStatus.PENDING_PRICING_REVIEW) {
+            throw new BusinessException("PRICING_FILE_REVIEW_ILLEGAL", "当前核价文件不可审核");
+        }
+        var normalizedDecision = decision == null ? "" : decision.trim().toUpperCase();
+        var normalizedComment = comment == null ? "" : comment.trim();
+        var approved = "APPROVE".equals(normalizedDecision);
+        var rejected = "REJECT".equals(normalizedDecision);
+        if (!approved && !rejected) {
+            throw new BusinessException("PRICING_FILE_REVIEW_DECISION_INVALID", "审核结论必须是 APPROVE 或 REJECT");
+        }
+        if (rejected && normalizedComment.isEmpty()) {
+            throw new BusinessException("PRICING_FILE_REJECTION_REASON_REQUIRED", "退回核价文件必须填写原因");
+        }
+        ensureWorkflowAllows(SampleStatus.PENDING_PRICING_REVIEW,
+                approved ? SampleAction.APPROVE_PRICING : SampleAction.REJECT_PRICING);
+        var reviewedAt = now();
+        var reviewed = pricingFile.reviewed(
+                approved ? PricingFileStatus.PRICING_APPROVED : PricingFileStatus.PRICING_REJECTED,
+                reviewerName,
+                reviewedAt,
+                normalizedComment.isEmpty() ? null : normalizedComment,
+                rejected ? normalizedComment : null
+        );
+        persistPricingReview(reviewed);
+        if (auditLogService != null) {
+            auditLogService.record("PRICING_FILE", pricingFileId,
+                    approved ? "PRICING_REVIEW_APPROVE" : "PRICING_REVIEW_REJECT", reviewerName,
+                    "comment=" + normalizedComment);
+        }
+        cacheAfterCommit(() -> pricingFiles.put(reviewed.id(), reviewed));
+        return reviewed;
     }
 
     public synchronized List<ArchiveFileView> archiveFiles(String versionId) {
@@ -1688,11 +1769,18 @@ public class SampleWorkflowService {
     }
 
     public synchronized ArchiveFileDownload downloadPricingFile(String pricingFileId) {
+        return downloadPricingFile(pricingFileId, null);
+    }
+
+    public synchronized ArchiveFileDownload downloadPricingFile(String pricingFileId, String role) {
         if (pricingFileRepository == null || archiveFileRepository == null) {
             throw new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在");
         }
-        pricingFileRepository.findById(pricingFileId)
+        var pricingFile = pricingFileRepository.findById(pricingFileId)
                 .orElseThrow(() -> new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在"));
+        if (hasRole(role, "FINANCE") && !isFinanceVisible(toPricingFileRecord(pricingFile))) {
+            throw new BusinessException("PRICING_FILE_NOT_AVAILABLE_FOR_FINANCE", "财务只能下载已通过审核并通知的核价文件");
+        }
         var archiveFile = archiveFileRepository.findFirstByBusinessTypeAndBusinessIdOrderByArchivedAtDesc(
                         "PRICING_FILE",
                         pricingFileId
@@ -2452,7 +2540,13 @@ public class SampleWorkflowService {
                 pricingFile.fileName(),
                 pricingFile.status().name(),
                 pricingFile.contentLength(),
-                pricingFile.generatedAt()
+                pricingFile.generatedAt(),
+                null,
+                null,
+                pricingFile.reviewedBy(),
+                pricingFile.reviewedAt(),
+                pricingFile.reviewComment(),
+                pricingFile.rejectionReason()
         ));
         persistPricingArchive(pricingFile, content);
     }
@@ -2497,6 +2591,22 @@ public class SampleWorkflowService {
                 notification.status().name(),
                 notification.notifiedAt()
         ));
+    }
+
+    private void persistPricingReview(PricingFileRecord reviewedPricingFile) {
+        if (pricingFileRepository == null) {
+            return;
+        }
+        var entity = pricingFileRepository.findById(reviewedPricingFile.id())
+                .orElseThrow(() -> new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在"));
+        entity.markReviewed(
+                reviewedPricingFile.status().name(),
+                reviewedPricingFile.reviewedBy(),
+                reviewedPricingFile.reviewedAt(),
+                reviewedPricingFile.reviewComment(),
+                reviewedPricingFile.rejectionReason()
+        );
+        pricingFileRepository.save(entity);
     }
 
     private void persistFinanceReceipt(
@@ -2625,9 +2735,57 @@ public class SampleWorkflowService {
     }
 
     private long nextPricingVersionNumber(String versionId) {
-        return pricingFiles.values().stream()
+        var cachedCount = pricingFiles.values().stream().filter(file -> file.versionId().equals(versionId)).count();
+        var persistedCount = pricingFileRepository == null ? 0
+                : pricingFileRepository.findAll().stream().filter(file -> file.getVersionId().equals(versionId)).count();
+        return Math.max(cachedCount, persistedCount) + 1;
+    }
+
+    private boolean canGenerateNextPricingVersion(String versionId) {
+        var latest = pricingFiles.values().stream()
                 .filter(file -> file.versionId().equals(versionId))
-                .count() + 1;
+                .max(Comparator.comparing(PricingFileRecord::generatedAt))
+                .orElse(null);
+        if (latest == null && pricingFileRepository != null) {
+            latest = pricingFileRepository.findAll().stream()
+                    .filter(file -> file.getVersionId().equals(versionId))
+                    .max(Comparator.comparing(com.lhr.rnd.persistence.entity.PricingFileEntity::getGeneratedAt))
+                    .map(this::toPricingFileRecord)
+                    .orElse(null);
+        }
+        return latest == null || latest.status() == PricingFileStatus.PRICING_REJECTED;
+    }
+
+    private boolean isFinanceVisible(PricingFileRecord pricingFile) {
+        return pricingFile.status() == PricingFileStatus.FINANCE_NOTIFIED
+                || pricingFile.status() == PricingFileStatus.FINANCE_RECEIVED;
+    }
+
+    private void ensurePricingReviewer(PricingFileRecord pricingFile, String reviewerName, String reviewerRole) {
+        if (hasRole(reviewerRole, "RND_DIRECTOR")) {
+            return;
+        }
+        var task = tasks.values().stream()
+                .filter(candidate -> candidate.versionId().equals(pricingFile.versionId()))
+                .findFirst()
+                .orElseGet(() -> rndTaskRepository == null ? null : rndTaskRepository.findAll().stream()
+                        .filter(candidate -> candidate.getVersionId().equals(pricingFile.versionId()))
+                        .findFirst()
+                        .map(this::hydrateRndTask)
+                        .orElse(null));
+        if (!hasRole(reviewerRole, "RND_ENGINEER", "RND") || task == null
+                || !reviewerName.equals(task.productOwnerName())) {
+            throw new BusinessException("PRICING_FILE_REVIEW_FORBIDDEN", "仅研发总监或产品负责人可审核核价文件");
+        }
+    }
+
+    private PricingFileRecord toPricingFileRecord(com.lhr.rnd.persistence.entity.PricingFileEntity entity) {
+        return new PricingFileRecord(
+                entity.getId(), entity.getVersionId(), entity.getSampleNo(), entity.getProductName(),
+                entity.getVersionCode(), entity.getPricingVersion(), entity.getFileName(),
+                PricingFileStatus.valueOf(entity.getStatus()), entity.getContentLength(), entity.getGeneratedAt(),
+                entity.getReviewedBy(), entity.getReviewedAt(), entity.getReviewComment(), entity.getRejectionReason()
+        );
     }
 
     private TestAssignment pendingTestAssignment(String testAssignmentId, String testerName) {

@@ -46,6 +46,10 @@ const FIELD_LABELS: Record<string, string> = {
   "pricingFile.fileName": "文件名",
   "pricingFile.status": "状态",
   "pricingFile.generatedAt": "生成时间",
+  "pricingFile.reviewedBy": "审核人",
+  "pricingFile.reviewedAt": "审核时间",
+  "pricingFile.reviewComment": "审核意见",
+  "pricingFile.rejectionReason": "退回原因",
   "financeNotification.recipientName": "财务接收人",
   "financeNotification.remark": "通知备注",
   "financeNotification.status": "通知状态",
@@ -67,8 +71,11 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const PRICING_FILE_STATUS_LABELS: Record<string, string> = {
-  GENERATED: "已生成",
+  PENDING_PRICING_REVIEW: "待核价审核",
+  PRICING_APPROVED: "核价审核通过",
+  PRICING_REJECTED: "核价已退回",
   FINANCE_NOTIFIED: "已通知财务",
+  FINANCE_RECEIVED: "财务已接收",
 };
 
 const SHIPMENT_STATUS_LABELS: Record<string, string> = {

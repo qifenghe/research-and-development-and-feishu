@@ -94,6 +94,10 @@ class SchemaMigrationTest {
         assertColumnExists("rnd_task", "product_owner_name");
         assertColumnExists("pricing_file", "received_by");
         assertColumnExists("pricing_file", "received_at");
+        assertColumnExists("pricing_file", "reviewed_by");
+        assertColumnExists("pricing_file", "reviewed_at");
+        assertColumnExists("pricing_file", "review_comment");
+        assertColumnExists("pricing_file", "rejection_reason");
 
         assertColumnDefinition("experiment_material", "material_category", false, "'RAW'");
         assertColumnDefinition("experiment_material", "is_primary_material", false, "FALSE");

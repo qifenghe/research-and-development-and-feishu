@@ -22,8 +22,10 @@ class SampleStatusMachineTest {
         assertThat(machine.transition(SampleStatus.PENDING_TEST, SampleAction.TEST_PASS))
                 .isEqualTo(SampleStatus.SAMPLE_COMPLETED);
         assertThat(machine.transition(SampleStatus.SAMPLE_COMPLETED, SampleAction.REQUEST_PRICING))
-                .isEqualTo(SampleStatus.PRICING_FILE_GENERATED);
-        assertThat(machine.transition(SampleStatus.PRICING_FILE_GENERATED, SampleAction.NOTIFY_FINANCE))
+                .isEqualTo(SampleStatus.PENDING_PRICING_REVIEW);
+        assertThat(machine.transition(SampleStatus.PENDING_PRICING_REVIEW, SampleAction.APPROVE_PRICING))
+                .isEqualTo(SampleStatus.PRICING_APPROVED);
+        assertThat(machine.transition(SampleStatus.PRICING_APPROVED, SampleAction.NOTIFY_FINANCE))
                 .isEqualTo(SampleStatus.FINANCE_NOTIFIED);
         assertThat(machine.transition(SampleStatus.FINANCE_NOTIFIED, SampleAction.ARCHIVE))
                 .isEqualTo(SampleStatus.ARCHIVED);

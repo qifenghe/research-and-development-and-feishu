@@ -17,8 +17,10 @@ public class SampleStatusMachine {
         allow(SampleStatus.SAMPLE_COMPLETED, SampleAction.CUSTOMER_FEEDBACK_PASS, SampleStatus.SAMPLE_COMPLETED);
         allow(SampleStatus.SAMPLE_COMPLETED, SampleAction.CUSTOMER_FEEDBACK_RESAMPLE, SampleStatus.RESAMPLING_REQUIRED);
         allow(SampleStatus.SAMPLE_COMPLETED, SampleAction.CUSTOMER_FEEDBACK_STOP, SampleStatus.STOPPED);
-        allow(SampleStatus.SAMPLE_COMPLETED, SampleAction.REQUEST_PRICING, SampleStatus.PRICING_FILE_GENERATED);
-        allow(SampleStatus.PRICING_FILE_GENERATED, SampleAction.NOTIFY_FINANCE, SampleStatus.FINANCE_NOTIFIED);
+        allow(SampleStatus.SAMPLE_COMPLETED, SampleAction.REQUEST_PRICING, SampleStatus.PENDING_PRICING_REVIEW);
+        allow(SampleStatus.PENDING_PRICING_REVIEW, SampleAction.APPROVE_PRICING, SampleStatus.PRICING_APPROVED);
+        allow(SampleStatus.PENDING_PRICING_REVIEW, SampleAction.REJECT_PRICING, SampleStatus.PRICING_REJECTED);
+        allow(SampleStatus.PRICING_APPROVED, SampleAction.NOTIFY_FINANCE, SampleStatus.FINANCE_NOTIFIED);
         allow(SampleStatus.FINANCE_NOTIFIED, SampleAction.ARCHIVE, SampleStatus.ARCHIVED);
     }
 

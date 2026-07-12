@@ -80,9 +80,16 @@ public class RolePermissionService {
                         rule("POST", "/api/v1/experiment-forms/*/submit-test", "通知内部测试", 49),
                         rule("POST", "/api/v1/shipments/*/feedback", "登记客户反馈", 60),
                         rule("POST", "/api/v1/sample-versions/*/pricing-files", "生成核价文件", 70),
+                        rule("POST", "/api/v1/pricing-files/*/review", "审核核价文件", 75),
+                        rule("GET", "/api/v1/sample-versions/pricing-ready", "查看待生成核价版本", 75),
+                        rule("POST", "/api/v1/pricing-files/*/notify-finance", "通知财务接收核价", 78),
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 80),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 90),
                         rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 100),
+                        rule("GET", "/api/v1/reports/rnd-tasks/export", "导出打样任务列表", 101),
+                        rule("GET", "/api/v1/reports/shipments/export", "导出寄样反馈列表", 102),
+                        rule("GET", "/api/v1/reports/experiment-forms/*/export", "导出实验单", 103),
+                        rule("GET", "/api/v1/reports/pricing-files/*/export", "导出核价文件", 104),
                         rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 110),
                         rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 120),
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 130),
@@ -102,11 +109,17 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/sample-versions/*/process-steps", "查看工序步骤", 76),
                         rule("POST", "/api/v1/rnd-tasks/*/experiment-form/draft", "保存实验单草稿", 77),
                         rule("POST", "/api/v1/experiment-forms/*/submit-test", "提交内部测试", 78),
+                        rule("POST", "/api/v1/pricing-files/*/review", "审核核价文件", 79),
                         rule("POST", "/api/v1/experiment-forms/*/attachments", "上传实验附件", 79),
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 80),
                         rule("GET", "/api/v1/shipments/*/detail", "查看寄样详情", 90),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 100),
                         rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 110),
+                        rule("GET", "/api/v1/reports/rnd-tasks/export", "导出打样任务列表", 111),
+                        rule("GET", "/api/v1/reports/shipments/export", "导出寄样反馈列表", 112),
+                        rule("GET", "/api/v1/reports/experiment-forms/*/export", "导出实验单", 113),
+                        rule("GET", "/api/v1/reports/test-records/*/export", "导出测试单", 114),
+                        rule("GET", "/api/v1/reports/pricing-files/*/export", "导出核价文件", 115),
                         rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 120),
                         rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 130),
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 140)
@@ -122,7 +135,10 @@ public class RolePermissionService {
                         rule("POST", "/api/v1/rnd-tasks/*/accept", "接受研发任务", 50),
                         rule("POST", "/api/v1/rnd-tasks/*/experiment-form/draft", "保存实验单草稿", 60),
                         rule("POST", "/api/v1/experiment-forms/*/submit-test", "提交内部测试", 70),
+                        rule("POST", "/api/v1/pricing-files/*/review", "审核本人负责产品的核价文件", 75),
                         rule("POST", "/api/v1/experiment-forms/*/attachments", "上传实验附件", 80),
+                        rule("GET", "/api/v1/reports/experiment-forms/*/export", "导出实验单", 85),
+                        rule("GET", "/api/v1/reports/rnd-tasks/export", "导出打样任务列表", 86),
                         rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 90),
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 100)
                 )),
@@ -133,6 +149,7 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 10),
                         rule("POST", "/api/v1/test-assignments/*/pass", "提交测试通过", 20),
                         rule("POST", "/api/v1/test-assignments/*/fail-resample", "提交测试不通过复打样", 30),
+                        rule("GET", "/api/v1/reports/test-records/*/export", "导出测试单", 35),
                         rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 40),
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 50)
                 )),
@@ -143,6 +160,7 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 10),
                         rule("POST", "/api/v1/test-assignments/*/pass", "提交测试通过", 20),
                         rule("POST", "/api/v1/test-assignments/*/fail-resample", "提交测试不通过复打样", 30),
+                        rule("GET", "/api/v1/reports/test-records/*/export", "导出测试单", 35),
                         rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 40),
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 50)
                 )),
@@ -151,7 +169,9 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 8),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 10),
                         rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 20),
+                        rule("GET", "/api/v1/reports/pricing-files/*/export", "导出核价文件", 25),
                         rule("POST", "/api/v1/pricing-files/*/notify-finance", "处理核价通知", 30),
+                        rule("POST", "/api/v1/pricing-files/*/receive", "确认接收核价文件", 35),
                         rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 40),
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 50)
                 )),
@@ -167,6 +187,11 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/shipments/*/detail", "查看寄样详情", 70),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 80),
                         rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 90),
+                        rule("GET", "/api/v1/reports/rnd-tasks/export", "导出打样任务列表", 91),
+                        rule("GET", "/api/v1/reports/shipments/export", "导出寄样反馈列表", 92),
+                        rule("GET", "/api/v1/reports/experiment-forms/*/export", "导出实验单", 93),
+                        rule("GET", "/api/v1/reports/test-records/*/export", "导出测试单", 94),
+                        rule("GET", "/api/v1/reports/pricing-files/*/export", "导出核价文件", 95),
                         rule("GET", "/api/v1/sample-projects/stopped", "查看停止/废弃项目池", 100),
                         rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 110),
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 120)
@@ -186,6 +211,21 @@ public class RolePermissionService {
             return true;
         }
         String normalizedMethod = method == null ? "" : method.toUpperCase();
+        if (isReportExport(normalizedMethod, uri)) {
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER");
+        }
+        if (isPricingReceive(normalizedMethod, uri)) {
+            return hasAnyRole(role, "FINANCE");
+        }
+        if (isFinanceWrite(normalizedMethod, uri)) {
+            return hasAnyRole(role, "RND_ASSISTANT");
+        }
+        if (isPricingReview(normalizedMethod, uri)) {
+            return hasAnyRole(role, "RND_DIRECTOR", "RND_ENGINEER", "RND");
+        }
+        if (isPricingReadyRead(normalizedMethod, uri)) {
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
+        }
         if (repository.countByRoleCode(role) > 0) {
             return repository.findByRoleCodeAndEnabledTrueOrderBySortOrderAsc(role).stream()
                     .anyMatch(permission -> permission.getHttpMethod().equalsIgnoreCase(normalizedMethod)
@@ -213,6 +253,9 @@ public class RolePermissionService {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
         }
         if (isDashboardRead(method, uri)) {
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER");
+        }
+        if (isReportExport(method, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER");
         }
         if (isTaskList(method, uri)) {
@@ -380,6 +423,18 @@ public class RolePermissionService {
         return "POST".equals(method) && uri.matches("^/api/v1/pricing-files/[^/]+/notify-finance$");
     }
 
+    private boolean isPricingReceive(String method, String uri) {
+        return "POST".equals(method) && uri.matches("^/api/v1/pricing-files/[^/]+/receive$");
+    }
+
+    private boolean isPricingReview(String method, String uri) {
+        return "POST".equals(method) && uri.matches("^/api/v1/pricing-files/[^/]+/review$");
+    }
+
+    private boolean isPricingReadyRead(String method, String uri) {
+        return "GET".equals(method) && uri.equals("/api/v1/sample-versions/pricing-ready");
+    }
+
     private boolean isArchiveRead(String method, String uri) {
         return "GET".equals(method)
                 && (uri.matches("^/api/v1/sample-versions/[^/]+/archive-files$")
@@ -392,6 +447,15 @@ public class RolePermissionService {
 
     private boolean isDashboardRead(String method, String uri) {
         return "GET".equals(method) && uri.equals("/api/v1/dashboard/overview");
+    }
+
+    private boolean isReportExport(String method, String uri) {
+        return "GET".equals(method)
+                && (uri.matches("^/api/v1/reports/experiment-forms/[^/]+/export$")
+                || uri.matches("^/api/v1/reports/test-records/[^/]+/export$")
+                || uri.matches("^/api/v1/reports/pricing-files/[^/]+/export$")
+                || uri.equals("/api/v1/reports/rnd-tasks/export")
+                || uri.equals("/api/v1/reports/shipments/export"));
     }
 
     private boolean isFeishuOperation(String method, String uri) {
