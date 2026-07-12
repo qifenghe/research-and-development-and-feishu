@@ -72,3 +72,42 @@ Task 2 implementation: `9686100 feat: persist experiment output and product owne
 ## Concern
 
 No blocking concern. The schema-default assertion intentionally uses H2's Unicode literal representation, while the migration SQL and API value remain `袋`.
+
+## Review Follow-Up: Validation, Constraints, and Persistence Coverage
+
+### Red Evidence
+
+Added regression tests before the repair and ran:
+
+```bash
+cd backend
+JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+  mvn -q -Dtest='SchemaMigrationTest#v11BackfillsProductOwnerAndEnforcesFinishedOutputConstraints,SampleWorkflowControllerTest#normalizesOmittedAndBlankFinishedOutputUnitsToBag+rejectsNonPositiveFinishedOutputQuantityAtServiceBoundary+rejectsUnsupportedFinishedOutputUnitAtServiceBoundary' test
+```
+
+Observed expected failures: blank `finishedOutputUnit` was rejected by DTO validation, direct service calls accepted zero quantity and `桶`, and V11 allowed a direct database update to quantity `0`.
+
+### Green Evidence
+
+- DTO accepts omitted, empty, and whitespace-only units; the service normalizes all to `袋`.
+- Service commands reject non-positive quantities and units outside `袋|盒|份|个|盘`.
+- V11 now enforces matching `CHECK` constraints while allowing a null quantity.
+- `savesFinishedQuantityAndProductOwner` clears both task and form caches before rereading persisted data.
+- A V10-to-V11 Flyway test verifies `product_owner_name` is backfilled from `assignee_name` and proves the database constraints reject invalid direct writes.
+
+### Final Verification
+
+```bash
+cd backend
+JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+  mvn -Dtest=SchemaMigrationTest,SampleWorkflowControllerTest test
+# Tests run: 62, Failures: 0, Errors: 0, Skipped: 0
+
+cd frontend
+pnpm --dir packages/shared typecheck
+# tsc --noEmit
+```
+
+### Commit
+
+Review follow-up repair: `c0a99c2 fix: enforce experiment output invariants`.
