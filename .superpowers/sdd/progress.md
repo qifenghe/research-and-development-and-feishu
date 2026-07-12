@@ -6,5 +6,5 @@ Plan: `docs/superpowers/plans/2026-07-12-h5-experiment-pricing-review.md`
 - Task 2: complete (commits b87b73a..a03e908; 62 backend tests and shared typecheck passed; rereview Approved)
 - Task 3: complete (commits 24766c0..1057d26 plus migration boundary fix; pricing-first form, strict material/output contracts, focused backend and frontend tests passed)
 - Task 4: complete (commits 1d7bf73, 686bde8, 536338a; pricing review, finance handoff, owner isolation and upgrade migrations independently Approved)
-- Task 5: pending
+- Task 5: complete (commits a0a8e87, 0273668, 26795da; mobile-first H5, real login, pricing routes and small-screen actions independently Approved)
 - Task 6: pending
