@@ -34,17 +34,21 @@ public class SessionAuthenticationInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        if (!sessionProperties.isAuthRequired() || isPublicPath(request.getRequestURI())) {
+        if (isPublicPath(request.getRequestURI())) {
             return true;
         }
         var authorization = request.getHeader("Authorization");
         if (authorization == null || !authorization.startsWith("Bearer ")) {
+            if (!sessionProperties.isAuthRequired()) {
+                return true;
+            }
             writeUnauthorized(response, "SESSION_TOKEN_REQUIRED", "请先登录");
             return false;
         }
         try {
             SessionPrincipal principal = sessionTokenService.verify(authorization.substring("Bearer ".length()).trim());
-            if (!rolePermissionService.hasPermission(principal.role(), request.getMethod(), request.getRequestURI())) {
+            if (sessionProperties.isAuthRequired()
+                    && !rolePermissionService.hasPermission(principal.role(), request.getMethod(), request.getRequestURI())) {
                 writeForbidden(response);
                 return false;
             }

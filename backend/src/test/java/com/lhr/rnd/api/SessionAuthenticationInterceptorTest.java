@@ -1,13 +1,22 @@
 package com.lhr.rnd.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lhr.rnd.model.UserAccount;
+import com.lhr.rnd.service.SessionProperties;
+import com.lhr.rnd.service.SessionTokenService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.time.LocalDateTime;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -24,6 +33,15 @@ class SessionAuthenticationInterceptorTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private SessionAuthenticationInterceptor sessionAuthenticationInterceptor;
+
+    @Autowired
+    private SessionProperties sessionProperties;
+
+    @Autowired
+    private SessionTokenService sessionTokenService;
 
     @Test
     void protectsBusinessApisAndAllowsAccessWithSessionToken() throws Exception {
@@ -44,6 +62,39 @@ class SessionAuthenticationInterceptorTest {
         mockMvc.perform(get("/api/v1/feishu/integration/status"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.mode").exists());
+    }
+
+    @Test
+    void attachesBearerPrincipalWhenAuthorizationIsOptional() throws Exception {
+        var authRequired = sessionProperties.isAuthRequired();
+        sessionProperties.setAuthRequired(false);
+        try {
+            var token = sessionTokenService.issue(new UserAccount(
+                    "USER-H5-REVIEW",
+                    "rnd_engineer",
+                    "张研发",
+                    null,
+                    "RND_ENGINEER",
+                    "研发部",
+                    "ACTIVE",
+                    null,
+                    LocalDateTime.now(),
+                    LocalDateTime.now()
+            ));
+            var request = new MockHttpServletRequest("POST", "/api/v1/pricing-files/PRICE-001/review");
+            request.addHeader("Authorization", "Bearer " + token);
+
+            assertThat(sessionAuthenticationInterceptor.preHandle(
+                    request,
+                    new MockHttpServletResponse(),
+                    new Object()
+            )).isTrue();
+            assertThat(request.getAttribute(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE))
+                    .extracting("name")
+                    .isEqualTo("张研发");
+        } finally {
+            sessionProperties.setAuthRequired(authRequired);
+        }
     }
 
     @Test
