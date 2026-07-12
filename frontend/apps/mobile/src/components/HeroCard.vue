@@ -1,6 +1,6 @@
 <template>
   <a :href="href" class="hero-card" @click="onClick">
-    <p class="section-title" style="color: #bfdbfe; margin-top: 0">{{ eyebrow }}</p>
+    <p class="hero-card__eyebrow">{{ eyebrow }}</p>
     <h2 class="hero-card__title">{{ title }}</h2>
     <p class="hero-card__subtitle">{{ subtitle }}</p>
     <div class="hero-card__footer">

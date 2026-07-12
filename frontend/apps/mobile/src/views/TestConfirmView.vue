@@ -5,6 +5,11 @@
         <StatusBadge label="待测试" variant="primary" />
       </PageHeader>
 
+      <van-empty v-if="loadError" class="mobile-empty" image="error" :description="loadError">
+        <van-button type="primary" @click="load">重新加载</van-button>
+      </van-empty>
+
+      <template v-else>
       <InfoCard title="实验单摘要">
         <div class="info-row">
           <span class="info-row__value" style="max-width: 100%; text-align: left; white-space: pre-wrap">
@@ -30,9 +35,10 @@
 
       <div class="section-title">测试结论</div>
       <ConclusionButtons v-model="conclusion" :options="conclusionOptions" />
+      </template>
     </van-skeleton>
 
-    <FixedActionBar :with-tabbar="false">
+    <FixedActionBar v-if="!loadError" :with-tabbar="false">
       <van-button
         v-if="conclusion === 'PASS'"
         plain
@@ -76,6 +82,7 @@ const submitting = ref(false);
 const pendingAction = ref<"pass" | "resample" | "stop">("pass");
 const conclusion = ref("PASS");
 const detail = ref<RndTaskDetailView | null>(null);
+const loadError = ref("");
 const form = reactive({
   reheatMethod: "",
   tasteScore: "",
@@ -199,12 +206,18 @@ async function submitStop() {
   }
 }
 
-onMounted(async () => {
+async function load() {
   loading.value = true;
+  loadError.value = "";
   try {
     detail.value = await api.task.detail(String(route.params.id), auth.role, auth.displayName);
+  } catch (error) {
+    detail.value = null;
+    loadError.value = error instanceof Error ? error.message : "测试任务加载失败";
   } finally {
     loading.value = false;
   }
-});
+}
+
+onMounted(load);
 </script>

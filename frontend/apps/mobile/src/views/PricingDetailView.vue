@@ -16,10 +16,20 @@
         :title="group.title"
         :rows="group.fields"
       />
+      <div v-if="canReview && !loadError" class="form-panel pricing-review-note">
+        <van-field v-model="reviewComment" label="退回原因" placeholder="退回时必填" />
+      </div>
     </van-skeleton>
 
-    <FixedActionBar :with-tabbar="false">
-      <van-button v-if="canDownload" type="primary" block :loading="downloading" @click="download">
+    <FixedActionBar v-if="detail && !loadError" :with-tabbar="false">
+      <van-button
+        v-if="canDownload"
+        :type="hasWorkflowAction ? 'default' : 'primary'"
+        :plain="hasWorkflowAction"
+        block
+        :loading="downloading"
+        @click="download"
+      >
         下载核价文件
       </van-button>
       <van-button
@@ -31,9 +41,9 @@
       >
         审核通过
       </van-button>
-      <van-field v-if="canReview" v-model="reviewComment" label="退回原因" placeholder="退回时必填" />
       <van-button
         v-if="canReview"
+        plain
         type="danger"
         block
         :loading="reviewing"
@@ -99,6 +109,7 @@ const canReview = computed(() => (
   (auth.role === "RND_DIRECTOR" || auth.role === "RND_ENGINEER")
   && detail.value?.pricingFile.status === "PENDING_PRICING_REVIEW"
 ));
+const hasWorkflowAction = computed(() => canReview.value || canNotifyFinance.value || canReceive.value);
 
 const headerTitle = computed(() => {
   if (!detail.value) return "核价文件";
@@ -169,6 +180,10 @@ async function notifyFinance() {
 }
 
 async function review(decision: "APPROVE" | "REJECT") {
+  if (decision === "REJECT" && !reviewComment.value.trim()) {
+    showFailToast("请填写退回原因");
+    return;
+  }
   reviewing.value = true;
   try {
     await api.shipment.reviewPricingFile(String(route.params.id), {

@@ -6,7 +6,8 @@
     @click="onClick"
   >
     <div class="task-card__row">
-      <div>
+      <span v-if="statusSymbol" class="task-card__leading">{{ statusSymbol }}</span>
+      <div class="task-card__content">
         <h3 class="task-card__title">{{ title }}</h3>
         <p class="task-card__meta">{{ meta }}</p>
       </div>
@@ -16,7 +17,8 @@
   </a>
   <div v-else class="task-card">
     <div class="task-card__row">
-      <div>
+      <span v-if="statusSymbol" class="task-card__leading">{{ statusSymbol }}</span>
+      <div class="task-card__content">
         <h3 class="task-card__title">{{ title }}</h3>
         <p class="task-card__meta">{{ meta }}</p>
       </div>
@@ -34,6 +36,7 @@ const props = defineProps<{
   title: string;
   meta: string;
   actionLabel?: string;
+  statusSymbol?: string;
   to?: string | RouteLocationRaw;
 }>();
 

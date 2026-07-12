@@ -5,11 +5,17 @@
         <StatusBadge :label="statusLabel" :variant="statusVariant" />
       </PageHeader>
 
-      <InfoCard title="样品信息" :rows="detailFields" />
+      <van-empty v-if="loadError" class="mobile-empty" image="error" :description="loadError">
+        <van-button type="primary" @click="load">重新加载</van-button>
+      </van-empty>
 
-      <div v-if="assigneeHint" class="mobile-detail-block">
-        <p>{{ assigneeHint }}</p>
-      </div>
+      <template v-else>
+        <InfoCard title="样品信息" :rows="detailFields" />
+
+        <div v-if="assigneeHint" class="mobile-detail-block">
+          <p>{{ assigneeHint }}</p>
+        </div>
+      </template>
     </van-skeleton>
 
     <FixedActionBar v-if="hasActions" :with-tabbar="false">
@@ -33,7 +39,8 @@
       </van-button>
       <van-button
         v-if="canNotifyTest"
-        type="primary"
+        :type="primaryAction === 'notify' ? 'primary' : 'default'"
+        :plain="primaryAction !== 'notify'"
         block
         :loading="submitting"
         @click="notifyTest"
@@ -42,7 +49,8 @@
       </van-button>
       <van-button
         v-if="canAccept"
-        type="primary"
+        :type="primaryAction === 'accept' ? 'primary' : 'default'"
+        :plain="primaryAction !== 'accept'"
         block
         :loading="submitting"
         @click="acceptTask"
@@ -51,7 +59,8 @@
       </van-button>
       <van-button
         v-if="canViewTest"
-        type="primary"
+        :type="primaryAction === 'test' ? 'primary' : 'default'"
+        :plain="primaryAction !== 'test'"
         block
         @click="router.push(`/tests/${route.params.id}`)"
       >
@@ -86,6 +95,7 @@ const auth = useAuthStore();
 const loading = ref(false);
 const submitting = ref(false);
 const detail = ref<RndTaskDetailView | null>(null);
+const loadError = ref("");
 
 const productName = computed(() => detail.value?.task.productName ?? "任务详情");
 const statusLabel = computed(() => (detail.value ? taskStatusLabel(detail.value.task.status) : "加载中"));
@@ -116,8 +126,8 @@ const hasActions = computed(() =>
 );
 const primaryAction = computed(() => {
   if (canAccept.value) return "accept";
-  if (canOpenExperiment.value) return "experiment";
   if (canNotifyTest.value) return "notify";
+  if (canOpenExperiment.value) return "experiment";
   return "test";
 });
 const assigneeHint = computed(() => {
@@ -149,8 +159,12 @@ const detailFields = computed(() => {
 
 async function load() {
   loading.value = true;
+  loadError.value = "";
   try {
     detail.value = await api.task.detail(String(route.params.id), auth.role, auth.displayName);
+  } catch (error) {
+    detail.value = null;
+    loadError.value = error instanceof Error ? error.message : "任务详情加载失败";
   } finally {
     loading.value = false;
   }

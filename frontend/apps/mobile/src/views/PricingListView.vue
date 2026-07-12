@@ -1,6 +1,6 @@
 <template>
   <div>
-    <PageHeader title="核价文件" subtitle="查看已生成的核价文件，进入详情可下载 Excel" />
+    <PageHeader :title="pageTitle" :subtitle="pageSubtitle" />
 
     <van-search
       v-model="keyword"
@@ -35,10 +35,11 @@
         :title="file.productName"
         :meta="pricingMeta(file)"
         action-label="查看"
+        :status-symbol="pricingSymbol(file.status)"
       />
     </van-list>
 
-    <van-empty v-if="!loading && rows.length === 0" description="暂无核价文件" />
+    <van-empty v-if="!loading && !loadError && rows.length === 0" :description="emptyDescription" />
   </div>
 </template>
 
@@ -57,6 +58,9 @@ const loading = ref(false);
 const finished = ref(true);
 const rows = ref<PricingFileRecord[]>([]);
 const loadError = ref("");
+const pageTitle = computed(() => auth.role === "FINANCE" ? "财务收件箱" : "核价文件");
+const pageSubtitle = computed(() => auth.role === "FINANCE" ? "查看、下载并确认接收核价文件" : "按审核状态处理核价文件");
+const emptyDescription = computed(() => auth.role === "FINANCE" ? "暂无待接收核价文件" : "暂无核价文件");
 
 const chips = computed<Array<{ label: string; value: PricingFileStatus | "" }>>(() => (
   auth.role === "FINANCE"
@@ -90,6 +94,12 @@ function pricingMeta(file: PricingFileRecord) {
     file.pricingVersion,
     statusLabel(file.status),
   ].filter(Boolean).join(" · ");
+}
+
+function pricingSymbol(status: PricingFileStatus) {
+  if (status === "FINANCE_RECEIVED") return "收";
+  if (status === "PRICING_REJECTED") return "退";
+  return "价";
 }
 
 function selectStatus(value: PricingFileStatus | "") {

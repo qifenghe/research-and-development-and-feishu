@@ -1,12 +1,20 @@
 <template>
   <div>
     <van-skeleton title :row="4" :loading="loading">
+      <van-empty v-if="loadError" class="mobile-empty" image="error" :description="loadError">
+        <van-button type="primary" @click="load">重新加载</van-button>
+      </van-empty>
+
+      <template v-else>
       <PageHeader :title="'我的待办'" :subtitle="`${auth.displayName} / ${roleLabel}`">
         <template #stats>
-          <span class="stat-chip stat-chip--primary">今日待办 {{ board?.totalCount ?? 0 }}</span>
-          <span v-if="(board?.overdueCount ?? 0) > 0" class="stat-chip stat-chip--warning">
-            逾期 {{ board?.overdueCount }}
-          </span>
+          <span
+            v-for="stat in todoStats"
+            :key="stat.label"
+            class="stat-chip"
+            :class="stat.tone === 'warning' ? 'stat-chip--warning' : 'stat-chip--primary'"
+            data-testid="todo-summary"
+          >{{ stat.label }} {{ stat.count }}</span>
         </template>
       </PageHeader>
 
@@ -17,6 +25,7 @@
         :title="`${board.hero.productName} · ${board.hero.versionCode}`"
         :subtitle="heroSubtitle"
         :action-label="board.hero.actionLabel"
+        data-testid="todo-priority-task"
       />
 
       <div v-if="roleEntries.length" class="todo-entries">
@@ -35,6 +44,7 @@
           :title="item.productName"
           :meta="taskMeta(item)"
           :action-label="item.actionLabel"
+          :status-symbol="taskSymbol(item)"
         />
       </div>
 
@@ -42,6 +52,7 @@
         v-if="!loading && (board?.totalCount ?? 0) === 0"
         :description="emptyDescription"
       />
+      </template>
     </van-skeleton>
   </div>
 </template>
@@ -65,6 +76,7 @@ import { api } from "../services/api";
 const auth = useAuthStore();
 const loading = ref(false);
 const board = ref<MobileTodoBoard | null>(null);
+const loadError = ref("");
 
 const roleLabel = computed(() => sharedRoleLabel(auth.role));
 
@@ -93,6 +105,19 @@ const emptyDescription = computed(() => {
     return "暂无待办，可先录入需求或登记寄样";
   }
   return "暂无待办任务";
+});
+
+const todoStats = computed(() => {
+  const groupStats: Array<{ label: string; count: number; tone: "primary" | "warning" }> = (board.value?.groups ?? []).slice(0, 3).map((group) => ({
+    label: group.title.replace(/^待/, ""),
+    count: group.items.length,
+    tone: "primary" as const,
+  }));
+  if ((board.value?.overdueCount ?? 0) > 0 && groupStats.length < 3) {
+    groupStats.push({ label: "逾期", count: board.value!.overdueCount, tone: "warning" as const });
+  }
+  while (groupStats.length < 3) groupStats.push({ label: groupStats.length === 0 ? "今日待办" : "处理中", count: board.value?.totalCount ?? 0, tone: "primary" as const });
+  return groupStats;
 });
 
 const roleEntries = computed(() => {
@@ -181,8 +206,17 @@ function taskMeta(item: MobileTodoItem) {
   return parts.filter(Boolean).join(" · ");
 }
 
+function taskSymbol(item: MobileTodoItem) {
+  const source = `${item.statusLabel} ${item.subtitle ?? ""} ${item.actionLabel}`;
+  if (source.includes("审核")) return "审";
+  if (source.includes("核价") || source.includes("财务")) return "价";
+  if (source.includes("测试")) return "测";
+  return "样";
+}
+
 async function load() {
   loading.value = true;
+  loadError.value = "";
   try {
     const assigneeName = shouldFilterTasksByAssignee(auth.role) ? auth.displayName : undefined;
     board.value = await fetchMobileTodoBoard({
@@ -191,6 +225,9 @@ async function load() {
       listShipments: (params) => api.shipment.list(params),
       listPricingFiles: (params) => api.shipment.pricingFiles(params) as Promise<import("@rnd/shared").PricingFileRecord[]>,
     });
+  } catch (error) {
+    board.value = null;
+    loadError.value = error instanceof Error ? error.message : "待办加载失败";
   } finally {
     loading.value = false;
   }

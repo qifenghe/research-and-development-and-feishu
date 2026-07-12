@@ -3,6 +3,9 @@
     <PageHeader title="审核需求" subtitle="研发总监审核内勤提交的样品需求" />
 
     <van-pull-refresh v-model="refreshing" @refresh="load">
+      <van-empty v-if="loadError" class="mobile-empty" image="error" :description="loadError">
+        <van-button type="primary" @click="load">重新加载</van-button>
+      </van-empty>
       <div v-for="request in rows" :key="request.id" class="task-card">
         <div class="task-card__row">
           <div>
@@ -20,7 +23,6 @@
         <van-button
           v-if="canApprove"
           block
-          round
           type="primary"
           :loading="approvingId === request.id"
           @click="approve(request.id)"
@@ -29,7 +31,7 @@
         </van-button>
       </div>
 
-      <van-empty v-if="!loading && rows.length === 0" description="暂无待审核需求" />
+      <van-empty v-if="!loading && !loadError && rows.length === 0" description="暂无待审核需求，可下拉刷新" />
     </van-pull-refresh>
   </div>
 </template>
@@ -49,11 +51,16 @@ const loading = ref(false);
 const refreshing = ref(false);
 const approvingId = ref("");
 const rows = ref<SampleRequest[]>([]);
+const loadError = ref("");
 
 async function load() {
   loading.value = true;
+  loadError.value = "";
   try {
     rows.value = (await api.sample.list({ status: "PENDING_REVIEW" })) as SampleRequest[];
+  } catch (error) {
+    rows.value = [];
+    loadError.value = error instanceof Error ? error.message : "待审核需求加载失败";
   } finally {
     loading.value = false;
     refreshing.value = false;

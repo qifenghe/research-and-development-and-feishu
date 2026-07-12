@@ -14,6 +14,32 @@
   padding-top: 0;
 }
 
+.mobile-shell .van-button {
+  border-radius: var(--mobile-radius);
+  font-weight: 700;
+}
+
+.mobile-shell .van-cell-group--inset,
+.mobile-shell .van-search__content {
+  border-radius: var(--mobile-radius);
+}
+
+.mobile-shell .van-cell {
+  font-size: 14px;
+}
+
+.mobile-shell .van-empty {
+  padding: 24px 0;
+}
+
+.mobile-shell .van-empty__image {
+  display: none;
+}
+
+.mobile-shell .van-empty__description {
+  margin-top: 0;
+}
+
 .mobile-form .van-cell-group--inset {
   margin-left: 0;
   margin-right: 0;

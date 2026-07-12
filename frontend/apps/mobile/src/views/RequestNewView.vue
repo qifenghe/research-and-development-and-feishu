@@ -11,6 +11,7 @@
     </section>
 
     <van-form class="mobile-form" @submit="submit">
+      <p class="form-section-title">产品信息</p>
       <van-cell-group inset>
         <van-field
           v-model="form.productName"
@@ -44,6 +45,10 @@
           required
           :rules="[{ required: true, message: '请填写规格' }]"
         />
+      </van-cell-group>
+
+      <p class="form-section-title">使用要求</p>
+      <van-cell-group inset>
         <van-field
           v-model="form.applicationScenario"
           name="applicationScenario"
@@ -66,6 +71,10 @@
           required
           :rules="[{ required: true, message: '请填写口味/风味要求' }]"
         />
+      </van-cell-group>
+
+      <p class="form-section-title">申请信息</p>
+      <van-cell-group inset>
         <van-field
           v-model="form.creatorName"
           name="creatorName"
@@ -77,10 +86,10 @@
       </van-cell-group>
 
       <div class="form-actions">
-        <van-button block round type="primary" native-type="submit" :loading="loading">
+        <van-button block type="primary" native-type="submit" :loading="loading">
           提交需求
         </van-button>
-        <van-button block round plain type="primary" @click="resetForm">
+        <van-button block plain type="primary" @click="resetForm">
           清空重填
         </van-button>
       </div>

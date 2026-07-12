@@ -1,5 +1,5 @@
 :root {
-  --mobile-bg: #f6f8fb;
+  --mobile-bg: #f5f7fa;
   --mobile-card: #ffffff;
   --mobile-border: #e2e8f0;
   --mobile-primary: #246bfe;
@@ -9,10 +9,11 @@
   --mobile-warning: #f59e0b;
   --mobile-warning-soft: #fff4e5;
   --mobile-danger: #ef4444;
-  --mobile-text: #111827;
-  --mobile-muted: #64748b;
-  --mobile-radius: 18px;
-  --mobile-radius-sm: 14px;
+  --mobile-text: #172033;
+  --mobile-muted: #667085;
+  --mobile-radius: 8px;
+  --mobile-radius-sm: 6px;
+  --mobile-page-gutter: 16px;
   color: var(--mobile-text);
   font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
   background: var(--mobile-bg);

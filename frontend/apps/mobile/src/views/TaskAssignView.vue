@@ -3,6 +3,9 @@
     <PageHeader title="任务分发" subtitle="研发总监从人员列表中选择具体研发人员" />
 
     <van-pull-refresh v-model="refreshing" @refresh="load">
+      <van-empty v-if="loadError" class="mobile-empty" image="error" :description="loadError">
+        <van-button type="primary" @click="load">重新加载</van-button>
+      </van-empty>
       <div v-for="task in rows" :key="task.id" class="task-card">
         <div class="task-card__row">
           <div>
@@ -30,7 +33,6 @@
         <van-button
           v-if="canAssign"
           block
-          round
           type="primary"
           :loading="assigningId === task.id"
           @click="assign(task.id)"
@@ -39,7 +41,7 @@
         </van-button>
       </div>
 
-      <van-empty v-if="!loading && rows.length === 0" description="暂无待分发任务" />
+      <van-empty v-if="!loading && !loadError && rows.length === 0" description="暂无待分发任务，可下拉刷新" />
     </van-pull-refresh>
 
     <van-popup v-model:show="pickerOpen" position="bottom" round>
@@ -70,6 +72,7 @@ const assigningId = ref("");
 const pickerOpen = ref(false);
 const activeTaskId = ref("");
 const rows = ref<RndTask[]>([]);
+const loadError = ref("");
 const engineerColumns = ref<Array<{ text: string; value: string }>>([]);
 const assignForms = reactive<Record<string, { assigneeName: string; dueDate: string }>>({});
 
@@ -94,6 +97,7 @@ function onPickEngineer({ selectedOptions }: { selectedOptions: Array<{ text: st
 
 async function load() {
   loading.value = true;
+  loadError.value = "";
   try {
     const [pool, users] = await Promise.all([
       api.task.list({ status: "PENDING_ASSIGNMENT" }) as Promise<RndTask[]>,
@@ -112,6 +116,9 @@ async function load() {
         dueDate: defaultDueDate(),
       };
     }
+  } catch (error) {
+    rows.value = [];
+    loadError.value = error instanceof Error ? error.message : "任务池加载失败";
   } finally {
     loading.value = false;
     refreshing.value = false;
