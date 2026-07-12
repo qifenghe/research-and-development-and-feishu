@@ -4,12 +4,21 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "rnd.feishu")
 public class FeishuProperties {
+    private boolean enabled;
     private String mode = "MOCK";
     private String baseUrl = "https://open.feishu.cn";
     private String appUrl = "http://127.0.0.1:4174/";
     private String cardActionSecret;
     private String appId;
     private String appSecret;
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
 
     public String getMode() {
         return mode;

@@ -6,7 +6,7 @@
       <div class="profile-avatar">{{ avatarText }}</div>
       <div>
         <h2 class="page-title" style="font-size: 20px; margin-bottom: 4px">{{ auth.displayName }}</h2>
-        <p class="page-subtitle">{{ roleLabel }} · 飞书已绑定</p>
+        <p class="page-subtitle">{{ roleLabel }}</p>
       </div>
     </div>
 

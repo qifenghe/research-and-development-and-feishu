@@ -13,6 +13,10 @@ const taskApi = read("packages/shared/src/api/task.ts");
 const sharedTypes = read("packages/shared/src/types/index.ts");
 const experimentForm = read("apps/mobile/src/views/ExperimentFormView.vue");
 const mobileLogin = read("apps/mobile/src/views/LoginView.vue");
+const mobileRouter = read("apps/mobile/src/router/index.ts");
+const mobileProfile = read("apps/mobile/src/views/ProfileView.vue");
+const mobileAuthStore = read("apps/mobile/src/stores/auth.ts");
+const sessionApi = read("packages/shared/src/api/session.ts");
 const shipmentDetail = read("apps/pc/src/views/shipment/ShipmentDetailView.vue");
 const draftPayloadBlock = taskApi.match(/export interface SaveExperimentDraftPayload \{[\s\S]*?\n\}/)?.[0] ?? "";
 const materialTypeBlock = sharedTypes.match(/export interface ExperimentMaterial \{[\s\S]*?\n\}/)?.[0] ?? "";
@@ -56,16 +60,36 @@ if (shipmentDetail.includes("operatorName: auth.displayName")) {
   throw new Error("Customer feedback payload still contains unsupported field: operatorName");
 }
 
-if (!mobileLogin.includes("build=official-requestAccess-v3")) {
-  throw new Error("Mobile Feishu login diagnostics must expose the current requestAccess build version");
+if (!mobileLogin.includes('name="username"') || !mobileLogin.includes('name="password"')) {
+  throw new Error("Mobile web login must collect username and password");
 }
 
-if (!mobileLogin.includes("H5 可信域名") || !mobileLogin.includes("trycloudflare.com")) {
-  throw new Error("Mobile Feishu login must explain trusted-domain failures for Cloudflare tunnel URLs");
+if (!mobileLogin.includes("auth.loginWithPassword") || !mobileAuthStore.includes("loginWithPassword")) {
+  throw new Error("Mobile login must use the web account authentication store");
 }
 
-if (mobileLogin.includes("Boolean(window.tt || window.h5sdk")) {
-  throw new Error("Mobile Feishu login must not treat SDK/polyfill presence as real Feishu WebView capability");
+if (!sessionApi.includes('client.post<AuthLoginResult>("/auth/login"')) {
+  throw new Error("Shared session API must call POST /auth/login");
 }
 
-console.log("Frontend API contract check passed: experiment and shipment payloads match backend DTOs.");
+if (mobileLogin.includes("requestAccess") || mobileLogin.includes("trycloudflare.com")) {
+  throw new Error("Mobile web login must not expose Feishu tunnel diagnostics in the primary login form");
+}
+
+if (mobileLogin.includes("飞书") || !mobileLogin.includes("van-collapse")) {
+  throw new Error("Mobile web login must hide Feishu entry points and collapse test helpers by default");
+}
+
+if (!mobileLogin.includes("location.host") || !mobileLogin.includes("登录已过期")) {
+  throw new Error("Mobile web login must provide host-aware network errors and an expired-session message");
+}
+
+if (mobileRouter.includes("to.query.code")) {
+  throw new Error("Mobile router must not auto-redirect H5 query codes to the Feishu callback");
+}
+
+if (mobileProfile.includes("飞书已绑定")) {
+  throw new Error("Mobile profile must not present Feishu binding as an H5 login requirement");
+}
+
+console.log("Frontend API contract check passed: experiment, shipment, and web login contracts match backend DTOs.");

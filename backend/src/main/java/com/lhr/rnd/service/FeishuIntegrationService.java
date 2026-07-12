@@ -128,6 +128,7 @@ public class FeishuIntegrationService {
     }
 
     public FeishuLoginResult oauthCallback(OauthCallbackCommand command) {
+        requireEnabled();
         var feishuUserId = feishuIdentityClientProvider.current().exchangeCodeForFeishuUserId(command.code());
         var user = userAccountRepository.findByFeishuUserId(feishuUserId)
                 .filter(existing -> "ACTIVE".equals(existing.toModel().status()))
@@ -157,6 +158,9 @@ public class FeishuIntegrationService {
 
     @Transactional
     public FeishuDispatchResult dispatchPendingNotifications() {
+        if (!feishuProperties.isEnabled()) {
+            return new FeishuDispatchResult(0, 0, 0);
+        }
         var pending = feishuNotificationRepository.findByStatusOrderByCreatedAtAsc("PENDING_SEND");
         var sentCount = 0;
         var failedCount = 0;
@@ -172,6 +176,12 @@ public class FeishuIntegrationService {
             feishuNotificationRepository.save(notification);
         }
         return new FeishuDispatchResult(pending.size(), sentCount, failedCount);
+    }
+
+    private void requireEnabled() {
+        if (!feishuProperties.isEnabled()) {
+            throw new BusinessException("FEISHU_DISABLED", "当前为纯 H5 登录模式，飞书集成已关闭");
+        }
     }
 
     private LocalDateTime now() {

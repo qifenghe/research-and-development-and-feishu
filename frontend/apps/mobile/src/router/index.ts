@@ -55,16 +55,6 @@ router.beforeEach(async (to) => {
     }
     return true;
   }
-  if (typeof to.query.code === "string" && to.name !== "login-callback") {
-    return {
-      name: "login-callback",
-      query: {
-        code: to.query.code,
-        redirect: to.fullPath.split("?")[0],
-      },
-    };
-  }
-
   const auth = useAuthStore();
   if (to.meta.public) return true;
   if (!auth.isAuthenticated) {
