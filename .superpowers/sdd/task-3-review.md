@@ -81,3 +81,57 @@ frontend: pnpm typecheck
 ## Conclusion
 
 Not Approved: the two Important contract defects above remain. The material-category constraint is approved, but the yield and backend quantity requirements still need correction and targeted controller/API regression coverage.
+
+---
+
+## Final Independent Re-review (2026-07-12)
+
+Reviewed `task-3-brief.md`, `task-3-report.md`, the prior review history, and `review-2946d82..1057d26.diff` against the implementation at `1057d26`. No business code was changed.
+
+## Critical
+
+None.
+
+## Important
+
+### I1. V12 corrupts valid legacy yields above 100 percent
+
+[`V12__convert_finished_yield_to_percent.sql`](../../backend/src/main/resources/db/migration/V12__convert_finished_yield_to_percent.sql#L1) multiplies only legacy `finished_yield_ratio` values in `[0, 1]` before renaming the column. The pre-V12 calculation permits any non-negative ratio and has no upper-bound validation: a 12 kg finished output from 10 kg primary input was persisted as ratio `1.2` ([`ExperimentCalculationService.java`](../../backend/src/main/java/com/lhr/rnd/domain/ExperimentCalculationService.java#L31) at `2946d82`). After V12, that row is renamed to `finished_yield_percent = 1.2`, which is rendered as `1.2%`; the correct percent value is `120`.
+
+The current migration regression covers only `0.8 -> 80` ([`SchemaMigrationTest.java`](../../backend/src/test/java/com/lhr/rnd/persistence/SchemaMigrationTest.java#L173)), so it cannot detect this loss. Convert every valid legacy ratio when migrating (or, if V12 has already reached a persistent environment, add a corrective migration for the rows it left unchanged) and add a `1.2 -> 120` migration regression.
+
+## Verified
+
+- The API, domain model, entity mapping, persistence, and read-back contract use `finishedYieldPercent`; server calculation yields percent-scale values, and the focused controller test verifies `80` in both API response and `finished_yield_percent` storage.
+- `finishedOutputQuantity: 17.5` is received as `BigDecimal` and rejected through `toBigIntegerExact()`; the focused controller test expects `FINISHED_OUTPUT_QUANTITY_INVALID`. Positive integer `17` succeeds.
+- Export uses `formatPercent` directly for `finishedYieldPercent`, rather than the ratio formatter that multiplies by 100.
+- The existing material-category invariant remains active for posted packaging, extra non-primary raw material, and persistence-tampered data.
+
+## Verification
+
+```text
+backend: JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn -q -Dtest=ExperimentCalculationServiceTest,SampleWorkflowControllerTest,SchemaMigrationTest test
+  exit 0
+
+frontend: node --test tests/experiment-calculations.test.mts tests/experiment-output-quantity-contract.test.mts
+  11 passed, 0 failed
+```
+
+## Conclusion
+
+Not Approved: no Critical findings, but I1 is an Important historical-data migration defect. The API/quantity/export/category paths are otherwise approved by this review.
+
+---
+
+## Migration Boundary Resolution (2026-07-12)
+
+The remaining I1 finding is resolved. The regression was first changed to use a valid legacy ratio above one (`1.2`) and failed with `1.200000` instead of `120`. V12 now converts every non-negative, non-null legacy ratio before renaming the column, so yields above 100 percent are preserved correctly.
+
+Focused verification passed:
+
+```text
+ExperimentCalculationServiceTest + SampleWorkflowControllerTest + SchemaMigrationTest
+exit 0
+```
+
+Conclusion: **Approved**. Task 3 has no remaining Critical or Important findings.

@@ -183,7 +183,7 @@ class SchemaMigrationTest {
         var legacyJdbcTemplate = new JdbcTemplate(new DriverManagerDataSource(databaseUrl, "sa", ""));
         insertLegacyAssignedTask(legacyJdbcTemplate);
         legacyJdbcTemplate.update(
-                "update experiment_form set finished_yield_ratio = 0.8 where id = 'FORM-OWNER-LEGACY'"
+                "update experiment_form set finished_yield_ratio = 1.2 where id = 'FORM-OWNER-LEGACY'"
         );
 
         Flyway.configure()
@@ -196,7 +196,7 @@ class SchemaMigrationTest {
         assertThat(legacyJdbcTemplate.queryForObject(
                 "select finished_yield_percent from experiment_form where id = 'FORM-OWNER-LEGACY'",
                 java.math.BigDecimal.class
-        )).isEqualByComparingTo("80");
+        )).isEqualByComparingTo("120");
     }
 
     private void assertTableExists(String tableName) {
