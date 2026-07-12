@@ -125,6 +125,7 @@ export interface RndTask {
   versionCode: string;
   status: RndTaskStatus;
   assigneeName: string;
+  productOwnerName: string;
   dueDate: string;
   createdAt: string;
   assignedAt: string;
@@ -184,6 +185,8 @@ export interface ExperimentForm {
   materials: ExperimentMaterial[];
   processSteps?: ExperimentProcessStep[];
   finishedOutputWeightKg?: number;
+  finishedOutputQuantity?: number;
+  finishedOutputUnit?: string;
   finishedYieldRatio?: number;
   savedAt: string;
   submittedAt: string;

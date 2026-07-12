@@ -35,6 +35,9 @@ public class RndTaskEntity {
     @Column(name = "assignee_name")
     private String assigneeName;
 
+    @Column(name = "product_owner_name")
+    private String productOwnerName;
+
     @Column(name = "due_date")
     private LocalDate dueDate;
 
@@ -59,6 +62,7 @@ public class RndTaskEntity {
             String versionCode,
             String status,
             String assigneeName,
+            String productOwnerName,
             LocalDate dueDate,
             LocalDateTime createdAt,
             LocalDateTime assignedAt,
@@ -72,15 +76,17 @@ public class RndTaskEntity {
         this.versionCode = versionCode;
         this.status = status;
         this.assigneeName = assigneeName;
+        this.productOwnerName = productOwnerName;
         this.dueDate = dueDate;
         this.createdAt = createdAt;
         this.assignedAt = assignedAt;
         this.acceptedAt = acceptedAt;
     }
 
-    public void assign(String assigneeName, LocalDate dueDate, LocalDateTime assignedAt) {
+    public void assign(String assigneeName, String productOwnerName, LocalDate dueDate, LocalDateTime assignedAt) {
         this.status = "PENDING_ACCEPTANCE";
         this.assigneeName = assigneeName;
+        this.productOwnerName = productOwnerName;
         this.dueDate = dueDate;
         this.assignedAt = assignedAt;
         this.acceptedAt = null;
@@ -97,5 +103,57 @@ public class RndTaskEntity {
 
     public void complete() {
         this.status = "COMPLETED";
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public String getProjectId() {
+        return projectId;
+    }
+
+    public String getVersionId() {
+        return versionId;
+    }
+
+    public String getSampleNo() {
+        return sampleNo;
+    }
+
+    public String getProductName() {
+        return productName;
+    }
+
+    public String getVersionCode() {
+        return versionCode;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public String getAssigneeName() {
+        return assigneeName;
+    }
+
+    public String getProductOwnerName() {
+        return productOwnerName;
+    }
+
+    public LocalDate getDueDate() {
+        return dueDate;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public LocalDateTime getAssignedAt() {
+        return assignedAt;
+    }
+
+    public LocalDateTime getAcceptedAt() {
+        return acceptedAt;
     }
 }

@@ -12,11 +12,12 @@ public record RndTask(
         String versionCode,
         RndTaskStatus status,
         String assigneeName,
+        String productOwnerName,
         LocalDate dueDate,
         LocalDateTime createdAt,
         LocalDateTime assignedAt
 ) {
-    public RndTask assign(String assigneeName, LocalDate dueDate, LocalDateTime assignedAt) {
+    public RndTask assign(String assigneeName, String productOwnerName, LocalDate dueDate, LocalDateTime assignedAt) {
         return new RndTask(
                 id,
                 projectId,
@@ -26,6 +27,7 @@ public record RndTask(
                 versionCode,
                 RndTaskStatus.PENDING_ACCEPTANCE,
                 assigneeName,
+                productOwnerName,
                 dueDate,
                 createdAt,
                 assignedAt
@@ -42,6 +44,7 @@ public record RndTask(
                 versionCode,
                 RndTaskStatus.SAMPLING,
                 assigneeName,
+                productOwnerName,
                 dueDate,
                 createdAt,
                 acceptedAt
@@ -58,6 +61,7 @@ public record RndTask(
                 versionCode,
                 status,
                 assigneeName,
+                productOwnerName,
                 dueDate,
                 createdAt,
                 assignedAt

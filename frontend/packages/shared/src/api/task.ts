@@ -37,6 +37,8 @@ export interface SaveExperimentDraftPayload {
     remark?: string;
   }>;
   finishedOutputWeightKg?: number;
+  finishedOutputQuantity?: number;
+  finishedOutputUnit?: "袋" | "盒" | "份" | "个" | "盘";
   finishedYieldRatio?: number;
 }
 
@@ -71,8 +73,12 @@ export function createTaskApi(client: ApiClient) {
       const suffix = query.toString() ? `?${query}` : "";
       return client.get<RndTaskDetailView>(`/rnd-tasks/${id}/detail${suffix}`);
     },
-    assign: (id: string, assigneeName: string, dueDate: string) =>
-      client.post<RndTask>(`/rnd-tasks/${id}/assign`, { assigneeName, dueDate }),
+    assign: (id: string, assigneeName: string, dueDate: string, productOwnerName?: string) =>
+      client.post<RndTask>(`/rnd-tasks/${id}/assign`, {
+        assigneeName,
+        dueDate,
+        ...(productOwnerName ? { productOwnerName } : {}),
+      }),
     accept: (id: string, acceptedBy: string) =>
       client.post<RndTask>(`/rnd-tasks/${id}/accept`, { acceptedBy }),
     saveExperimentDraft: (taskId: string, payload: SaveExperimentDraftPayload) =>

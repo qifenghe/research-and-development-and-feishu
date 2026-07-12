@@ -86,6 +86,8 @@ class SchemaMigrationTest {
         assertColumnExists("experiment_process", "remaining_disposition");
         assertColumnExists("experiment_process", "loss_weight_kg");
         assertColumnExists("experiment_form", "finished_output_weight_kg");
+        assertColumnExists("experiment_form", "finished_output_quantity");
+        assertColumnExists("experiment_form", "finished_output_unit");
         assertColumnExists("experiment_form", "finished_yield_ratio");
 
         assertColumnDefinition("experiment_material", "material_category", false, "'RAW'");
@@ -95,6 +97,7 @@ class SchemaMigrationTest {
         assertNumericColumn("experiment_process", "remaining_weight_kg", 14, 4);
         assertNumericColumn("experiment_process", "loss_weight_kg", 14, 4);
         assertNumericColumn("experiment_form", "finished_output_weight_kg", 14, 4);
+        assertColumnDefinition("experiment_form", "finished_output_unit", false, "U&'\\888b'");
         assertNumericColumn("experiment_form", "finished_yield_ratio", 10, 6);
     }
 

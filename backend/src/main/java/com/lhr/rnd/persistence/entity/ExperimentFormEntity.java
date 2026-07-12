@@ -44,6 +44,12 @@ public class ExperimentFormEntity {
     @Column(name = "finished_output_weight_kg")
     private BigDecimal finishedOutputWeightKg;
 
+    @Column(name = "finished_output_quantity")
+    private Integer finishedOutputQuantity;
+
+    @Column(name = "finished_output_unit", nullable = false)
+    private String finishedOutputUnit;
+
     @Column(name = "finished_yield_ratio")
     private BigDecimal finishedYieldRatio;
 
@@ -68,6 +74,8 @@ public class ExperimentFormEntity {
             String operatorName,
             String summary,
             BigDecimal finishedOutputWeightKg,
+            Integer finishedOutputQuantity,
+            String finishedOutputUnit,
             BigDecimal finishedYieldRatio,
             LocalDateTime savedAt,
             LocalDateTime submittedAt
@@ -83,6 +91,8 @@ public class ExperimentFormEntity {
         this.operatorName = operatorName;
         this.summary = summary;
         this.finishedOutputWeightKg = finishedOutputWeightKg;
+        this.finishedOutputQuantity = finishedOutputQuantity;
+        this.finishedOutputUnit = finishedOutputUnit;
         this.finishedYieldRatio = finishedYieldRatio;
         this.savedAt = savedAt;
         this.submittedAt = submittedAt;
@@ -139,6 +149,14 @@ public class ExperimentFormEntity {
 
     public BigDecimal getFinishedOutputWeightKg() {
         return finishedOutputWeightKg;
+    }
+
+    public Integer getFinishedOutputQuantity() {
+        return finishedOutputQuantity;
+    }
+
+    public String getFinishedOutputUnit() {
+        return finishedOutputUnit;
     }
 
     public BigDecimal getFinishedYieldRatio() {

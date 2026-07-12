@@ -276,6 +276,45 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void savesFinishedQuantityAndProductOwner() throws Exception {
+        var taskId = createApprovedRequest();
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/assign", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "assigneeName": "李研发",
+                                  "productOwnerName": "张研发",
+                                  "dueDate": "2026-06-25"
+                                }
+                                """))
+                .andExpect(status().isOk());
+        acceptTask(taskId, "李研发");
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "李研发",
+                                  "finishedOutputWeightKg": 8.5,
+                                  "finishedOutputQuantity": 17,
+                                  "finishedOutputUnit": "袋"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        ((Map<?, ?>) ReflectionTestUtils.getField(workflowService, "experimentForms")).clear();
+
+        mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                        .param("role", "RND_ENGINEER")
+                        .param("operatorName", "李研发"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.task.productOwnerName").value("张研发"))
+                .andExpect(jsonPath("$.data.currentExperimentForm.finishedOutputQuantity").value(17))
+                .andExpect(jsonPath("$.data.currentExperimentForm.finishedOutputUnit").value("袋"));
+    }
+
+    @Test
     void readsCompleteExperimentFormFromPersistenceAfterMemoryCacheIsCleared() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);
@@ -1624,9 +1663,13 @@ class SampleWorkflowControllerTest {
     }
 
     private void acceptTask(String taskId) throws Exception {
+        acceptTask(taskId, "张研发");
+    }
+
+    private void acceptTask(String taskId, String acceptedBy) throws Exception {
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/accept", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"acceptedBy\":\"张研发\"}"))
+                        .content("{\"acceptedBy\":\"%s\"}".formatted(acceptedBy)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("SAMPLING"));
     }

@@ -322,6 +322,7 @@ public class SampleWorkflowService {
                 RndTaskStatus.PENDING_ASSIGNMENT,
                 null,
                 null,
+                null,
                 now(),
                 null
         );
@@ -343,6 +344,16 @@ public class SampleWorkflowService {
 
     @Transactional
     public synchronized RndTask assignTask(String taskId, String assigneeName, LocalDate dueDate) {
+        return assignTask(taskId, assigneeName, assigneeName, dueDate);
+    }
+
+    @Transactional
+    public synchronized RndTask assignTask(
+            String taskId,
+            String assigneeName,
+            String productOwnerName,
+            LocalDate dueDate
+    ) {
         var task = tasks.get(taskId);
         if (task == null) {
             throw new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在");
@@ -351,7 +362,8 @@ public class SampleWorkflowService {
             throw new BusinessException("RND_TASK_STATUS_ILLEGAL", "当前任务状态不可分发");
         }
         var nextStatus = taskStatusAfter(SampleStatus.PENDING_ASSIGNMENT, SampleAction.ASSIGN_TASK);
-        var assigned = task.assign(assigneeName, dueDate, now()).withStatus(nextStatus);
+        var assigned = task.assign(assigneeName, normalizeProductOwnerName(productOwnerName, assigneeName), dueDate, now())
+                .withStatus(nextStatus);
         tasks.put(taskId, assigned);
         persistAssignedTask(assigned);
         notifyTaskAssigned(assigned);
@@ -413,6 +425,8 @@ public class SampleWorkflowService {
                 materials,
                 processSteps,
                 command.finishedOutputWeightKg(),
+                command.finishedOutputQuantity(),
+                normalizeFinishedOutputUnit(command.finishedOutputUnit()),
                 finishedYieldRatio,
                 now(),
                 null
@@ -453,6 +467,7 @@ public class SampleWorkflowService {
                     task.versionCode(),
                     nextTaskStatus,
                     task.assigneeName(),
+                    task.productOwnerName(),
                     task.dueDate(),
                     task.createdAt(),
                     task.assignedAt()
@@ -555,6 +570,7 @@ public class SampleWorkflowService {
                 nextVersion.versionCode(),
                 nextTaskStatus,
                 previousTask == null ? null : previousTask.assigneeName(),
+                previousTask == null ? null : previousTask.productOwnerName(),
                 previousTask == null ? null : previousTask.dueDate(),
                 now(),
                 null
@@ -1067,6 +1083,7 @@ public class SampleWorkflowService {
                 entity.getVersionCode(),
                 RndTaskStatus.valueOf(entity.getStatus()),
                 entity.getAssigneeName(),
+                normalizeProductOwnerName(entity.getProductOwnerName(), entity.getAssigneeName()),
                 entity.getDueDate(),
                 entity.getCreatedAt(),
                 entity.getAcceptedAt() == null ? entity.getAssignedAt() : entity.getAcceptedAt()
@@ -1122,6 +1139,8 @@ public class SampleWorkflowService {
                 materials,
                 processSteps,
                 entity.getFinishedOutputWeightKg(),
+                entity.getFinishedOutputQuantity(),
+                normalizeFinishedOutputUnit(entity.getFinishedOutputUnit()),
                 entity.getFinishedYieldRatio(),
                 entity.getSavedAt(),
                 entity.getSubmittedAt()
@@ -1710,6 +1729,7 @@ public class SampleWorkflowService {
                 nextVersion.versionCode(),
                 nextTaskStatus,
                 previousTask == null ? null : previousTask.assigneeName(),
+                previousTask == null ? null : previousTask.productOwnerName(),
                 previousTask == null ? null : previousTask.dueDate(),
                 now(),
                 null
@@ -1865,6 +1885,7 @@ public class SampleWorkflowService {
                 task.versionCode(),
                 task.status().name(),
                 task.assigneeName(),
+                task.productOwnerName(),
                 task.dueDate(),
                 task.createdAt(),
                 task.assignedAt(),
@@ -1878,7 +1899,7 @@ public class SampleWorkflowService {
         }
         var taskEntity = rndTaskRepository.findById(task.id())
                 .orElseThrow(() -> new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在"));
-        taskEntity.assign(task.assigneeName(), task.dueDate(), task.assignedAt());
+        taskEntity.assign(task.assigneeName(), task.productOwnerName(), task.dueDate(), task.assignedAt());
         rndTaskRepository.save(taskEntity);
     }
 
@@ -2029,6 +2050,8 @@ public class SampleWorkflowService {
                 draft.operatorName(),
                 draft.summary(),
                 draft.finishedOutputWeightKg(),
+                draft.finishedOutputQuantity(),
+                draft.finishedOutputUnit(),
                 draft.finishedYieldRatio(),
                 draft.savedAt(),
                 draft.submittedAt()
@@ -2199,6 +2222,7 @@ public class SampleWorkflowService {
                 nextTask.versionCode(),
                 nextTask.status().name(),
                 nextTask.assigneeName(),
+                nextTask.productOwnerName(),
                 nextTask.dueDate(),
                 nextTask.createdAt(),
                 nextTask.assignedAt(),
@@ -2277,6 +2301,7 @@ public class SampleWorkflowService {
                 nextTask.versionCode(),
                 nextTask.status().name(),
                 nextTask.assigneeName(),
+                nextTask.productOwnerName(),
                 nextTask.dueDate(),
                 nextTask.createdAt(),
                 nextTask.assignedAt(),
@@ -2425,6 +2450,16 @@ public class SampleWorkflowService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
+    private String normalizeProductOwnerName(String productOwnerName, String assigneeName) {
+        var normalized = normalizeOptional(productOwnerName);
+        return normalized == null ? assigneeName : normalized;
+    }
+
+    private String normalizeFinishedOutputUnit(String finishedOutputUnit) {
+        var normalized = normalizeOptional(finishedOutputUnit);
+        return normalized == null ? "袋" : normalized;
+    }
+
     private void ensureReadyForShipment(String versionId) {
         try {
             lockedExperimentForm(versionId);
@@ -2506,6 +2541,8 @@ public class SampleWorkflowService {
             List<ExperimentMaterial> materials,
             List<ExperimentProcessStep> processSteps,
             BigDecimal finishedOutputWeightKg,
+            Integer finishedOutputQuantity,
+            String finishedOutputUnit,
             BigDecimal finishedYieldRatio
     ) {
         public SaveExperimentDraftCommand(
@@ -2515,7 +2552,7 @@ public class SampleWorkflowService {
                 List<ExperimentMaterial> materials,
                 List<ExperimentProcessStep> processSteps
         ) {
-            this(taskId, operatorName, summary, materials, processSteps, null, null);
+            this(taskId, operatorName, summary, materials, processSteps, null, null, null, null);
         }
     }
 

@@ -142,7 +142,12 @@ public class SampleWorkflowController {
             @PathVariable String id,
             @Valid @RequestBody AssignRndTaskRequest request
     ) {
-        return ApiResponse.success(workflowService.assignTask(id, request.assigneeName(), request.dueDate()));
+        return ApiResponse.success(workflowService.assignTask(
+                id,
+                request.assigneeName(),
+                request.productOwnerName(),
+                request.dueDate()
+        ));
     }
 
     @PostMapping("/rnd-tasks/{id}/accept")
@@ -165,6 +170,8 @@ public class SampleWorkflowController {
                 request.materials(),
                 request.processSteps(),
                 request.finishedOutputWeightKg(),
+                request.finishedOutputQuantity(),
+                request.finishedOutputUnit(),
                 request.finishedYieldRatio()
         )));
     }

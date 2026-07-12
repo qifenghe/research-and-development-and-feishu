@@ -18,6 +18,8 @@ public record ExperimentForm(
         List<ExperimentMaterial> materials,
         List<ExperimentProcessStep> processSteps,
         BigDecimal finishedOutputWeightKg,
+        Integer finishedOutputQuantity,
+        String finishedOutputUnit,
         BigDecimal finishedYieldRatio,
         LocalDateTime savedAt,
         LocalDateTime submittedAt
@@ -37,6 +39,8 @@ public record ExperimentForm(
                 materials,
                 processSteps,
                 finishedOutputWeightKg,
+                finishedOutputQuantity,
+                finishedOutputUnit,
                 finishedYieldRatio,
                 savedAt,
                 submittedAt
@@ -58,6 +62,8 @@ public record ExperimentForm(
                 materials,
                 processSteps,
                 finishedOutputWeightKg,
+                finishedOutputQuantity,
+                finishedOutputUnit,
                 finishedYieldRatio,
                 savedAt,
                 submittedAt
