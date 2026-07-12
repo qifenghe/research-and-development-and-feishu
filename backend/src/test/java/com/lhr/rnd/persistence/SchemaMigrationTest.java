@@ -90,7 +90,10 @@ class SchemaMigrationTest {
         assertColumnExists("experiment_form", "finished_output_weight_kg");
         assertColumnExists("experiment_form", "finished_output_quantity");
         assertColumnExists("experiment_form", "finished_output_unit");
-        assertColumnExists("experiment_form", "finished_yield_ratio");
+        assertColumnExists("experiment_form", "finished_yield_percent");
+        assertColumnExists("rnd_task", "product_owner_name");
+        assertColumnExists("pricing_file", "received_by");
+        assertColumnExists("pricing_file", "received_at");
 
         assertColumnDefinition("experiment_material", "material_category", false, "'RAW'");
         assertColumnDefinition("experiment_material", "is_primary_material", false, "FALSE");
@@ -100,7 +103,7 @@ class SchemaMigrationTest {
         assertNumericColumn("experiment_process", "loss_weight_kg", 14, 4);
         assertNumericColumn("experiment_form", "finished_output_weight_kg", 14, 4);
         assertColumnDefinition("experiment_form", "finished_output_unit", false, "U&'\\888b'");
-        assertNumericColumn("experiment_form", "finished_yield_ratio", 10, 6);
+        assertNumericColumn("experiment_form", "finished_yield_percent", 10, 6);
     }
 
     @Test
@@ -164,6 +167,36 @@ class SchemaMigrationTest {
         assertThatThrownBy(() -> legacyJdbcTemplate.update(
                 "update experiment_form set finished_output_unit = '桶' where id = 'FORM-OWNER-LEGACY'"
         )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void v12ConvertsLegacyFinishedYieldRatiosToPercents() {
+        String databaseUrl = "jdbc:h2:mem:finished-yield-percent-" + UUID.randomUUID()
+                + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
+        Flyway.configure()
+                .dataSource(databaseUrl, "sa", "")
+                .locations("classpath:db/migration")
+                .target("11")
+                .load()
+                .migrate();
+
+        var legacyJdbcTemplate = new JdbcTemplate(new DriverManagerDataSource(databaseUrl, "sa", ""));
+        insertLegacyAssignedTask(legacyJdbcTemplate);
+        legacyJdbcTemplate.update(
+                "update experiment_form set finished_yield_ratio = 0.8 where id = 'FORM-OWNER-LEGACY'"
+        );
+
+        Flyway.configure()
+                .dataSource(databaseUrl, "sa", "")
+                .locations("classpath:db/migration")
+                .target("12")
+                .load()
+                .migrate();
+
+        assertThat(legacyJdbcTemplate.queryForObject(
+                "select finished_yield_percent from experiment_form where id = 'FORM-OWNER-LEGACY'",
+                java.math.BigDecimal.class
+        )).isEqualByComparingTo("80");
     }
 
     private void assertTableExists(String tableName) {

@@ -232,7 +232,7 @@ class SampleWorkflowControllerTest {
                                     }
                                   ],
                                   "finishedOutputWeightKg": 8,
-                                  "finishedYieldRatio": 99
+                                  "finishedYieldPercent": 99
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -248,17 +248,17 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.processSteps[0].lossWeightKg").value(1.5))
                 .andExpect(jsonPath("$.data.processSteps[0].lossRate").value(0.15))
                 .andExpect(jsonPath("$.data.finishedOutputWeightKg").value(8.0))
-                .andExpect(jsonPath("$.data.finishedYieldRatio").value(0.8))
+                .andExpect(jsonPath("$.data.finishedYieldPercent").value(80.0))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
         var formId = objectMapper.readTree(response).path("data").path("id").asText();
         assertThat(jdbcTemplate.queryForObject(
-                "select finished_yield_ratio from experiment_form where id = ?",
+                "select finished_yield_percent from experiment_form where id = ?",
                 java.math.BigDecimal.class,
                 formId
-        )).isEqualByComparingTo("0.8");
+        )).isEqualByComparingTo("80");
         assertThat(jdbcTemplate.queryForObject(
                 "select formula_ratio from experiment_material where experiment_form_id = ? and sequence = 2",
                 java.math.BigDecimal.class,
@@ -317,6 +317,80 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void savesAPositiveIntegerFinishedOutputQuantity() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "张研发",
+                                  "finishedOutputQuantity": 17,
+                                  "finishedOutputUnit": "袋"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.finishedOutputQuantity").value(17));
+    }
+
+    @Test
+    void rejectsFractionalFinishedOutputQuantityAtRequestBoundary() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "张研发",
+                                  "finishedOutputQuantity": 17.5,
+                                  "finishedOutputUnit": "袋"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("FINISHED_OUTPUT_QUANTITY_INVALID"));
+    }
+
+    @Test
+    void rejectsZeroFinishedOutputQuantityAtRequestBoundary() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "张研发",
+                                  "finishedOutputQuantity": 0,
+                                  "finishedOutputUnit": "袋"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rejectsNegativeFinishedOutputQuantityAtRequestBoundary() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "张研发",
+                                  "finishedOutputQuantity": -1,
+                                  "finishedOutputUnit": "袋"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void normalizesOmittedAndBlankFinishedOutputUnitsToBag() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);
@@ -343,7 +417,7 @@ class SampleWorkflowControllerTest {
 
         assertThatThrownBy(() -> workflowService.saveExperimentDraft(
                 new com.lhr.rnd.service.SampleWorkflowService.SaveExperimentDraftCommand(
-                        taskId, "张研发", null, null, null, null, 0, "袋", null
+                        taskId, "张研发", null, null, null, null, java.math.BigDecimal.ZERO, "袋", null
                 )
         )).isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).code())
@@ -386,7 +460,7 @@ class SampleWorkflowControllerTest {
                                     {"sequence":1,"processName":"蒸煮","beforeWeightKg":10,"afterWeightKg":8,"remainingWeightKg":0.5,"remainingDisposition":"RETURNED"}
                                   ],
                                   "finishedOutputWeightKg":8,
-                                  "finishedYieldRatio":99
+                                  "finishedYieldPercent":99
                                 }
                                 """))
                 .andExpect(status().isOk());
@@ -402,7 +476,7 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.currentExperimentForm.summary").value("持久化回读"))
                 .andExpect(jsonPath("$.data.currentExperimentForm.status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.currentExperimentForm.finishedOutputWeightKg").value(8.0))
-                .andExpect(jsonPath("$.data.currentExperimentForm.finishedYieldRatio").value(0.8))
+                .andExpect(jsonPath("$.data.currentExperimentForm.finishedYieldPercent").value(80.0))
                 .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].sequence").value(1))
                 .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].materialCategory").value("RAW"))
                 .andExpect(jsonPath("$.data.currentExperimentForm.materials[0].primaryMaterial").value(true))
@@ -1323,6 +1397,70 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("finance_notification", financeNotificationId, "pricing_file_id")).isEqualTo(pricingFileId);
         assertThat(valueById("finance_notification", financeNotificationId, "recipient_name")).isEqualTo("财务核价员");
         assertThat(valueById("finance_notification", financeNotificationId, "status")).isEqualTo("SENT");
+    }
+
+    @Test
+    void lockedExperimentCanGeneratePricingWithoutShipmentAndReachFinanceInbox() throws Exception {
+        var versionId = createLockedSampleVersion();
+
+        assertThat(countByColumn("shipment_record", "version_id", versionId)).isZero();
+
+        var pricingFileId = generatePricingFile(versionId);
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recipientName\":\"钱财务\",\"remark\":\"请接收核价文件\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pricingFile.status").value("FINANCE_NOTIFIED"));
+
+        mockMvc.perform(get("/api/v1/pricing-files")
+                        .param("status", "FINANCE_NOTIFIED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].id").value(pricingFileId))
+                .andExpect(jsonPath("$.data[0].status").value("FINANCE_NOTIFIED"));
+    }
+
+    @Test
+    void listsLockedVersionsReadyForPricingWithoutShipment() throws Exception {
+        var versionId = createLockedSampleVersion();
+
+        mockMvc.perform(get("/api/v1/sample-versions/pricing-ready"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].versionId").value(versionId))
+                .andExpect(jsonPath("$.data[0].versionCode").value("A0"));
+
+        generatePricingFile(versionId);
+
+        mockMvc.perform(get("/api/v1/sample-versions/pricing-ready"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(0)));
+    }
+
+    @Test
+    void financeCanAcknowledgeNotifiedPricingFileIdempotently() throws Exception {
+        var pricingFileId = generatePricingFile(createLockedSampleVersion());
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recipientName\":\"钱财务\",\"remark\":\"请接收核价文件\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/receive", pricingFileId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receivedBy\":\"钱财务\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("FINANCE_RECEIVED"));
+
+        var receivedAt = valueById("pricing_file", pricingFileId, "received_at");
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/receive", pricingFileId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receivedBy\":\"钱财务\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("FINANCE_RECEIVED"));
+
+        assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("FINANCE_RECEIVED");
+        assertThat(valueById("pricing_file", pricingFileId, "received_by")).isEqualTo("钱财务");
+        assertThat(valueById("pricing_file", pricingFileId, "received_at")).isEqualTo(receivedAt);
     }
 
     @Test

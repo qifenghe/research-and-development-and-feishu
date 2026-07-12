@@ -22,12 +22,12 @@ class ExperimentCalculationServiceTest {
     }
 
     @Test
-    void calculatesFinishedYieldAsFinishedProductOutputOverPrimaryRawMaterialInput() {
+    void calculatesFinishedYieldPercentAsFinishedProductOutputOverPrimaryRawMaterialInput() {
         var finishedProductOutput = new BigDecimal("10");
         var primaryRawMaterialInput = new BigDecimal("12.5");
 
         assertThat(service.finishedYield(finishedProductOutput, primaryRawMaterialInput))
-                .isEqualTo(new BigDecimal("0.800000"));
+                .isEqualTo(new BigDecimal("80.000000"));
     }
 
     @Test
@@ -137,9 +137,9 @@ class ExperimentCalculationServiceTest {
     }
 
     @Test
-    void roundsFinishedYieldRatioOnlyAfterCalculatingWithPreciseWeights() {
+    void roundsFinishedYieldPercentOnlyAfterCalculatingWithPreciseWeights() {
         assertThat(service.finishedYield(new BigDecimal("1.00004"), new BigDecimal("1.00000")))
-                .isEqualTo(new BigDecimal("1.000040"));
+                .isEqualTo(new BigDecimal("100.004000"));
     }
 
     @Test

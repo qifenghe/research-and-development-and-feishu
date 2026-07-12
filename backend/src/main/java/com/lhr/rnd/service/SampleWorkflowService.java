@@ -26,6 +26,7 @@ import com.lhr.rnd.model.ExperimentMaterial;
 import com.lhr.rnd.model.ExperimentProcessStep;
 import com.lhr.rnd.model.SampleVersionTimelineItem;
 import com.lhr.rnd.model.PricingFileRecord;
+import com.lhr.rnd.model.PricingReadyVersion;
 import com.lhr.rnd.model.PricingFileDetailView;
 import com.lhr.rnd.model.PricingFileStatus;
 import com.lhr.rnd.model.SampleProject;
@@ -81,11 +82,12 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.UUID;
 
 @Service
@@ -405,14 +407,15 @@ public class SampleWorkflowService {
         materials = recalculateFormulaRatios(materials);
         var processSteps = recalculateProcessLosses(command.processSteps());
         var finishedOutputUnit = normalizeFinishedOutputUnit(command.finishedOutputUnit());
-        validateFinishedOutput(command.finishedOutputQuantity(), finishedOutputUnit);
+        var finishedOutputQuantity = normalizeFinishedOutputQuantity(command.finishedOutputQuantity());
+        validateFinishedOutput(finishedOutputQuantity, finishedOutputUnit);
         var primaryInput = materials.stream()
                 .filter(ExperimentMaterial::primaryMaterial)
                 .map(ExperimentMaterial::weightKg)
                 .filter(Objects::nonNull)
                 .findFirst()
                 .orElse(null);
-        var finishedYieldRatio = experimentCalculationService.finishedYield(
+        var finishedYieldPercent = experimentCalculationService.finishedYield(
                 command.finishedOutputWeightKg(), primaryInput);
         var draft = new ExperimentForm(
                 id,
@@ -428,9 +431,9 @@ public class SampleWorkflowService {
                 materials,
                 processSteps,
                 command.finishedOutputWeightKg(),
-                command.finishedOutputQuantity(),
+                finishedOutputQuantity,
                 finishedOutputUnit,
-                finishedYieldRatio,
+                finishedYieldPercent,
                 now(),
                 null
         );
@@ -694,6 +697,68 @@ public class SampleWorkflowService {
                         pricingFile.status().name()
                 ))
                 .toList();
+    }
+
+    public synchronized List<PricingReadyVersion> pricingReadyVersions() {
+        var lockedVersionIds = new LinkedHashSet<String>();
+        experimentForms.values().stream()
+                .filter(form -> form.status() == ExperimentFormStatus.LOCKED)
+                .map(ExperimentForm::versionId)
+                .forEach(lockedVersionIds::add);
+        if (experimentFormRepository != null) {
+            experimentFormRepository.findByStatus(ExperimentFormStatus.LOCKED.name()).stream()
+                    .map(ExperimentFormEntity::getVersionId)
+                    .forEach(lockedVersionIds::add);
+        }
+
+        return lockedVersionIds.stream()
+                .filter(versionId -> pricingFiles.values().stream()
+                        .noneMatch(file -> file.versionId().equals(versionId)))
+                .filter(versionId -> pricingFileRepository == null
+                        || !pricingFileRepository.existsByVersionId(versionId))
+                .map(this::pricingReadyVersion)
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(PricingReadyVersion::sampleNo).reversed())
+                .toList();
+    }
+
+    private PricingReadyVersion pricingReadyVersion(String versionId) {
+        var version = versions.get(versionId);
+        if (version == null && sampleVersionRepository != null) {
+            version = sampleVersionRepository.findById(versionId)
+                    .map(entity -> SampleVersion.builder()
+                            .id(entity.getId())
+                            .projectId(entity.getProjectId())
+                            .sampleNo(entity.getSampleNo())
+                            .productName(entity.getProductName())
+                            .productType(entity.getProductType())
+                            .specification(entity.getSpecification())
+                            .versionNo(entity.getVersionNo())
+                            .versionNumber(entity.getVersionNumber())
+                            .versionCode(entity.getVersionCode())
+                            .createdAt(entity.getCreatedAt())
+                            .build())
+                    .orElse(null);
+        }
+        if (version == null) {
+            return null;
+        }
+        var taskId = tasks.values().stream()
+                .filter(task -> task.versionId().equals(versionId))
+                .map(RndTask::id)
+                .findFirst()
+                .orElseGet(() -> rndTaskRepository == null ? null : rndTaskRepository.findAll().stream()
+                        .filter(task -> task.getVersionId().equals(versionId))
+                        .map(RndTaskEntity::getId)
+                        .findFirst()
+                        .orElse(null));
+        return new PricingReadyVersion(
+                version.id(),
+                taskId,
+                version.sampleNo(),
+                version.productName(),
+                version.versionCode()
+        );
     }
 
     public synchronized PagedResult<PricingFileRecord> pricingFiles(String status, String keyword, Integer page, Integer size, String sort) {
@@ -1144,7 +1209,7 @@ public class SampleWorkflowService {
                 entity.getFinishedOutputWeightKg(),
                 entity.getFinishedOutputQuantity(),
                 normalizeFinishedOutputUnit(entity.getFinishedOutputUnit()),
-                entity.getFinishedYieldRatio(),
+                entity.getFinishedYieldPercent(),
                 entity.getSavedAt(),
                 entity.getSubmittedAt()
         );
@@ -1573,6 +1638,32 @@ public class SampleWorkflowService {
         financeNotifications.put(notification.id(), notification);
         persistFinanceNotification(notifiedPricingFile, notification);
         return new NotifyFinanceResult(notifiedPricingFile, notification);
+    }
+
+    @Transactional
+    public synchronized PricingFileRecord receivePricingFile(String pricingFileId, String receivedBy) {
+        var pricingFile = requiredPricingFile(pricingFileId);
+        if (pricingFile.status() == PricingFileStatus.GENERATED) {
+            throw new BusinessException("PRICING_FILE_NOT_NOTIFIED", "核价文件通知财务后才能确认接收");
+        }
+        if (pricingFile.status() == PricingFileStatus.FINANCE_RECEIVED) {
+            return pricingFile;
+        }
+
+        var receivedAt = now();
+        var receivedPricingFile = pricingFile.withStatus(PricingFileStatus.FINANCE_RECEIVED);
+        persistFinanceReceipt(receivedPricingFile, receivedBy, receivedAt);
+        if (auditLogService != null) {
+            auditLogService.record(
+                    "PRICING_FILE",
+                    pricingFileId,
+                    "FINANCE_RECEIVE",
+                    receivedBy,
+                    "receivedAt=" + receivedAt
+            );
+        }
+        cacheAfterCommit(() -> pricingFiles.put(receivedPricingFile.id(), receivedPricingFile));
+        return receivedPricingFile;
     }
 
     public synchronized List<ArchiveFileView> archiveFiles(String versionId) {
@@ -2080,7 +2171,7 @@ public class SampleWorkflowService {
                 draft.finishedOutputWeightKg(),
                 draft.finishedOutputQuantity(),
                 draft.finishedOutputUnit(),
-                draft.finishedYieldRatio(),
+                draft.finishedYieldPercent(),
                 draft.savedAt(),
                 draft.submittedAt()
         ));
@@ -2408,6 +2499,20 @@ public class SampleWorkflowService {
         ));
     }
 
+    private void persistFinanceReceipt(
+            PricingFileRecord receivedPricingFile,
+            String receivedBy,
+            LocalDateTime receivedAt
+    ) {
+        if (pricingFileRepository == null) {
+            return;
+        }
+        var pricingFileEntity = pricingFileRepository.findById(receivedPricingFile.id())
+                .orElseThrow(() -> new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在"));
+        pricingFileEntity.markFinanceReceived(receivedBy, receivedAt);
+        pricingFileRepository.save(pricingFileEntity);
+    }
+
     private SampleVersion requiredVersion(String versionId) {
         var version = versions.get(versionId);
         if (version == null) {
@@ -2497,6 +2602,20 @@ public class SampleWorkflowService {
         }
     }
 
+    private Integer normalizeFinishedOutputQuantity(BigDecimal finishedOutputQuantity) {
+        if (finishedOutputQuantity == null) {
+            return null;
+        }
+        if (finishedOutputQuantity.signum() <= 0) {
+            throw new BusinessException("FINISHED_OUTPUT_QUANTITY_INVALID", "成品数量必须为正整数");
+        }
+        try {
+            return finishedOutputQuantity.toBigIntegerExact().intValueExact();
+        } catch (ArithmeticException exception) {
+            throw new BusinessException("FINISHED_OUTPUT_QUANTITY_INVALID", "成品数量必须为正整数");
+        }
+    }
+
     private void ensureReadyForShipment(String versionId) {
         try {
             lockedExperimentForm(versionId);
@@ -2578,9 +2697,9 @@ public class SampleWorkflowService {
             List<ExperimentMaterial> materials,
             List<ExperimentProcessStep> processSteps,
             BigDecimal finishedOutputWeightKg,
-            Integer finishedOutputQuantity,
+            BigDecimal finishedOutputQuantity,
             String finishedOutputUnit,
-            BigDecimal finishedYieldRatio
+            BigDecimal finishedYieldPercent
     ) {
         public SaveExperimentDraftCommand(
                 String taskId,

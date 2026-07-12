@@ -104,7 +104,7 @@ public class ReportExportService {
             put(sheet.createRow(3), "版本", form.getVersionCode(), "状态", form.getStatus());
             put(sheet.createRow(4), "研发人员", form.getOperatorName(), "保存时间", text(form.getSavedAt()));
             put(sheet.createRow(5), "实验总结", form.getSummary());
-            put(sheet.createRow(6), "成品实际产出kg", form.getFinishedOutputWeightKg(), "成品得率", formatRate(form.getFinishedYieldRatio()));
+            put(sheet.createRow(6), "成品实际产出kg", form.getFinishedOutputWeightKg(), "成品得率", formatPercent(form.getFinishedYieldPercent()));
             put(sheet.createRow(8), "类别", "主原料", "序号", "物料编码", "物料名称", "配方比例", "重量kg", "单位", "利用率", "备注");
             var rowIndex = 9;
             for (var material : materials) {
@@ -311,6 +311,15 @@ public class ReportExportService {
         }
         return rate.multiply(new java.math.BigDecimal("100"))
                 .setScale(2, java.math.RoundingMode.HALF_UP)
+                .stripTrailingZeros()
+                .toPlainString() + "%";
+    }
+
+    private String formatPercent(java.math.BigDecimal percent) {
+        if (percent == null) {
+            return "";
+        }
+        return percent.setScale(2, java.math.RoundingMode.HALF_UP)
                 .stripTrailingZeros()
                 .toPlainString() + "%";
     }

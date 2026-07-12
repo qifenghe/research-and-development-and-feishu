@@ -101,3 +101,37 @@ frontend: pnpm typecheck
 ### Remaining Concern
 
 No browser-level UI run was performed. The focused page-contract tests and full typechecks protect the quantity controls, but mobile interaction on a physical target remains a useful acceptance check.
+
+## Second Re-review Follow-up (2026-07-12)
+
+### Status
+
+Complete. Addressed both remaining Important findings from the second Task 3 re-review.
+
+### RED Evidence
+
+1. Backend calculation assertions for `10 / 12.5` expected `80.000000` but received the persisted ratio `0.800000`.
+2. The API regression test posting `finishedOutputQuantity: 17.5` received `200` because Jackson coerced it to `17` before validation.
+3. The renamed persistence contract initially failed schema validation because `finished_yield_percent` did not exist.
+
+### Fixes
+
+- Renamed the form/API contract to `finishedYieldPercent` and made the backend calculation return `0-100` values. The service now persists the percent value, and report export formats it directly instead of multiplying it again.
+- Added Flyway V12 to convert legacy ratio values in `[0, 1]` to percent values and rename `finished_yield_ratio` to `finished_yield_percent`. The migration regression verifies `0.8` becomes `80`.
+- Changed request and service-boundary output quantity handling to `BigDecimal`. The service accepts only positive, exact `Integer` values using `toBigIntegerExact()` and `intValueExact()`; fractions, zero, negatives, and overflow return `FINISHED_OUTPUT_QUANTITY_INVALID` without truncation.
+- Updated shared frontend API/model types to use `finishedYieldPercent`; frontend calculations already publish percent values.
+
+### Verification
+
+```text
+backend: JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn -q -Dtest=ExperimentCalculationServiceTest,SampleWorkflowControllerTest,SchemaMigrationTest test
+  ExperimentCalculationServiceTest: 15 tests, 0 failures, 0 errors
+  SampleWorkflowControllerTest: 70 tests, 0 failures, 0 errors
+  SchemaMigrationTest: 4 tests, 0 failures, 0 errors
+
+frontend: node --test tests/experiment-calculations.test.mts tests/experiment-output-quantity-contract.test.mts
+  11 tests, 0 failures
+
+frontend: pnpm typecheck
+  shared, mobile, and PC typechecks passed
+```

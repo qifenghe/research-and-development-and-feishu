@@ -36,7 +36,8 @@ export type RemainingDisposition = "REUSE" | "RETURN" | "DISCARD";
 
 export type PricingFileStatus =
   | "GENERATED"
-  | "FINANCE_NOTIFIED";
+  | "FINANCE_NOTIFIED"
+  | "FINANCE_RECEIVED";
 
 export interface UserAccount {
   id: string;
@@ -187,7 +188,7 @@ export interface ExperimentForm {
   finishedOutputWeightKg?: number;
   finishedOutputQuantity?: number;
   finishedOutputUnit?: string;
-  finishedYieldRatio?: number;
+  finishedYieldPercent?: number;
   savedAt: string;
   submittedAt: string;
 }
@@ -314,6 +315,14 @@ export interface PricingFileRecord {
   fileName: string;
   status: PricingFileStatus;
   generatedAt: string;
+}
+
+export interface PricingReadyVersion {
+  versionId: string;
+  taskId?: string;
+  sampleNo: string;
+  productName: string;
+  versionCode: string;
 }
 
 export interface FinanceNotification {

@@ -50,8 +50,8 @@ public class ExperimentFormEntity {
     @Column(name = "finished_output_unit", nullable = false)
     private String finishedOutputUnit;
 
-    @Column(name = "finished_yield_ratio")
-    private BigDecimal finishedYieldRatio;
+    @Column(name = "finished_yield_percent")
+    private BigDecimal finishedYieldPercent;
 
     @Column(name = "saved_at", nullable = false)
     private LocalDateTime savedAt;
@@ -76,7 +76,7 @@ public class ExperimentFormEntity {
             BigDecimal finishedOutputWeightKg,
             Integer finishedOutputQuantity,
             String finishedOutputUnit,
-            BigDecimal finishedYieldRatio,
+            BigDecimal finishedYieldPercent,
             LocalDateTime savedAt,
             LocalDateTime submittedAt
     ) {
@@ -93,7 +93,7 @@ public class ExperimentFormEntity {
         this.finishedOutputWeightKg = finishedOutputWeightKg;
         this.finishedOutputQuantity = finishedOutputQuantity;
         this.finishedOutputUnit = finishedOutputUnit;
-        this.finishedYieldRatio = finishedYieldRatio;
+        this.finishedYieldPercent = finishedYieldPercent;
         this.savedAt = savedAt;
         this.submittedAt = submittedAt;
     }
@@ -159,8 +159,8 @@ public class ExperimentFormEntity {
         return finishedOutputUnit;
     }
 
-    public BigDecimal getFinishedYieldRatio() {
-        return finishedYieldRatio;
+    public BigDecimal getFinishedYieldPercent() {
+        return finishedYieldPercent;
     }
 
     public LocalDateTime getSavedAt() {

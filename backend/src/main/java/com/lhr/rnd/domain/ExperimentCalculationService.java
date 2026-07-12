@@ -36,7 +36,8 @@ public final class ExperimentCalculationService {
                 || primaryRawMaterialInput.signum() == 0) {
             return null;
         }
-        return finishedProductOutput.divide(primaryRawMaterialInput, RATE_SCALE, ROUNDING_MODE);
+        return finishedProductOutput.multiply(BigDecimal.valueOf(100))
+                .divide(primaryRawMaterialInput, RATE_SCALE, ROUNDING_MODE);
     }
 
     public PricingPreview pricingPreview(
