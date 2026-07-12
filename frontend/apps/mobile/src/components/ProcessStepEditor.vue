@@ -63,9 +63,9 @@
             </van-radio-group>
           </template>
         </van-field>
-        <div v-if="lossRatePercent(currentStep)" class="process-result-row">
-          <span>损耗 {{ lossWeightKg(currentStep) }}kg</span>
-          <strong>{{ lossRatePercent(currentStep) }}%</strong>
+        <div v-if="lossWeightKg(currentStep) !== null" class="process-result-row">
+          <span>工序损耗 {{ lossWeightKg(currentStep) }}kg</span>
+          <strong>损耗率 {{ lossRatePercent(currentStep) }}%</strong>
         </div>
         <van-field
           v-model="currentStep.remark"
@@ -101,8 +101,8 @@
         <van-field v-model="step.remainingWeightKg" label="余料重量" readonly>
           <template #button>kg</template>
         </van-field>
-        <p v-if="lossRatePercent(step)" class="process-step-card__loss">
-          损耗：{{ lossWeightKg(step) }}kg，损耗率：{{ lossRatePercent(step) }}%
+        <p v-if="lossWeightKg(step) !== null" class="process-step-card__loss">
+          工序损耗：{{ lossWeightKg(step) }}kg，损耗率：{{ lossRatePercent(step) }}%
         </p>
       </div>
     </template>

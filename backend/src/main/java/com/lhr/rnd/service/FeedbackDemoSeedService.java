@@ -1,6 +1,7 @@
 package com.lhr.rnd.service;
 
 import com.lhr.rnd.model.ExperimentMaterial;
+import com.lhr.rnd.model.ExperimentProcessStep;
 import com.lhr.rnd.model.RndTask;
 import com.lhr.rnd.model.ShipmentRecord;
 import org.springframework.stereotype.Service;
@@ -96,7 +97,11 @@ public class FeedbackDemoSeedService {
                 ENGINEER,
                 productName + " 打样实验记录",
                 defaultMaterials(),
-                List.of()
+                defaultProcessSteps(),
+                new BigDecimal("98"),
+                196,
+                "袋",
+                null
         ));
         var submitted = workflowService.submitExperimentForTest(form.id(), TESTER);
         var passed = workflowService.passInternalTest(
@@ -123,6 +128,20 @@ public class FeedbackDemoSeedService {
                         "kg"
                 )
         );
+    }
+
+    private List<ExperimentProcessStep> defaultProcessSteps() {
+        return List.of(new ExperimentProcessStep(
+                1,
+                "蒸煮",
+                new BigDecimal("100"),
+                new BigDecimal("98"),
+                new BigDecimal("1"),
+                "REUSE",
+                null,
+                null,
+                "演示打样关键工序"
+        ));
     }
 
     private FeedbackDemoSeedResult snapshot(String message) {

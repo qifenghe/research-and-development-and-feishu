@@ -31,6 +31,31 @@ class ExperimentCalculationServiceTest {
     }
 
     @Test
+    void calculatesPricingPreviewForFinishedBags() {
+        var preview = service.pricingPreview(
+                new BigDecimal("10"),
+                new BigDecimal("2"),
+                new BigDecimal("8.5"),
+                new BigDecimal("17"));
+
+        assertThat(preview.totalInputWeightKg()).isEqualTo(new BigDecimal("12.0000"));
+        assertThat(preview.primaryMaterialYield()).isEqualTo(new BigDecimal("0.850000"));
+        assertThat(preview.averageUnitWeightKg()).isEqualTo(new BigDecimal("0.5000"));
+        assertThat(preview.referenceQuantity()).isEqualTo(new BigDecimal("17.0000"));
+    }
+
+    @Test
+    void calculatesProcessLossRateAfterResidualMaterial() {
+        var result = service.processLoss(
+                new BigDecimal("10"),
+                new BigDecimal("8"),
+                new BigDecimal("1"));
+
+        assertThat(result.lossWeightKg()).isEqualTo(new BigDecimal("1.0000"));
+        assertThat(result.lossRate()).isEqualTo(new BigDecimal("0.100000"));
+    }
+
+    @Test
     void treatsMissingResidualWeightAsZero() {
         var result = service.processLoss(new BigDecimal("10"), new BigDecimal("8"), null);
 

@@ -48,8 +48,52 @@ public final class ExperimentCalculationService {
         return normalizedFinishedProductOutput.divide(normalizedPrimaryRawMaterialInput, RATE_SCALE, ROUNDING_MODE);
     }
 
+    public PricingPreview pricingPreview(
+            BigDecimal primaryMaterialWeight,
+            BigDecimal ingredientWeight,
+            BigDecimal finishedOutputWeight,
+            BigDecimal finishedOutputQuantity) {
+        requireNonNegative(primaryMaterialWeight, "primaryMaterialWeight");
+        requireNonNegative(ingredientWeight, "ingredientWeight");
+        requireNonNegative(finishedOutputWeight, "finishedOutputWeight");
+        requireNonNegative(finishedOutputQuantity, "finishedOutputQuantity");
+
+        var primaryWeight = zeroWhenMissing(normalizeWeight(primaryMaterialWeight));
+        var ingredientTotal = zeroWhenMissing(normalizeWeight(ingredientWeight));
+        var outputWeight = zeroWhenMissing(normalizeWeight(finishedOutputWeight));
+        var outputQuantity = zeroWhenMissing(normalizeWeight(finishedOutputQuantity));
+
+        return new PricingPreview(
+                primaryWeight.add(ingredientTotal).setScale(WEIGHT_SCALE, ROUNDING_MODE),
+                primaryWeight.signum() > 0
+                        ? outputWeight.divide(primaryWeight, RATE_SCALE, ROUNDING_MODE)
+                        : BigDecimal.ZERO.setScale(RATE_SCALE, ROUNDING_MODE),
+                averageUnitWeightKg(outputWeight, outputQuantity),
+                referenceQuantity(outputQuantity));
+    }
+
+    public BigDecimal averageUnitWeightKg(BigDecimal finishedOutputWeight, BigDecimal finishedOutputQuantity) {
+        requireNonNegative(finishedOutputWeight, "finishedOutputWeight");
+        requireNonNegative(finishedOutputQuantity, "finishedOutputQuantity");
+        var outputWeight = zeroWhenMissing(normalizeWeight(finishedOutputWeight));
+        var outputQuantity = zeroWhenMissing(normalizeWeight(finishedOutputQuantity));
+        if (outputQuantity.signum() <= 0) {
+            return BigDecimal.ZERO.setScale(WEIGHT_SCALE, ROUNDING_MODE);
+        }
+        return outputWeight.divide(outputQuantity, WEIGHT_SCALE, ROUNDING_MODE);
+    }
+
+    public BigDecimal referenceQuantity(BigDecimal finishedOutputQuantity) {
+        requireNonNegative(finishedOutputQuantity, "finishedOutputQuantity");
+        return zeroWhenMissing(normalizeWeight(finishedOutputQuantity));
+    }
+
     private BigDecimal normalizeWeight(BigDecimal weight) {
         return weight == null ? null : weight.setScale(WEIGHT_SCALE, ROUNDING_MODE);
+    }
+
+    private BigDecimal zeroWhenMissing(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO.setScale(WEIGHT_SCALE, ROUNDING_MODE) : value;
     }
 
     private void requireNonNegative(BigDecimal weight, String fieldName) {
@@ -59,5 +103,12 @@ public final class ExperimentCalculationService {
     }
 
     public record ProcessLoss(BigDecimal lossWeightKg, BigDecimal lossRate) {
+    }
+
+    public record PricingPreview(
+            BigDecimal totalInputWeightKg,
+            BigDecimal primaryMaterialYield,
+            BigDecimal averageUnitWeightKg,
+            BigDecimal referenceQuantity) {
     }
 }

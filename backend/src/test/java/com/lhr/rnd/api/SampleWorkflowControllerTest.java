@@ -803,6 +803,46 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void submittingExperimentRejectsPrimaryMaterialWithoutPositiveWeight() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveSubmissionValidationDraft(taskId, "0", validProcessSteps(), "8.5", "17");
+
+        submitExperimentForTestExpecting(experimentFormId, "PRIMARY_MATERIAL_WEIGHT_REQUIRED");
+    }
+
+    @Test
+    void submittingExperimentRejectsDraftWithoutAnEffectiveProcess() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveSubmissionValidationDraft(taskId, "10", "[]", "8.5", "17");
+
+        submitExperimentForTestExpecting(experimentFormId, "EXPERIMENT_PROCESS_REQUIRED");
+    }
+
+    @Test
+    void submittingExperimentRejectsDraftWithoutFinishedOutputWeight() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveSubmissionValidationDraft(taskId, "10", validProcessSteps(), "null", "17");
+
+        submitExperimentForTestExpecting(experimentFormId, "FINISHED_OUTPUT_WEIGHT_REQUIRED");
+    }
+
+    @Test
+    void submittingExperimentRejectsDraftWithoutFinishedOutputQuantity() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveSubmissionValidationDraft(taskId, "10", validProcessSteps(), "8.5", "null");
+
+        submitExperimentForTestExpecting(experimentFormId, "FINISHED_OUTPUT_QUANTITY_REQUIRED");
+    }
+
+    @Test
     void savingDraftAfterMemoryCacheIsClearedUpdatesExistingCurrentExperiment() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);
@@ -1742,7 +1782,20 @@ class SampleWorkflowControllerTest {
                       "primaryMaterial": true,
                       "remark": "前处理车间配制"
                     }
-                  ]
+                  ],
+                  "processSteps": [
+                    {
+                      "sequence": 1,
+                      "processName": "蒸煮",
+                      "beforeWeightKg": 10,
+                      "afterWeightKg": 8,
+                      "remainingWeightKg": 1,
+                      "remainingDisposition": "REUSE"
+                    }
+                  ],
+                  "finishedOutputWeightKg": 8.5,
+                  "finishedOutputQuantity": 17,
+                  "finishedOutputUnit": "袋"
                 }
                 """;
 
@@ -1759,6 +1812,64 @@ class SampleWorkflowControllerTest {
                 .getContentAsString()
                 .split("\"id\":\"")[1]
                 .split("\"")[0];
+    }
+
+    private String saveSubmissionValidationDraft(
+            String taskId,
+            String primaryWeightKg,
+            String processSteps,
+            String finishedOutputWeightKg,
+            String finishedOutputQuantity) throws Exception {
+        var draftJson = """
+                {
+                  "operatorName": "张研发",
+                  "materials": [
+                    {
+                      "stage": "原料",
+                      "sequence": 1,
+                      "materialName": "主料",
+                      "weightKg": %s,
+                      "materialCategory": "RAW",
+                      "primaryMaterial": true
+                    }
+                  ],
+                  "processSteps": %s,
+                  "finishedOutputWeightKg": %s,
+                  "finishedOutputQuantity": %s,
+                  "finishedOutputUnit": "袋"
+                }
+                """.formatted(primaryWeightKg, processSteps, finishedOutputWeightKg, finishedOutputQuantity);
+
+        return mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(draftJson))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .split("\"id\":\"")[1]
+                .split("\"")[0];
+    }
+
+    private String validProcessSteps() {
+        return """
+                [{
+                  "sequence": 1,
+                  "processName": "蒸煮",
+                  "beforeWeightKg": 10,
+                  "afterWeightKg": 8,
+                  "remainingWeightKg": 1,
+                  "remainingDisposition": "REUSE"
+                }]
+                """;
+    }
+
+    private void submitExperimentForTestExpecting(String experimentFormId, String expectedCode) throws Exception {
+        mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", experimentFormId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(expectedCode));
     }
 
     private String submitExperimentForTest(String experimentFormId) throws Exception {

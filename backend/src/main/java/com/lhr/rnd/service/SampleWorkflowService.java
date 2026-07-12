@@ -449,7 +449,7 @@ public class SampleWorkflowService {
         if (form.status() != ExperimentFormStatus.DRAFT) {
             throw new BusinessException("EXPERIMENT_FORM_STATUS_ILLEGAL", "只有草稿实验单可以提交测试");
         }
-        validateSubmittablePrimaryMaterial(form.materials());
+        validateSubmittableExperiment(form);
         var nextTaskStatus = taskStatusAfter(SampleStatus.SAMPLING, SampleAction.SUBMIT_EXPERIMENT);
         var submitted = form.submit(now());
 
@@ -1967,6 +1967,26 @@ public class SampleWorkflowService {
         }
         if (primary.stream().anyMatch(material -> "PACKAGING".equals(material.materialCategory()))) {
             throw new BusinessException("PRIMARY_MATERIAL_INVALID", "包材不能设为主原料");
+        }
+        if (primary.get(0).weightKg() == null || primary.get(0).weightKg().signum() <= 0) {
+            throw new BusinessException("PRIMARY_MATERIAL_WEIGHT_REQUIRED", "提交内部测试前主料重量必须大于 0");
+        }
+    }
+
+    private void validateSubmittableExperiment(ExperimentForm form) {
+        validateSubmittablePrimaryMaterial(form.materials());
+        if (form.processSteps() == null || form.processSteps().stream()
+                .noneMatch(step -> step.processName() != null
+                        && !step.processName().isBlank()
+                        && step.beforeWeightKg() != null
+                        && step.beforeWeightKg().signum() > 0)) {
+            throw new BusinessException("EXPERIMENT_PROCESS_REQUIRED", "提交内部测试前至少需要一道有效工序");
+        }
+        if (form.finishedOutputWeightKg() == null || form.finishedOutputWeightKg().signum() <= 0) {
+            throw new BusinessException("FINISHED_OUTPUT_WEIGHT_REQUIRED", "提交内部测试前成品重量必须大于 0");
+        }
+        if (form.finishedOutputQuantity() == null || form.finishedOutputQuantity() <= 0) {
+            throw new BusinessException("FINISHED_OUTPUT_QUANTITY_REQUIRED", "提交内部测试前成品数量必须大于 0");
         }
     }
 
