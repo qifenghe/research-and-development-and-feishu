@@ -20,3 +20,19 @@
 ## Notes
 
 - Existing role permissions and the pricing review state machine remain unchanged. The pricing detail only exposes finance notification after the existing approved state, and finance continues to see download plus confirmation actions only for notified files.
+
+## Review Fixes
+
+- Connected mobile password login to `POST /api/v1/auth/login`, including persisted session state and a non-blocking session refresh.
+- Included the minimal web-account backend path: public login route, password verification, default H5 accounts, account migration, and username-aware session tokens.
+- Updated mobile smoke coverage to click Login and wait for the actual `POST /api/v1/auth/login` request before asserting the Todo screen.
+- Reworked pending pricing review into a single fixed row: `审核通过` remains primary while `更多操作` contains download and rejection. The existing 128px footer reservation exceeds this one-row footer height at 375px width.
+- Added a Node page contract covering both the password-login API chain and the single-row review footer.
+
+## Review Verification
+
+- `mvn -q -Dtest=AuthControllerTest,SessionTokenServiceTest test` -- passed.
+- `pnpm typecheck` -- passed for shared, mobile, and PC workspaces.
+- `node --test tests/mobile-login-and-pricing-review-contract.test.mts tests/pricing-review-access.test.mts tests/mobile-finance-inbox.test.mts` -- passed, 7 tests.
+- `pnpm check:api-contracts` -- passed.
+- `pnpm exec playwright test e2e/mobile-smoke.spec.ts --project=mobile-chromium --workers=1` -- passed, 4 tests, including credential login through the real local backend.

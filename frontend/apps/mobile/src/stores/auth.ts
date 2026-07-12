@@ -15,7 +15,7 @@ export const useAuthStore = defineStore("auth", {
     loading: boolean;
   } => ({
     token: getAccessToken() as string | null,
-    user: getStoredUser<UserAccount>() ?? demoUser(),
+    user: getStoredUser<UserAccount>(),
     principal: null,
     loading: false,
   }),
@@ -25,6 +25,19 @@ export const useAuthStore = defineStore("auth", {
     role: (state) => state.principal?.role ?? state.user?.role ?? "",
   },
   actions: {
+    async loginWithPassword(username: string, password: string) {
+      this.loading = true;
+      try {
+        const result = await api.session.login(username, password);
+        persistLogin(result.accessToken, result.user);
+        this.token = result.accessToken;
+        this.user = result.user;
+        this.principal = null;
+        void this.fetchMe().catch(() => undefined);
+      } finally {
+        this.loading = false;
+      }
+    },
     async loginWithFeishuCode(code: string) {
       this.loading = true;
       try {
@@ -36,9 +49,6 @@ export const useAuthStore = defineStore("auth", {
       } finally {
         this.loading = false;
       }
-    },
-    async mockLogin(feishuUserId: string) {
-      await this.loginWithFeishuCode(`mock:${feishuUserId}`);
     },
     async fetchMe() {
       if (!this.token) return;
@@ -66,16 +76,3 @@ export const useAuthStore = defineStore("auth", {
     },
   },
 });
-
-function demoUser(): UserAccount {
-  return {
-    id: "USR-DEMO-ENGINEER",
-    name: "张研发",
-    feishuUserId: "ou_demo_engineer",
-    role: "RND_ENGINEER",
-    departmentName: "研发部",
-    status: "ACTIVE",
-    createdAt: "",
-    updatedAt: "",
-  };
-}

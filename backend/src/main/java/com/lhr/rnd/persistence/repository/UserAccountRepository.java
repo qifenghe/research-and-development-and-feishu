@@ -9,6 +9,8 @@ import java.util.Optional;
 public interface UserAccountRepository extends JpaRepository<UserAccountEntity, String> {
     Optional<UserAccountEntity> findByFeishuUserId(String feishuUserId);
 
+    Optional<UserAccountEntity> findByUsername(String username);
+
     Optional<UserAccountEntity> findFirstByNameAndStatus(String name, String status);
 
     List<UserAccountEntity> findAllByOrderByCreatedAtDesc();

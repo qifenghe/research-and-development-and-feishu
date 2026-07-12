@@ -14,6 +14,7 @@ import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Service
@@ -42,12 +43,13 @@ public class SessionTokenService {
 
     public String issue(UserAccount user) {
         var expiresAt = clock.instant().plusSeconds(properties.getTtlSeconds());
-        var payload = encodeJson(Map.of(
-                "userId", user.id(),
-                "name", user.name(),
-                "feishuUserId", user.feishuUserId(),
-                "role", user.role()
-        ));
+        var payloadMap = new LinkedHashMap<String, String>();
+        payloadMap.put("userId", user.id());
+        payloadMap.put("username", user.username() == null ? "" : user.username());
+        payloadMap.put("name", user.name());
+        payloadMap.put("feishuUserId", user.feishuUserId() == null ? "" : user.feishuUserId());
+        payloadMap.put("role", user.role());
+        var payload = encodeJson(payloadMap);
         var expiry = encoder.encodeToString(Long.toString(expiresAt.getEpochSecond()).getBytes(StandardCharsets.UTF_8));
         var unsigned = payload + "." + expiry;
         return unsigned + "." + sign(unsigned);
@@ -85,6 +87,7 @@ public class SessionTokenService {
             var root = objectMapper.readTree(decoder.decode(encodedPayload));
             return new SessionPrincipal(
                     root.path("userId").asText(),
+                    root.path("username").asText(),
                     root.path("name").asText(),
                     root.path("feishuUserId").asText(),
                     root.path("role").asText(),

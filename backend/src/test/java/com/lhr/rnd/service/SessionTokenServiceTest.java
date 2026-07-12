@@ -26,6 +26,7 @@ class SessionTokenServiceTest {
 
         assertThat(token).doesNotStartWith("mock-token-");
         assertThat(session.userId()).isEqualTo("USR-001");
+        assertThat(session.username()).isEqualTo("rnd_engineer");
         assertThat(session.name()).isEqualTo("张研发");
         assertThat(session.feishuUserId()).isEqualTo("ou_rnd_001");
         assertThat(session.role()).isEqualTo("RND_ENGINEER");
@@ -70,11 +71,13 @@ class SessionTokenServiceTest {
     private UserAccount user() {
         return new UserAccount(
                 "USR-001",
+                "rnd_engineer",
                 "张研发",
                 "ou_rnd_001",
                 "RND_ENGINEER",
                 "研发部",
                 "ACTIVE",
+                null,
                 LocalDateTime.of(2026, 6, 19, 8, 0),
                 LocalDateTime.of(2026, 6, 19, 8, 0)
         );

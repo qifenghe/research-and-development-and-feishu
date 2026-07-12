@@ -21,54 +21,55 @@
       </div>
     </van-skeleton>
 
-    <FixedActionBar v-if="detail && !loadError" :with-tabbar="false">
-      <van-button
-        v-if="canDownload"
-        :type="hasWorkflowAction ? 'default' : 'primary'"
-        :plain="hasWorkflowAction"
-        block
-        :loading="downloading"
-        @click="download"
-      >
-        下载核价文件
-      </van-button>
-      <van-button
-        v-if="canReview"
-        type="primary"
-        block
-        :loading="reviewing"
-        @click="review('APPROVE')"
-      >
-        审核通过
-      </van-button>
-      <van-button
-        v-if="canReview"
-        plain
-        type="danger"
-        block
-        :loading="reviewing"
-        @click="review('REJECT')"
-      >
-        退回核价
-      </van-button>
-      <van-button
-        v-if="canNotifyFinance"
-        type="primary"
-        block
-        :loading="notifying"
-        @click="notifyFinance"
-      >
-        通知财务
-      </van-button>
-      <van-button
-        v-if="canReceive"
-        type="success"
-        block
-        :loading="receiving"
-        @click="receive"
-      >
-        确认接收
-      </van-button>
+    <van-action-sheet
+      v-model:show="reviewActionsVisible"
+      :actions="reviewActions"
+      cancel-text="取消"
+      close-on-click-action
+      @select="handleReviewAction"
+    />
+
+    <FixedActionBar
+      v-if="detail && !loadError"
+      :with-tabbar="false"
+      :class="{ 'pricing-review-footer': canReview }"
+    >
+      <template v-if="canReview">
+        <van-button type="primary" block :loading="reviewing" @click="review('APPROVE')">
+          审核通过
+        </van-button>
+        <van-button block @click="reviewActionsVisible = true">更多操作</van-button>
+      </template>
+      <template v-else>
+        <van-button
+          v-if="canDownload"
+          :type="hasWorkflowAction ? 'default' : 'primary'"
+          :plain="hasWorkflowAction"
+          block
+          :loading="downloading"
+          @click="download"
+        >
+          下载核价文件
+        </van-button>
+        <van-button
+          v-if="canNotifyFinance"
+          type="primary"
+          block
+          :loading="notifying"
+          @click="notifyFinance"
+        >
+          通知财务
+        </van-button>
+        <van-button
+          v-if="canReceive"
+          type="success"
+          block
+          :loading="receiving"
+          @click="receive"
+        >
+          确认接收
+        </van-button>
+      </template>
     </FixedActionBar>
   </div>
 </template>
@@ -94,8 +95,13 @@ const receiving = ref(false);
 const notifying = ref(false);
 const reviewing = ref(false);
 const reviewComment = ref("");
+const reviewActionsVisible = ref(false);
 const detail = ref<PricingFileDetailView | null>(null);
 const loadError = ref("");
+const reviewActions = [
+  { name: "下载核价文件", value: "download" },
+  { name: "退回核价", value: "reject", color: "var(--van-danger-color)" },
+];
 const canReceive = computed(() => (
   auth.role === "FINANCE" && detail.value?.pricingFile.status === "FINANCE_NOTIFIED"
 ));
@@ -196,6 +202,16 @@ async function review(decision: "APPROVE" | "REJECT") {
     showFailToast(error instanceof Error ? error.message : "核价审核失败");
   } finally {
     reviewing.value = false;
+  }
+}
+
+function handleReviewAction(action: { value?: unknown }) {
+  if (action.value === "download") {
+    void download();
+    return;
+  }
+  if (action.value === "reject") {
+    void review("REJECT");
   }
 }
 

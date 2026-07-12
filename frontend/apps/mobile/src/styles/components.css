@@ -551,6 +551,10 @@ body {
   margin: 0;
 }
 
+.pricing-review-footer .form-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .form-section-title {
   color: var(--mobile-muted);
   font-size: 13px;

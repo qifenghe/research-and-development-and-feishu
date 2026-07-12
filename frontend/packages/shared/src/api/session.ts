@@ -1,5 +1,6 @@
 import type { ApiClient } from "./client";
 import type {
+  AuthLoginResult,
   DashboardOverview,
   FeishuLoginResult,
   SessionPrincipal,
@@ -7,6 +8,9 @@ import type {
 
 export function createSessionApi(client: ApiClient) {
   return {
+    login: (username: string, password: string) =>
+      client.post<AuthLoginResult>("/auth/login", { username, password }),
+    logout: () => client.post<void>("/auth/logout"),
     me: () => client.get<SessionPrincipal>("/session/me"),
     feishuCallback: (code: string) =>
       client.post<FeishuLoginResult>("/feishu/oauth/callback", { code }),
