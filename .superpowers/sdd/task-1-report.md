@@ -135,3 +135,26 @@ Result: `BUILD FAILURE` remains the expected RED result: 3 tests ran, 3
 failed, and 0 errored. The generated workbook still has no explicit print
 area, so the new end-column assertion is correctly guarded by the existing
 missing-print-area failure; production code was not changed.
+
+## Latest Important Review Fix
+
+Fixed only the latest Task 1 review finding in
+`backend/src/test/java/com/lhr/rnd/service/PricingWorkbookAssertions.java`.
+The formal pricing form print width is now an explicit contract of `A:K`:
+the first column remains `A` and the last column is fixed to `K` (zero-based
+column index `10`). The assertion no longer scans template rows with
+`getLastCellNum()`, so styled-but-empty `M:O` cells cannot widen the expected
+print area.
+
+Command run from `backend`:
+
+```bash
+JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+  mvn -q -Dtest=PricingFileServiceTest test
+```
+
+Result: `BUILD FAILURE` remains the expected RED result: 3 tests ran, 3
+failed, and 0 errored. The failures remain in the unimplemented production
+layout contract (44, 35, and 251 soft assertion failures for the 2-material,
+official-template, and 25-material scenarios); no test setup or compilation
+error was introduced. No production Java code or template was changed.

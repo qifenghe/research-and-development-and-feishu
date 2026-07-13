@@ -25,6 +25,7 @@ final class PricingWorkbookAssertions {
 
     private static final int PRINT_AREA_START_ROW = 0;
     private static final int PRINT_AREA_START_COLUMN = 0;
+    private static final int FORMAL_PRINT_AREA_LAST_COLUMN = 10;
     private static final int MATERIAL_START_ROW = 12;
     private static final int TITLE_ROW = 2;
     private static final int TITLE_COLUMN = 3;
@@ -81,7 +82,6 @@ final class PricingWorkbookAssertions {
                         sheet,
                         packagingLastRowIndex
                 );
-                var templatePrintAreaLastColumnIndex = findTemplateLastFormColumnIndex(templateSheet);
                 assertDynamicSectionStyles(
                         softly,
                         sheet,
@@ -112,7 +112,7 @@ final class PricingWorkbookAssertions {
                         workbook,
                         sheet,
                         printAreaLastContentRowIndex,
-                        templatePrintAreaLastColumnIndex
+                        FORMAL_PRINT_AREA_LAST_COLUMN
                 );
             });
         } catch (IOException e) {
@@ -515,18 +515,6 @@ final class PricingWorkbookAssertions {
             }
         }
         return -1;
-    }
-
-    private static int findTemplateLastFormColumnIndex(Sheet templateSheet) {
-        var lastColumnIndex = -1;
-        var confidentialityRowIndex = findRowContaining(templateSheet, CONFIDENTIALITY_MARKER);
-        for (int rowIndex = 0; rowIndex <= confidentialityRowIndex; rowIndex++) {
-            var row = templateSheet.getRow(rowIndex);
-            if (row != null && row.getLastCellNum() > 0) {
-                lastColumnIndex = Math.max(lastColumnIndex, row.getLastCellNum() - 1);
-            }
-        }
-        return lastColumnIndex;
     }
 
     private static int longestBlankRun(Sheet sheet, int firstRow, int lastRow) {
