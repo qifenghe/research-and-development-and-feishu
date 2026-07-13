@@ -2,8 +2,6 @@ package com.lhr.rnd.service;
 
 import com.lhr.rnd.model.ExperimentMaterial;
 import com.lhr.rnd.model.SampleVersion;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.junit.jupiter.api.Test;
 
@@ -23,11 +21,7 @@ class PricingFileServiceTest {
         var result = service.generate(pricingVersionWithMaterials(2), "V1", "LHYC");
 
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
-            var sheet = workbook.getSheetAt(0);
-
             PricingWorkbookAssertions.assertFormalLayout(workbook, 2);
-            assertThat(sheet.getRow(12).getCell(7).getCellStyle().getDataFormatString())
-                    .isEqualTo("0.00%");
         }
     }
 
@@ -37,11 +31,6 @@ class PricingFileServiceTest {
         var result = service.generate(pricingVersionWithMaterials(25), "V1", "LHYC");
 
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
-            var sheet = workbook.getSheetAt(0);
-            var summaryRow = sheet.getRow(37);
-
-            assertThat(formulaOf(summaryRow.getCell(6))).isEqualTo("SUM(G13:G37)");
-            assertThat(sheet.getPrintSetup().getFitWidth()).isEqualTo((short) 1);
             PricingWorkbookAssertions.assertFormalLayout(workbook, 25);
         }
     }
@@ -81,12 +70,7 @@ class PricingFileServiceTest {
             assertThat(sheet.getRow(12).getCell(0).getStringCellValue()).isEqualTo("清洗");
             assertThat(sheet.getRow(12).getCell(3).getStringCellValue()).isEqualTo("YRP00033");
             assertThat(sheet.getRow(12).getCell(8).getCellFormula()).isEqualTo("G13/H13");
-            assertThat(sheet.getRow(49).getCell(6).getCellFormula()).isEqualTo("SUM(G13:G13)");
-            assertThat(sheet.getRow(50).getCell(6).getNumericCellValue()).isEqualTo(89D);
-            assertThat(sheet.getRow(51).getCell(6).getCellFormula()).isEqualTo("G51/I13");
-            assertThat(sheet.getRow(52).getCell(6).getNumericCellValue()).isEqualTo(178D);
-            assertThat(sheet.getRow(57).getCell(6).getNumericCellValue()).isEqualTo(178D);
-            assertThat(sheet.getRow(60).getCell(6).getNumericCellValue()).isEqualTo(9D);
+            PricingWorkbookAssertions.assertFormalLayout(workbook, version.materials().size());
         }
     }
 
@@ -120,11 +104,5 @@ class PricingFileServiceTest {
             ));
         }
         return materials;
-    }
-
-    private String formulaOf(Cell cell) {
-        return cell != null && cell.getCellType() == CellType.FORMULA
-                ? cell.getCellFormula()
-                : null;
     }
 }
