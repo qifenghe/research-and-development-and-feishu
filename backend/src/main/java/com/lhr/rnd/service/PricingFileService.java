@@ -10,17 +10,22 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 public class PricingFileService {
     private static final String TEMPLATE_PATH = "/templates/pricing-material-list-template.xlsx";
@@ -45,6 +50,7 @@ public class PricingFileService {
         try (InputStream template = requireTemplate();
              Workbook workbook = WorkbookFactory.create(template);
              var output = new ByteArrayOutputStream()) {
+            sanitizeWorkbookMetadata(workbook);
             var sheet = workbook.getSheetAt(0);
             var customer = blankToDefault(customerName, "LHYC");
             var effectiveDate = version.effectiveDate() == null ? LocalDate.now() : version.effectiveDate();
@@ -70,7 +76,7 @@ public class PricingFileService {
                     + " "
                     + effectiveDate.format(FILE_DATE)
                     + ".xlsx";
-            return new PricingFileResult(fileName, pricingVersion, output.toByteArray());
+            return new PricingFileResult(fileName, pricingVersion, sanitizeOoxmlPackage(output.toByteArray()));
         } catch (IOException e) {
             throw new IllegalStateException("Failed to generate pricing workbook", e);
         }
@@ -347,6 +353,97 @@ public class PricingFileService {
         sheet.setHorizontallyCenter(true);
         sheet.setDisplayGridlines(false);
         workbook.setPrintArea(0, 0, PRINT_LAST_COLUMN, 0, footerRow(layout));
+    }
+
+    private void sanitizeWorkbookMetadata(Workbook workbook) {
+        new ArrayList<>(workbook.getAllNames()).forEach(workbook::removeName);
+        for (int sheetIndex = workbook.getNumberOfSheets() - 1; sheetIndex >= 0; sheetIndex--) {
+            if (workbook.getSheetVisibility(sheetIndex) != org.apache.poi.ss.usermodel.SheetVisibility.VISIBLE) {
+                workbook.removeSheetAt(sheetIndex);
+            }
+        }
+        if (!(workbook instanceof XSSFWorkbook xssfWorkbook)) {
+            return;
+        }
+
+        var coreProperties = xssfWorkbook.getProperties().getCoreProperties();
+        coreProperties.setCategory("");
+        coreProperties.setContentStatus("");
+        coreProperties.setContentType("");
+        coreProperties.setCreator("");
+        coreProperties.setDescription("");
+        coreProperties.setIdentifier("");
+        coreProperties.setKeywords("");
+        coreProperties.setLastModifiedByUser("");
+        coreProperties.setSubjectProperty("");
+        coreProperties.setTitle("");
+        coreProperties.setVersion("");
+        coreProperties.setRevision("");
+
+        var extendedProperties = xssfWorkbook.getProperties().getExtendedProperties().getUnderlyingProperties();
+        if (extendedProperties.isSetCompany()) {
+            extendedProperties.unsetCompany();
+        }
+        if (extendedProperties.isSetManager()) {
+            extendedProperties.unsetManager();
+        }
+        if (extendedProperties.isSetTemplate()) {
+            extendedProperties.unsetTemplate();
+        }
+        if (extendedProperties.isSetTitlesOfParts()) {
+            extendedProperties.unsetTitlesOfParts();
+        }
+        if (extendedProperties.isSetHeadingPairs()) {
+            extendedProperties.unsetHeadingPairs();
+        }
+        xssfWorkbook.getProperties().getCustomProperties().getUnderlyingProperties().setPropertyArray(
+                new org.openxmlformats.schemas.officeDocument.x2006.customProperties.CTProperty[0]
+        );
+    }
+
+    private byte[] sanitizeOoxmlPackage(byte[] content) throws IOException {
+        try (var input = new ZipInputStream(new java.io.ByteArrayInputStream(content));
+             var output = new ByteArrayOutputStream();
+             var zip = new ZipOutputStream(output)) {
+            for (ZipEntry entry = input.getNextEntry(); entry != null; entry = input.getNextEntry()) {
+                if (isMetadataPackageEntry(entry.getName())) {
+                    continue;
+                }
+                var entryContent = input.readAllBytes();
+                if (entry.getName().equals("[Content_Types].xml")) {
+                    entryContent = replaceXml(entryContent,
+                            "<Override\\b(?=[^>]*PartName=\"/(?:docProps/custom\\.xml|customXml/[^\"]+|xl/externalLinks/[^\"]+)\")[^>]*/>");
+                } else if (entry.getName().endsWith(".rels")) {
+                    entryContent = stripMetadataRelationships(entryContent);
+                } else if (entry.getName().equals("xl/workbook.xml")) {
+                    entryContent = replaceXml(entryContent, "(?s)<externalReferences>.*?</externalReferences>");
+                }
+                zip.putNextEntry(new ZipEntry(entry.getName()));
+                zip.write(entryContent);
+                zip.closeEntry();
+            }
+            zip.finish();
+            return output.toByteArray();
+        }
+    }
+
+    private boolean isMetadataPackageEntry(String entryName) {
+        return entryName.equals("docProps/custom.xml")
+                || entryName.startsWith("customXml/")
+                || entryName.startsWith("xl/externalLinks/");
+    }
+
+    private byte[] stripMetadataRelationships(byte[] content) {
+        var withoutCustomXmlOrExternalLinks = replaceXml(content,
+                "<Relationship\\b(?=[^>]*Target=\"[^\"]*(?:customXml|externalLinks)[^\"]*\")[^>]*/>");
+        return replaceXml(withoutCustomXmlOrExternalLinks,
+                "<Relationship\\b(?=[^>]*Target=\"docProps/custom\\.xml\")[^>]*/>");
+    }
+
+    private byte[] replaceXml(byte[] content, String expression) {
+        return new String(content, StandardCharsets.UTF_8)
+                .replaceAll(expression, "")
+                .getBytes(StandardCharsets.UTF_8);
     }
 
     private int footerRow(LayoutRows layout) {

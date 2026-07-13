@@ -50,3 +50,27 @@ JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
 ```
 
 Result: PASS. `PricingFileServiceTest` 3/3, `ReportExportControllerTest` 2/2, and `SampleWorkflowControllerTest` 78/78; all had 0 failures and 0 errors.
+
+## Critical Review Follow-up: Workbook Metadata Sanitization
+
+- Added regression coverage that inspects both the template and a generated workbook at the POI and XLSX-package levels. The checks scan every defined name, every sheet's displayed text and visibility, external-link tables, and all ZIP entry text for the prior reference-product names, codes, weights, dates, and personnel.
+- Re-serialized the template after clearing stale workbook names and document properties, then removed its `customXml` and custom-property packages. The template no longer contains `200g黄豆焖猪脚`, `杭椒牛柳`, `#REF!` defined names, or legacy extended-property titles.
+- `PricingFileService` now clears inherited defined names, hidden sheets, and document metadata before filling a workbook. It removes custom-property and external-link packages from the emitted XLSX, then explicitly recreates the required `A:K` print area so it is the only generated defined name.
+
+Verification:
+
+```bash
+cd backend
+JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+  mvn -q -Dtest=PricingFileServiceTest test
+```
+
+Result: PASS. The five pricing workbook tests include the new template and generated-output metadata scans.
+
+```bash
+cd backend
+JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+  mvn -q -Dtest=PricingFileServiceTest,ReportExportControllerTest,SampleWorkflowControllerTest test
+```
+
+Result: PASS. Pricing generation, report export, and sample-workflow regression coverage all completed without failures.
