@@ -20,13 +20,14 @@ import java.util.regex.Pattern;
 final class PricingWorkbookAssertions {
     private static final String TEMPLATE_PATH = "/templates/pricing-material-list-template.xlsx";
     private static final String PACKAGING_MARKER = "包装物料";
-    private static final String CONFIDENTIALITY_MARKER = "本资料为机密文件，未经江西龙汇食品有限公司研发部门的书面许可，不得以任何形式保有或部分保有以及泄露本资料任何内容。";
+    private static final String CONFIDENTIALITY_MARKER = "本资料为机密文件，未经江西龙汇肉制品有限责任公司研发部门的书面许可，不得以任何形式保有或部分保有以及泄露本资料任何内容。";
     private static final Pattern HEADER_DATE_FORMAT = Pattern.compile("\\d{4}\\.\\d{2}\\.\\d{2}");
 
     private static final int PRINT_AREA_START_ROW = 0;
     private static final int PRINT_AREA_START_COLUMN = 0;
     private static final int FORMAL_PRINT_AREA_LAST_COLUMN = 10;
     private static final int MATERIAL_START_ROW = 12;
+    private static final int TEMPLATE_LAST_MATERIAL_ROW = 48;
     private static final int TITLE_ROW = 2;
     private static final int TITLE_COLUMN = 3;
     private static final int HEADER_DATE_ROW = 7;
@@ -150,7 +151,9 @@ final class PricingWorkbookAssertions {
             var rowIndex = MATERIAL_START_ROW + index;
             var excelRow = rowIndex + 1;
             var row = sheet.getRow(rowIndex);
-            var templateRow = templateSheet.getRow(rowIndex);
+            var templateRow = templateSheet.getRow(
+                    rowIndex > TEMPLATE_LAST_MATERIAL_ROW ? MATERIAL_START_ROW : rowIndex
+            );
 
             softly.assertThat(row).as("material row %s", excelRow).isNotNull();
             if (row == null) {
@@ -211,12 +214,12 @@ final class PricingWorkbookAssertions {
                     .isEqualTo("SUM(G%s:G%s)".formatted(MATERIAL_START_ROW + 1, summaryRowIndex));
         }
 
-        assertLabeledNumericRow(softly, sheet, referenceOutputRowIndex, "研发部参考肥肠出成(kg）", null, "0.000");
+        assertLabeledNumericRow(softly, sheet, referenceOutputRowIndex, "研发部参考出成(kg）", null, "0.000");
         assertLabeledNumericRow(
                 softly,
                 sheet,
                 yieldRowIndex,
-                "肥肠得率（%）",
+                "原料得率（%）",
                 "G%s/I%s".formatted(referenceOutputRowIndex + 1, MATERIAL_START_ROW + 1),
                 "0.00%"
         );

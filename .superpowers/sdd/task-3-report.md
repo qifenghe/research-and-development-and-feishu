@@ -135,3 +135,23 @@ frontend: node --test tests/experiment-calculations.test.mts tests/experiment-ou
 frontend: pnpm typecheck
   shared, mobile, and PC typechecks passed
 ```
+
+## Pricing Excel Final Review Follow-up (2026-07-13)
+
+### Scope
+
+Addressed all findings in `pricing-excel-final-review.md` without reverting unrelated workspace changes.
+
+### Fixes
+
+- Replaced the product-specific summary labels with `研发部参考出成(kg）` and `原料得率（%）` in both the pricing template and `PricingFileService`.
+- Updated the template confidentiality statement to `江西龙汇肉制品有限责任公司`, matching the title block and generated workbooks.
+- Moved the title marker to the reference order: `产品名-LHYC（核价）`, retaining the existing centered title style and leaving generated file names/API contracts unchanged.
+- Added a permanent 60-material regression past the template's original 37-row capacity. It verifies material 60's value, formula, row height, cloned style, merge, summary formulas, print area, and section placement. Added an explicit non-肥肠 visible-text regression for `清炖牛腩`.
+
+### Delivery And Verification
+
+- Regenerated `outputs/pricing-format-review/500g香卤大肠头-LHYC（核价）原料清单A0 2026.07.13.xlsx`, PDF, and PNG from the formal service fixture.
+- XLSX `unzip -t` passed. LibreOffice rendered the refreshed output as one A4 portrait PDF (`595.304 x 841.89 pt`), and the rendered page was checked for contiguous title, material, summary, and packaging sections.
+- Focused backend suite: `PricingFileServiceTest` 8 + `ReportExportControllerTest` 2 + `SampleWorkflowControllerTest` 78 = 88 tests, 0 failures, 0 errors.
+- Full backend suite: 158 tests, 0 failures, 0 errors, 0 skipped.

@@ -300,11 +300,11 @@ public class PricingFileService {
         setFormula(sheet, layout.totalRow(), 6, "SUM(G%s:G%s)".formatted(firstExcelRow, lastExcelRow));
         setFormula(sheet, layout.totalRow(), 8, "SUM(I%s:I%s)".formatted(firstExcelRow, lastExcelRow));
 
-        setText(sheet, layout.referenceOutputRow(), 3, "研发部参考肥肠出成(kg）");
+        setText(sheet, layout.referenceOutputRow(), 3, "研发部参考出成(kg）");
         if (version.referenceOutputKg() != null) {
             setNumeric(sheet, layout.referenceOutputRow(), 6, decimalValue(version.referenceOutputKg()));
         }
-        setText(sheet, layout.yieldRateRow(), 3, "肥肠得率（%）");
+        setText(sheet, layout.yieldRateRow(), 3, "原料得率（%）");
         if (!materials.isEmpty() && version.referenceOutputKg() != null) {
             setFormula(sheet, layout.yieldRateRow(), 6, "G%s/I%s".formatted(layout.referenceOutputRow() + 1, firstExcelRow));
         }
@@ -461,7 +461,7 @@ public class PricingFileService {
 
     private String formatProductTitle(String productName, String customer) {
         var name = blankToDefault(productName, "未命名产品");
-        return name.contains("（核价）") ? name : name + "（核价）-" + customer;
+        return name.contains("（核价）") ? name : name + "-" + customer + "（核价）";
     }
 
     private String formatVersionLabel(String versionNo) {

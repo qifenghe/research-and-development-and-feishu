@@ -22,11 +22,13 @@
 
 ## POI 验收
 
-- 标题为 `500g香卤大肠头（核价）-LHYC`；材料行从 Excel 第 13 行开始，保留原料工段合并区域。
+- 标题为 `500g香卤大肠头-LHYC（核价）`，使用参考模板的居中标题样式；材料行从 Excel 第 13 行开始，保留原料工段合并区域。
+- 模板和生成文件的汇总文案为 `研发部参考出成(kg）`、`原料得率（%）`，保密说明与表头统一使用 `江西龙汇肉制品有限责任公司`；非肥肠产品 `清炖牛腩` 的可见文本和 OOXML 包扫描均不含 `肥肠`。
 - 材料值为 `YL-001`、主原料、`100.000`、`82.00%`；领料公式为 `G13/H13`。
 - 汇总公式为 `SUM(G13:G13)` 和 `SUM(I13:I13)`；包装数量为 `178`、`178`、`9`、`9`。
 - 重量格式规范化后为 `0.000`，利用率为 `0.00%`；公式字符串不含 `#REF!`，Apache POI 计算结果均非错误单元格。
 - 打印区域为 `A1:K28`，A4 纵向、适配一页宽、水平居中、未垂直居中、隐藏网格线；关键材料和汇总合并区域存在。
+- 60 条材料持久化回归超过旧模板 37 条容量：第 60 条位于 Excel 第 72 行，值、行高、样式和 `G72/H72` 公式完整；汇总公式为 `SUM(G13:G72)` / `SUM(I13:I72)`，打印区域为 `A1:K87`，动态汇总与包材区未覆盖材料行。
 
 ## 视觉验收
 
@@ -36,6 +38,6 @@ LibreOffice 临时 profile 转换后，目标和参考均为 1 页 A4（`595.304
 
 ## 测试结果
 
-- RED：新增“不得垂直居中”打印契约后，`PricingFileServiceTest` 的 4 个正式布局场景均按预期失败，均显示 `print vertically centered` 为 `true`。
-- Task 2 回归：`mvn -q -Dtest=PricingFileServiceTest,ReportExportControllerTest,SampleWorkflowControllerTest test` 通过。
-- 全量后端：`JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn test` 通过，`156` tests、`0` failures、`0` errors、`0` skipped。
+- RED：通用文案、统一公司全称、参考标题顺序与 60 条材料契约先在旧模板/服务上失败，错误明确指向旧 `肥肠` 文案、错误保密主体、旧标题顺序和超容量样式基线。
+- 聚焦回归：`mvn -q -Dtest=PricingFileServiceTest,ReportExportControllerTest,SampleWorkflowControllerTest test` 通过，`88` tests、`0` failures、`0` errors、`0` skipped。
+- 全量后端：`JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn test` 通过，`158` tests、`0` failures、`0` errors、`0` skipped。

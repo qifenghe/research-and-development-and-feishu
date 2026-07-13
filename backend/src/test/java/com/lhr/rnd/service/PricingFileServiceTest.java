@@ -4,6 +4,7 @@ import com.lhr.rnd.model.ExperimentMaterial;
 import com.lhr.rnd.model.SampleVersion;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -26,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PricingFileServiceTest {
     private static final String TEMPLATE_PATH = "/templates/pricing-material-list-template.xlsx";
     private static final List<String> REFERENCE_PRODUCT_TOKENS = List.of(
-            "200g黄豆焖猪脚", "杭椒牛柳", "我问问", "500g", "香卤", "大肠",
+            "200g黄豆焖猪脚", "杭椒牛柳", "我问问", "500g", "香卤", "大肠", "肥肠",
             "YRP", "FGT", "TJJ", "FXL", "FYT", "FBT", "YSC", "99999", "100.000",
             "2026.04.28", "赵新武", "黄丽金"
     );
@@ -52,6 +53,53 @@ class PricingFileServiceTest {
     }
 
     @Test
+    void usesGenericVisibleLabelsForNonLargeIntestineProducts() throws Exception {
+        var result = new PricingFileService().generate(sanitizedPricingVersion(), "V1", "LHYC");
+
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getRow(2).getCell(3).getStringCellValue()).isEqualTo("清炖牛腩-LHYC（核价）");
+            assertThat(sheet.getRow(14).getCell(3).getStringCellValue()).isEqualTo("研发部参考出成(kg）");
+            assertThat(sheet.getRow(15).getCell(3).getStringCellValue()).isEqualTo("原料得率（%）");
+
+            var formatter = new DataFormatter();
+            for (var row : sheet) {
+                for (var cell : row) {
+                    assertThat(formatter.formatCellValue(cell)).doesNotContain("肥肠");
+                }
+            }
+        }
+    }
+
+    @Test
+    void preservesLayoutForSixtyMaterialsBeyondTemplateCapacity() throws Exception {
+        var service = new PricingFileService();
+        var result = service.generate(pricingVersionWithMaterials(60), "V1", "LHYC");
+
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
+            var sheet = workbook.getSheetAt(0);
+            var lastMaterialRow = sheet.getRow(71);
+            var firstMaterialRow = sheet.getRow(12);
+            var summaryRow = sheet.getRow(72);
+
+            assertThat(lastMaterialRow.getCell(2).getNumericCellValue()).isEqualTo(60D);
+            assertThat(lastMaterialRow.getCell(3).getStringCellValue()).isEqualTo("MAT060");
+            assertThat(lastMaterialRow.getCell(4).getStringCellValue()).isEqualTo("测试物料60");
+            assertThat(lastMaterialRow.getCell(6).getNumericCellValue()).isEqualTo(60D);
+            assertThat(lastMaterialRow.getCell(8).getCellFormula()).isEqualTo("G72/H72");
+            assertThat(lastMaterialRow.getHeight()).isEqualTo(firstMaterialRow.getHeight());
+            assertThat(lastMaterialRow.getCell(6).getCellStyle().getIndex())
+                    .isEqualTo(firstMaterialRow.getCell(6).getCellStyle().getIndex());
+            assertThat(sheet.getMergedRegions()).contains(new CellRangeAddress(71, 71, 4, 5));
+            assertThat(summaryRow.getCell(3).getStringCellValue()).isEqualTo("总计");
+            assertThat(summaryRow.getCell(6).getCellFormula()).isEqualTo("SUM(G13:G72)");
+            assertThat(summaryRow.getCell(8).getCellFormula()).isEqualTo("SUM(I13:I72)");
+            assertThat(workbook.getPrintArea(0)).endsWith("$K$87");
+            PricingWorkbookAssertions.assertFormalLayout(workbook, 60);
+        }
+    }
+
+    @Test
     void generatesFormalWorkbookFromPricingFixtureForVisualVerification() throws Exception {
         var version = PricingWorkbookFixture.fragrantBraisedLargeIntestineFixtureA0();
         var result = new PricingFileService().generate(version, "V1", "LHYC");
@@ -64,7 +112,9 @@ class PricingFileServiceTest {
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
             var sheet = workbook.getSheetAt(0);
             assertThat(sheet.getRow(2).getCell(3).getStringCellValue())
-                    .isEqualTo("500g香卤大肠头（核价）-LHYC");
+                    .isEqualTo("500g香卤大肠头-LHYC（核价）");
+            assertThat(sheet.getRow(2).getCell(3).getCellStyle().getAlignment())
+                    .isEqualTo(HorizontalAlignment.CENTER);
             assertThat(sheet.getRow(12).getCell(3).getStringCellValue()).isEqualTo("YL-001");
             assertThat(sheet.getRow(12).getCell(4).getStringCellValue()).isEqualTo("主原料");
             assertThat(sheet.getRow(12).getCell(6).getNumericCellValue()).isEqualTo(100D);
@@ -134,7 +184,7 @@ class PricingFileServiceTest {
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
             var sheet = workbook.getSheetAt(0);
             assertThat(sheet.getSheetName()).isEqualTo("500g香卤大肠头-LHYC原料清单");
-            assertThat(sheet.getRow(2).getCell(3).getStringCellValue()).isEqualTo("500g香卤大肠头（核价）-LHYC");
+            assertThat(sheet.getRow(2).getCell(3).getStringCellValue()).isEqualTo("500g香卤大肠头-LHYC（核价）");
             assertThat(sheet.getRow(4).getCell(3).getStringCellValue()).isEqualTo("产品负责人:赵新武");
             assertThat(sheet.getRow(4).getCell(9).getStringCellValue()).isEqualTo("规格：500g/袋，20袋/箱");
             assertThat(sheet.getRow(6).getCell(9).getStringCellValue()).isEqualTo("A/0");
