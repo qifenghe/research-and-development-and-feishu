@@ -81,6 +81,7 @@ final class PricingWorkbookAssertions {
                         sheet,
                         packagingLastRowIndex
                 );
+                var templatePrintAreaLastColumnIndex = findTemplateLastFormColumnIndex(templateSheet);
                 assertDynamicSectionStyles(
                         softly,
                         sheet,
@@ -106,7 +107,13 @@ final class PricingWorkbookAssertions {
                             .isLessThanOrEqualTo(4);
                 }
 
-                assertPrintLayout(softly, workbook, sheet, printAreaLastContentRowIndex);
+                assertPrintLayout(
+                        softly,
+                        workbook,
+                        sheet,
+                        printAreaLastContentRowIndex,
+                        templatePrintAreaLastColumnIndex
+                );
             });
         } catch (IOException e) {
             throw new AssertionError("Unable to read pricing workbook template baseline", e);
@@ -327,7 +334,8 @@ final class PricingWorkbookAssertions {
             SoftAssertions softly,
             Workbook workbook,
             Sheet sheet,
-            int printAreaLastContentRowIndex
+            int printAreaLastContentRowIndex,
+            int templatePrintAreaLastColumnIndex
     ) {
         softly.assertThat(sheet.getPrintSetup().getPaperSize())
                 .as("print paper size")
@@ -364,6 +372,9 @@ final class PricingWorkbookAssertions {
         softly.assertThat(area.getFirstCell().getRow())
                 .as("print area start row")
                 .isEqualTo(PRINT_AREA_START_ROW);
+        softly.assertThat(area.getLastCell().getCol())
+                .as("print area end column")
+                .isEqualTo(templatePrintAreaLastColumnIndex);
         softly.assertThat(area.getLastCell().getRow())
                 .as("print area end row")
                 .isEqualTo(printAreaLastContentRowIndex);
@@ -504,6 +515,18 @@ final class PricingWorkbookAssertions {
             }
         }
         return -1;
+    }
+
+    private static int findTemplateLastFormColumnIndex(Sheet templateSheet) {
+        var lastColumnIndex = -1;
+        var confidentialityRowIndex = findRowContaining(templateSheet, CONFIDENTIALITY_MARKER);
+        for (int rowIndex = 0; rowIndex <= confidentialityRowIndex; rowIndex++) {
+            var row = templateSheet.getRow(rowIndex);
+            if (row != null && row.getLastCellNum() > 0) {
+                lastColumnIndex = Math.max(lastColumnIndex, row.getLastCellNum() - 1);
+            }
+        }
+        return lastColumnIndex;
     }
 
     private static int longestBlankRun(Sheet sheet, int firstRow, int lastRow) {

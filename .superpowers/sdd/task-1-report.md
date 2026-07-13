@@ -114,3 +114,24 @@ layout failures, every generated workbook still has display gridlines enabled
 and lacks an explicit print area, so neither the required `A1` start nor the
 strict final-content-row end can yet be satisfied. The production implementation
 was not modified.
+
+## Print Width Assertion Follow-up
+
+Updated only `backend/src/test/java/com/lhr/rnd/service/PricingWorkbookAssertions.java`.
+The print-area contract now requires the area to start at `A1`, end at the
+template formal form's final column (including the complete packaging table;
+`K` in the current template), and end at the confidentiality statement row.
+The final-column expectation is derived from the template form rather than
+from the generated workbook.
+
+Command run from `backend`:
+
+```bash
+JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+  mvn -q -Dtest=PricingFileServiceTest test
+```
+
+Result: `BUILD FAILURE` remains the expected RED result: 3 tests ran, 3
+failed, and 0 errored. The generated workbook still has no explicit print
+area, so the new end-column assertion is correctly guarded by the existing
+missing-print-area failure; production code was not changed.
