@@ -20,8 +20,11 @@ import java.util.regex.Pattern;
 final class PricingWorkbookAssertions {
     private static final String TEMPLATE_PATH = "/templates/pricing-material-list-template.xlsx";
     private static final String PACKAGING_MARKER = "包装物料";
+    private static final String CONFIDENTIALITY_MARKER = "本资料为机密文件，未经江西龙汇食品有限公司研发部门的书面许可，不得以任何形式保有或部分保有以及泄露本资料任何内容。";
     private static final Pattern HEADER_DATE_FORMAT = Pattern.compile("\\d{4}\\.\\d{2}\\.\\d{2}");
 
+    private static final int PRINT_AREA_START_ROW = 0;
+    private static final int PRINT_AREA_START_COLUMN = 0;
     private static final int MATERIAL_START_ROW = 12;
     private static final int TITLE_ROW = 2;
     private static final int TITLE_COLUMN = 3;
@@ -73,6 +76,11 @@ final class PricingWorkbookAssertions {
                 softly.assertThat(packagingLastRowIndex)
                         .as("packaging last row")
                         .isGreaterThanOrEqualTo(packagingHeaderRowIndex);
+                var printAreaLastContentRowIndex = findPrintAreaLastContentRow(
+                        softly,
+                        sheet,
+                        packagingLastRowIndex
+                );
                 assertDynamicSectionStyles(
                         softly,
                         sheet,
@@ -98,7 +106,7 @@ final class PricingWorkbookAssertions {
                             .isLessThanOrEqualTo(4);
                 }
 
-                assertPrintLayout(softly, workbook, sheet, packagingLastRowIndex);
+                assertPrintLayout(softly, workbook, sheet, printAreaLastContentRowIndex);
             });
         } catch (IOException e) {
             throw new AssertionError("Unable to read pricing workbook template baseline", e);
@@ -319,7 +327,7 @@ final class PricingWorkbookAssertions {
             SoftAssertions softly,
             Workbook workbook,
             Sheet sheet,
-            int packagingLastRowIndex
+            int printAreaLastContentRowIndex
     ) {
         softly.assertThat(sheet.getPrintSetup().getPaperSize())
                 .as("print paper size")
@@ -330,17 +338,35 @@ final class PricingWorkbookAssertions {
         softly.assertThat(sheet.getPrintSetup().getFitWidth())
                 .as("print fit width")
                 .isEqualTo((short) 1);
+        softly.assertThat(sheet.getAutobreaks())
+                .as("print automatic page breaks")
+                .isTrue();
+        softly.assertThat(sheet.getFitToPage())
+                .as("print fit to page")
+                .isTrue();
+        softly.assertThat(sheet.getHorizontallyCenter())
+                .as("print horizontally centered")
+                .isTrue();
+        softly.assertThat(sheet.isDisplayGridlines())
+                .as("display gridlines")
+                .isFalse();
 
         var printArea = workbook.getPrintArea(workbook.getSheetIndex(sheet));
         softly.assertThat(printArea).as("print area").isNotBlank();
-        if (printArea == null || printArea.isBlank() || packagingLastRowIndex < 0) {
+        if (printArea == null || printArea.isBlank() || printAreaLastContentRowIndex < 0) {
             return;
         }
 
         var area = new AreaReference(printArea, SpreadsheetVersion.EXCEL2007);
+        softly.assertThat(area.getFirstCell().getCol())
+                .as("print area start column")
+                .isEqualTo(PRINT_AREA_START_COLUMN);
+        softly.assertThat(area.getFirstCell().getRow())
+                .as("print area start row")
+                .isEqualTo(PRINT_AREA_START_ROW);
         softly.assertThat(area.getLastCell().getRow())
                 .as("print area end row")
-                .isGreaterThanOrEqualTo(packagingLastRowIndex);
+                .isEqualTo(printAreaLastContentRowIndex);
     }
 
     private static void assertStyleMatchesTemplate(
@@ -434,6 +460,50 @@ final class PricingWorkbookAssertions {
             lastRowIndex = rowIndex;
         }
         return lastRowIndex;
+    }
+
+    private static int findPrintAreaLastContentRow(
+            SoftAssertions softly,
+            Sheet sheet,
+            int packagingLastRowIndex
+    ) {
+        var confidentialityRowIndex = findRowContaining(sheet, CONFIDENTIALITY_MARKER);
+        softly.assertThat(confidentialityRowIndex)
+                .as("confidentiality statement row")
+                .isGreaterThan(packagingLastRowIndex);
+        if (confidentialityRowIndex < 0) {
+            return packagingLastRowIndex;
+        }
+
+        softly.assertThat(lastContentRowIndex(sheet))
+                .as("last content row")
+                .isEqualTo(confidentialityRowIndex);
+        return confidentialityRowIndex;
+    }
+
+    private static int findRowContaining(Sheet sheet, String expectedText) {
+        var formatter = new DataFormatter();
+        for (int rowIndex = 0; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+            var row = sheet.getRow(rowIndex);
+            if (row == null) {
+                continue;
+            }
+            for (Cell cell : row) {
+                if (expectedText.equals(formatter.formatCellValue(cell).trim())) {
+                    return rowIndex;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static int lastContentRowIndex(Sheet sheet) {
+        for (int rowIndex = sheet.getLastRowNum(); rowIndex >= 0; rowIndex--) {
+            if (!isBlank(sheet.getRow(rowIndex))) {
+                return rowIndex;
+            }
+        }
+        return -1;
     }
 
     private static int longestBlankRun(Sheet sheet, int firstRow, int lastRow) {
