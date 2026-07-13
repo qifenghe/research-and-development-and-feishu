@@ -355,6 +355,9 @@ final class PricingWorkbookAssertions {
         softly.assertThat(sheet.getHorizontallyCenter())
                 .as("print horizontally centered")
                 .isTrue();
+        softly.assertThat(sheet.getVerticallyCenter())
+                .as("print vertically centered")
+                .isFalse();
         softly.assertThat(sheet.isDisplayGridlines())
                 .as("display gridlines")
                 .isFalse();

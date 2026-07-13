@@ -351,6 +351,7 @@ public class PricingFileService {
         sheet.setAutobreaks(true);
         sheet.setFitToPage(true);
         sheet.setHorizontallyCenter(true);
+        sheet.setVerticallyCenter(false);
         sheet.setDisplayGridlines(false);
         workbook.setPrintArea(0, 0, PRINT_LAST_COLUMN, 0, footerRow(layout));
     }

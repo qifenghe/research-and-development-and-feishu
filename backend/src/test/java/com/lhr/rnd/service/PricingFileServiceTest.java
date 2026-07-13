@@ -2,8 +2,10 @@ package com.lhr.rnd.service;
 
 import com.lhr.rnd.model.ExperimentMaterial;
 import com.lhr.rnd.model.SampleVersion;
+import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 
@@ -11,6 +13,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -44,6 +48,61 @@ class PricingFileServiceTest {
 
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
             PricingWorkbookAssertions.assertFormalLayout(workbook, 25);
+        }
+    }
+
+    @Test
+    void generatesFormalWorkbookForFragrantBraisedLargeIntestineVisualVerification() throws Exception {
+        var version = PricingWorkbookFixture.fragrantBraisedLargeIntestineA0();
+        var result = new PricingFileService().generate(version, "V1", "LHYC");
+        var output = Path.of("target", "pricing-format-review", PricingWorkbookFixture.FORMAL_OUTPUT_FILE_NAME);
+        Files.createDirectories(output.getParent());
+        Files.write(output, result.content());
+
+        assertThat(result.fileName()).isEqualTo(PricingWorkbookFixture.FORMAL_OUTPUT_FILE_NAME);
+        assertThat(result.pricingVersion()).isEqualTo("A0-核价V1");
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getRow(2).getCell(3).getStringCellValue())
+                    .isEqualTo("500g香卤大肠头（核价）-LHYC");
+            assertThat(sheet.getRow(12).getCell(3).getStringCellValue()).isEqualTo("YL-001");
+            assertThat(sheet.getRow(12).getCell(4).getStringCellValue()).isEqualTo("主原料");
+            assertThat(sheet.getRow(12).getCell(6).getNumericCellValue()).isEqualTo(100D);
+            assertThat(sheet.getRow(12).getCell(7).getNumericCellValue()).isEqualTo(0.82D);
+            assertThat(sheet.getRow(12).getCell(6).getCellStyle().getDataFormatString().replace("_ ", ""))
+                    .isEqualTo("0.000");
+            assertThat(sheet.getRow(12).getCell(7).getCellStyle().getDataFormatString()).isEqualTo("0.00%");
+            assertThat(sheet.getRow(12).getCell(8).getCellFormula()).isEqualTo("G13/H13");
+            assertThat(sheet.getRow(13).getCell(6).getCellFormula()).isEqualTo("SUM(G13:G13)");
+            assertThat(sheet.getRow(13).getCell(8).getCellFormula()).isEqualTo("SUM(I13:I13)");
+            assertThat(sheet.getMergedRegions()).contains(
+                    new CellRangeAddress(12, 12, 0, 1),
+                    new CellRangeAddress(13, 13, 3, 5)
+            );
+            assertThat(sheet.getRow(21).getCell(6).getNumericCellValue()).isEqualTo(178D);
+            assertThat(sheet.getRow(22).getCell(6).getNumericCellValue()).isEqualTo(178D);
+            assertThat(sheet.getRow(23).getCell(6).getNumericCellValue()).isEqualTo(9D);
+            assertThat(sheet.getRow(24).getCell(6).getNumericCellValue()).isEqualTo(9D);
+            assertThat(workbook.getPrintArea(0)).endsWith("$K$28");
+            assertFormulasEvaluateWithoutErrors(workbook);
+            PricingWorkbookAssertions.assertFormalLayout(workbook, version.materials().size());
+        }
+    }
+
+    private void assertFormulasEvaluateWithoutErrors(org.apache.poi.ss.usermodel.Workbook workbook) {
+        var evaluator = workbook.getCreationHelper().createFormulaEvaluator();
+        for (var sheet : workbook) {
+            for (var row : sheet) {
+                for (var cell : row) {
+                    if (cell.getCellType() != CellType.FORMULA) {
+                        continue;
+                    }
+                    assertThat(cell.getCellFormula()).doesNotContain("#REF!");
+                    assertThat(evaluator.evaluate(cell).getCellType())
+                            .as("formula result at %s", cell.getAddress())
+                            .isNotEqualTo(CellType.ERROR);
+                }
+            }
         }
     }
 
