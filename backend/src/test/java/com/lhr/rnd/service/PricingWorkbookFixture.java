@@ -13,7 +13,11 @@ final class PricingWorkbookFixture {
     private PricingWorkbookFixture() {
     }
 
-    static SampleVersion fragrantBraisedLargeIntestineA0() {
+    /**
+     * Minimal synthetic data for reproducing the legacy pricing workbook's
+     * visible fields and layout; it is not a production recipe.
+     */
+    static SampleVersion fragrantBraisedLargeIntestineFixtureA0() {
         return SampleVersion.builder()
                 .sampleNo("YP202607130001")
                 .productName("500g香卤大肠头")

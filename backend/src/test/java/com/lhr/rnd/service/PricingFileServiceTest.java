@@ -52,8 +52,8 @@ class PricingFileServiceTest {
     }
 
     @Test
-    void generatesFormalWorkbookForFragrantBraisedLargeIntestineVisualVerification() throws Exception {
-        var version = PricingWorkbookFixture.fragrantBraisedLargeIntestineA0();
+    void generatesFormalWorkbookFromPricingFixtureForVisualVerification() throws Exception {
+        var version = PricingWorkbookFixture.fragrantBraisedLargeIntestineFixtureA0();
         var result = new PricingFileService().generate(version, "V1", "LHYC");
         var output = Path.of("target", "pricing-format-review", PricingWorkbookFixture.FORMAL_OUTPUT_FILE_NAME);
         Files.createDirectories(output.getParent());

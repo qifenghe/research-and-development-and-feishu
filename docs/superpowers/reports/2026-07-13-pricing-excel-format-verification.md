@@ -5,9 +5,20 @@
 - XLSX：`outputs/pricing-format-review/500g香卤大肠头-LHYC（核价）原料清单A0 2026.07.13.xlsx`
 - 目标 PDF：`outputs/pricing-format-review/500g香卤大肠头-LHYC（核价）原料清单A0 2026.07.13-final.pdf`
 - 目标截图：`outputs/pricing-format-review/500g香卤大肠头-LHYC（核价）原料清单A0 2026.07.13-final-page-1.png`
-- 参考截图：`/private/tmp/pricing-reference-render/reference-page-1.png`
+- 参考截图：`/private/tmp/pricing-reference-render/reference-page-1.png`（外部临时文件，不纳入仓库）
 
-真实验收数据由旧生成文件的香卤大肠头行提取，并补全现有 fixture 中的装箱规格：`YL-001`、主原料、`100 kg`、`82%` 利用率、`89 kg` 参考出成、`500g/袋，20袋/箱`。测试 fixture 位于 `PricingWorkbookFixture`，导出始终通过正式 `PricingFileService`。
+## 数据来源与范围
+
+本次使用的是**格式验收测试数据**，不是生产真实配方。稳定 fixture 路径为
+`backend/src/test/java/com/lhr/rnd/service/PricingWorkbookFixture.java`，工厂方法为
+`fragrantBraisedLargeIntestineFixtureA0()`。其中 `YL-001`、`主原料`、`100 kg`、`82%`
+利用率和 `89 kg` 参考出成均来自已提交 fixture，是用于复现旧生成文件视觉/字段的最小合成数据。
+`500g/袋，20袋/箱` 是为覆盖规格与包材排版而补充的测试字段，不声称是生产真实配方。
+
+旧生成文件 `/private/tmp/pricing-review-2.xlsx` 以及格式参考文件
+`/private/tmp/pricing-reference-render/reference.xlsx` 仅作为视觉/字段参考，均为仓库外部临时路径，
+不纳入仓库；其中旧文件的字段与 fixture 不一致时，以已提交 fixture 和本报告明确的测试范围为准。
+导出始终通过正式 `PricingFileService`。
 
 ## POI 验收
 
