@@ -1,99 +1,53 @@
-# Task 1 Report: Pure H5 Mode and Stable Login
+# Task 1: Formal Pricing Workbook Layout Contract
 
-## Status
+## Scope
 
-DONE_WITH_CONCERNS
+- Added RED-phase tests for pricing workbooks with 2 and 25 materials.
+- Added `PricingWorkbookAssertions.assertFormalLayout(Workbook, int)` for later tasks to reuse.
+- Did not change production Java code, the Excel template, or exported workbook generation logic.
 
-## Changed Files
+## Files
 
-- `backend/src/main/resources/application.yml`
-- `backend/src/main/java/com/lhr/rnd/service/FeishuProperties.java`
-- `backend/src/main/java/com/lhr/rnd/service/FeishuIntegrationService.java`
-- `backend/src/test/java/com/lhr/rnd/api/AuthControllerTest.java`
-- `frontend/apps/mobile/src/router/index.ts`
-- `frontend/apps/mobile/src/views/LoginView.vue`
-- `frontend/apps/mobile/src/views/ProfileView.vue`
-- `frontend/scripts/check-api-contracts.mjs`
-- `scripts/print-lan-urls.mjs`
-- `.superpowers/sdd/task-1-report.md`
+- `backend/src/test/java/com/lhr/rnd/service/PricingFileServiceTest.java`
+- `backend/src/test/java/com/lhr/rnd/service/PricingWorkbookAssertions.java`
 
-`frontend/e2e/mobile-smoke.spec.ts` already had unrelated uncommitted changes at task start and was not changed or staged by this task.
+## Contract Covered
 
-## Red Test Evidence
+- Material rows begin at the template's first material row and remain consecutive.
+- The summary row follows the final material row and sums the dynamic material range.
+- Material borders and utilization-rate format (`0.00%`) are retained.
+- The title preserves a non-default template style.
+- The longest blank run between summary and packaging is at most four rows.
+- Packaging remains within an explicit print area, with print width fitted to one page.
+- A 25-material workbook must contain `SUM(G13:G37)` on its dynamic summary row.
 
-1. Added `webLoginWorksWhenFeishuIsDisabled` before production changes.
-2. Ran:
+## RED Verification
 
-   ```bash
-   cd backend
-   JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn -Dtest=AuthControllerTest#webLoginWorksWhenFeishuIsDisabled test
-   ```
-
-3. Observed the expected failure: OAuth returned `FEISHU_OAUTH_CODE_UNSUPPORTED`; the test expected `FEISHU_DISABLED`.
-4. Added H5 login contract assertions before changing the mobile page and router. Ran `cd frontend && pnpm run check:api-contracts`; it failed with `Mobile web login must hide Feishu entry points and collapse test helpers by default`.
-
-## Green Verification
-
-| Command | Result |
-| --- | --- |
-| `cd backend && JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn -Dtest=AuthControllerTest#webLoginWorksWhenFeishuIsDisabled test` | PASS: 1 test, 0 failures |
-| `cd backend && JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn -Dtest=AuthControllerTest test` | PASS: 3 tests, 0 failures |
-| `cd frontend && pnpm run check:api-contracts` | PASS |
-| `cd frontend && pnpm typecheck` | PASS: shared, PC, and mobile type checks |
-| `node scripts/print-lan-urls.mjs` | PASS: prints `http://lhrzp-macbook-air-3.local:5174/m/login` before IPv4 fallback |
-| In-app browser at `http://127.0.0.1:5174/m/login` | PASS: default account login reaches `/m/todo`; login page showed only account/password/login and collapsed `测试辅助` |
-
-## Required Playwright Command
-
-Ran:
+Command run from `backend`:
 
 ```bash
-cd frontend
-pnpm exec playwright test e2e/mobile-smoke.spec.ts --project=mobile-chromium --workers=1
+JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+  mvn -Dtest=PricingFileServiceTest test
 ```
 
-Result: blocked before any test page or assertion executed. All four tests failed while Playwright launched the system Chrome channel; Chrome exited with `SIGABRT` and Playwright reported `browserType.launch: Target page, context or browser has been closed`. Investigation confirmed the configured project explicitly uses `channel: "chrome"`, the Playwright cache only contains link metadata rather than an installed managed Chromium, and the existing local development server was not part of the command's startup. The successful in-app-browser verification above covers the H5 account-login path against the existing local service.
+Result: `BUILD FAILURE` as intended. The suite compiled and ran 3 tests; 2 failed and 0 errored.
 
-## Commit
+## Failure Evidence
 
-Implementation commit: `690269c feat: add pure H5 login mode`
+For the 2-material workbook, the reusable layout assertion reported these contract failures in the existing implementation:
 
-## Self-check and Remaining Concerns
+- Title cell style index is `0` instead of inheriting the template style.
+- Material rows 13 and 14 have no visible border.
+- Utilization-rate cells in rows 13 and 14 use `General`, not `0.00%`.
+- The expected dynamic summary row has no `总计` label or `SUM(G13:G14)` formula.
+- There are 34 consecutive blank rows between the expected summary and the packaging header.
+- The workbook has no explicit print area.
 
-- `rnd.feishu.enabled` defaults to `false` because `FeishuProperties` is bound at that existing prefix; OAuth short-circuits with `FEISHU_DISABLED`, and notification dispatch returns a zero-count result without calling an identity client.
-- The H5 route no longer promotes arbitrary `?code=` values to the callback route; the callback route remains available for direct compatibility access.
-- `print-lan-urls.mjs` now uses macOS `LocalHostName` when available, falling back to `os.hostname()` elsewhere, and prints IPv4 as a backup address.
-- The Playwright channel crash is an environment/tooling concern. It should be resolved by repairing the system Chrome channel or changing the test environment to an installed Playwright browser before relying on that command as a gate.
+For the 25-material workbook, the expected dynamic summary formula `SUM(G13:G37)` is absent because the existing implementation keeps the summary at its fixed row.
 
-## Review Follow-up Fix (2026-07-12)
+These are expected RED failures caused by the current fixed-layout production implementation, not test setup failures. No production implementation was added in this task.
 
-### Fixes Applied
+## Reference Inputs Reviewed
 
-- Removed the user-agent-dependent Feishu H5 SDK loader from `frontend/apps/mobile/index.html`. The pure H5 entry now has no external Feishu SDK request path.
-- Added an API-contract check that rejects `h5-js-sdk` and the external SDK host in the mobile entry HTML.
-- Set `rnd.feishu.enabled: true` explicitly in `backend/src/test/resources/application-test.yml` to preserve retained MOCK Feishu-flow tests, while `AuthControllerTest` explicitly sets `rnd.feishu.enabled=false` and `rnd.feishu.mode=OPENAPI`.
-- In the disabled OPENAPI test context, mocked `FeishuIdentityClientProvider` and asserted zero interactions after the OAuth callback returns `FEISHU_DISABLED`.
-- Updated the mobile smoke login contract to require username/password inputs and the login button, reject Feishu text, and require the test helper content to be collapsed by default.
-
-### Commit
-
-Fix commit: `a34d4b2 fix: complete pure H5 review follow-up`
-
-### Red Evidence
-
-| Command | Result |
-| --- | --- |
-| `cd frontend && pnpm run check:api-contracts` | FAIL before removal: `Pure H5 entry must not load the external Feishu SDK based on the user agent` |
-| `cd backend && JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn -Dtest=SessionAuthenticationInterceptorTest test` | FAIL before test-profile fix: 3 OAuth token assertions received `FEISHU_DISABLED` (expected 200) |
-
-### Verification
-
-| Command | Result |
-| --- | --- |
-| `cd frontend && pnpm run check:api-contracts` | PASS |
-| `cd frontend && pnpm typecheck` | PASS: shared, PC, and mobile type checks |
-| `cd backend && JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn -Dtest=AuthControllerTest,SessionAuthenticationInterceptorTest test` | PASS: 7 tests, 0 failures |
-| `cd backend && JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn test` | PASS: 118 tests, 0 failures |
-| `cd frontend && pnpm exec playwright test e2e/mobile-smoke.spec.ts --project=mobile-chromium --workers=1` | BLOCKED before assertions: configured system Chrome exits with `SIGABRT`; sandbox reports `kill EPERM` during cleanup |
-
-The Playwright failure is environmental: all four tests fail at `browserType.launch`, before navigation or any page assertion. It remains a verification limitation until the Chrome channel can run outside this sandbox or the project is configured with an installed Playwright browser.
+- Formal reference: `165g锋味黑椒烤烤肠（肉含量88%）（核价）-LHYC 原材料清单 2026.04.28(1).xlsx`
+- Current abnormal export: `500g香卤大肠头-LHYC（核价）原料清单A0 2026.07.13.xlsx`
