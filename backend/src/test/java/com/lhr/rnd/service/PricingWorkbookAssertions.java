@@ -368,13 +368,13 @@ final class PricingWorkbookAssertions {
         var area = new AreaReference(printArea, SpreadsheetVersion.EXCEL2007);
         softly.assertThat(area.getFirstCell().getCol())
                 .as("print area start column")
-                .isEqualTo(PRINT_AREA_START_COLUMN);
+                .isEqualTo((short) PRINT_AREA_START_COLUMN);
         softly.assertThat(area.getFirstCell().getRow())
                 .as("print area start row")
                 .isEqualTo(PRINT_AREA_START_ROW);
         softly.assertThat(area.getLastCell().getCol())
                 .as("print area end column")
-                .isEqualTo(templatePrintAreaLastColumnIndex);
+                .isEqualTo((short) templatePrintAreaLastColumnIndex);
         softly.assertThat(area.getLastCell().getRow())
                 .as("print area end row")
                 .isEqualTo(printAreaLastContentRowIndex);

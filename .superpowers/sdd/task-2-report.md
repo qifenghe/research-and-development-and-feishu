@@ -1,113 +1,52 @@
-# Task 2 Report: 实验单核价数据与产品负责人模型
+# Task 2: Formal Pricing Workbook Implementation Report
 
-## Status
+## Delivered
 
-Completed. V11 adds persisted product-owner and finished-output fields. The assignment API accepts an optional `productOwnerName`; blank or omitted values fall back to `assigneeName`. Experiment-draft output units fall back to `袋` when omitted.
+- Rebuilt `pricing-material-list-template.xlsx` as a de-identified formal pricing template. The reference workbook was reviewed for the formal form structure; the existing `A:K` compatibility layout was retained because the export contract and Task 1 assertions require material data to begin at Excel row 13.
+- Cleared the previous product title, product attributes, people, dates, material/package names, internal codes, weights, quantities, formulas, and workbook sheet name from the template while retaining headers, blank sample rows, column widths, row heights, merged regions, styles, and confidentiality statement.
+- Added dynamic layout calculation through package-visible `LayoutRows layoutRows(int materialCount)`. It reserves at least one material row, relocates the complete summary/packaging/footer structure, and rebuilds material/stage merges.
+- Added complete template-row copying for cell types, styles, formulas, comments, row height, and migrated merged regions. The implementation never removes template style cells.
+- Applied formal numeric formats through the template: weights `0.000`, utilization/yield `0.00%`, and package quantities `0`. Generated sheets set A4 portrait, fit-to-page, width 1, horizontal centering, hidden gridlines, and a dynamic `A1:K` print area ending at the confidentiality statement.
+- Corrected the Task 1 print-area assertion to compare POI column indexes as `short`, matching `AreaReference`'s API.
 
-## Red Evidence
+## Template De-identification Check
 
-Added `savesFinishedQuantityAndProductOwner` before production changes. It assigns `assigneeName="李研发"` with `productOwnerName="张研发"`, saves a draft with `finishedOutputWeightKg=8.5`, `finishedOutputQuantity=17`, and `finishedOutputUnit="袋"`, clears the experiment-form cache, and re-reads task detail.
+The generated template was inspected with Apache POI and its `xl/sharedStrings.xml` was scanned for former product/business values. The scan found no matches for old product name fragments, material-code prefixes, material names, weights, dates, or named personnel, including:
 
-Command:
-
-```bash
-cd backend
-JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn -Dtest=SampleWorkflowControllerTest#savesFinishedQuantityAndProductOwner test
+```text
+500g|香卤|大肠|YRP|FGT|TJJ|FXL|FYT|FBT|YSC|99999|100.000|2026.04.28|赵新武|黄丽金
 ```
 
-Observed RED result before implementation: `No value at JSON path "$.data.task.productOwnerName"`.
+The retained content is limited to form labels, blank styled sample rows, generic document controls, and the confidentiality statement.
 
-## Green Evidence
+## Verification
 
-The same focused controller test passed after implementation:
-
-```bash
-cd backend
-JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn -Dtest=SampleWorkflowControllerTest#savesFinishedQuantityAndProductOwner test
-```
-
-Final verification passed:
-
-```bash
-cd backend
-JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn -Dtest=SchemaMigrationTest,SampleWorkflowControllerTest test
-# Tests run: 58, Failures: 0, Errors: 0, Skipped: 0
-
-cd frontend
-pnpm --dir packages/shared typecheck
-# tsc --noEmit
-```
-
-The migration test confirmed Flyway applied V11. H2 exposes the Chinese default unit in `information_schema` as `U&'\\888b'`, which the schema assertion checks directly.
-
-## Changed Files
-
-- `backend/src/main/resources/db/migration/V11__extend_experiment_output_and_product_owner.sql`
-- `backend/src/main/java/com/lhr/rnd/api/AssignRndTaskRequest.java`
-- `backend/src/main/java/com/lhr/rnd/api/SampleWorkflowController.java`
-- `backend/src/main/java/com/lhr/rnd/api/SaveExperimentDraftRequest.java`
-- `backend/src/main/java/com/lhr/rnd/model/ExperimentForm.java`
-- `backend/src/main/java/com/lhr/rnd/model/RndTask.java`
-- `backend/src/main/java/com/lhr/rnd/persistence/entity/ExperimentFormEntity.java`
-- `backend/src/main/java/com/lhr/rnd/persistence/entity/RndTaskEntity.java`
-- `backend/src/main/java/com/lhr/rnd/service/SampleWorkflowService.java`
-- `backend/src/test/java/com/lhr/rnd/persistence/SchemaMigrationTest.java`
-- `backend/src/test/java/com/lhr/rnd/api/SampleWorkflowControllerTest.java`
-- `frontend/packages/shared/src/types/index.ts`
-- `frontend/packages/shared/src/api/task.ts`
-- `.superpowers/sdd/task-2-report.md`
-
-## Commit
-
-Task 2 implementation: `9686100 feat: persist experiment output and product owner`.
-
-## Self-Check
-
-- V11 backfills existing task product owners from `assignee_name`.
-- The three new values are mapped through API request, domain models, JPA entities, persistence, hydration, and shared TypeScript contracts.
-- Existing Java callers retain the three-argument `assignTask` overload and therefore default product owner to assignee.
-- Existing frontend callers retain the original three-argument `assign` signature; the optional product-owner argument is appended.
-- No H5 login or Feishu close-flow files were edited.
-
-## Concern
-
-No blocking concern. The schema-default assertion intentionally uses H2's Unicode literal representation, while the migration SQL and API value remain `袋`.
-
-## Review Follow-Up: Validation, Constraints, and Persistence Coverage
-
-### Red Evidence
-
-Added regression tests before the repair and ran:
+RED observed before implementation:
 
 ```bash
 cd backend
 JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
-  mvn -q -Dtest='SchemaMigrationTest#v11BackfillsProductOwnerAndEnforcesFinishedOutputConstraints,SampleWorkflowControllerTest#normalizesOmittedAndBlankFinishedOutputUnitsToBag+rejectsNonPositiveFinishedOutputQuantityAtServiceBoundary+rejectsUnsupportedFinishedOutputUnitAtServiceBoundary' test
+  mvn -q -Dtest=PricingFileServiceTest test
 ```
 
-Observed expected failures: blank `finishedOutputUnit` was rejected by DTO validation, direct service calls accepted zero quantity and `桶`, and V11 allowed a direct database update to quantity `0`.
+Result: expected failure, 3 tests failed because the former fixed-layout exporter lost template styles, left the packaging block fixed, and had no explicit print area.
 
-### Green Evidence
-
-- DTO accepts omitted, empty, and whitespace-only units; the service normalizes all to `袋`.
-- Service commands reject non-positive quantities and units outside `袋|盒|份|个|盘`.
-- V11 now enforces matching `CHECK` constraints while allowing a null quantity.
-- `savesFinishedQuantityAndProductOwner` clears both task and form caches before rereading persisted data.
-- A V10-to-V11 Flyway test verifies `product_owner_name` is backfilled from `assignee_name` and proves the database constraints reject invalid direct writes.
-
-### Final Verification
+GREEN verification:
 
 ```bash
 cd backend
 JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
-  mvn -Dtest=SchemaMigrationTest,SampleWorkflowControllerTest test
-# Tests run: 62, Failures: 0, Errors: 0, Skipped: 0
-
-cd frontend
-pnpm --dir packages/shared typecheck
-# tsc --noEmit
+  mvn -q -Dtest=PricingFileServiceTest test
 ```
 
-### Commit
+Result: PASS, 3 tests, 0 failures, 0 errors.
 
-Review follow-up repair: `c0a99c2 fix: enforce experiment output invariants`.
+Regression verification:
+
+```bash
+cd backend
+JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+  mvn -q -Dtest=PricingFileServiceTest,ReportExportControllerTest,SampleWorkflowControllerTest test
+```
+
+Result: PASS. `PricingFileServiceTest` 3/3, `ReportExportControllerTest` 2/2, and `SampleWorkflowControllerTest` 78/78; all had 0 failures and 0 errors.
