@@ -10,8 +10,8 @@ import type {
 export function createSettingsApi(client: ApiClient) {
   return {
     users: () => client.get<UserAccount[]>("/settings/users"),
-    saveUser: (feishuUserId: string, payload: Record<string, unknown>) =>
-      client.put<UserAccount>(`/settings/users/${feishuUserId}`, payload),
+    saveUser: (idOrUsername: string, payload: Record<string, unknown>) =>
+      client.put<UserAccount>(`/settings/users/${idOrUsername}`, payload),
     enableUser: (id: string) => client.post<UserAccount>(`/settings/users/${id}/enable`),
     disableUser: (id: string) => client.post<UserAccount>(`/settings/users/${id}/disable`),
     workflows: () => client.get<WorkflowConfig[]>("/settings/workflows"),

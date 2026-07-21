@@ -8,25 +8,10 @@
       <template v-else>
         <PageHeader :title="headerTitle" compact>
           <StatusBadge label="打样中" variant="success" />
-          <StatusBadge v-if="draftSaved" label="草稿已保存" variant="primary" style="margin-left:8px" />
+          <StatusBadge v-if="draftStatusLabel" :label="draftStatusLabel" variant="primary" style="margin-left:8px" />
         </PageHeader>
 
-        <section v-if="phase === 'mode'" class="mode-section">
-          <h1>选择本次打样方式</h1>
-          <p>工序固定时直接开始；需要调整工艺时先完成编排。</p>
-          <button class="mode-card mode-card--recommended" @click="startQuickMode">
-            <span class="mode-card__tag">推荐 · 操作最少</span>
-            <strong>快速打样</strong>
-            <small>使用系统推荐工序，直接逐步填写投入和产出数据。</small>
-          </button>
-          <button class="mode-card" @click="startArrangeMode">
-            <span class="mode-card__tag">灵活 · 先确认工艺</span>
-            <strong>编排后打样</strong>
-            <small>先调整工序顺序、名称和控制要点，再开始现场记录。</small>
-          </button>
-        </section>
-
-        <section v-else-if="phase === 'arrange'" class="content-section">
+        <section v-if="phase === 'arrange'" class="content-section">
           <div class="section-title">
             <div><h2>编排本次工序</h2><p>调整只影响当前样品版本。</p></div>
           </div>
@@ -48,21 +33,23 @@
             <van-field v-model="form.summary" rows="2" autosize type="textarea" label="实验摘要" placeholder="选填" :readonly="readOnly" />
           </section>
           <section class="form-section">
-            <div class="section-title"><div><h2>配方投入</h2><p>一个主料，可添加多个配料；利用率默认 100%。</p></div></div>
-            <div class="formula-summary"><span>总投入 {{ totalFormulaWeight.toFixed(3) }}kg</span><span>主料 {{ primaryMaterialName }}</span></div>
+            <div class="section-title"><div><h2>配方投入</h2><p>利用率默认 100%，主料可多选，也可按全部物料计算。</p></div></div>
+            <van-field label="得率计算"><template #input><van-radio-group v-model="yieldCalculationMode"><van-radio name="SELECTED_PRIMARY_MATERIALS">按所选主料</van-radio><van-radio name="TOTAL_PICKING_WEIGHT" style="margin-top:8px">按全部非包材物料</van-radio></van-radio-group></template></van-field>
+            <div class="formula-summary"><span>总投入 {{ totalFormulaWeight.toFixed(3) }}kg</span><span>得率基准 {{ yieldBasisWeight.toFixed(3) }}kg</span></div>
             <div v-for="(material,index) in materials" :key="index" class="material-row">
-              <van-field label="类型"><template #input><van-tag :type="material.primaryMaterial ? 'primary' : 'success'">{{ material.primaryMaterial ? "主料" : "配料" }}</van-tag><van-button v-if="!readOnly && !material.primaryMaterial" size="mini" plain type="primary" @click="setPrimaryMaterial(index)">设为主料</van-button></template></van-field>
+              <van-field label="类别"><template #input><van-radio-group v-model="material.materialCategory" direction="horizontal" :disabled="readOnly"><van-radio name="RAW">原料</van-radio><van-radio name="AUXILIARY">辅料</van-radio><van-radio name="PACKAGING">包材</van-radio></van-radio-group></template></van-field>
+              <van-field v-if="yieldCalculationMode === 'SELECTED_PRIMARY_MATERIALS' && material.materialCategory === 'RAW'" label="计入主料"><template #input><van-switch v-model="material.primaryMaterial" :disabled="readOnly" size="20" /></template></van-field>
               <van-field v-model="material.materialName" label="物料" placeholder="物料名称" :readonly="readOnly" />
               <van-field v-model="material.materialCode" label="ERP编码" placeholder="可选" :readonly="readOnly" />
               <van-field v-model="material.weightKg" label="重量" type="number" :readonly="readOnly"><template #button>kg</template></van-field>
               <van-field label="配方比例"><template #input>{{ formulaRatioAt(index).toFixed(2) }}%</template></van-field>
               <van-field v-model="material.utilizationRate" label="利用率" type="number" :readonly="readOnly"><template #button>%</template></van-field>
-              <van-button v-if="!readOnly && !material.primaryMaterial" size="mini" plain type="danger" @click="removeMaterial(index)">删除配料</van-button>
+              <van-button v-if="!readOnly && materials.length > 1" size="mini" plain type="danger" @click="removeMaterial(index)">删除物料</van-button>
             </div>
-            <van-button v-if="!readOnly" block plain type="primary" size="small" @click="addMaterial">+ 添加配料</van-button>
+            <van-button v-if="!readOnly" block plain type="primary" size="small" @click="addMaterial">+ 添加物料</van-button>
           </section>
           <section class="form-section">
-            <div v-if="!readOnly" class="execution-heading"><div><h2>关键工序</h2><span>{{ samplingModeLabel }} · 一次只填写一个工序</span></div><van-button size="small" plain @click="startArrangeMode">调整工序</van-button></div>
+            <div v-if="!readOnly" class="execution-heading"><div><h2>关键工序</h2><span>一次只填写一个工序</span></div><van-button size="small" plain @click="startArrangeMode">调整工序</van-button></div>
             <h2 v-else>关键工序</h2>
             <ProcessStepEditor v-model="processSteps" :mode="readOnly ? 'readonly' : 'execute'" :readonly="readOnly" :current-index="currentStepIndex" @previous="previousStep" @next="nextStep" />
           </section>
@@ -74,14 +61,13 @@
           </section>
           <section class="form-section pricing-preview">
             <h2>核价数据预览</h2>
-            <div v-for="(material,index) in materials" :key="`preview-${index}`" class="pricing-preview__material"><span>{{ material.primaryMaterial ? "主料" : "配料" }} {{ material.materialName || "未命名" }}</span><strong>{{ Number(material.weightKg || 0).toFixed(3) }}kg · {{ formulaRatioAt(index).toFixed(2) }}%</strong></div>
-            <div class="pricing-preview__grid"><span>总投入<strong>{{ pricingPreview.totalInputWeightKg.toFixed(3) }}kg</strong></span><span>成品重量<strong>{{ Number(form.finishedOutputWeightKg || 0).toFixed(3) }}kg</strong></span><span>成品数量<strong>{{ pricingPreview.referenceQuantity }}{{ form.finishedOutputUnit }}</strong></span><span>平均每{{ form.finishedOutputUnit }}重量<strong>{{ pricingPreview.averageUnitWeightKg.toFixed(3) }}kg</strong></span><span>主料得率<strong>{{ pricingPreview.primaryMaterialYieldPercent.toFixed(2) }}%</strong></span></div>
+            <div v-for="(material,index) in materials" :key="`preview-${index}`" class="pricing-preview__material"><span>{{ categoryLabel(material.materialCategory) }}{{ material.primaryMaterial ? " · 主料" : "" }} {{ material.materialName || "未命名" }}</span><strong>{{ Number(material.weightKg || 0).toFixed(3) }}kg · {{ formulaRatioAt(index).toFixed(2) }}%</strong></div>
+            <div class="pricing-preview__grid"><span>总投入<strong>{{ pricingPreview.totalInputWeightKg.toFixed(3) }}kg</strong></span><span>得率基准<strong>{{ pricingPreview.yieldBasisWeightKg.toFixed(3) }}kg</strong></span><span>成品重量<strong>{{ Number(form.finishedOutputWeightKg || 0).toFixed(3) }}kg</strong></span><span>成品数量<strong>{{ pricingPreview.referenceQuantity }}{{ form.finishedOutputUnit }}</strong></span><span>平均每{{ form.finishedOutputUnit }}重量<strong>{{ pricingPreview.averageUnitWeightKg.toFixed(3) }}kg</strong></span><span>研发参考得率<strong>{{ pricingPreview.yieldPercent.toFixed(2) }}%</strong></span></div>
           </section>
           <section class="form-section"><h2>照片附件</h2><van-uploader v-if="!readOnly" v-model="fileList" :after-read="afterRead" /></section>
         </section>
 
-        <FixedActionBar v-if="phase !== 'mode' && !loading" :with-tabbar="false">
-          <van-button v-if="phase === 'arrange'" block plain @click="phase='mode'">返回</van-button>
+        <FixedActionBar v-if="!loading" :with-tabbar="false">
           <van-button v-if="phase === 'arrange'" block type="primary" @click="confirmArrangement">确认并开始打样</van-button>
           <van-button v-if="phase !== 'arrange' && canSaveDraft" block plain type="primary" :loading="saving" @click="saveDraft">保存草稿</van-button>
           <van-button v-if="phase !== 'arrange' && canNotify" block type="primary" :loading="submitting" @click="notifyTest">通知测试</van-button>
@@ -92,11 +78,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { showFailToast, showSuccessToast } from "vant";
-import type { ExperimentMaterial, MaterialCategory, RndTaskDetailView } from "@rnd/shared";
-import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, formulaRatios, normalizePositiveIntegerQuantity } from "@rnd/shared";
+import type { ExperimentMaterial, MaterialCategory, RndTaskDetailView, YieldCalculationMode } from "@rnd/shared";
+import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, clearExperimentDraft, experimentDraftKey, formulaRatios, isCachedDraftNewer, normalizePositiveIntegerQuantity, readExperimentDraft, writeExperimentDraft, yieldBasisWeightKg } from "@rnd/shared";
 import PageHeader from "../components/PageHeader.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import FixedActionBar from "../components/FixedActionBar.vue";
@@ -105,7 +91,7 @@ import { blankProcessStep, fromProcessSteps, toProcessSteps, type EditableProces
 import { useAuthStore } from "../stores/auth";
 import { api } from "../services/api";
 
-type Phase = "mode" | "arrange" | "execute" | "readonly";
+type Phase = "arrange" | "execute" | "readonly";
 type EditableMaterial = {
   materialCategory: MaterialCategory;
   primaryMaterial: boolean;
@@ -126,8 +112,11 @@ const loadError=ref("");
 const saving=ref(false);
 const submitting=ref(false);
 const draftSaved=ref(false);
-const phase=ref<Phase>("mode");
-const samplingMode=ref<"quick"|"arrange">("quick");
+const draftSyncState=ref<"idle"|"local"|"syncing"|"saved"|"error">("idle");
+const phase=ref<Phase>("arrange");
+const yieldCalculationMode=ref<YieldCalculationMode>("SELECTED_PRIMARY_MATERIALS");
+const hydrated=ref(false);
+let autoSaveTimer:number|undefined;
 const currentStepIndex=ref(0);
 const fileList=ref<Array<{url?:string;file?:File}>>([]);
 const headerTitle=ref("实验单录入");
@@ -141,22 +130,20 @@ const blankMaterial=(primaryMaterial=false):EditableMaterial=>({
   utilizationRate:"100",
   remark:"",
 });
-const materials=ref<EditableMaterial[]>([blankMaterial(true)]);
+const materials=ref<EditableMaterial[]>([blankMaterial(false)]);
 const processSteps=ref<EditableProcessStep[]>([blankProcessStep()]);
 const form=reactive<{summary:string;finishedOutputWeightKg:string;finishedOutputQuantity:string;finishedOutputUnit:FinishedOutputUnit}>({summary:"",finishedOutputWeightKg:"",finishedOutputQuantity:"",finishedOutputUnit:"袋"});
 
 const canSaveDraft=computed(()=>detail.value?canEditExperiment(detail.value,auth.displayName,auth.role):false);
 const canNotify=computed(()=>detail.value?canNotifyInternalTest(detail.value,auth.displayName,auth.role):false);
 const readOnly=computed(()=>!canSaveDraft.value);
-const samplingModeLabel=computed(()=>samplingMode.value==="quick"?"快速打样":"编排后打样");
+const draftStatusLabel=computed(()=>({idle:"",local:"已本地保存",syncing:"正在自动保存",saved:"已自动保存",error:"网络异常，已本地保存"}[draftSyncState.value]));
 const formulaWeights=computed(()=>materials.value.map((item)=>Number(item.weightKg||0)));
 const formulaRatiosValue=computed(()=>formulaRatios(formulaWeights.value));
 const totalFormulaWeight=computed(()=>formulaWeights.value.reduce((sum,weight)=>sum+weight,0));
-const primaryMaterial=computed(()=>materials.value.find((item)=>item.primaryMaterial));
-const primaryMaterialName=computed(()=>primaryMaterial.value?.materialName?.trim()||"未选择");
-const primaryInputWeight=computed(()=>Number(primaryMaterial.value?.weightKg||0));
-const ingredientWeight=computed(()=>materials.value.filter((item)=>!item.primaryMaterial).reduce((sum,item)=>sum+Number(item.weightKg||0),0));
-const pricingPreview=computed(()=>calculatePricingPreview({primaryMaterialWeightKg:primaryInputWeight.value,ingredientWeightKg:ingredientWeight.value,finishedOutputWeightKg:Number(form.finishedOutputWeightKg||0),finishedOutputQuantity:Number(form.finishedOutputQuantity||0)}));
+const yieldBasisWeight=computed(()=>yieldBasisWeightKg(materials.value.map(item=>({weightKg:Number(item.weightKg||0),utilizationRatePercent:Number(item.utilizationRate||100),materialCategory:item.materialCategory,primaryMaterial:item.primaryMaterial})),yieldCalculationMode.value));
+const pricingPreview=computed(()=>calculatePricingPreview({totalInputWeightKg:totalFormulaWeight.value,yieldBasisWeightKg:yieldBasisWeight.value,finishedOutputWeightKg:Number(form.finishedOutputWeightKg||0),finishedOutputQuantity:Number(form.finishedOutputQuantity||0)}));
+const localDraftKey=computed(()=>experimentDraftKey(auth.principal?.userId||auth.user?.id||auth.displayName,String(route.params.id)));
 
 async function ensureAuthReady(){if(!auth.principal)await auth.fetchMe().catch(()=>undefined)}
 
@@ -169,11 +156,13 @@ function applyDetail(data:RndTaskDetailView){
     form.finishedOutputWeightKg=existing.finishedOutputWeightKg!=null?String(existing.finishedOutputWeightKg):"";
     form.finishedOutputQuantity=existing.finishedOutputQuantity!=null?String(existing.finishedOutputQuantity):"";
     form.finishedOutputUnit=(existing.finishedOutputUnit as FinishedOutputUnit)||"袋";
+    yieldCalculationMode.value=existing.yieldCalculationMode||"SELECTED_PRIMARY_MATERIALS";
     draftSaved.value=true;
     phase.value=readOnly.value?"readonly":"execute";
   }else if(readOnly.value){phase.value="readonly"}
+  else if(/酱汁|复合调味/.test(data.project?.productType||"")){yieldCalculationMode.value="TOTAL_PICKING_WEIGHT"}
   if(existing?.materials?.length){
-    const savedMaterials=existing.materials.filter(item=>(item.materialCategory??categoryFromStage(item.stage))!=="PACKAGING").map(item=>({
+    const savedMaterials=existing.materials.map(item=>({
     materialCategory:item.materialCategory??categoryFromStage(item.stage),
     primaryMaterial:item.primaryMaterial??false,
     materialCode:item.materialCode||"",
@@ -182,8 +171,7 @@ function applyDetail(data:RndTaskDetailView){
     utilizationRate:item.utilizationRate!=null?String(item.utilizationRate*100):"100",
     remark:item.remark||"",
     }));
-    const primaryIndex=savedMaterials.findIndex(item=>item.primaryMaterial);
-    materials.value=savedMaterials.length?savedMaterials.map((item,index)=>({...item,materialCategory:index===(primaryIndex>=0?primaryIndex:0)?"RAW":"AUXILIARY",primaryMaterial:index===(primaryIndex>=0?primaryIndex:0)})):[blankMaterial(true)];
+    materials.value=savedMaterials.length?savedMaterials:[blankMaterial(false)];
   }
   if(existing?.processSteps?.length)processSteps.value=fromProcessSteps(existing.processSteps);
 }
@@ -194,15 +182,15 @@ async function loadProcessTemplate(versionId:string){
 
 async function loadDetail(){
   loading.value=true;loadError.value="";
-  try{await ensureAuthReady();const data=await api.task.detail(String(route.params.id),auth.role,auth.displayName);applyDetail(data);if(!data.currentExperimentForm?.processSteps?.length&&!readOnly.value)await loadProcessTemplate(data.task.versionId)}
+  try{await ensureAuthReady();const data=await api.task.detail(String(route.params.id),auth.role,auth.displayName);applyDetail(data);if(!data.currentExperimentForm?.processSteps?.length&&!readOnly.value)await loadProcessTemplate(data.task.versionId);restoreLocalDraft(data.currentExperimentForm?.savedAt)}
   catch(error){loadError.value=error instanceof Error?error.message:"无法打开实验单"}
   finally{loading.value=false}
 }
 
-onMounted(loadDetail);
+onMounted(()=>{window.addEventListener("pagehide",persistLocalDraft);void loadDetail().finally(()=>{hydrated.value=true})});
+onBeforeUnmount(()=>{persistLocalDraft();window.removeEventListener("pagehide",persistLocalDraft);if(autoSaveTimer)window.clearTimeout(autoSaveTimer)});
 
-function startQuickMode(){samplingMode.value="quick";phase.value="execute";currentStepIndex.value=0}
-function startArrangeMode(){samplingMode.value="arrange";phase.value="arrange"}
+function startArrangeMode(){phase.value="arrange"}
 function confirmArrangement(){
   if(!processSteps.value.some(step=>step.processName.trim())){showFailToast("请至少填写一个工序");return}
   processSteps.value=processSteps.value.filter(step=>step.processName.trim());
@@ -211,13 +199,7 @@ function confirmArrangement(){
 function previousStep(){currentStepIndex.value=Math.max(0,currentStepIndex.value-1)}
 function nextStep(){currentStepIndex.value=Math.min(processSteps.value.length-1,currentStepIndex.value+1)}
 function addMaterial(){materials.value.push(blankMaterial())}
-function removeMaterial(index:number){if(!materials.value[index]||materials.value[index].primaryMaterial)return;materials.value.splice(index,1)}
-function setPrimaryMaterial(index:number){
-  if(readOnly.value)return;
-  const target=materials.value[index];
-  if(!target)return;
-  materials.value=materials.value.map((item,itemIndex)=>({...item,materialCategory:itemIndex===index?"RAW":"AUXILIARY",primaryMaterial:itemIndex===index}));
-}
+function removeMaterial(index:number){if(materials.value.length<=1)return;materials.value.splice(index,1)}
 
 function categoryFromStage(stage?:string):MaterialCategory{
   if(stage==="辅料"||stage==="AUXILIARY")return "AUXILIARY";
@@ -227,6 +209,7 @@ function categoryFromStage(stage?:string):MaterialCategory{
 
 function categoryLabel(category:MaterialCategory){
   if(category==="AUXILIARY")return "辅料";
+  if(category==="PACKAGING")return "包材";
   return "原料";
 }
 
@@ -234,7 +217,7 @@ function formulaRatioAt(index:number){
   return formulaRatiosValue.value[index]??0;
 }
 
-function buildMaterials():ExperimentMaterial[]{return materials.value.filter(item=>item.materialName.trim()).map((item,index)=>({stage:categoryLabel(item.materialCategory),sequence:index+1,materialCode:item.materialCode.trim()||undefined,materialName:item.materialName.trim(),weightKg:Number(item.weightKg||0),utilizationRate:Number(item.utilizationRate||100)/100,materialCategory:item.primaryMaterial?"RAW":"AUXILIARY",primaryMaterial:item.primaryMaterial,inputUnit:"kg",remark:item.remark.trim()||undefined}))}
+function buildMaterials():ExperimentMaterial[]{return materials.value.filter(item=>item.materialName.trim()).map((item,index)=>({stage:categoryLabel(item.materialCategory),sequence:index+1,materialCode:item.materialCode.trim()||undefined,materialName:item.materialName.trim(),weightKg:Number(item.weightKg||0),utilizationRate:Number(item.utilizationRate||100)/100,materialCategory:item.materialCategory,primaryMaterial:item.materialCategory==="RAW"&&item.primaryMaterial,inputUnit:"kg",remark:item.remark.trim()||undefined}))}
 
 function validateFinishedOutputQuantity(){
   const quantity=normalizePositiveIntegerQuantity(form.finishedOutputQuantity);
@@ -242,12 +225,44 @@ function validateFinishedOutputQuantity(){
   return quantity;
 }
 
-async function saveDraft(){
+function draftSnapshot(){return {phase:phase.value,yieldCalculationMode:yieldCalculationMode.value,currentStepIndex:currentStepIndex.value,form:{...form},materials:materials.value.map(item=>({...item})),processSteps:processSteps.value.map(item=>({...item}))}}
+function persistLocalDraft(){
+  if(!hydrated.value||readOnly.value)return;
+  writeExperimentDraft(localStorage,localDraftKey.value,draftSnapshot());
+  if(!["syncing","error"].includes(draftSyncState.value))draftSyncState.value="local";
+}
+function restoreLocalDraft(serverSavedAt?:string){
+  if(readOnly.value){clearExperimentDraft(localStorage,localDraftKey.value);return}
+  const cached=readExperimentDraft<ReturnType<typeof draftSnapshot>>(localStorage,localDraftKey.value);
+  if(!cached||!isCachedDraftNewer(cached.savedAt,serverSavedAt))return;
+  phase.value=cached.value.phase;
+  yieldCalculationMode.value=cached.value.yieldCalculationMode;
+  currentStepIndex.value=cached.value.currentStepIndex;
+  Object.assign(form,cached.value.form);
+  materials.value=cached.value.materials;
+  processSteps.value=cached.value.processSteps;
+  draftSyncState.value="local";
+}
+function scheduleAutoSave(){
+  if(!hydrated.value||readOnly.value)return;
+  persistLocalDraft();
+  if(autoSaveTimer)window.clearTimeout(autoSaveTimer);
+  autoSaveTimer=window.setTimeout(()=>void autoSave(),1500);
+}
+async function autoSave(){
+  if(!canSaveDraft.value)return;
+  await saveDraft({silent:true});
+}
+
+watch([form,materials,processSteps,yieldCalculationMode,phase],scheduleAutoSave,{deep:true});
+
+async function saveDraft(options:{silent?:boolean}={}){
   const finishedOutputQuantity=validateFinishedOutputQuantity();
   if(form.finishedOutputQuantity!==""&&finishedOutputQuantity===undefined)return;
   saving.value=true;
-  try{detail.value={...detail.value!,currentExperimentForm:await api.task.saveExperimentDraft(String(route.params.id),{operatorName:auth.displayName,summary:form.summary,materials:buildMaterials(),processSteps:toProcessSteps(processSteps.value),finishedOutputWeightKg:Number(form.finishedOutputWeightKg||0)||undefined,finishedOutputQuantity,finishedOutputUnit:form.finishedOutputUnit})};draftSaved.value=true;showSuccessToast("草稿已保存")}
-  catch(error){showFailToast(error instanceof Error?error.message:"保存失败")}
+  draftSyncState.value="syncing";
+  try{const saved=await api.task.saveExperimentDraft(String(route.params.id),{operatorName:auth.displayName,summary:form.summary,materials:buildMaterials(),processSteps:toProcessSteps(processSteps.value),finishedOutputWeightKg:Number(form.finishedOutputWeightKg||0)||undefined,finishedOutputQuantity,finishedOutputUnit:form.finishedOutputUnit,yieldCalculationMode:yieldCalculationMode.value});detail.value={...detail.value!,currentExperimentForm:saved};draftSaved.value=true;draftSyncState.value="saved";writeExperimentDraft(localStorage,localDraftKey.value,draftSnapshot(),saved.savedAt);if(!options.silent)showSuccessToast("草稿已保存");return true}
+  catch(error){draftSyncState.value="error";persistLocalDraft();if(!options.silent)showFailToast(error instanceof Error?error.message:"保存失败");return false}
   finally{saving.value=false}
 }
 
@@ -261,7 +276,7 @@ async function afterRead(item:{file?:File}|Array<{file?:File}>){
 }
 
 async function notifyTest(){
-  if(primaryInputWeight.value<=0){showFailToast("通知测试前请填写主料重量");return}
+  if(yieldBasisWeight.value<=0){showFailToast(yieldCalculationMode.value==="SELECTED_PRIMARY_MATERIALS"?"请至少选择一项有重量的主料":"请填写非包材物料重量");return}
   if(!processSteps.value.some(step=>step.processName.trim()&&Number(step.beforeWeightKg)>0)){showFailToast("通知测试前请至少完成一道有效工序");return}
   if(Number(form.finishedOutputWeightKg)<=0){showFailToast("通知测试前请填写成品重量");return}
   if(form.finishedOutputQuantity===""){showFailToast("通知测试前请填写成品数量");return}
@@ -270,7 +285,7 @@ async function notifyTest(){
   const experimentId=detail.value?.currentExperimentForm?.id;
   if(!experimentId){showFailToast("请先保存草稿");return}
   submitting.value=true;
-  try{await api.task.submitExperimentForTest(experimentId,auth.displayName);showSuccessToast("已通知内部测试");router.push("/todo")}
+  try{await api.task.submitExperimentForTest(experimentId,auth.displayName);hydrated.value=false;clearExperimentDraft(localStorage,localDraftKey.value);showSuccessToast("已通知内部测试");router.push("/todo")}
   catch(error){showFailToast(error instanceof Error?error.message:"提交失败")}
   finally{submitting.value=false}
 }

@@ -234,8 +234,9 @@ class SessionAuthenticationInterceptorTest {
     }
 
     @Test
-    void permitsDirectorToLoadTheShipmentListRequiredByTheH5TodoBoard() throws Exception {
+    void restrictsAccountManagementToSuperAdminsWhileAllowingDirectorAssigneeLookup() throws Exception {
         var directorToken = tokenFor("待办总监", "ou_todo_director", "RND_DIRECTOR");
+        var superAdminToken = tokenFor("超级管理员", "ou_todo_super_admin", "SYSTEM_ADMIN");
 
         mockMvc.perform(get("/api/v1/shipments")
                         .header("Authorization", "Bearer " + directorToken))
@@ -243,6 +244,15 @@ class SessionAuthenticationInterceptorTest {
 
         mockMvc.perform(get("/api/v1/settings/users")
                         .header("Authorization", "Bearer " + directorToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("SESSION_ROLE_FORBIDDEN"));
+
+        mockMvc.perform(get("/api/v1/rnd-assignees")
+                        .header("Authorization", "Bearer " + directorToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/settings/users")
+                        .header("Authorization", "Bearer " + superAdminToken))
                 .andExpect(status().isOk());
     }
 

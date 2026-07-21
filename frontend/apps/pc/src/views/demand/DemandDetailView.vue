@@ -13,7 +13,7 @@
         <a-descriptions-item label="规格">{{ detail.specification }}</a-descriptions-item>
         <a-descriptions-item label="应用场景">{{ detail.applicationScenario }}</a-descriptions-item>
         <a-descriptions-item label="风味要求">{{ detail.flavorRequirement }}</a-descriptions-item>
-        <a-descriptions-item label="创建人">{{ detail.creatorName }}</a-descriptions-item>
+        <a-descriptions-item label="申请人">{{ detail.creatorName }}</a-descriptions-item>
         <a-descriptions-item label="创建时间">{{ detail.createdAt }}</a-descriptions-item>
       </a-descriptions>
     </a-card>

@@ -496,7 +496,7 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
-    void rejectsExperimentDraftWithDuplicatedPrimaryMaterials() throws Exception {
+    void savesExperimentDraftWithMultiplePrimaryMaterials() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);
         acceptTask(taskId);
@@ -506,14 +506,42 @@ class SampleWorkflowControllerTest {
                         .content("""
                                 {
                                   "operatorName": "张研发",
+                                  "yieldCalculationMode": "SELECTED_PRIMARY_MATERIALS",
+                                  "finishedOutputWeightKg": 12,
                                   "materials": [
                                     {"stage":"原料","sequence":1,"materialName":"原料A","weightKg":10,"materialCategory":"RAW","primaryMaterial":true},
                                     {"stage":"原料","sequence":2,"materialName":"原料B","weightKg":5,"materialCategory":"RAW","primaryMaterial":true}
                                   ]
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("PRIMARY_MATERIAL_DUPLICATED"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.yieldCalculationMode").value("SELECTED_PRIMARY_MATERIALS"))
+                .andExpect(jsonPath("$.data.finishedYieldPercent").value(80.0));
+    }
+
+    @Test
+    void savesSauceDraftWithoutPrimaryMaterialUsingTotalPickingWeight() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "operatorName": "张研发",
+                                  "yieldCalculationMode": "TOTAL_PICKING_WEIGHT",
+                                  "finishedOutputWeightKg": 96,
+                                  "materials": [
+                                    {"stage":"原料","sequence":1,"materialName":"水","weightKg":100,"utilizationRate":1,"materialCategory":"RAW","primaryMaterial":false},
+                                    {"stage":"辅料","sequence":2,"materialName":"香辛料","weightKg":10,"utilizationRate":0.5,"materialCategory":"AUXILIARY","primaryMaterial":false},
+                                    {"stage":"包材","sequence":3,"materialName":"包装袋","weightKg":3,"utilizationRate":1,"materialCategory":"PACKAGING","primaryMaterial":false}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.yieldCalculationMode").value("TOTAL_PICKING_WEIGHT"))
+                .andExpect(jsonPath("$.data.finishedYieldPercent").value(80.0));
     }
 
     @Test
@@ -880,7 +908,7 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
-    void savingDraftRejectsPackagingMaterialPostedOutsideTheForm() throws Exception {
+    void savingDraftKeepsPackagingMaterialButExcludesItFromYield() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);
         acceptTask(taskId);
@@ -896,12 +924,12 @@ class SampleWorkflowControllerTest {
                                   ]
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("EXPERIMENT_MATERIAL_CATEGORY_INVALID"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.materials[1].materialCategory").value("PACKAGING"));
     }
 
     @Test
-    void savingDraftRejectsAdditionalRawMaterialPostedOutsideTheForm() throws Exception {
+    void savingDraftAllowsAdditionalRawMaterialWithoutMarkingItPrimary() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);
         acceptTask(taskId);
@@ -917,8 +945,9 @@ class SampleWorkflowControllerTest {
                                   ]
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("EXPERIMENT_MATERIAL_CATEGORY_INVALID"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.materials[1].materialCategory").value("RAW"))
+                .andExpect(jsonPath("$.data.materials[1].primaryMaterial").value(false));
     }
 
     @Test

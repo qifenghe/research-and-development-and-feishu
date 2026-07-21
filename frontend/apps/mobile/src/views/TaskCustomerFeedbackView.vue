@@ -86,11 +86,11 @@ const headerTitle = computed(() => {
 const shipmentRows = computed(() => {
   if (!shipment.value) return [];
   return [
-    { label: "产品", value: shipment.value.productName },
-    { label: "版本", value: shipment.value.versionCode },
+    { label: "产品", value: shipment.value.productName ?? "" },
+    { label: "版本", value: shipment.value.versionCode ?? "" },
     { label: "数量", value: String(shipment.value.quantity) },
-    { label: "收件人", value: shipment.value.receiverName },
-    { label: "快递单号", value: shipment.value.trackingNo },
+    { label: "收件人", value: shipment.value.receiverName ?? "" },
+    { label: "快递单号", value: shipment.value.trackingNo ?? "" },
   ];
 });
 

@@ -6,8 +6,10 @@ import {
   calculatePricingPreview,
   finishedYieldPercent,
   formulaRatios,
+  pickingWeightKg,
   processLoss,
   referenceQuantity,
+  yieldBasisWeightKg,
 } from "../packages/shared/src/experiment/calculations.ts";
 
 test("calculates formula ratios from actual weights", () => {
@@ -30,6 +32,8 @@ test("calculates a pricing preview for finished bags", () => {
     finishedOutputQuantity: 17,
   }), {
     totalInputWeightKg: 12,
+    yieldBasisWeightKg: 10,
+    yieldPercent: 85,
     primaryMaterialYieldPercent: 85,
     averageUnitWeightKg: 0.5,
     referenceQuantity: 17,
@@ -44,6 +48,8 @@ test("rounds pricing preview results without rounding input operands first", () 
     finishedOutputQuantity: 1,
   }), {
     totalInputWeightKg: 1,
+    yieldBasisWeightKg: 1,
+    yieldPercent: 100.004,
     primaryMaterialYieldPercent: 100.004,
     averageUnitWeightKg: 1,
     referenceQuantity: 1,
@@ -61,4 +67,41 @@ test("calculates process loss rate after residual material", () => {
 
 test("rejects process output plus residual beyond input", () => {
   assert.throws(() => processLoss(10, 9, 2), /出成与余料不能超过投入重量/);
+});
+
+test("calculates picking weight from utilization rate", () => {
+  assert.equal(pickingWeightKg(95, 95), 100);
+  assert.equal(pickingWeightKg(10, 100), 10);
+});
+
+test("uses all selected primary materials as the yield basis", () => {
+  assert.equal(yieldBasisWeightKg([
+    { weightKg: 95, utilizationRatePercent: 95, materialCategory: "RAW", primaryMaterial: true },
+    { weightKg: 50, utilizationRatePercent: 100, materialCategory: "RAW", primaryMaterial: true },
+    { weightKg: 5, utilizationRatePercent: 100, materialCategory: "AUXILIARY", primaryMaterial: false },
+  ], "SELECTED_PRIMARY_MATERIALS"), 150);
+});
+
+test("uses every non-packaging material for sauce yield", () => {
+  assert.equal(yieldBasisWeightKg([
+    { weightKg: 100, utilizationRatePercent: 100, materialCategory: "RAW", primaryMaterial: false },
+    { weightKg: 10, utilizationRatePercent: 50, materialCategory: "AUXILIARY", primaryMaterial: false },
+    { weightKg: 3, utilizationRatePercent: 100, materialCategory: "PACKAGING", primaryMaterial: false },
+  ], "TOTAL_PICKING_WEIGHT"), 120);
+});
+
+test("pricing preview accepts a generalized yield basis", () => {
+  assert.deepEqual(calculatePricingPreview({
+    totalInputWeightKg: 120,
+    yieldBasisWeightKg: 120,
+    finishedOutputWeightKg: 96,
+    finishedOutputQuantity: 96,
+  }), {
+    totalInputWeightKg: 120,
+    yieldBasisWeightKg: 120,
+    yieldPercent: 80,
+    primaryMaterialYieldPercent: 80,
+    averageUnitWeightKg: 1,
+    referenceQuantity: 96,
+  });
 });

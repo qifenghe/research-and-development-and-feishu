@@ -57,7 +57,7 @@ function filterEngineer(input: string, option?: { label: string; value: string }
 async function load() {
   loading.value = true;
   try {
-    const [pool, users] = await Promise.all([api.task.pool(), api.settings.users()]);
+    const [pool, users] = await Promise.all([api.task.pool(), api.task.assignees()]);
     rows.value = pool;
     engineerOptions.value = users
       .filter((user: UserAccount) => user.status === "ACTIVE" && isRndAssigneeRole(user.role))

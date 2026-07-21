@@ -56,7 +56,7 @@ export function createApiClient(options: ApiClientOptions) {
       return (await response.blob()) as T;
     }
 
-    const payload = (await response.json()) as ApiResponse<T>;
+    const payload = await parseApiResponse<T>(response);
     if (response.status === 403) {
       options.onForbidden?.();
       throw new ApiError(payload.message || "无权限访问", 403, payload.code);
@@ -86,3 +86,15 @@ export function createApiClient(options: ApiClientOptions) {
 }
 
 export type ApiClient = ReturnType<typeof createApiClient>;
+
+async function parseApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
+  try {
+    return (await response.json()) as ApiResponse<T>;
+  } catch {
+    return {
+      code: "INVALID_RESPONSE",
+      message: response.ok ? "接口响应格式不正确" : "接口请求失败，请稍后重试",
+      data: null as T,
+    };
+  }
+}

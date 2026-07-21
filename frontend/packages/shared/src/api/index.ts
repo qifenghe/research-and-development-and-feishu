@@ -4,6 +4,7 @@ import type {
   MobileTodoGroup,
   MobileTodoItem,
   PricingFileRecord,
+  PricingReadyVersion,
   RndTask,
   RndTaskStatus,
   ShipmentRecord,
@@ -16,6 +17,7 @@ import { createTaskApi } from "./task";
 import { createShipmentApi } from "./shipment";
 import { createSettingsApi } from "./settings";
 import { createReportApi } from "./report";
+import { pricingInboxStatusForRole, pricingTodoGroupTitle } from "./mobile-todo-policy";
 
 const TASK_GROUPS: Array<{ key: string; title: string; statuses: RndTaskStatus[] }> = [
   { key: "accept", title: "待接受任务", statuses: ["PENDING_ACCEPTANCE"] },
@@ -86,11 +88,25 @@ function pricingToItem(pricing: PricingFileRecord): MobileTodoItem {
   };
 }
 
+function pricingReadyToItem(version: PricingReadyVersion): MobileTodoItem {
+  return {
+    id: version.versionId,
+    kind: "pricing",
+    productName: version.productName,
+    versionCode: version.versionCode,
+    statusLabel: "测试已通过",
+    actionLabel: "生成核价",
+    route: `/pricing/create/${version.versionId}`,
+    subtitle: version.sampleNo,
+  };
+}
+
 export async function fetchMobileTodoBoard(deps: {
   role?: string | null;
   listTasks: (params: { status?: string }) => Promise<RndTask[]>;
   listShipments: (params: { status?: string }) => Promise<ShipmentRecord[]>;
   listPricingFiles: (params: { status?: string }) => Promise<PricingFileRecord[]>;
+  listPricingReadyVersions?: () => Promise<PricingReadyVersion[]>;
 }): Promise<MobileTodoBoard> {
   const role = deps.role ?? "";
   const canLoadShipments = role === "RND_ASSISTANT"
@@ -98,7 +114,7 @@ export async function fetchMobileTodoBoard(deps: {
   const canLoadPricing = canAccessRoute(role, "/pricing/PRICE-0001", "mobile");
 
   const visibleTaskGroups = taskGroupsForRole(role);
-  const [taskGroupsRaw, shipped, feedbackPassed, pricingGenerated] = await Promise.all([
+  const [taskGroupsRaw, shipped, feedbackPassed, pricingInbox, pricingReady] = await Promise.all([
     Promise.all(
       visibleTaskGroups.map(async ({ key, title, statuses }) => {
         const batches = await Promise.all(statuses.map((status) => deps.listTasks({ status })));
@@ -108,7 +124,12 @@ export async function fetchMobileTodoBoard(deps: {
     ),
     canLoadShipments ? deps.listShipments({ status: "SHIPPED" }) : Promise.resolve([]),
     canLoadShipments ? deps.listShipments({ status: "FEEDBACK_PASSED" }) : Promise.resolve([]),
-    canLoadPricing ? deps.listPricingFiles({ status: "GENERATED" }) : Promise.resolve([]),
+    canLoadPricing
+      ? deps.listPricingFiles({ status: pricingInboxStatusForRole(role) })
+      : Promise.resolve([]),
+    role === "RND_ASSISTANT" && deps.listPricingReadyVersions
+      ? deps.listPricingReadyVersions()
+      : Promise.resolve([]),
   ]);
 
   const shipmentFeedbackGroup: MobileTodoGroup = {
@@ -117,18 +138,29 @@ export async function fetchMobileTodoBoard(deps: {
     items: shipped.map((s) => shipmentToItem(s, "登记反馈")),
   };
 
-  const pricingPending = feedbackPassed.filter(
-    (shipment) => !pricingGenerated.some((file) => file.versionId === shipment.versionId),
-  );
+  const legacyPricingReady = feedbackPassed
+    .filter((shipment) => !pricingInbox.some((file) => file.versionId === shipment.versionId))
+    .map((shipment) => ({
+      versionId: shipment.versionId,
+      sampleNo: shipment.sampleNo,
+      productName: shipment.productName,
+      versionCode: shipment.versionCode,
+    }));
+  const resolvedPricingReady = pricingReady.length > 0 ? pricingReady : legacyPricingReady;
   const pricingGroup: MobileTodoGroup = {
     key: "pricing",
-    title: role === "FINANCE" ? "核价文件" : "待生成核价",
+    title: pricingTodoGroupTitle(role),
     items: role === "FINANCE"
-      ? pricingGenerated.map(pricingToItem)
-      : pricingPending.map((s) => shipmentToItem(s, "生成核价")),
+      ? pricingInbox.map(pricingToItem)
+      : resolvedPricingReady.map(pricingReadyToItem),
+  };
+  const notifyFinanceGroup: MobileTodoGroup = {
+    key: "pricing-notify",
+    title: "待通知财务",
+    items: role === "RND_ASSISTANT" ? pricingInbox.map(pricingToItem) : [],
   };
 
-  const groups = [...taskGroupsRaw, shipmentFeedbackGroup, pricingGroup]
+  const groups = [...taskGroupsRaw, shipmentFeedbackGroup, pricingGroup, notifyFinanceGroup]
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => canAccessRoute(role, item.route, "mobile")),

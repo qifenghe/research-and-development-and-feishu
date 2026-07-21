@@ -50,6 +50,9 @@ public class ExperimentFormEntity {
     @Column(name = "finished_output_unit", nullable = false)
     private String finishedOutputUnit;
 
+    @Column(name = "yield_calculation_mode", nullable = false)
+    private String yieldCalculationMode;
+
     @Column(name = "finished_yield_percent")
     private BigDecimal finishedYieldPercent;
 
@@ -76,6 +79,7 @@ public class ExperimentFormEntity {
             BigDecimal finishedOutputWeightKg,
             Integer finishedOutputQuantity,
             String finishedOutputUnit,
+            String yieldCalculationMode,
             BigDecimal finishedYieldPercent,
             LocalDateTime savedAt,
             LocalDateTime submittedAt
@@ -93,6 +97,7 @@ public class ExperimentFormEntity {
         this.finishedOutputWeightKg = finishedOutputWeightKg;
         this.finishedOutputQuantity = finishedOutputQuantity;
         this.finishedOutputUnit = finishedOutputUnit;
+        this.yieldCalculationMode = yieldCalculationMode;
         this.finishedYieldPercent = finishedYieldPercent;
         this.savedAt = savedAt;
         this.submittedAt = submittedAt;
@@ -157,6 +162,10 @@ public class ExperimentFormEntity {
 
     public String getFinishedOutputUnit() {
         return finishedOutputUnit;
+    }
+
+    public String getYieldCalculationMode() {
+        return yieldCalculationMode;
     }
 
     public BigDecimal getFinishedYieldPercent() {

@@ -40,6 +40,7 @@ import com.lhr.rnd.model.StoppedSampleProjectView;
 import com.lhr.rnd.model.TestAssignment;
 import com.lhr.rnd.model.TestAssignmentStatus;
 import com.lhr.rnd.model.TestRecord;
+import com.lhr.rnd.model.YieldCalculationMode;
 import com.lhr.rnd.persistence.entity.ArchiveFileEntity;
 import com.lhr.rnd.persistence.entity.CustomerFeedbackEntity;
 import com.lhr.rnd.persistence.entity.ExperimentFormEntity;
@@ -404,20 +405,18 @@ public class SampleWorkflowService {
         var existing = currentExperimentForm(command.taskId(), task.versionId());
         var id = existing == null ? nextExperimentFormId() : existing.id();
         var materials = normalizeExperimentMaterials(command.materials());
-        validatePrimaryMaterial(materials);
+        validateExperimentMaterials(materials);
         materials = recalculateFormulaRatios(materials);
         var processSteps = recalculateProcessLosses(command.processSteps());
         var finishedOutputUnit = normalizeFinishedOutputUnit(command.finishedOutputUnit());
         var finishedOutputQuantity = normalizeFinishedOutputQuantity(command.finishedOutputQuantity());
         validateFinishedOutput(finishedOutputQuantity, finishedOutputUnit);
-        var primaryInput = materials.stream()
-                .filter(ExperimentMaterial::primaryMaterial)
-                .map(ExperimentMaterial::weightKg)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .orElse(null);
+        var yieldCalculationMode = command.yieldCalculationMode() == null
+                ? YieldCalculationMode.SELECTED_PRIMARY_MATERIALS
+                : command.yieldCalculationMode();
+        var yieldBasisWeight = experimentCalculationService.yieldBasisWeight(materials, yieldCalculationMode);
         var finishedYieldPercent = experimentCalculationService.finishedYield(
-                command.finishedOutputWeightKg(), primaryInput);
+                command.finishedOutputWeightKg(), yieldBasisWeight);
         var draft = new ExperimentForm(
                 id,
                 task.id(),
@@ -434,6 +433,7 @@ public class SampleWorkflowService {
                 command.finishedOutputWeightKg(),
                 finishedOutputQuantity,
                 finishedOutputUnit,
+                yieldCalculationMode,
                 finishedYieldPercent,
                 now(),
                 null
@@ -1261,6 +1261,9 @@ public class SampleWorkflowService {
                 entity.getFinishedOutputWeightKg(),
                 entity.getFinishedOutputQuantity(),
                 normalizeFinishedOutputUnit(entity.getFinishedOutputUnit()),
+                entity.getYieldCalculationMode() == null
+                        ? YieldCalculationMode.SELECTED_PRIMARY_MATERIALS
+                        : YieldCalculationMode.valueOf(entity.getYieldCalculationMode()),
                 entity.getFinishedYieldPercent(),
                 entity.getSavedAt(),
                 entity.getSubmittedAt()
@@ -1672,7 +1675,11 @@ public class SampleWorkflowService {
         var customerName = projects.containsKey(version.projectId())
                 ? projects.get(version.projectId()).customerName()
                 : "LHYC";
-        var generated = pricingFileService.generate(versionWithMaterials, pricingVersionNo, customerName);
+        var generated = pricingFileService.generate(
+                versionWithMaterials,
+                pricingVersionNo,
+                customerName,
+                lockedForm.yieldCalculationMode());
         var record = new PricingFileRecord(
                 "PRICE-%04d".formatted(pricingFileSequence++),
                 version.id(),
@@ -2206,39 +2213,41 @@ public class SampleWorkflowService {
                 .toList();
     }
 
-    private void validatePrimaryMaterial(List<ExperimentMaterial> materials) {
+    private void validateExperimentMaterials(List<ExperimentMaterial> materials) {
         var primary = materials.stream().filter(ExperimentMaterial::primaryMaterial).toList();
-        if (primary.size() > 1) {
-            throw new BusinessException("PRIMARY_MATERIAL_DUPLICATED", "只能指定一个主原料");
-        }
         if (primary.stream().anyMatch(material -> "PACKAGING".equals(material.materialCategory()))) {
             throw new BusinessException("PRIMARY_MATERIAL_INVALID", "包材不能设为主原料");
         }
         if (primary.stream().anyMatch(material -> !"RAW".equals(material.materialCategory()))) {
             throw new BusinessException("PRIMARY_MATERIAL_INVALID", "主原料必须为原料");
         }
-        if (materials.stream().anyMatch(material -> "PACKAGING".equals(material.materialCategory())
-                || (!material.primaryMaterial() && !"AUXILIARY".equals(material.materialCategory())))) {
-            throw new BusinessException("EXPERIMENT_MATERIAL_CATEGORY_INVALID", "实验配方只允许一个主原料和辅料");
+        if (materials.stream().anyMatch(material -> !List.of("RAW", "AUXILIARY", "PACKAGING")
+                .contains(material.materialCategory()))) {
+            throw new BusinessException("EXPERIMENT_MATERIAL_CATEGORY_INVALID", "物料类别只允许原料、辅料或包材");
         }
     }
 
-    private void validateSubmittablePrimaryMaterial(List<ExperimentMaterial> materials) {
-        validatePrimaryMaterial(materials);
-        var primary = materials.stream().filter(ExperimentMaterial::primaryMaterial).toList();
-        if (primary.isEmpty()) {
-            throw new BusinessException("PRIMARY_MATERIAL_REQUIRED", "提交内部测试前必须指定一个主原料");
+    private void validateSubmittableYieldBasis(ExperimentForm form) {
+        validateExperimentMaterials(form.materials());
+        var mode = form.yieldCalculationMode() == null
+                ? YieldCalculationMode.SELECTED_PRIMARY_MATERIALS
+                : form.yieldCalculationMode();
+        if (mode == YieldCalculationMode.SELECTED_PRIMARY_MATERIALS
+                && form.materials().stream().noneMatch(ExperimentMaterial::primaryMaterial)) {
+            throw new BusinessException("PRIMARY_MATERIAL_REQUIRED", "按主料计算得率时至少需要选择一项主料");
         }
-        if (primary.size() > 1) {
-            throw new BusinessException("PRIMARY_MATERIAL_DUPLICATED", "只能指定一个主原料");
+        if (mode == YieldCalculationMode.SELECTED_PRIMARY_MATERIALS
+                && experimentCalculationService.yieldBasisWeight(form.materials(), mode).signum() <= 0) {
+            throw new BusinessException("PRIMARY_MATERIAL_WEIGHT_REQUIRED", "提交内部测试前主料领料重量必须大于 0");
         }
-        if (primary.get(0).weightKg() == null || primary.get(0).weightKg().signum() <= 0) {
-            throw new BusinessException("PRIMARY_MATERIAL_WEIGHT_REQUIRED", "提交内部测试前主料重量必须大于 0");
+        if (mode == YieldCalculationMode.TOTAL_PICKING_WEIGHT
+                && experimentCalculationService.yieldBasisWeight(form.materials(), mode).signum() <= 0) {
+            throw new BusinessException("YIELD_BASIS_WEIGHT_REQUIRED", "提交内部测试前得率基准重量必须大于 0");
         }
     }
 
     private void validateSubmittableExperiment(ExperimentForm form) {
-        validateSubmittablePrimaryMaterial(form.materials());
+        validateSubmittableYieldBasis(form);
         if (form.processSteps() == null || form.processSteps().stream()
                 .noneMatch(step -> step.processName() != null
                         && !step.processName().isBlank()
@@ -2339,6 +2348,7 @@ public class SampleWorkflowService {
                 draft.finishedOutputWeightKg(),
                 draft.finishedOutputQuantity(),
                 draft.finishedOutputUnit(),
+                draft.yieldCalculationMode().name(),
                 draft.finishedYieldPercent(),
                 draft.savedAt(),
                 draft.submittedAt()
@@ -2983,8 +2993,25 @@ public class SampleWorkflowService {
             BigDecimal finishedOutputWeightKg,
             BigDecimal finishedOutputQuantity,
             String finishedOutputUnit,
-            BigDecimal finishedYieldPercent
+            BigDecimal finishedYieldPercent,
+            YieldCalculationMode yieldCalculationMode
     ) {
+        public SaveExperimentDraftCommand(
+                String taskId,
+                String operatorName,
+                String summary,
+                List<ExperimentMaterial> materials,
+                List<ExperimentProcessStep> processSteps,
+                BigDecimal finishedOutputWeightKg,
+                BigDecimal finishedOutputQuantity,
+                String finishedOutputUnit,
+                BigDecimal finishedYieldPercent
+        ) {
+            this(taskId, operatorName, summary, materials, processSteps, finishedOutputWeightKg,
+                    finishedOutputQuantity, finishedOutputUnit, finishedYieldPercent,
+                    YieldCalculationMode.SELECTED_PRIMARY_MATERIALS);
+        }
+
         public SaveExperimentDraftCommand(
                 String taskId,
                 String operatorName,
@@ -2992,7 +3019,8 @@ public class SampleWorkflowService {
                 List<ExperimentMaterial> materials,
                 List<ExperimentProcessStep> processSteps
         ) {
-            this(taskId, operatorName, summary, materials, processSteps, null, null, null, null);
+            this(taskId, operatorName, summary, materials, processSteps, null, null, null, null,
+                    YieldCalculationMode.SELECTED_PRIMARY_MATERIALS);
         }
     }
 

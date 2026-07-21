@@ -27,16 +27,19 @@ public class UserSettingsController {
         return ApiResponse.success(userSettingsService.users());
     }
 
-    @PutMapping("/{feishuUserId}")
+    @PutMapping("/{idOrFeishuUserId}")
     public ApiResponse<UserAccount> saveUser(
-            @PathVariable String feishuUserId,
+            @PathVariable String idOrFeishuUserId,
             @Valid @RequestBody SaveUserSettingsRequest request
     ) {
         return ApiResponse.success(userSettingsService.saveUser(new UserSettingsService.SaveUserCommand(
-                feishuUserId,
+                idOrFeishuUserId,
+                request.username(),
                 request.name(),
+                request.feishuUserId(),
                 request.role(),
-                request.departmentName()
+                request.departmentName(),
+                request.password()
         )));
     }
 

@@ -49,7 +49,7 @@ const fieldColumns = [
 async function openEdit(record: FormFieldConfig & { fieldCount: number }) {
   editingCode.value = record.formCode;
   const detail = await api.settings.formField(record.formCode);
-  editFields.value = (detail.fields ?? []) as Array<Record<string, unknown>>;
+  editFields.value = (detail.fields ?? []) as unknown as Array<Record<string, unknown>>;
   editOpen.value = true;
 }
 

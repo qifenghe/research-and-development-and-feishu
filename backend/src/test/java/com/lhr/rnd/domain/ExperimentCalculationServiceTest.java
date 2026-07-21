@@ -1,8 +1,11 @@
 package com.lhr.rnd.domain;
 
+import com.lhr.rnd.model.ExperimentMaterial;
+import com.lhr.rnd.model.YieldCalculationMode;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -150,5 +153,48 @@ class ExperimentCalculationServiceTest {
                 new BigDecimal("2")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Output plus residual weight cannot exceed input weight");
+    }
+
+    @Test
+    void calculatesYieldBasisFromMultipleSelectedPrimaryPickingWeights() {
+        var materials = List.of(
+                material("猪肉", "RAW", true, "95", "0.95"),
+                material("鸡肉", "RAW", true, "50", "1"),
+                material("盐", "AUXILIARY", false, "5", "1"));
+
+        assertThat(service.yieldBasisWeight(materials, YieldCalculationMode.SELECTED_PRIMARY_MATERIALS))
+                .isEqualByComparingTo("150.000000");
+    }
+
+    @Test
+    void calculatesSauceYieldBasisFromAllNonPackagingPickingWeights() {
+        var materials = List.of(
+                material("水", "RAW", false, "100", "1"),
+                material("香辛料", "AUXILIARY", false, "10", "0.5"),
+                material("包装袋", "PACKAGING", false, "3", "1"));
+
+        assertThat(service.yieldBasisWeight(materials, YieldCalculationMode.TOTAL_PICKING_WEIGHT))
+                .isEqualByComparingTo("120.000000");
+    }
+
+    private ExperimentMaterial material(
+            String name,
+            String category,
+            boolean primary,
+            String weight,
+            String utilizationRate
+    ) {
+        return new ExperimentMaterial(
+                category,
+                1,
+                null,
+                name,
+                new BigDecimal(weight),
+                new BigDecimal(utilizationRate),
+                null,
+                category,
+                primary,
+                null,
+                "kg");
     }
 }

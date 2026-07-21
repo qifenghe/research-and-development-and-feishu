@@ -58,9 +58,12 @@
             <a-menu-item v-if="canSee('/finance')" key="/finance">通知财务</a-menu-item>
             <a-menu-item v-if="canSee('/archive')" key="/archive">文件归档</a-menu-item>
           </a-sub-menu>
+          <a-menu-item v-if="canSee('/reports')" key="/reports">
+            <span>报表导出</span>
+          </a-menu-item>
           <a-sub-menu v-if="canSee('/settings')" key="settings" title="系统设置">
             <a-menu-item key="/settings">配置中心</a-menu-item>
-            <a-menu-item key="/settings/users">人员权限</a-menu-item>
+            <a-menu-item key="/settings/users">账号与权限</a-menu-item>
             <a-menu-item key="/settings/form-fields">表单字段</a-menu-item>
             <a-menu-item key="/settings/workflows">流程状态</a-menu-item>
             <a-menu-item key="/settings/dictionaries">基础字典</a-menu-item>

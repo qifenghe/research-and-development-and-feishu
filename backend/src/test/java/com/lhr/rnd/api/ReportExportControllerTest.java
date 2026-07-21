@@ -91,7 +91,7 @@ class ReportExportControllerTest {
             var sheet = workbook.getSheetAt(0);
             assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).isEqualTo("打样实验单");
             assertThat(sheet.getRow(2).getCell(1).getStringCellValue()).isEqualTo("500g香卤大肠头");
-            assertThat(sheet.getRow(6).getCell(3).getStringCellValue()).isEqualTo("80%");
+            assertThat(sheet.getRow(6).getCell(3).getStringCellValue()).isEqualTo("76%");
             assertThat(sheet.getRow(9).getCell(0).getStringCellValue()).isEqualTo("原料");
             assertThat(sheet.getRow(9).getCell(1).getStringCellValue()).isEqualTo("是");
             assertThat(sheet.getRow(9).getCell(4).getStringCellValue()).isEqualTo("冻猪大肠头（预煮）");

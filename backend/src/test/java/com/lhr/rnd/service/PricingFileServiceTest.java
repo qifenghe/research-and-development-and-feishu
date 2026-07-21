@@ -2,6 +2,7 @@ package com.lhr.rnd.service;
 
 import com.lhr.rnd.model.ExperimentMaterial;
 import com.lhr.rnd.model.SampleVersion;
+import com.lhr.rnd.model.YieldCalculationMode;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
@@ -43,6 +44,42 @@ class PricingFileServiceTest {
     }
 
     @Test
+    void usesAllSelectedPrimaryPickingWeightsForYieldFormula() throws Exception {
+        var version = pricingVersionWithCustomMaterials(List.of(
+                material("猪肉", "RAW", true, "100"),
+                material("鸡肉", "RAW", true, "50"),
+                material("盐", "AUXILIARY", false, "5")));
+
+        var result = new PricingFileService().generate(
+                version, "V1", "LHYC", YieldCalculationMode.SELECTED_PRIMARY_MATERIALS);
+
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getRow(17).getCell(3).getStringCellValue()).isEqualTo("研发部参考得率(%)");
+            assertThat(sheet.getRow(17).getCell(6).getCellFormula()).isEqualTo("G17/SUM(I13,I14)");
+        }
+    }
+
+    @Test
+    void usesAllNonPackagingPickingWeightsForSauceYieldFormula() throws Exception {
+        var version = pricingVersionWithCustomMaterials("Y03006 1kg吮指五香味酱汁", "酱汁", List.of(
+                material("水", "RAW", false, "100"),
+                material("包装袋", "PACKAGING", false, "3"),
+                material("香辛料", "AUXILIARY", false, "10")));
+
+        var result = new PricingFileService().generate(
+                version, "V1", "LHYC", YieldCalculationMode.TOTAL_PICKING_WEIGHT);
+
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
+            assertThat(workbook.getSheetAt(0).getRow(17).getCell(6).getCellFormula())
+                    .isEqualTo("G17/SUM(I13,I15)");
+        }
+        var reviewDirectory = Path.of("target", "pricing-format-review");
+        Files.createDirectories(reviewDirectory);
+        Files.write(reviewDirectory.resolve("Y03006-1kg吮指五香味酱汁-A1-核价验证.xlsx"), result.content());
+    }
+
+    @Test
     void generatesFormalLayoutForTwentyFiveMaterials() throws Exception {
         var service = new PricingFileService();
         var result = service.generate(pricingVersionWithMaterials(25), "V1", "LHYC");
@@ -60,7 +97,7 @@ class PricingFileServiceTest {
             var sheet = workbook.getSheetAt(0);
             assertThat(sheet.getRow(2).getCell(3).getStringCellValue()).isEqualTo("清炖牛腩-LHYC（核价）");
             assertThat(sheet.getRow(14).getCell(3).getStringCellValue()).isEqualTo("研发部参考出成(kg）");
-            assertThat(sheet.getRow(15).getCell(3).getStringCellValue()).isEqualTo("原料得率（%）");
+            assertThat(sheet.getRow(15).getCell(3).getStringCellValue()).isEqualTo("研发部参考得率(%)");
 
             var formatter = new DataFormatter();
             for (var row : sheet) {
@@ -224,6 +261,32 @@ class PricingFileServiceTest {
                 .unitWeightKg(new BigDecimal("0.5"))
                 .materials(materials(materialCount))
                 .build();
+    }
+
+    private SampleVersion pricingVersionWithCustomMaterials(List<ExperimentMaterial> materials) {
+        return pricingVersionWithCustomMaterials("核价公式测试", "研发样品", materials);
+    }
+
+    private SampleVersion pricingVersionWithCustomMaterials(
+            String productName,
+            String productType,
+            List<ExperimentMaterial> materials
+    ) {
+        return SampleVersion.builder()
+                .sampleNo("YP202607130002")
+                .productName(productName)
+                .productType(productType)
+                .specification("1kg/袋")
+                .versionNo("A0")
+                .referenceOutputKg(new BigDecimal("100"))
+                .unitWeightKg(BigDecimal.ONE)
+                .materials(materials)
+                .build();
+    }
+
+    private ExperimentMaterial material(String name, String category, boolean primary, String weight) {
+        return new ExperimentMaterial(category, 1, null, name, new BigDecimal(weight), BigDecimal.ONE,
+                null, category, primary, null, "kg");
     }
 
     private SampleVersion sanitizedPricingVersion() {

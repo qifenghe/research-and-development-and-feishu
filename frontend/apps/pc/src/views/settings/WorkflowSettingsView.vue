@@ -144,7 +144,7 @@ function addRule() {
 async function openEdit(record: WorkflowRow) {
   editingCode.value = record.workflowCode;
   const detail = await api.settings.workflow(record.workflowCode);
-  editRules.value = (detail.rules ?? []).map((rule: Record<string, unknown>) => ({
+  editRules.value = ((detail.rules ?? []) as unknown as Array<Record<string, unknown>>).map((rule) => ({
     currentStatus: String(rule.currentStatus ?? rule.fromStatus ?? ""),
     actionCode: String(rule.actionCode ?? ""),
     actionLabel: String(rule.actionLabel ?? ""),

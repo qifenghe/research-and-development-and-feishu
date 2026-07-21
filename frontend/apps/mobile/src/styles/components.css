@@ -10,6 +10,21 @@ body {
   overflow-x: hidden;
 }
 
+.hero-card,
+.task-card--link,
+.role-entry-card {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .hero-card:focus:not(:focus-visible),
+  .task-card--link:focus:not(:focus-visible),
+  .role-entry-card:focus:not(:focus-visible) {
+    outline: none;
+  }
+}
+
 #app {
   min-width: 0;
 }

@@ -101,7 +101,7 @@ async function load() {
   try {
     const [pool, users] = await Promise.all([
       api.task.list({ status: "PENDING_ASSIGNMENT" }) as Promise<RndTask[]>,
-      api.settings.users(),
+      api.task.assignees(),
     ]);
     rows.value = pool;
     engineerColumns.value = users

@@ -92,6 +92,7 @@ class SchemaMigrationTest {
         assertColumnExists("experiment_form", "finished_output_quantity");
         assertColumnExists("experiment_form", "finished_output_unit");
         assertColumnExists("experiment_form", "finished_yield_percent");
+        assertColumnExists("experiment_form", "yield_calculation_mode");
         assertColumnExists("rnd_task", "product_owner_name");
         assertColumnExists("pricing_file", "received_by");
         assertColumnExists("pricing_file", "received_at");
@@ -109,6 +110,7 @@ class SchemaMigrationTest {
         assertNumericColumn("experiment_form", "finished_output_weight_kg", 14, 4);
         assertColumnDefinition("experiment_form", "finished_output_unit", false, "U&'\\888b'");
         assertNumericColumn("experiment_form", "finished_yield_percent", 10, 6);
+        assertColumnDefinition("experiment_form", "yield_calculation_mode", false, "'SELECTED_PRIMARY_MATERIALS'");
     }
 
     @Test

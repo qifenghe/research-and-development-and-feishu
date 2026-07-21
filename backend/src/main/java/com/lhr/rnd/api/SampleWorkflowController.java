@@ -173,7 +173,8 @@ public class SampleWorkflowController {
                 request.finishedOutputWeightKg(),
                 request.finishedOutputQuantity(),
                 request.finishedOutputUnit(),
-                request.finishedYieldPercent()
+                request.finishedYieldPercent(),
+                request.yieldCalculationMode()
         )));
     }
 

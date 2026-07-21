@@ -5,10 +5,7 @@
       sub-title="研发内勤登记寄样信息，并录入客户试吃后的通过、复打样或停止结论"
     >
       <template #extra>
-        <a-space>
-          <a-button :loading="seeding" @click="seedDemo">加载演示数据</a-button>
-          <a-button type="primary" @click="load">刷新列表</a-button>
-        </a-space>
+        <a-button type="primary" @click="load">刷新列表</a-button>
       </template>
     </a-page-header>
 
@@ -59,17 +56,29 @@
           <a-descriptions-item label="版本">{{ activeTask.versionCode }}</a-descriptions-item>
           <a-descriptions-item label="样品编号">{{ activeTask.sampleNo }}</a-descriptions-item>
         </a-descriptions>
-        <a-form layout="vertical" @finish="submitShipment">
-          <a-form-item label="寄样数量" required>
+        <a-form layout="vertical" :model="shipmentForm" @finish="submitShipment">
+          <a-form-item
+            label="寄样数量"
+            name="quantity"
+            :rules="[{ required: true, message: '请输入寄样数量' }]"
+          >
             <a-input-number v-model:value="shipmentForm.quantity" :min="1" style="width: 100%" />
           </a-form-item>
-          <a-form-item label="收件人" required>
+          <a-form-item
+            label="收件人"
+            name="receiverName"
+            :rules="[{ required: true, message: '请输入收件人' }]"
+          >
             <a-input v-model:value="shipmentForm.receiverName" />
           </a-form-item>
-          <a-form-item label="快递单号" required>
+          <a-form-item
+            label="快递单号"
+            name="trackingNo"
+            :rules="[{ required: true, message: '请输入快递单号' }]"
+          >
             <a-input v-model:value="shipmentForm.trackingNo" />
           </a-form-item>
-          <a-form-item label="备注">
+          <a-form-item label="备注" name="remark">
             <a-textarea v-model:value="shipmentForm.remark" />
           </a-form-item>
           <a-button type="primary" html-type="submit" block :loading="submitting">提交登记</a-button>
@@ -89,15 +98,19 @@
           <a-descriptions-item label="版本">{{ activeShipment.versionCode }}</a-descriptions-item>
           <a-descriptions-item label="快递单号">{{ activeShipment.trackingNo }}</a-descriptions-item>
         </a-descriptions>
-        <a-form layout="vertical" @finish="submitFeedback">
-          <a-form-item label="反馈结论" required>
+        <a-form layout="vertical" :model="feedbackForm" @finish="submitFeedback">
+          <a-form-item
+            label="反馈结论"
+            name="result"
+            :rules="[{ required: true, message: '请选择反馈结论' }]"
+          >
             <a-radio-group v-model:value="feedbackForm.result">
               <a-radio value="PASSED">客户通过</a-radio>
               <a-radio value="FAILED_RESAMPLE">客户不通过，继续打样</a-radio>
               <a-radio value="STOPPED">停止打样</a-radio>
             </a-radio-group>
           </a-form-item>
-          <a-form-item label="反馈备注">
+          <a-form-item label="反馈备注" name="comment">
             <a-textarea v-model:value="feedbackForm.comment" :rows="4" placeholder="客户试吃后的具体意见…" />
           </a-form-item>
           <a-space direction="vertical" style="width: 100%">
@@ -123,12 +136,11 @@ import { useRouter } from "vue-router";
 import { message } from "ant-design-vue";
 import type { RndTask, ShipmentRecord } from "@rnd/shared";
 import { useAuthStore } from "../../stores/auth";
-import { api, client } from "../../services/api";
+import { api } from "../../services/api";
 
 const router = useRouter();
 const auth = useAuthStore();
 const loading = ref(false);
-const seeding = ref(false);
 const submitting = ref(false);
 const pendingFeedback = ref<ShipmentRecord[]>([]);
 const pendingShipment = ref<RndTask[]>([]);
@@ -195,19 +207,6 @@ async function load() {
     message.error(error instanceof Error ? error.message : "加载失败");
   } finally {
     loading.value = false;
-  }
-}
-
-async function seedDemo() {
-  seeding.value = true;
-  try {
-    await client.post("/demo/seed-feedback");
-    message.success("演示数据已就绪");
-    await load();
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : "加载演示数据失败");
-  } finally {
-    seeding.value = false;
   }
 }
 

@@ -2,13 +2,19 @@
   <div>
     <a-page-header title="研发总监：需求审核" sub-title="研发总监判断资料是否完整，通过后进入任务池" />
     <a-card>
-      <a-table :columns="columns" :data-source="rows" row-key="id" :loading="loading">
+      <a-table
+        :columns="columns"
+        :data-source="rows"
+        row-key="id"
+        :loading="loading"
+        :custom-row="customRow"
+      >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
             <a-tag>{{ SAMPLE_STATUS_LABELS[record.status as keyof typeof SAMPLE_STATUS_LABELS] ?? record.status }}</a-tag>
           </template>
           <template v-else-if="column.key === 'action'">
-            <a-button v-if="canApprove" type="primary" size="small" @click="approve(record.id)">审核通过</a-button>
+            <a-button v-if="canApprove" type="primary" size="small" @click.stop="approve(record.id)">审核通过</a-button>
           </template>
         </template>
       </a-table>
@@ -18,12 +24,15 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { message } from "ant-design-vue";
 import { canPerformAction, SAMPLE_STATUS_LABELS, type SampleRequest } from "@rnd/shared";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
+import { createDemandRowProps } from "./demand-row-navigation";
 
 const auth = useAuthStore();
+const router = useRouter();
 const loading = ref(false);
 const rows = ref<SampleRequest[]>([]);
 const canApprove = computed(() => canPerformAction(auth.role, "APPROVE_REQUEST"));
@@ -38,6 +47,12 @@ const columns = [
   { title: "状态", key: "status" },
   { title: "操作", key: "action" },
 ];
+
+function customRow(record: SampleRequest) {
+  return createDemandRowProps(record.id, (id) => {
+    void router.push({ name: "demand-detail", params: { id } });
+  });
+}
 
 async function load() {
   loading.value = true;

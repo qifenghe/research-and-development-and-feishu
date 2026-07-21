@@ -179,9 +179,9 @@ const roleEntries = computed(() => {
   if (auth.role === "FINANCE") {
     entries.push({
       label: "财务",
-      title: "待核价",
-      desc: "查看已生成核价文件",
-      route: "/samples",
+      title: "核价文件",
+      desc: "查看并下载核价文件",
+      route: "/pricing",
     });
   }
   return entries;
@@ -224,6 +224,7 @@ async function load() {
       listTasks: (params) => api.task.list({ ...params, assigneeName }) as Promise<import("@rnd/shared").RndTask[]>,
       listShipments: (params) => api.shipment.list(params),
       listPricingFiles: (params) => api.shipment.pricingFiles(params) as Promise<import("@rnd/shared").PricingFileRecord[]>,
+      listPricingReadyVersions: () => api.shipment.pricingReadyVersions(),
     });
   } catch (error) {
     board.value = null;

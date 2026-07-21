@@ -38,7 +38,7 @@ const columns = [
   { title: "产品名称", dataIndex: "productName", key: "productName" },
   { title: "客户", dataIndex: "customerName", key: "customerName" },
   { title: "规格", dataIndex: "specification", key: "specification" },
-  { title: "创建人", dataIndex: "creatorName", key: "creatorName" },
+  { title: "申请人", dataIndex: "creatorName", key: "creatorName" },
   { title: "状态", dataIndex: "status", key: "status" },
   { title: "创建时间", dataIndex: "createdAt", key: "createdAt" },
 ];

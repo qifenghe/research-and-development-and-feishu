@@ -31,6 +31,7 @@ export type ExperimentFormStatus =
   | "LOCKED";
 
 export type MaterialCategory = "RAW" | "AUXILIARY" | "PACKAGING";
+export type YieldCalculationMode = "SELECTED_PRIMARY_MATERIALS" | "TOTAL_PICKING_WEIGHT";
 
 export type RemainingDisposition = "REUSE" | "RETURN" | "DISCARD";
 
@@ -190,6 +191,7 @@ export interface ExperimentForm {
   finishedOutputWeightKg?: number;
   finishedOutputQuantity?: number;
   finishedOutputUnit?: string;
+  yieldCalculationMode?: YieldCalculationMode;
   finishedYieldPercent?: number;
   savedAt: string;
   submittedAt: string;

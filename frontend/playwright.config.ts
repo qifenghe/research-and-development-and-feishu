@@ -10,11 +10,21 @@ export default defineConfig({
   projects: [
     {
       name: "pc-chromium",
-      use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5173/admin/" },
+      testMatch: /pc-.*\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        channel: "chrome",
+        baseURL: "http://127.0.0.1:5173/admin/",
+      },
     },
     {
       name: "mobile-chromium",
-      use: { ...devices["Pixel 7"], baseURL: "http://127.0.0.1:5174/m/" },
+      testMatch: /mobile-.*\.spec\.ts/,
+      use: {
+        ...devices["Pixel 7"],
+        channel: "chrome",
+        baseURL: process.env.MOBILE_BASE_URL ?? "http://127.0.0.1:5174/m/",
+      },
     },
   ],
 });

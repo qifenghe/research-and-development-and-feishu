@@ -20,6 +20,7 @@ public record ExperimentForm(
         BigDecimal finishedOutputWeightKg,
         Integer finishedOutputQuantity,
         String finishedOutputUnit,
+        YieldCalculationMode yieldCalculationMode,
         BigDecimal finishedYieldPercent,
         LocalDateTime savedAt,
         LocalDateTime submittedAt
@@ -41,6 +42,7 @@ public record ExperimentForm(
                 finishedOutputWeightKg,
                 finishedOutputQuantity,
                 finishedOutputUnit,
+                yieldCalculationMode,
                 finishedYieldPercent,
                 savedAt,
                 submittedAt
@@ -64,6 +66,7 @@ public record ExperimentForm(
                 finishedOutputWeightKg,
                 finishedOutputQuantity,
                 finishedOutputUnit,
+                yieldCalculationMode,
                 finishedYieldPercent,
                 savedAt,
                 submittedAt

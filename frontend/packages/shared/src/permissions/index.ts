@@ -43,6 +43,7 @@ const ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/pricing\/[^/]+$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/finance$/, roles: ["RND_ASSISTANT", "FINANCE", ...ADMIN_ROLES] },
   { pattern: /^\/archive$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
+  { pattern: /^\/reports$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/settings/, roles: [...ADMIN_ROLES] },
   { pattern: /^\/403$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
 ];
@@ -144,7 +145,7 @@ export function roleLabel(role: string | null | undefined): string {
     FINANCE: "财务",
     MANAGER: "管理层",
     ADMIN: "管理员",
-    SYSTEM_ADMIN: "系统管理员",
+    SYSTEM_ADMIN: "超级管理员",
   };
   return role ? map[role] ?? role : "未知";
 }

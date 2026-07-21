@@ -66,7 +66,7 @@ public class DefaultWebAccountBootstrapService {
                 new DefaultAccount("rnd_engineer", "张研发", "ou_demo_engineer", "RND_ENGINEER", "研发部"),
                 new DefaultAccount("tester", "李测试", "ou_demo_tester", "TESTER", "品控部"),
                 new DefaultAccount("finance", "钱财务", "ou_demo_finance", "FINANCE", "财务部"),
-                new DefaultAccount("admin", "系统管理员", "ou_demo_admin", "SYSTEM_ADMIN", "信息部")
+                new DefaultAccount("admin", "超级管理员", "ou_demo_admin", "SYSTEM_ADMIN", "信息部")
         );
     }
 

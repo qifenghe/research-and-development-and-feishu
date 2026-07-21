@@ -2,6 +2,7 @@ package com.lhr.rnd.api;
 
 import com.lhr.rnd.model.ExperimentMaterial;
 import com.lhr.rnd.model.ExperimentProcessStep;
+import com.lhr.rnd.model.YieldCalculationMode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -17,6 +18,7 @@ public record SaveExperimentDraftRequest(
         BigDecimal finishedOutputWeightKg,
         BigDecimal finishedOutputQuantity,
         @Pattern(regexp = "\\s*|袋|盒|份|个|盘") String finishedOutputUnit,
-        BigDecimal finishedYieldPercent
+        BigDecimal finishedYieldPercent,
+        YieldCalculationMode yieldCalculationMode
 ) {
 }

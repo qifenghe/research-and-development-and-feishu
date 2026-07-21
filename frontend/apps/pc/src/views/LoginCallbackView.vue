@@ -16,6 +16,18 @@ const router = useRouter();
 const auth = useAuthStore();
 const tip = ref("正在登录...");
 
+function resolveInternalRedirect(value: unknown): string {
+  if (typeof value !== "string") return "/dashboard";
+  const trimmed = value.trim();
+  if (!trimmed || !trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return "/dashboard";
+  }
+  if (trimmed.startsWith("/admin/")) {
+    return trimmed.slice("/admin".length) || "/dashboard";
+  }
+  return trimmed;
+}
+
 onMounted(async () => {
   const code = typeof route.query.code === "string" ? route.query.code : "";
   if (!code) {
@@ -25,8 +37,7 @@ onMounted(async () => {
   }
   try {
     await auth.loginWithFeishuCode(code);
-    const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "/dashboard";
-    router.replace(redirect);
+    await router.replace(resolveInternalRedirect(route.query.redirect));
   } catch (error) {
     if (error instanceof ApiError && error.code === "FEISHU_USER_NOT_BOUND") {
       message.error("飞书账号尚未绑定系统，请联系管理员执行 feishu-bind-users 脚本");

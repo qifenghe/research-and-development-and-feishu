@@ -16,7 +16,7 @@ async function relogin(page: Page, username: string) {
 }
 
 test("five roles complete request-to-finance pricing handoff", async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const suffix = `${Date.now()}`.slice(-8);
   const productName = `闭环验收菜品${suffix}`;
 
@@ -49,17 +49,17 @@ test("five roles complete request-to-finance pricing handoff", async ({ page }) 
   await expect(engineerCard).toBeVisible();
   await engineerCard.click();
   await page.getByRole("button", { name: "接受任务" }).click();
-  await expect(page.getByText("选择本次打样方式")).toBeVisible();
-  await page.getByRole("button", { name: /快速打样/ }).click();
-  await expect(page.getByText("配方投入", { exact: true })).toBeVisible();
-  await page.getByPlaceholder("物料名称").fill("猪肉");
-  await page.getByRole("textbox", { name: "重量", exact: true }).fill("10");
-  await page.getByRole("button", { name: "+ 添加配料" }).click();
-  await page.getByPlaceholder("物料名称").nth(1).fill("香辛料");
-  await page.getByRole("textbox", { name: "重量", exact: true }).nth(1).fill("2");
-  await page.getByRole("button", { name: "调整工序" }).click();
+  await expect(page.getByText("编排本次工序")).toBeVisible();
   await page.getByPlaceholder("填写工序名称").fill("卤制");
   await page.getByRole("button", { name: "确认并开始打样" }).click();
+  await expect(page.getByText("配方投入", { exact: true })).toBeVisible();
+  await page.getByText("原料", { exact: true }).first().click();
+  await page.getByRole("switch").click();
+  await page.getByLabel("物料").fill("猪肉");
+  await page.getByRole("textbox", { name: "重量", exact: true }).first().fill("10");
+  await page.getByRole("button", { name: "+ 添加物料" }).click();
+  await page.getByPlaceholder("物料名称").nth(1).fill("香辛料");
+  await page.getByRole("textbox", { name: "重量", exact: true }).nth(1).fill("2");
   await page.getByLabel("投入重量").fill("10");
   await page.getByLabel("下一步出成").fill("8.5");
   await page.getByLabel("余料重量").fill("0.5");

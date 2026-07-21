@@ -17,7 +17,7 @@ interface AuthState {
 export const useAuthStore = defineStore("auth", {
   state: (): AuthState => ({
     token: getAccessToken(),
-    user: demoUser(),
+    user: getStoredUser<UserAccount>(),
     principal: null,
     loading: false,
   }),
@@ -27,6 +27,18 @@ export const useAuthStore = defineStore("auth", {
     role: (state) => state.principal?.role ?? state.user?.role ?? "",
   },
   actions: {
+    async loginWithPassword(username: string, password: string) {
+      this.loading = true;
+      try {
+        const result = await api.session.login(username, password);
+        persistLogin(result.accessToken, result.user);
+        this.token = result.accessToken;
+        this.user = result.user;
+        await this.fetchMe();
+      } finally {
+        this.loading = false;
+      }
+    },
     async loginWithFeishuCode(code: string) {
       this.loading = true;
       try {
@@ -38,9 +50,6 @@ export const useAuthStore = defineStore("auth", {
       } finally {
         this.loading = false;
       }
-    },
-    async mockLogin(feishuUserId: string) {
-      await this.loginWithFeishuCode(`mock:${feishuUserId}`);
     },
     async fetchMe() {
       if (!this.token) return;
@@ -64,16 +73,3 @@ export const useAuthStore = defineStore("auth", {
     },
   },
 });
-
-function demoUser(): UserAccount {
-  return {
-    id: "USR-DEMO-ASSISTANT",
-    name: "赵内勤",
-    feishuUserId: "ou_demo_assistant",
-    role: "RND_ASSISTANT",
-    departmentName: "研发部",
-    status: "ACTIVE",
-    createdAt: "",
-    updatedAt: "",
-  };
-}

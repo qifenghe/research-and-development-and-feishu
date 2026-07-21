@@ -53,6 +53,7 @@ const routes: RouteRecordRaw[] = [
       { path: "pricing/:id", name: "pricing-detail", component: () => import("../views/shipment/PricingDetailView.vue") },
       { path: "finance", name: "finance", component: () => import("../views/shipment/FinanceView.vue") },
       { path: "archive", name: "archive", component: () => import("../views/shipment/ArchiveView.vue") },
+      { path: "reports", name: "reports", component: () => import("../views/reports/ReportExportView.vue") },
       { path: "settings", name: "settings-module", component: () => import("../views/settings/SettingsModuleView.vue") },
       { path: "settings/users", name: "config", component: () => import("../views/settings/UsersSettingsView.vue") },
       { path: "settings/form-fields", name: "form-config", component: () => import("../views/settings/FormFieldsSettingsView.vue") },

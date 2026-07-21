@@ -48,6 +48,7 @@ const mobileRoutes = [
   "shipment-feedback",
   "shipment-record",
   "pricing-list",
+  "pricing-create",
   "pricing-detail",
   "task-customer-feedback",
   "request-review",

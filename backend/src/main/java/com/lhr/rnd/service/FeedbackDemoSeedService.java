@@ -99,7 +99,7 @@ public class FeedbackDemoSeedService {
                 defaultMaterials(),
                 defaultProcessSteps(),
                 new BigDecimal("98"),
-                196,
+                new BigDecimal("196"),
                 "袋",
                 null
         ));

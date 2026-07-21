@@ -114,7 +114,7 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 80),
                         rule("GET", "/api/v1/shipments", "查看寄样列表", 85),
                         rule("GET", "/api/v1/shipments/*/detail", "查看寄样详情", 90),
-                        rule("GET", "/api/v1/settings/users", "查看可分配研发人员", 95),
+                        rule("GET", "/api/v1/rnd-assignees", "查看可分配研发人员", 95),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 100),
                         rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 110),
                         rule("GET", "/api/v1/reports/rnd-tasks/export", "导出打样任务列表", 111),
@@ -216,6 +216,12 @@ public class RolePermissionService {
             return true;
         }
         String normalizedMethod = method == null ? "" : method.toUpperCase();
+        if (isSettingsManagement(uri)) {
+            return false;
+        }
+        if (isRndAssigneeRead(normalizedMethod, uri)) {
+            return hasAnyRole(role, "RND_DIRECTOR");
+        }
         if (isReportExport(normalizedMethod, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER");
         }
@@ -333,6 +339,14 @@ public class RolePermissionService {
 
     private boolean isSampleRequestCreate(String method, String uri) {
         return "POST".equals(method) && uri.equals("/api/v1/sample-requests");
+    }
+
+    private boolean isSettingsManagement(String uri) {
+        return uri != null && uri.startsWith("/api/v1/settings/");
+    }
+
+    private boolean isRndAssigneeRead(String method, String uri) {
+        return "GET".equals(method) && "/api/v1/rnd-assignees".equals(uri);
     }
 
     private boolean isSampleRequestList(String method, String uri) {

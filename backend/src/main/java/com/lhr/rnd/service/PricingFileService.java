@@ -2,6 +2,7 @@ package com.lhr.rnd.service;
 
 import com.lhr.rnd.model.ExperimentMaterial;
 import com.lhr.rnd.model.SampleVersion;
+import com.lhr.rnd.model.YieldCalculationMode;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Comment;
@@ -47,6 +48,15 @@ public class PricingFileService {
     }
 
     public PricingFileResult generate(SampleVersion version, String pricingVersionNo, String customerName) {
+        return generate(version, pricingVersionNo, customerName, YieldCalculationMode.SELECTED_PRIMARY_MATERIALS);
+    }
+
+    public PricingFileResult generate(
+            SampleVersion version,
+            String pricingVersionNo,
+            String customerName,
+            YieldCalculationMode yieldCalculationMode
+    ) {
         try (InputStream template = requireTemplate();
              Workbook workbook = WorkbookFactory.create(template);
              var output = new ByteArrayOutputStream()) {
@@ -60,7 +70,7 @@ public class PricingFileService {
             relocateTemplateStructure(sheet, layout);
             fillHeader(sheet, version, customer, effectiveDate);
             fillMaterials(sheet, materials, layout);
-            fillSummary(sheet, materials, version, layout);
+            fillSummary(sheet, materials, version, layout, yieldCalculationMode);
             fillPackagingQuantities(sheet, version, layout);
             configurePrintLayout(workbook, sheet, layout);
 
@@ -291,7 +301,13 @@ public class PricingFileService {
         }
     }
 
-    private void fillSummary(Sheet sheet, List<ExperimentMaterial> materials, SampleVersion version, LayoutRows layout) {
+    private void fillSummary(
+            Sheet sheet,
+            List<ExperimentMaterial> materials,
+            SampleVersion version,
+            LayoutRows layout,
+            YieldCalculationMode yieldCalculationMode
+    ) {
         var firstExcelRow = MATERIAL_START_ROW + 1;
         var lastExcelRow = layout.lastMaterialRow() + 1;
 
@@ -304,15 +320,46 @@ public class PricingFileService {
         if (version.referenceOutputKg() != null) {
             setNumeric(sheet, layout.referenceOutputRow(), 6, decimalValue(version.referenceOutputKg()));
         }
-        setText(sheet, layout.yieldRateRow(), 3, "原料得率（%）");
-        if (!materials.isEmpty() && version.referenceOutputKg() != null) {
-            setFormula(sheet, layout.yieldRateRow(), 6, "G%s/I%s".formatted(layout.referenceOutputRow() + 1, firstExcelRow));
+        setText(sheet, layout.yieldRateRow(), 3, "研发部参考得率(%)");
+        var yieldRows = yieldFormulaRows(materials, yieldCalculationMode);
+        if (!yieldRows.isEmpty() && version.referenceOutputKg() != null) {
+            var denominatorCells = yieldRows.stream()
+                    .map(index -> "I" + (MATERIAL_START_ROW + index + 1))
+                    .toList();
+            var denominator = denominatorCells.size() == 1
+                    ? denominatorCells.get(0)
+                    : "SUM(%s)".formatted(String.join(",", denominatorCells));
+            setFormula(sheet, layout.yieldRateRow(), 6,
+                    "G%s/%s".formatted(layout.referenceOutputRow() + 1, denominator));
         }
         setText(sheet, layout.packageCountRow(), 3, "研发部参考包数");
         if (version.referenceOutputKg() != null && version.unitWeightKg() != null) {
             var packageCount = version.referenceOutputKg().divide(version.unitWeightKg(), 0, RoundingMode.DOWN);
             setNumeric(sheet, layout.packageCountRow(), 6, packageCount.doubleValue());
         }
+    }
+
+    private List<Integer> yieldFormulaRows(List<ExperimentMaterial> materials, YieldCalculationMode mode) {
+        var resolvedMode = mode == null ? YieldCalculationMode.SELECTED_PRIMARY_MATERIALS : mode;
+        var selected = new ArrayList<Integer>();
+        for (int index = 0; index < materials.size(); index++) {
+            var material = materials.get(index);
+            if ("PACKAGING".equals(material.materialCategory())) {
+                continue;
+            }
+            if (resolvedMode == YieldCalculationMode.TOTAL_PICKING_WEIGHT || material.primaryMaterial()) {
+                selected.add(index);
+            }
+        }
+        if (selected.isEmpty() && resolvedMode == YieldCalculationMode.SELECTED_PRIMARY_MATERIALS) {
+            for (int index = 0; index < materials.size(); index++) {
+                if (!"PACKAGING".equals(materials.get(index).materialCategory())) {
+                    selected.add(index);
+                    break;
+                }
+            }
+        }
+        return selected;
     }
 
     private void fillPackagingQuantities(Sheet sheet, SampleVersion version, LayoutRows layout) {

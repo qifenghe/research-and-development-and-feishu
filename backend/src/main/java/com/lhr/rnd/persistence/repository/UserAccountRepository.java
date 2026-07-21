@@ -13,5 +13,7 @@ public interface UserAccountRepository extends JpaRepository<UserAccountEntity, 
 
     Optional<UserAccountEntity> findFirstByNameAndStatus(String name, String status);
 
+    long countByRoleAndStatus(String role, String status);
+
     List<UserAccountEntity> findAllByOrderByCreatedAtDesc();
 }

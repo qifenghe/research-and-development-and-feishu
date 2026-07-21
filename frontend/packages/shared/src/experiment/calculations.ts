@@ -9,18 +9,44 @@ function safeWeight(value: number | null | undefined) {
 }
 
 export type PricingPreviewInput = {
-  primaryMaterialWeightKg: number | null | undefined;
-  ingredientWeightKg: number | null | undefined;
+  primaryMaterialWeightKg?: number | null;
+  ingredientWeightKg?: number | null;
+  totalInputWeightKg?: number | null;
+  yieldBasisWeightKg?: number | null;
   finishedOutputWeightKg: number | null | undefined;
   finishedOutputQuantity: number | null | undefined;
 };
 
 export type PricingPreview = {
   totalInputWeightKg: number;
+  yieldBasisWeightKg: number;
+  yieldPercent: number;
+  /** @deprecated Use yieldPercent. Kept while older screens migrate. */
   primaryMaterialYieldPercent: number;
   averageUnitWeightKg: number;
   referenceQuantity: number;
 };
+
+export type YieldMaterialInput = {
+  weightKg: number | null | undefined;
+  utilizationRatePercent: number | null | undefined;
+  materialCategory: "RAW" | "AUXILIARY" | "PACKAGING";
+  primaryMaterial: boolean;
+};
+
+export function pickingWeightKg(weightKg: number | null | undefined, utilizationRatePercent: number | null | undefined = 100) {
+  const weight = Math.max(0, safeWeight(weightKg));
+  const utilizationRate = safeWeight(utilizationRatePercent);
+  if (utilizationRate <= 0) return 0;
+  return round(weight / (utilizationRate / 100), 6);
+}
+
+export function yieldBasisWeightKg(materials: YieldMaterialInput[], mode: YieldCalculationMode) {
+  return round(materials
+    .filter((material) => material.materialCategory !== "PACKAGING")
+    .filter((material) => mode === "TOTAL_PICKING_WEIGHT" || material.primaryMaterial)
+    .reduce((sum, material) => sum + pickingWeightKg(material.weightKg, material.utilizationRatePercent), 0), 6);
+}
 
 export function formulaRatios(weights: Array<number | null | undefined>) {
   const safeWeights = weights.map(safeWeight);
@@ -79,13 +105,22 @@ export function normalizePositiveIntegerQuantity(value: number | string | null |
 export function calculatePricingPreview(input: PricingPreviewInput): PricingPreview {
   const primaryMaterialWeightKg = Math.max(0, safeWeight(input.primaryMaterialWeightKg));
   const ingredientWeightKg = Math.max(0, safeWeight(input.ingredientWeightKg));
+  const totalInputWeightKg = input.totalInputWeightKg === undefined
+    ? primaryMaterialWeightKg + ingredientWeightKg
+    : Math.max(0, safeWeight(input.totalInputWeightKg));
+  const yieldBasisWeight = input.yieldBasisWeightKg === undefined
+    ? primaryMaterialWeightKg
+    : Math.max(0, safeWeight(input.yieldBasisWeightKg));
   const finishedOutputWeightKg = Math.max(0, safeWeight(input.finishedOutputWeightKg));
   const finishedOutputQuantity = Math.max(0, safeWeight(input.finishedOutputQuantity));
 
   return {
-    totalInputWeightKg: round(primaryMaterialWeightKg + ingredientWeightKg, 4),
-    primaryMaterialYieldPercent: finishedYieldPercent(finishedOutputWeightKg, primaryMaterialWeightKg),
+    totalInputWeightKg: round(totalInputWeightKg, 4),
+    yieldBasisWeightKg: round(yieldBasisWeight, 4),
+    yieldPercent: finishedYieldPercent(finishedOutputWeightKg, yieldBasisWeight),
+    primaryMaterialYieldPercent: finishedYieldPercent(finishedOutputWeightKg, yieldBasisWeight),
     averageUnitWeightKg: averageUnitWeightKg(finishedOutputWeightKg, finishedOutputQuantity),
     referenceQuantity: referenceQuantity(finishedOutputQuantity),
   };
 }
+import type { YieldCalculationMode } from "../types";

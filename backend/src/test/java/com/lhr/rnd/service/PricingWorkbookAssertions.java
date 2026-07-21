@@ -219,7 +219,7 @@ final class PricingWorkbookAssertions {
                 softly,
                 sheet,
                 yieldRowIndex,
-                "原料得率（%）",
+                "研发部参考得率(%)",
                 "G%s/I%s".formatted(referenceOutputRowIndex + 1, MATERIAL_START_ROW + 1),
                 "0.00%"
         );

@@ -102,7 +102,6 @@ public class UserAccountEntity {
         this.name = name;
         this.role = role;
         this.departmentName = departmentName;
-        this.status = "ACTIVE";
         this.updatedAt = updatedAt;
     }
 
@@ -112,7 +111,6 @@ public class UserAccountEntity {
         this.feishuUserId = feishuUserId;
         this.role = role;
         this.departmentName = departmentName;
-        this.status = "ACTIVE";
         this.updatedAt = updatedAt;
     }
 
@@ -149,6 +147,14 @@ public class UserAccountEntity {
 
     public String getFeishuUserId() {
         return feishuUserId;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public String getStatus() {
+        return status;
     }
 
     public UserAccount toModel() {

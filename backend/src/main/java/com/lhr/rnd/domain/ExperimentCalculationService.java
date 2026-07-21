@@ -1,7 +1,11 @@
 package com.lhr.rnd.domain;
 
+import com.lhr.rnd.model.ExperimentMaterial;
+import com.lhr.rnd.model.YieldCalculationMode;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.List;
 
 public final class ExperimentCalculationService {
     private static final int WEIGHT_SCALE = 4;
@@ -38,6 +42,29 @@ public final class ExperimentCalculationService {
         }
         return finishedProductOutput.multiply(BigDecimal.valueOf(100))
                 .divide(primaryRawMaterialInput, RATE_SCALE, ROUNDING_MODE);
+    }
+
+    public BigDecimal pickingWeight(BigDecimal formulaWeight, BigDecimal utilizationRate) {
+        requireNonNegative(formulaWeight, "formulaWeight");
+        requireNonNegative(utilizationRate, "utilizationRate");
+        if (formulaWeight == null || utilizationRate == null || utilizationRate.signum() == 0) {
+            return BigDecimal.ZERO.setScale(RATE_SCALE, ROUNDING_MODE);
+        }
+        return formulaWeight.divide(utilizationRate, RATE_SCALE, ROUNDING_MODE);
+    }
+
+    public BigDecimal yieldBasisWeight(List<ExperimentMaterial> materials, YieldCalculationMode mode) {
+        if (materials == null || materials.isEmpty()) {
+            return BigDecimal.ZERO.setScale(RATE_SCALE, ROUNDING_MODE);
+        }
+        var resolvedMode = mode == null ? YieldCalculationMode.SELECTED_PRIMARY_MATERIALS : mode;
+        return materials.stream()
+                .filter(material -> !"PACKAGING".equals(material.materialCategory()))
+                .filter(material -> resolvedMode == YieldCalculationMode.TOTAL_PICKING_WEIGHT
+                        || material.primaryMaterial())
+                .map(material -> pickingWeight(material.weightKg(), material.utilizationRate()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(RATE_SCALE, ROUNDING_MODE);
     }
 
     public PricingPreview pricingPreview(

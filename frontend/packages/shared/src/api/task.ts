@@ -7,6 +7,8 @@ import type {
   RndTask,
   RndTaskDetailView,
   RndTaskStatus,
+  UserAccount,
+  YieldCalculationMode,
 } from "../types";
 
 export interface SaveExperimentDraftPayload {
@@ -39,12 +41,14 @@ export interface SaveExperimentDraftPayload {
   finishedOutputWeightKg?: number;
   finishedOutputQuantity?: number;
   finishedOutputUnit?: "袋" | "盒" | "份" | "个" | "盘";
-  finishedYieldRatio?: number;
+  finishedYieldPercent?: number;
+  yieldCalculationMode?: YieldCalculationMode;
 }
 
 export function createTaskApi(client: ApiClient) {
   return {
     pool: () => client.get<RndTask[]>("/rnd-tasks/pool"),
+    assignees: () => client.get<UserAccount[]>("/rnd-assignees"),
     list: (params?: {
       status?: RndTaskStatus | string;
       keyword?: string;

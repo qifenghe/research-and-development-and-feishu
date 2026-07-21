@@ -1,117 +1,92 @@
 <template>
   <div class="login-page">
-    <a-card title="PC 管理后台登录" style="width: 480px">
+    <a-card title="研发样品管理系统登录" class="login-card">
       <a-alert
-        v-if="integration?.mode === 'OPENAPI'"
         type="info"
         show-icon
-        message="当前为飞书真实联调模式"
-        description="请从飞书客户端打开本应用完成免登。登录页 MOCK 按钮在 OPENAPI 模式下不可用。首次使用前需先绑定飞书 user_id。"
+        message="当前为网页端账号登录"
+        description="飞书免登录入口暂时隐藏，后期上线飞书时再作为外部身份绑定。"
         style="margin-bottom: 16px"
       />
-      <a-alert
-        v-else
-        type="success"
-        show-icon
-        message="当前为 MOCK 模式"
-        description="可直接使用下方 MOCK 登录；user_id 需已在系统中绑定。"
-        style="margin-bottom: 16px"
-      />
-      <p>飞书 OAuth 回调：<code>/admin/login/callback</code></p>
-      <a-divider v-if="integration?.mode !== 'OPENAPI'">本地 MOCK 登录</a-divider>
-      <div v-if="integration?.mode !== 'OPENAPI'" class="demo-roles">
+
+      <a-form layout="vertical" :model="form" @finish="login">
+        <a-form-item label="账号" name="username" :rules="[{ required: true, message: '请输入账号' }]">
+          <a-input v-model:value="form.username" placeholder="例如 rnd_assistant" autocomplete="username" />
+        </a-form-item>
+        <a-form-item label="密码" name="password" :rules="[{ required: true, message: '请输入密码' }]">
+          <a-input-password v-model:value="form.password" placeholder="默认测试密码 123456" autocomplete="current-password" />
+        </a-form-item>
+        <a-button type="primary" html-type="submit" block :loading="auth.loading">登录</a-button>
+      </a-form>
+
+      <a-divider>测试账号</a-divider>
+      <div class="quick-accounts">
         <a-button
-          v-for="account in demoAccounts"
-          :key="account.feishuUserId"
+          v-for="account in accounts"
+          :key="account.username"
           block
-          class="demo-role-button"
-          :loading="auth.loading && feishuUserId === account.feishuUserId"
-          @click="loginAs(account.feishuUserId)"
+          class="quick-account"
+          @click="fill(account.username)"
         >
           {{ account.label }} · {{ account.name }}
         </a-button>
       </div>
-      <a-form v-if="integration?.mode !== 'OPENAPI'" layout="vertical" @finish="onMockLogin">
-        <a-form-item label="飞书用户 ID" name="feishuUserId" :rules="[{ required: true, message: '请输入用户 ID' }]">
-          <a-input v-model:value="feishuUserId" placeholder="例如 5a6d46c2" />
-        </a-form-item>
-        <a-button type="primary" html-type="submit" block :loading="auth.loading">MOCK 登录</a-button>
-      </a-form>
     </a-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { reactive } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { message } from "ant-design-vue";
 import { ApiError } from "@rnd/shared";
 import { useAuthStore } from "../stores/auth";
-import { api } from "../services/api";
 
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
-const feishuUserId = ref("ou_demo_assistant");
-const integration = ref<{ mode: string } | null>(null);
-const demoAccounts = [
-  { label: "研发内勤", name: "赵内勤", feishuUserId: "ou_demo_assistant" },
-  { label: "研发总监", name: "赵总监", feishuUserId: "ou_demo_director" },
-  { label: "研发人员", name: "张研发", feishuUserId: "ou_demo_engineer" },
-  { label: "内部测试", name: "李测试", feishuUserId: "ou_demo_tester" },
-  { label: "财务", name: "钱财务", feishuUserId: "ou_demo_finance" },
-];
 
-function resolvePostLoginRedirect(userId: string, redirectQuery: unknown): string {
-  if (typeof redirectQuery === "string" && redirectQuery.trim()) {
-    return redirectQuery;
-  }
-  if (userId === "ou_demo_tester") {
-    return "/rnd/pending-tests";
-  }
-  return "/dashboard";
-}
-
-onMounted(async () => {
-  try {
-    integration.value = await fetch("/api/v1/feishu/integration/status").then((r) => r.json()).then((p) => p.data);
-  } catch {
-    integration.value = null;
-  }
-  if (integration.value?.mode !== "OPENAPI") {
-    await ensureDemoUsers();
-  }
-  const code = typeof route.query.code === "string" ? route.query.code : "";
-  if (code) {
-    router.replace({ name: "login-callback", query: { ...route.query } });
-  }
+const form = reactive({
+  username: "rnd_assistant",
+  password: "123456",
 });
 
-async function ensureDemoUsers() {
-  try {
-    await fetch("/api/v1/demo/seed-users", { method: "POST" });
-  } catch {
-    // 后端未启动或旧版本无该接口时，仍允许用户手动重试登录
+const accounts = [
+  { label: "研发内勤", name: "赵内勤", username: "rnd_assistant" },
+  { label: "研发总监", name: "赵总监", username: "rnd_director" },
+  { label: "研发人员", name: "张研发", username: "rnd_engineer" },
+  { label: "内部测试", name: "李测试", username: "tester" },
+  { label: "财务", name: "钱财务", username: "finance" },
+];
+
+function fill(username: string) {
+  form.username = username;
+  form.password = "123456";
+}
+
+function resolveInternalRedirect(value: unknown): string {
+  if (typeof value !== "string") return "/dashboard";
+  const trimmed = value.trim();
+  if (!trimmed || !trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return "/dashboard";
   }
+  if (trimmed.startsWith("/admin/")) {
+    return trimmed.slice("/admin".length) || "/dashboard";
+  }
+  return trimmed;
 }
 
-async function onMockLogin() {
-  await loginAs(feishuUserId.value.trim());
-}
-
-async function loginAs(userId: string) {
+async function login() {
   try {
-    feishuUserId.value = userId;
-    await auth.mockLogin(userId);
+    await auth.loginWithPassword(form.username.trim(), form.password);
     message.success("登录成功");
-    const redirect = resolvePostLoginRedirect(userId, route.query.redirect);
-    router.replace(redirect);
+    await router.replace(resolveInternalRedirect(route.query.redirect));
   } catch (error) {
-    if (error instanceof ApiError && error.code === "FEISHU_USER_NOT_BOUND") {
-      message.error("该 user_id 尚未绑定，请先运行 node scripts/feishu-bind-users.mjs");
-    } else {
-      message.error(error instanceof Error ? error.message : "登录失败");
+    if (error instanceof ApiError && error.code === "AUTH_CREDENTIAL_INVALID") {
+      message.error("账号或密码不正确");
+      return;
     }
+    message.error(error instanceof Error ? error.message : "登录失败");
   }
 }
 </script>
@@ -126,13 +101,16 @@ async function loginAs(userId: string) {
   padding: 24px;
 }
 
-.demo-roles {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 16px;
+.login-card {
+  width: min(480px, 100%);
 }
 
-.demo-role-button {
+.quick-accounts {
+  display: grid;
+  gap: 8px;
+}
+
+.quick-account {
   text-align: left;
 }
 </style>

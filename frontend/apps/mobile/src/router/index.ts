@@ -37,6 +37,7 @@ const routes: RouteRecordRaw[] = [
       { path: "shipments/record", name: "shipment-record", component: () => import("../views/ShipmentRecordView.vue") },
       { path: "shipments/:id", name: "shipment-feedback", component: () => import("../views/ShipmentFeedbackView.vue") },
       { path: "pricing", name: "pricing-list", component: () => import("../views/PricingListView.vue") },
+      { path: "pricing/create/:id", name: "pricing-create", component: () => import("../views/PricingCreateView.vue") },
       { path: "pricing/:id", name: "pricing-detail", component: () => import("../views/PricingDetailView.vue") },
       { path: "tasks/:id/feedback", name: "task-customer-feedback", component: () => import("../views/TaskCustomerFeedbackView.vue") },
       { path: "samples/:versionId/history", name: "sample-history", component: () => import("../views/SampleHistoryView.vue") },

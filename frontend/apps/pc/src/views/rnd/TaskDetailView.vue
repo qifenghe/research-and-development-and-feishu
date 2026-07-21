@@ -175,7 +175,7 @@ async function load() {
 }
 
 async function loadEngineers() {
-  const users = await api.settings.users();
+  const users = await api.task.assignees();
   engineerOptions.value = users
     .filter((user: UserAccount) => user.status === "ACTIVE" && isRndAssigneeRole(user.role))
     .map((user) => ({
