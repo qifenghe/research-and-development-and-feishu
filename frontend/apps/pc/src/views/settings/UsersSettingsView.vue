@@ -50,8 +50,8 @@
         </a-form-item>
         <a-form-item label="角色" required>
           <a-select v-model:value="editor.role">
-            <a-select-option v-for="role in roles" :key="role.value" :value="role.value">
-              {{ role.label }}
+            <a-select-option v-for="role in roles.filter((item) => item.status === 'ACTIVE')" :key="role.roleCode" :value="role.roleCode">
+              {{ role.roleName }}
             </a-select-option>
           </a-select>
         </a-form-item>
@@ -76,7 +76,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { message } from "ant-design-vue";
-import { roleLabel, type UserAccount } from "@rnd/shared";
+import { roleLabel, type RoleDefinition, type UserAccount } from "@rnd/shared";
 import { api } from "../../services/api";
 
 const loading = ref(false);
@@ -93,14 +93,7 @@ const columns = [
   { title: "操作", key: "action", width: 260 },
 ];
 
-const roles = [
-  { value: "RND_ASSISTANT", label: "研发内勤" },
-  { value: "RND_DIRECTOR", label: "研发总监" },
-  { value: "RND_ENGINEER", label: "研发人员" },
-  { value: "TESTER", label: "测试人员" },
-  { value: "FINANCE", label: "财务" },
-  { value: "SYSTEM_ADMIN", label: "超级管理员" },
-];
+const roles = ref<RoleDefinition[]>([]);
 
 const editor = reactive({
   open: false,
@@ -117,7 +110,9 @@ const editor = reactive({
 async function load() {
   loading.value = true;
   try {
-    rows.value = await api.settings.users();
+    const [users, roleDefinitions] = await Promise.all([api.settings.users(), api.settings.roles()]);
+    rows.value = users;
+    roles.value = roleDefinitions;
   } finally {
     loading.value = false;
   }

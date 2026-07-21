@@ -686,6 +686,34 @@ public class SampleWorkflowService {
         );
     }
 
+    public synchronized List<TestRecord> testRecordsForTask(String taskId) {
+        var fromMemory = testAssignments.values().stream()
+                .filter(assignment -> assignment.taskId().equals(taskId))
+                .map(TestAssignment::id)
+                .toList();
+        if (!fromMemory.isEmpty()) {
+            return testRecords.values().stream()
+                    .filter(record -> fromMemory.contains(record.testAssignmentId()))
+                    .sorted(Comparator.comparing(TestRecord::testedAt).reversed())
+                    .toList();
+        }
+        if (testAssignmentRepository == null || testRecordRepository == null) {
+            return List.of();
+        }
+        var assignmentIds = testAssignmentRepository.findByTaskIdOrderByAssignedAtDesc(taskId).stream()
+                .map(TestAssignmentEntity::getId)
+                .toList();
+        if (assignmentIds.isEmpty()) {
+            return List.of();
+        }
+        return testRecordRepository.findByTestAssignmentIdInOrderByTestedAtDesc(assignmentIds).stream()
+                .map(entity -> new TestRecord(
+                        entity.getId(), entity.getTestAssignmentId(), entity.getExperimentFormId(), entity.getTesterName(),
+                        TestAssignmentStatus.valueOf(entity.getResult()), entity.getComment(), entity.getTestedAt()
+                ))
+                .toList();
+    }
+
     public synchronized List<PricingFileRecord> pricingFiles(String status, String keyword) {
         return pricingFiles(status, keyword, null, null);
     }

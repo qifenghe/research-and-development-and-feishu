@@ -51,4 +51,12 @@ public class TestRecordEntity {
         this.comment = comment;
         this.testedAt = testedAt;
     }
+
+    public String getId() { return id; }
+    public String getTestAssignmentId() { return testAssignmentId; }
+    public String getExperimentFormId() { return experimentFormId; }
+    public String getTesterName() { return testerName; }
+    public String getResult() { return result; }
+    public String getComment() { return comment; }
+    public LocalDateTime getTestedAt() { return testedAt; }
 }

@@ -7,6 +7,7 @@ import type {
   RndTask,
   RndTaskDetailView,
   RndTaskStatus,
+  TestRecord,
   UserAccount,
   YieldCalculationMode,
 } from "../types";
@@ -77,6 +78,7 @@ export function createTaskApi(client: ApiClient) {
       const suffix = query.toString() ? `?${query}` : "";
       return client.get<RndTaskDetailView>(`/rnd-tasks/${id}/detail${suffix}`);
     },
+    testRecords: (id: string) => client.get<TestRecord[]>(`/rnd-tasks/${id}/test-records`),
     assign: (id: string, assigneeName: string, dueDate: string, productOwnerName?: string) =>
       client.post<RndTask>(`/rnd-tasks/${id}/assign`, {
         assigneeName,

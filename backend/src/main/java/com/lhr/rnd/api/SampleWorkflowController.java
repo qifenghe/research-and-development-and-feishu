@@ -14,6 +14,7 @@ import com.lhr.rnd.model.SampleRequest;
 import com.lhr.rnd.model.ShipmentDetailView;
 import com.lhr.rnd.model.ShipmentRecord;
 import com.lhr.rnd.model.StoppedSampleProjectView;
+import com.lhr.rnd.model.TestRecord;
 import com.lhr.rnd.service.ApproveSampleRequestResult;
 import com.lhr.rnd.service.FailInternalTestResult;
 import com.lhr.rnd.service.NotifyFinanceResult;
@@ -136,6 +137,11 @@ public class SampleWorkflowController {
             @RequestParam(required = false) String operatorName
     ) {
         return ApiResponse.success(workflowService.rndTaskDetail(id, role, operatorName));
+    }
+
+    @GetMapping("/rnd-tasks/{id}/test-records")
+    public ApiResponse<List<TestRecord>> testRecords(@PathVariable String id) {
+        return ApiResponse.success(workflowService.testRecordsForTask(id));
     }
 
     @PostMapping("/rnd-tasks/{id}/assign")

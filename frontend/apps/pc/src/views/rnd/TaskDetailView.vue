@@ -39,6 +39,17 @@
               </a-descriptions>
             </a-card>
 
+            <a-card v-if="canViewTestRecords" title="内部测试记录" class="page-card">
+              <a-empty v-if="testRecords.length === 0" description="暂未形成测试结论" />
+              <a-timeline v-else>
+                <a-timeline-item v-for="record in testRecords" :key="record.id" :color="record.result === 'PASSED' ? 'green' : 'red'">
+                  <strong>{{ record.result === 'PASSED' ? '测试通过并锁版' : '测试不通过，需复打样' }}</strong>
+                  <div>{{ record.testerName }} · {{ record.testedAt }}</div>
+                  <div class="test-comment">{{ record.comment || '未填写评价说明' }}</div>
+                </a-timeline-item>
+              </a-timeline>
+            </a-card>
+
             <a-card title="版本与归档" class="page-card">
               <a-space>
                 <a-button @click="openHistory">查看实验单历史版本</a-button>
@@ -104,6 +115,7 @@ import {
   taskStatusLabel,
   type RndTaskDetailView,
   type ShipmentRecord,
+  type TestRecord,
   type UserAccount,
 } from "@rnd/shared";
 import TaskWorkflowPanel from "../../components/TaskWorkflowPanel.vue";
@@ -118,6 +130,7 @@ const { setPanel, clearPanel } = useAdminContext();
 const loading = ref(false);
 const detail = ref<RndTaskDetailView | null>(null);
 const relatedShipment = ref<ShipmentRecord | null>(null);
+const testRecords = ref<TestRecord[]>([]);
 const engineerOptions = ref<Array<{ label: string; value: string }>>([]);
 const assignModalOpen = ref(false);
 const assignSubmitting = ref(false);
@@ -128,6 +141,7 @@ const assignForm = reactive({
 
 const resolvedGroups = computed(() => (detail.value ? resolveDetailFieldGroups(detail.value) : []));
 const summaryRows = computed(() => (detail.value ? buildTaskSummaryRows(detail.value) : []));
+const canViewTestRecords = computed(() => ["RND_DIRECTOR", "SYSTEM_ADMIN"].includes(auth.role));
 
 const permissionHint = computed(() => {
   if (!detail.value) return "";
@@ -157,6 +171,7 @@ async function load() {
   loading.value = true;
   try {
     detail.value = await api.task.detail(String(route.params.id), auth.role, auth.displayName);
+    if (canViewTestRecords.value) testRecords.value = await api.task.testRecords(String(route.params.id));
     if (detail.value) {
       setPanel({
         title: detail.value.task.productName,
@@ -277,3 +292,7 @@ onUnmounted(() => {
   clearPanel();
 });
 </script>
+
+<style scoped>
+.test-comment { white-space: pre-line; color: #595959; margin-top: 6px; }
+</style>

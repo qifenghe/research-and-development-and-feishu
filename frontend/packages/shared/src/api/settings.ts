@@ -2,6 +2,8 @@ import type { ApiClient } from "./client";
 import type {
   DictionaryConfig,
   FormFieldConfig,
+  PermissionCapability,
+  RoleDefinition,
   RolePermissionConfig,
   UserAccount,
   WorkflowConfig,
@@ -14,6 +16,12 @@ export function createSettingsApi(client: ApiClient) {
       client.put<UserAccount>(`/settings/users/${idOrUsername}`, payload),
     enableUser: (id: string) => client.post<UserAccount>(`/settings/users/${id}/enable`),
     disableUser: (id: string) => client.post<UserAccount>(`/settings/users/${id}/disable`),
+    roles: () => client.get<RoleDefinition[]>("/settings/roles"),
+    createRole: (payload: Record<string, unknown>) => client.post<RoleDefinition>("/settings/roles", payload),
+    updateRole: (roleCode: string, payload: Record<string, unknown>) =>
+      client.put<RoleDefinition>(`/settings/roles/${roleCode}`, payload),
+    enableRole: (roleCode: string) => client.post<RoleDefinition>(`/settings/roles/${roleCode}/enable`),
+    disableRole: (roleCode: string) => client.post<RoleDefinition>(`/settings/roles/${roleCode}/disable`),
     workflows: () => client.get<WorkflowConfig[]>("/settings/workflows"),
     workflow: (workflowCode: string) =>
       client.get<WorkflowConfig>(`/settings/workflows/${workflowCode}`),
@@ -37,6 +45,7 @@ export function createSettingsApi(client: ApiClient) {
       client.post<FormFieldConfig[]>("/settings/form-fields/defaults/initialize"),
     rolePermissions: (roleCode: string) =>
       client.get<RolePermissionConfig>(`/settings/role-permissions/${roleCode}`),
+    permissionCatalog: () => client.get<PermissionCapability[]>("/settings/role-permissions/catalog"),
     saveRolePermissions: (roleCode: string, payload: Record<string, unknown>) =>
       client.put<RolePermissionConfig>(`/settings/role-permissions/${roleCode}`, payload),
     initRolePermissionDefaults: () =>

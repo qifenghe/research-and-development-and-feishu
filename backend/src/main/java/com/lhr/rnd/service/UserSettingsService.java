@@ -22,16 +22,31 @@ public class UserSettingsService {
     private final Clock clock;
     private final UserAccountRepository userAccountRepository;
     private final PasswordHashService passwordHashService;
+    private final RoleDefinitionService roleDefinitionService;
 
     @Autowired
-    public UserSettingsService(UserAccountRepository userAccountRepository, PasswordHashService passwordHashService) {
-        this(Clock.systemDefaultZone(), userAccountRepository, passwordHashService);
+    public UserSettingsService(
+            UserAccountRepository userAccountRepository,
+            PasswordHashService passwordHashService,
+            RoleDefinitionService roleDefinitionService
+    ) {
+        this(Clock.systemDefaultZone(), userAccountRepository, passwordHashService, roleDefinitionService);
     }
 
     UserSettingsService(Clock clock, UserAccountRepository userAccountRepository, PasswordHashService passwordHashService) {
+        this(clock, userAccountRepository, passwordHashService, null);
+    }
+
+    UserSettingsService(
+            Clock clock,
+            UserAccountRepository userAccountRepository,
+            PasswordHashService passwordHashService,
+            RoleDefinitionService roleDefinitionService
+    ) {
         this.clock = clock;
         this.userAccountRepository = userAccountRepository;
         this.passwordHashService = passwordHashService;
+        this.roleDefinitionService = roleDefinitionService;
     }
 
     public List<UserAccount> users() {
@@ -50,6 +65,9 @@ public class UserSettingsService {
 
     @Transactional
     public UserAccount saveUser(SaveUserCommand command) {
+        if (roleDefinitionService != null) {
+            roleDefinitionService.assertAssignable(command.role());
+        }
         var now = now();
         var username = command.username() == null || command.username().isBlank()
                 ? command.idOrFeishuUserId().trim()

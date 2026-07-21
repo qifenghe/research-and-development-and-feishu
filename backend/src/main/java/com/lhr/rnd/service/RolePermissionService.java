@@ -5,6 +5,7 @@ import com.lhr.rnd.persistence.entity.RolePermissionEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.AntPathMatcher;
+import jakarta.annotation.PostConstruct;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,6 +20,11 @@ public class RolePermissionService {
         this.repository = repository;
     }
 
+    @PostConstruct
+    public void initializeOnStartup() {
+        initializeDefaultPermissions();
+    }
+
     public RolePermissionConfig rolePermissions(String roleCode) {
         return new RolePermissionConfig(
                 roleCode,
@@ -26,6 +32,20 @@ public class RolePermissionService {
                         .map(this::toRule)
                         .toList()
         );
+    }
+
+    public List<PermissionCapability> permissionCatalog() {
+        return defaultPermissionConfigs().stream()
+                .flatMap(config -> config.permissions().stream())
+                .collect(java.util.stream.Collectors.toMap(
+                        rule -> rule.httpMethod() + " " + rule.pathPattern(),
+                        rule -> toCapability(rule),
+                        (left, right) -> left
+                ))
+                .values().stream()
+                .sorted(java.util.Comparator.comparingInt(PermissionCapability::sortOrder)
+                        .thenComparing(PermissionCapability::actionName))
+                .toList();
     }
 
     @Transactional
@@ -80,7 +100,6 @@ public class RolePermissionService {
                         rule("POST", "/api/v1/experiment-forms/*/submit-test", "通知内部测试", 49),
                         rule("POST", "/api/v1/shipments/*/feedback", "登记客户反馈", 60),
                         rule("POST", "/api/v1/sample-versions/*/pricing-files", "生成核价文件", 70),
-                        rule("POST", "/api/v1/pricing-files/*/review", "审核核价文件", 75),
                         rule("GET", "/api/v1/sample-versions/pricing-ready", "查看待生成核价版本", 75),
                         rule("POST", "/api/v1/pricing-files/*/notify-finance", "通知财务接收核价", 78),
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 80),
@@ -104,6 +123,7 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 40),
                         rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 50),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 60),
+                        rule("GET", "/api/v1/rnd-tasks/*/test-records", "查看内部测试记录", 61),
                         rule("POST", "/api/v1/rnd-tasks/*/assign", "分发研发任务", 70),
                         rule("POST", "/api/v1/rnd-tasks/*/accept", "接受研发任务", 75),
                         rule("GET", "/api/v1/sample-versions/*/process-steps", "查看工序步骤", 76),
@@ -175,7 +195,6 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 10),
                         rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 20),
                         rule("GET", "/api/v1/reports/pricing-files/*/export", "导出核价文件", 25),
-                        rule("POST", "/api/v1/pricing-files/*/notify-finance", "处理核价通知", 30),
                         rule("POST", "/api/v1/pricing-files/*/receive", "确认接收核价文件", 35),
                         rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 40),
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 50)
@@ -215,34 +234,41 @@ public class RolePermissionService {
         if (hasAnyRole(role, "ADMIN", "SYSTEM_ADMIN")) {
             return true;
         }
-        String normalizedMethod = method == null ? "" : method.toUpperCase();
         if (isSettingsManagement(uri)) {
             return false;
         }
-        if (isRndAssigneeRead(normalizedMethod, uri)) {
-            return hasAnyRole(role, "RND_DIRECTOR");
-        }
-        if (isReportExport(normalizedMethod, uri)) {
-            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER");
-        }
-        if (isPricingReceive(normalizedMethod, uri)) {
-            return hasAnyRole(role, "FINANCE");
-        }
-        if (isFinanceWrite(normalizedMethod, uri)) {
-            return hasAnyRole(role, "RND_ASSISTANT");
-        }
-        if (isPricingReview(normalizedMethod, uri)) {
-            return hasAnyRole(role, "RND_DIRECTOR", "RND_ENGINEER", "RND");
-        }
-        if (isPricingReadyRead(normalizedMethod, uri)) {
-            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "MANAGER");
-        }
-        if (repository.countByRoleCode(role) > 0) {
-            return repository.findByRoleCodeAndEnabledTrueOrderBySortOrderAsc(role).stream()
-                    .anyMatch(permission -> permission.getHttpMethod().equalsIgnoreCase(normalizedMethod)
-                            && pathMatcher.match(permission.getPathPattern(), uri));
-        }
-        return hasDefaultPermission(role, normalizedMethod, uri);
+        String normalizedMethod = method == null ? "" : method.toUpperCase();
+        return repository.findByRoleCodeAndEnabledTrueOrderBySortOrderAsc(role).stream()
+                .anyMatch(permission -> permission.getHttpMethod().equalsIgnoreCase(normalizedMethod)
+                        && pathMatcher.match(permission.getPathPattern(), uri));
+    }
+
+    private PermissionCapability toCapability(RolePermissionRule rule) {
+        var module = moduleFor(rule.pathPattern());
+        return new PermissionCapability(
+                module.code(),
+                module.name(),
+                rule.httpMethod() + "_" + rule.pathPattern().replaceAll("[^A-Za-z0-9]+", "_"),
+                rule.description(),
+                rule.httpMethod(),
+                rule.pathPattern(),
+                rule.sortOrder()
+        );
+    }
+
+    private PermissionModule moduleFor(String pathPattern) {
+        if (pathPattern.contains("sample-requests")) return new PermissionModule("DEMAND", "样品需求");
+        if (pathPattern.contains("rnd-tasks") || pathPattern.contains("experiment-forms")
+                || pathPattern.contains("test-assignments") || pathPattern.contains("process-steps")
+                || pathPattern.contains("rnd-assignees")) return new PermissionModule("RND", "研发与测试");
+        if (pathPattern.contains("shipments")) return new PermissionModule("SHIPMENT", "寄样反馈");
+        if (pathPattern.contains("pricing") || pathPattern.contains("pricing-ready")) return new PermissionModule("PRICING", "核价文件");
+        if (pathPattern.contains("reports")) return new PermissionModule("REPORT", "报表导出");
+        if (pathPattern.contains("archive") || pathPattern.contains("stopped")) return new PermissionModule("ARCHIVE", "文件归档");
+        return new PermissionModule("WORKBENCH", "工作台");
+    }
+
+    private record PermissionModule(String code, String name) {
     }
 
     private RolePermissionRule toRule(RolePermissionEntity entity) {

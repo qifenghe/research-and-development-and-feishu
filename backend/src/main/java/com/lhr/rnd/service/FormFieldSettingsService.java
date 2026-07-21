@@ -3,6 +3,7 @@ package com.lhr.rnd.service;
 import com.lhr.rnd.model.FormFieldConfigItem;
 import com.lhr.rnd.persistence.entity.FormFieldConfigEntity;
 import com.lhr.rnd.persistence.repository.FormFieldConfigRepository;
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,11 @@ public class FormFieldSettingsService {
 
     public FormFieldSettingsService(FormFieldConfigRepository repository) {
         this.repository = repository;
+    }
+
+    @PostConstruct
+    public void initializeOnStartup() {
+        initializeDefaultFormFields();
     }
 
     public FormFieldConfig formFields(String formCode) {

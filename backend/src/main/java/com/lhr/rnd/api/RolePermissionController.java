@@ -3,6 +3,7 @@ package com.lhr.rnd.api;
 import com.lhr.rnd.service.RolePermissionConfig;
 import com.lhr.rnd.service.RolePermissionRule;
 import com.lhr.rnd.service.RolePermissionService;
+import com.lhr.rnd.service.PermissionCapability;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,6 +27,11 @@ public class RolePermissionController {
     @GetMapping("/{roleCode}")
     public ApiResponse<RolePermissionConfig> rolePermissions(@PathVariable String roleCode) {
         return ApiResponse.success(rolePermissionService.rolePermissions(roleCode));
+    }
+
+    @GetMapping("/catalog")
+    public ApiResponse<List<PermissionCapability>> permissionCatalog() {
+        return ApiResponse.success(rolePermissionService.permissionCatalog());
     }
 
     @PutMapping("/{roleCode}")

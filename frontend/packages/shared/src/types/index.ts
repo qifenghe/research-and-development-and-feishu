@@ -225,6 +225,16 @@ export interface TestAssignment {
   status: string;
 }
 
+export interface TestRecord {
+  id: string;
+  testAssignmentId: string;
+  experimentFormId: string;
+  testerName: string;
+  result: string;
+  comment?: string;
+  testedAt: string;
+}
+
 export interface DetailField {
   label: string;
   value: string;
@@ -389,28 +399,57 @@ export interface DictionaryItem {
 
 export interface FormFieldConfig {
   formCode: string;
-  formName: string;
   fields: FormFieldConfigItem[];
 }
 
 export interface FormFieldConfigItem {
+  id?: string;
+  formCode?: string;
   fieldCode: string;
   fieldLabel: string;
+  controlType: string;
   required: boolean;
-  visible: boolean;
+  enabled: boolean;
   sortOrder: number;
+  dictionaryCategory?: string;
+  placeholder?: string;
+  defaultValue?: string;
+  remark?: string;
+  updatedAt?: string;
 }
 
 export interface RolePermissionConfig {
   roleCode: string;
-  roleName: string;
-  rules: RolePermissionRule[];
+  permissions: RolePermissionRule[];
 }
 
 export interface RolePermissionRule {
+  id?: string;
   httpMethod: string;
   pathPattern: string;
-  allowed: boolean;
+  enabled: boolean;
+  description: string;
+  sortOrder: number;
+}
+
+export interface RoleDefinition {
+  roleCode: string;
+  roleName: string;
+  description?: string;
+  status: "ACTIVE" | "INACTIVE";
+  systemBuiltin: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PermissionCapability {
+  moduleCode: string;
+  moduleName: string;
+  actionCode: string;
+  actionName: string;
+  httpMethod: string;
+  pathPattern: string;
+  sortOrder: number;
 }
 
 export interface MobileTodoItem {
