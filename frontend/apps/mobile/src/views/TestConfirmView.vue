@@ -151,7 +151,7 @@ async function submitPass() {
   submitting.value = true;
   pendingAction.value = "pass";
   try {
-    const testerName = detail.value?.currentTestAssignment?.testerName || auth.displayName;
+    const testerName = auth.displayName;
     await api.task.passInternalTest(testId, testerName, buildComment());
     showSuccessToast("测试通过，版本已锁定");
     router.push("/todo");
@@ -172,7 +172,7 @@ async function submitResample() {
   submitting.value = true;
   pendingAction.value = "resample";
   try {
-    const testerName = detail.value?.currentTestAssignment?.testerName || auth.displayName;
+    const testerName = auth.displayName;
     await api.task.failInternalTest(testId, testerName, buildComment());
     showSuccessToast("已退回复打样");
     router.push("/todo");

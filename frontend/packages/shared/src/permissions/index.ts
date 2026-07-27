@@ -1,4 +1,5 @@
 const ADMIN_ROLES = ["ADMIN", "SYSTEM_ADMIN"] as const;
+const INTERNAL_TEST_ROLES = ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER", ...ADMIN_ROLES];
 
 export type AppAction =
   | "APPROVE_REQUEST"
@@ -28,18 +29,18 @@ const ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/rnd\/pool$/, roles: ["RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/rnd\/assign$/, roles: ["RND_DIRECTOR", ...ADMIN_ROLES] },
   { pattern: /^\/rnd\/my-tasks$/, roles: ["RND_ENGINEER", "RND_DIRECTOR", ...ADMIN_ROLES] },
-  { pattern: /^\/rnd\/pending-tests$/, roles: ["TESTER", "QA_TESTER", ...ADMIN_ROLES] },
+  { pattern: /^\/rnd\/pending-tests$/, roles: INTERNAL_TEST_ROLES },
   { pattern: /^\/rnd\/stopped$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
-  { pattern: /^\/rnd\/tasks\/[^/]+$/, roles: ["RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "MANAGER", ...ADMIN_ROLES] },
+  { pattern: /^\/rnd\/tasks\/[^/]+$/, roles: INTERNAL_TEST_ROLES },
   { pattern: /^\/rnd\/tasks\/[^/]+\/experiment$/, roles: ["RND_ENGINEER", "RND_DIRECTOR", ...ADMIN_ROLES] },
-  { pattern: /^\/rnd\/tasks\/[^/]+\/test$/, roles: ["TESTER", "QA_TESTER", ...ADMIN_ROLES] },
+  { pattern: /^\/rnd\/tasks\/[^/]+\/test$/, roles: INTERNAL_TEST_ROLES },
   { pattern: /^\/rnd\/tasks\/[^/]+\/feedback$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", ...ADMIN_ROLES] },
   { pattern: /^\/rnd\/history\/[^/]+$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/shipment$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/shipment\/list$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/shipment\/record$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", ...ADMIN_ROLES] },
   { pattern: /^\/shipment\/[^/]+$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
-  { pattern: /^\/pricing\/list$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "MANAGER", ...ADMIN_ROLES] },
+  { pattern: /^\/pricing\/list$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/pricing\/[^/]+$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/finance$/, roles: ["RND_ASSISTANT", "FINANCE", ...ADMIN_ROLES] },
   { pattern: /^\/archive$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
@@ -55,9 +56,9 @@ const MOBILE_ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/tasks\/assign$/, roles: ["RND_DIRECTOR", ...ADMIN_ROLES] },
   { pattern: /^\/samples$/, roles: ["RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/profile$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
-  { pattern: /^\/tasks\/[^/]+$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "MANAGER", ...ADMIN_ROLES] },
+  { pattern: /^\/tasks\/[^/]+$/, roles: INTERNAL_TEST_ROLES },
   { pattern: /^\/experiments\/[^/]+$/, roles: ["RND_ENGINEER", "RND_DIRECTOR", "RND_ASSISTANT", ...ADMIN_ROLES] },
-  { pattern: /^\/tests\/[^/]+$/, roles: ["TESTER", "QA_TESTER", ...ADMIN_ROLES] },
+  { pattern: /^\/tests\/[^/]+$/, roles: INTERNAL_TEST_ROLES },
   { pattern: /^\/shipments\/record$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", ...ADMIN_ROLES] },
   { pattern: /^\/shipments\/[^/]+$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/pricing$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
@@ -74,7 +75,7 @@ const ACTION_ROLES: Record<AppAction, string[]> = {
   ACCEPT_TASK: ["RND_ENGINEER", "RND_DIRECTOR", ...ADMIN_ROLES],
   SAVE_EXPERIMENT: ["RND_ENGINEER", "RND_DIRECTOR", ...ADMIN_ROLES],
   NOTIFY_INTERNAL_TEST: ["RND_ENGINEER", "RND_DIRECTOR", "RND_ASSISTANT", ...ADMIN_ROLES],
-  PERFORM_INTERNAL_TEST: ["TESTER", "QA_TESTER", ...ADMIN_ROLES],
+  PERFORM_INTERNAL_TEST: INTERNAL_TEST_ROLES,
   RECORD_SHIPMENT_FEEDBACK: ["RND_ASSISTANT", "RND_DIRECTOR", ...ADMIN_ROLES],
   MANAGE_SETTINGS: [...ADMIN_ROLES],
 };
@@ -111,6 +112,11 @@ export function canAccessRoute(
   platform: "pc" | "mobile" = "pc",
 ): boolean {
   const normalized = normalizePath(path);
+  if (role && (normalized === "/rnd/pending-tests"
+    || /^\/rnd\/tasks\/[^/]+\/test$/.test(normalized)
+    || /^\/tests\/[^/]+$/.test(normalized))) {
+    return true;
+  }
   const rules = platform === "mobile" ? MOBILE_ROUTE_RULES : ROUTE_RULES;
   const rule = matchRouteRules(normalized, rules);
   if (!rule) {
@@ -120,6 +126,9 @@ export function canAccessRoute(
 }
 
 export function canPerformAction(role: string | null | undefined, action: AppAction): boolean {
+  if (action === "PERFORM_INTERNAL_TEST") {
+    return Boolean(role);
+  }
   return hasRole(role, ACTION_ROLES[action]);
 }
 

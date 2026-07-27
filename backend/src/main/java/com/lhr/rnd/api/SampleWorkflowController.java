@@ -220,17 +220,23 @@ public class SampleWorkflowController {
     @PostMapping("/test-assignments/{id}/pass")
     public ApiResponse<PassInternalTestResult> passInternalTest(
             @PathVariable String id,
-            @Valid @RequestBody InternalTestDecisionRequest request
+            @Valid @RequestBody InternalTestDecisionRequest request,
+            HttpServletRequest servletRequest
     ) {
-        return ApiResponse.success(workflowService.passInternalTest(id, request.testerName(), request.comment()));
+        var principal = sessionPrincipal(servletRequest);
+        var testerName = principal == null ? request.testerName() : principal.name();
+        return ApiResponse.success(workflowService.passInternalTest(id, testerName, request.comment()));
     }
 
     @PostMapping("/test-assignments/{id}/fail-resample")
     public ApiResponse<FailInternalTestResult> failInternalTestForResample(
             @PathVariable String id,
-            @Valid @RequestBody InternalTestDecisionRequest request
+            @Valid @RequestBody InternalTestDecisionRequest request,
+            HttpServletRequest servletRequest
     ) {
-        return ApiResponse.success(workflowService.failInternalTestForResample(id, request.testerName(), request.comment()));
+        var principal = sessionPrincipal(servletRequest);
+        var testerName = principal == null ? request.testerName() : principal.name();
+        return ApiResponse.success(workflowService.failInternalTestForResample(id, testerName, request.comment()));
     }
 
     @PostMapping("/sample-versions/{id}/shipments")

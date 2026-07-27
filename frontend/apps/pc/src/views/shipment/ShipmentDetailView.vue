@@ -74,7 +74,7 @@
         <a-col :span="8">
           <a-card title="后续操作" class="page-card workflow-side-card">
             <a-typography-text type="secondary">
-              客户通过后生成核价文件，并可在核价列表中通知财务。
+              客户通过后生成核价文件，产品负责人或研发总监审核通过后自动移交财务。
             </a-typography-text>
             <a-space direction="vertical" style="width: 100%; margin-top: 16px">
               <a-button

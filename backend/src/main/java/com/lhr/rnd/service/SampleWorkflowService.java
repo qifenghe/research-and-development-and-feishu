@@ -96,6 +96,8 @@ import java.util.UUID;
 public class SampleWorkflowService {
     private static final Set<String> FINISHED_OUTPUT_UNITS = Set.of("袋", "盒", "份", "个", "盘");
     private static final int MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
+    private static final String DEFAULT_FINANCE_RECIPIENT = "财务核价员";
+    private static final String AUTO_FINANCE_REMARK = "核价文件已审核通过，系统自动移交财务核价";
     private static final Set<String> ALLOWED_ATTACHMENT_CONTENT_TYPES = Set.of(
             "image/jpeg",
             "image/png",
@@ -1791,7 +1793,9 @@ public class SampleWorkflowService {
     ) {
         var pricingFile = requiredPricingFile(pricingFileId);
         ensurePricingReviewer(pricingFile, reviewerName, reviewerRole);
-        if (pricingFile.status() == PricingFileStatus.PRICING_APPROVED
+        if (pricingFile.status() == PricingFileStatus.FINANCE_NOTIFIED
+                || pricingFile.status() == PricingFileStatus.FINANCE_RECEIVED
+                || pricingFile.status() == PricingFileStatus.PRICING_APPROVED
                 || pricingFile.status() == PricingFileStatus.PRICING_REJECTED) {
             return pricingFile;
         }
@@ -1819,13 +1823,38 @@ public class SampleWorkflowService {
                 rejected ? normalizedComment : null
         );
         persistPricingReview(reviewed);
+        var result = reviewed;
+        FinanceNotification financeNotification = null;
+        if (approved) {
+            result = reviewed.withStatus(PricingFileStatus.FINANCE_NOTIFIED);
+            financeNotification = new FinanceNotification(
+                    "FIN-%04d".formatted(financeNotificationSequence++),
+                    reviewed.id(),
+                    DEFAULT_FINANCE_RECIPIENT,
+                    AUTO_FINANCE_REMARK,
+                    FinanceNotificationStatus.SENT,
+                    reviewedAt
+            );
+            persistFinanceNotification(result, financeNotification);
+        }
         if (auditLogService != null) {
             auditLogService.record("PRICING_FILE", pricingFileId,
                     approved ? "PRICING_REVIEW_APPROVE" : "PRICING_REVIEW_REJECT", reviewerName,
                     "comment=" + normalizedComment);
+            if (financeNotification != null) {
+                auditLogService.record("PRICING_FILE", pricingFileId, "FINANCE_AUTO_HANDOFF", reviewerName,
+                        "recipient=" + financeNotification.recipientName());
+            }
         }
-        cacheAfterCommit(() -> pricingFiles.put(reviewed.id(), reviewed));
-        return reviewed;
+        var pricingFileToCache = result;
+        var notificationToCache = financeNotification;
+        cacheAfterCommit(() -> {
+            pricingFiles.put(pricingFileToCache.id(), pricingFileToCache);
+            if (notificationToCache != null) {
+                financeNotifications.put(notificationToCache.id(), notificationToCache);
+            }
+        });
+        return result;
     }
 
     public synchronized List<ArchiveFileView> archiveFiles(String versionId) {
@@ -2968,9 +2997,6 @@ public class SampleWorkflowService {
         }
         if (assignment.status() != TestAssignmentStatus.PENDING_TEST) {
             throw new BusinessException("TEST_ASSIGNMENT_STATUS_ILLEGAL", "当前测试任务状态不可确认");
-        }
-        if (!testerName.equals(assignment.testerName())) {
-            throw new BusinessException("TEST_ASSIGNMENT_TESTER_MISMATCH", "只能由被配置的测试人员确认");
         }
         return assignment;
     }

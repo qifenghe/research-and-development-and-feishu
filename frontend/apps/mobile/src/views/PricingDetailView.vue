@@ -52,15 +52,6 @@
           下载核价文件
         </van-button>
         <van-button
-          v-if="canNotifyFinance"
-          type="primary"
-          block
-          :loading="notifying"
-          @click="notifyFinance"
-        >
-          通知财务
-        </van-button>
-        <van-button
           v-if="canReceive"
           type="success"
           block
@@ -92,7 +83,6 @@ const auth = useAuthStore();
 const loading = ref(false);
 const downloading = ref(false);
 const receiving = ref(false);
-const notifying = ref(false);
 const reviewing = ref(false);
 const reviewComment = ref("");
 const reviewActionsVisible = ref(false);
@@ -105,9 +95,6 @@ const reviewActions = [
 const canReceive = computed(() => (
   auth.role === "FINANCE" && detail.value?.pricingFile.status === "FINANCE_NOTIFIED"
 ));
-const canNotifyFinance = computed(() => (
-  auth.role === "RND_ASSISTANT" && detail.value?.pricingFile.status === "PRICING_APPROVED"
-));
 const canDownload = computed(() => [
   "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER", "ADMIN", "SYSTEM_ADMIN",
 ].includes(auth.role ?? ""));
@@ -115,7 +102,7 @@ const canReview = computed(() => (
   (auth.role === "RND_DIRECTOR" || auth.role === "RND_ENGINEER")
   && detail.value?.pricingFile.status === "PENDING_PRICING_REVIEW"
 ));
-const hasWorkflowAction = computed(() => canReview.value || canNotifyFinance.value || canReceive.value);
+const hasWorkflowAction = computed(() => canReview.value || canReceive.value);
 
 const headerTitle = computed(() => {
   if (!detail.value) return "核价文件";
@@ -172,19 +159,6 @@ async function receive() {
   }
 }
 
-async function notifyFinance() {
-  notifying.value = true;
-  try {
-    await api.shipment.notifyFinance(String(route.params.id), "财务");
-    showSuccessToast("已通知财务");
-    await router.replace("/todo");
-  } catch (error) {
-    showFailToast(error instanceof Error ? error.message : "通知财务失败");
-  } finally {
-    notifying.value = false;
-  }
-}
-
 async function review(decision: "APPROVE" | "REJECT") {
   if (decision === "REJECT" && !reviewComment.value.trim()) {
     showFailToast("请填写退回原因");
@@ -196,7 +170,7 @@ async function review(decision: "APPROVE" | "REJECT") {
       decision,
       comment: reviewComment.value.trim() || undefined,
     });
-    showSuccessToast(decision === "APPROVE" ? "核价已审核通过" : "核价已退回");
+    showSuccessToast(decision === "APPROVE" ? "审核通过，已移交财务" : "核价已退回");
     await load();
   } catch (error) {
     showFailToast(error instanceof Error ? error.message : "核价审核失败");

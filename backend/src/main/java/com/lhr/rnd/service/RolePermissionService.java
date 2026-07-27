@@ -98,6 +98,8 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/rnd-tasks", "查看待寄样任务", 48),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看任务详情", 49),
                         rule("POST", "/api/v1/experiment-forms/*/submit-test", "通知内部测试", 49),
+                        rule("POST", "/api/v1/test-assignments/*/pass", "提交内部测试通过", 50),
+                        rule("POST", "/api/v1/test-assignments/*/fail-resample", "提交内部测试复打样", 51),
                         rule("POST", "/api/v1/shipments/*/feedback", "登记客户反馈", 60),
                         rule("POST", "/api/v1/sample-versions/*/pricing-files", "生成核价文件", 70),
                         rule("GET", "/api/v1/sample-versions/pricing-ready", "查看待生成核价版本", 75),
@@ -129,6 +131,8 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/sample-versions/*/process-steps", "查看工序步骤", 76),
                         rule("POST", "/api/v1/rnd-tasks/*/experiment-form/draft", "保存实验单草稿", 77),
                         rule("POST", "/api/v1/experiment-forms/*/submit-test", "提交内部测试", 78),
+                        rule("POST", "/api/v1/test-assignments/*/pass", "提交内部测试通过", 78),
+                        rule("POST", "/api/v1/test-assignments/*/fail-resample", "提交内部测试复打样", 78),
                         rule("POST", "/api/v1/pricing-files/*/review", "审核核价文件", 79),
                         rule("POST", "/api/v1/experiment-forms/*/attachments", "上传实验附件", 79),
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 80),
@@ -157,6 +161,8 @@ public class RolePermissionService {
                         rule("POST", "/api/v1/rnd-tasks/*/accept", "接受研发任务", 50),
                         rule("POST", "/api/v1/rnd-tasks/*/experiment-form/draft", "保存实验单草稿", 60),
                         rule("POST", "/api/v1/experiment-forms/*/submit-test", "提交内部测试", 70),
+                        rule("POST", "/api/v1/test-assignments/*/pass", "提交内部测试通过", 71),
+                        rule("POST", "/api/v1/test-assignments/*/fail-resample", "提交内部测试复打样", 72),
                         rule("POST", "/api/v1/pricing-files/*/review", "审核本人负责产品的核价文件", 75),
                         rule("GET", "/api/v1/pricing-files", "查看本人负责产品的核价文件", 76),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看本人负责产品的核价文件详情", 77),
@@ -191,6 +197,10 @@ public class RolePermissionService {
                 )),
                 new RolePermissionConfig("FINANCE", List.of(
                         rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 5),
+                        rule("GET", "/api/v1/rnd-tasks", "查看待测试任务", 6),
+                        rule("GET", "/api/v1/rnd-tasks/*/detail", "查看待测试任务详情", 7),
+                        rule("POST", "/api/v1/test-assignments/*/pass", "提交内部测试通过", 7),
+                        rule("POST", "/api/v1/test-assignments/*/fail-resample", "提交内部测试复打样", 7),
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 8),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 10),
                         rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 20),
@@ -207,6 +217,8 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 30),
                         rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 40),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 50),
+                        rule("POST", "/api/v1/test-assignments/*/pass", "提交内部测试通过", 51),
+                        rule("POST", "/api/v1/test-assignments/*/fail-resample", "提交内部测试复打样", 52),
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 60),
                         rule("GET", "/api/v1/shipments/*/detail", "查看寄样详情", 70),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 80),
@@ -238,6 +250,9 @@ public class RolePermissionService {
             return false;
         }
         String normalizedMethod = method == null ? "" : method.toUpperCase();
+        if (isInternalTestWrite(normalizedMethod, uri)) {
+            return true;
+        }
         return repository.findByRoleCodeAndEnabledTrueOrderBySortOrderAsc(role).stream()
                 .anyMatch(permission -> permission.getHttpMethod().equalsIgnoreCase(normalizedMethod)
                         && pathMatcher.match(permission.getPathPattern(), uri));
@@ -427,6 +442,12 @@ public class RolePermissionService {
     }
 
     private boolean isTestWrite(String method, String uri) {
+        return "POST".equals(method)
+                && (uri.matches("^/api/v1/test-assignments/[^/]+/pass$")
+                || uri.matches("^/api/v1/test-assignments/[^/]+/fail-resample$"));
+    }
+
+    private boolean isInternalTestWrite(String method, String uri) {
         return "POST".equals(method)
                 && (uri.matches("^/api/v1/test-assignments/[^/]+/pass$")
                 || uri.matches("^/api/v1/test-assignments/[^/]+/fail-resample$"));

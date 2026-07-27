@@ -1075,6 +1075,23 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void anyLoggedInRoleCanSubmitInternalTestAndActualOperatorIsRecorded() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var experimentFormId = saveExperimentDraft(taskId);
+        var testAssignmentId = submitExperimentForTest(experimentFormId);
+
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)
+                        .requestAttr("sessionPrincipal", principal("钱财务", "FINANCE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"伪造测试人\",\"comment\":\"复热和口感符合要求\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.testRecord.testerName").value("钱财务"))
+                .andExpect(jsonPath("$.data.testAssignment.status").value("PASSED"));
+    }
+
+    @Test
     void submittingExperimentForTestPersistsFormTaskAndAssignmentToDatabase() throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId);
@@ -1505,7 +1522,7 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
-    void pricingRequiresOwnerOrDirectorReviewBeforeFinanceNotification() throws Exception {
+    void approvedPricingIsAutomaticallyHandedToFinance() throws Exception {
         var pricingFileId = generatePricingFile(createLockedSampleVersion());
 
         mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
@@ -1523,28 +1540,28 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.code").value("PRICING_FILE_REVIEW_FORBIDDEN"));
 
         mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
-                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"张研发\",\"comment\":\"配方与出成数据确认无误\"}"))
+                .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"张研发\",\"comment\":\"配方与出成数据确认无误\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("PRICING_APPROVED"))
+                .andExpect(jsonPath("$.data.status").value("FINANCE_NOTIFIED"))
                 .andExpect(jsonPath("$.data.reviewedBy").value("张研发"));
+
+        mockMvc.perform(get("/api/v1/pricing-files")
+                        .param("status", "FINANCE_NOTIFIED")
+                        .requestAttr("sessionPrincipal", principal("钱财务", "FINANCE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(pricingFileId));
 
         var reviewedAt = valueById("pricing_file", pricingFileId, "reviewed_at");
         mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
-                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"张研发\",\"comment\":\"重复提交\"}"))
+                .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"张研发\",\"comment\":\"重复提交\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("PRICING_APPROVED"));
+                .andExpect(jsonPath("$.data.status").value("FINANCE_NOTIFIED"));
         assertThat(valueById("pricing_file", pricingFileId, "reviewed_at")).isEqualTo(reviewedAt);
-
-        mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
-                        .requestAttr("sessionPrincipal", principal("赵内勤", "RND_ASSISTANT"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"recipientName\":\"钱财务\",\"remark\":\"请接收核价文件\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.pricingFile.status").value("FINANCE_NOTIFIED"));
+        assertThat(countByColumn("finance_notification", "pricing_file_id", pricingFileId)).isEqualTo(1);
     }
 
     @Test
@@ -1711,7 +1728,7 @@ class SampleWorkflowControllerTest {
                         .content("{\"recipientName\":\"另一位财务\",\"remark\":\"重复请求\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pricingFile.status").value("FINANCE_NOTIFIED"))
-                .andExpect(jsonPath("$.data.notification.recipientName").value("钱财务"));
+                .andExpect(jsonPath("$.data.notification.recipientName").value("财务核价员"));
 
         assertThat(countByColumn("finance_notification", "pricing_file_id", pricingFileId)).isEqualTo(1);
     }
@@ -1777,16 +1794,15 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
-    void notifyingFinanceUsesWorkflowConfigAndRejectsDisabledAction() throws Exception {
+    void pricingApprovalUsesWorkflowConfigBeforeAutomaticFinanceHandoff() throws Exception {
         var versionId = createLockedSampleVersion();
         var pricingFileId = generatePricingFile(versionId);
-        approvePricingFile(pricingFileId);
-        disableWorkflowAction("PRICING_APPROVED", "NOTIFY_FINANCE", "FINANCE_NOTIFIED");
+        disableWorkflowAction("PENDING_PRICING_REVIEW", "APPROVE_PRICING", "PRICING_APPROVED");
 
-        mockMvc.perform(post("/api/v1/pricing-files/{id}/notify-finance", pricingFileId)
-                        .requestAttr("sessionPrincipal", principal("赵内勤", "RND_ASSISTANT"))
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"recipientName\":\"财务核价员\",\"remark\":\"请核价\"}"))
+                        .content("{\"decision\":\"APPROVE\",\"comment\":\"请核价\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("SAMPLE_STATUS_TRANSITION_ILLEGAL"));
     }
@@ -2400,10 +2416,10 @@ class SampleWorkflowControllerTest {
     private void approvePricingFile(String pricingFileId) throws Exception {
         mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
                         .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"张研发\",\"comment\":\"核价无误\"}"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"张研发\",\"comment\":\"核价无误\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("PRICING_APPROVED"));
+                .andExpect(jsonPath("$.data.status").value("FINANCE_NOTIFIED"));
     }
 
     @Test

@@ -81,7 +81,7 @@ function pricingToItem(pricing: PricingFileRecord): MobileTodoItem {
     kind: "pricing",
     productName: pricing.productName,
     versionCode: pricing.versionCode,
-    statusLabel: pricing.status === "FINANCE_NOTIFIED" ? "已通知财务" : "待财务核价",
+    statusLabel: pricing.status === "FINANCE_NOTIFIED" ? "已移交财务" : "待财务核价",
     actionLabel: "查看/下载",
     route: `/pricing/${pricing.id}`,
     subtitle: pricing.pricingVersion,
@@ -154,13 +154,7 @@ export async function fetchMobileTodoBoard(deps: {
       ? pricingInbox.map(pricingToItem)
       : resolvedPricingReady.map(pricingReadyToItem),
   };
-  const notifyFinanceGroup: MobileTodoGroup = {
-    key: "pricing-notify",
-    title: "待通知财务",
-    items: role === "RND_ASSISTANT" ? pricingInbox.map(pricingToItem) : [],
-  };
-
-  const groups = [...taskGroupsRaw, shipmentFeedbackGroup, pricingGroup, notifyFinanceGroup]
+  const groups = [...taskGroupsRaw, shipmentFeedbackGroup, pricingGroup]
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => canAccessRoute(role, item.route, "mobile")),

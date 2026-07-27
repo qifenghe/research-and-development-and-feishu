@@ -71,9 +71,8 @@ const chips = computed<Array<{ label: string; value: PricingFileStatus | "" }>>(
       ]
     : [
         { label: "待审核", value: "PENDING_PRICING_REVIEW" },
-        { label: "待通知财务", value: "PRICING_APPROVED" },
         { label: "已退回", value: "PRICING_REJECTED" },
-        { label: "已通知", value: "FINANCE_NOTIFIED" },
+        { label: "已移交财务", value: "FINANCE_NOTIFIED" },
         { label: "已接收", value: "FINANCE_RECEIVED" },
         { label: "全部", value: "" },
       ]
@@ -82,7 +81,7 @@ const chips = computed<Array<{ label: string; value: PricingFileStatus | "" }>>(
 function statusLabel(status: PricingFileStatus) {
   if (status === "FINANCE_RECEIVED") return "财务已接收";
   if (status === "FINANCE_NOTIFIED") return "待财务接收";
-  if (status === "PRICING_APPROVED") return "待通知财务";
+  if (status === "PRICING_APPROVED") return "审核通过";
   if (status === "PRICING_REJECTED") return "核价已退回";
   return "待核价审核";
 }

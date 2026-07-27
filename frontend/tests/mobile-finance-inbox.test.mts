@@ -12,6 +12,6 @@ test("finance todo loads notified pricing files instead of unnotified generated 
 });
 
 test("assistant todo keeps approved pricing files in the send-to-finance queue", () => {
-  assert.equal(pricingInboxStatusForRole("RND_ASSISTANT"), "PRICING_APPROVED");
-  assert.equal(pricingTodoGroupTitle("RND_ASSISTANT"), "待生成核价");
+  assert.equal(pricingInboxStatusForRole("RND_ASSISTANT"), "FINANCE_NOTIFIED");
+  assert.equal(pricingTodoGroupTitle("RND_ASSISTANT"), "已移交财务核价");
 });

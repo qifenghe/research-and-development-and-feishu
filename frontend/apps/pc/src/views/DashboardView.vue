@@ -115,7 +115,7 @@ const allStats = computed((): StatItem[] => {
     { key: "review", label: "待总监审核", value: data.pendingReviewCount, color: "#f59e0b", roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER"] },
     { key: "assign", label: "任务池待分发", value: data.pendingAssignmentCount, color: "#6d5bd0", roles: ["RND_DIRECTOR", "MANAGER"] },
     { key: "rnd", label: "研发处理中", value: data.pendingAcceptanceCount + data.samplingCount, color: "#16a34a", roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "MANAGER"] },
-    { key: "test", label: "待内部测试", value: data.pendingTestCount, color: "#0d9488", roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER"] },
+    { key: "test", label: "待内部测试", value: data.pendingTestCount, color: "#0d9488", roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER"] },
     { key: "completed", label: "样品已完成", value: data.completedSampleCount, color: "#16a34a", roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER"] },
     { key: "pricing", label: "待生成核价", value: data.pendingPricingCount, color: "#ef4444", roles: ["RND_ASSISTANT", "RND_DIRECTOR", "FINANCE", "MANAGER"] },
     { key: "finance", label: "已通知财务", value: data.financeNotifiedCount, color: "#246bfe", roles: ["RND_ASSISTANT", "FINANCE", "MANAGER"] },
@@ -132,11 +132,11 @@ const actionCatalog = [
   { label: "寄样反馈", description: "查看待反馈样品，登记客户是否通过或继续打样", path: "/shipment/list", roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER"] },
   { label: "录入客户反馈", description: "登记寄样并录入客户试吃后的通过、复打样或停止结论", path: "/shipment/record", roles: ["RND_ASSISTANT", "RND_DIRECTOR"] },
   { label: "录入样品需求", description: "研发内勤录入业务员或客户提出的样品清单", path: "/demand/new", roles: ["RND_ASSISTANT", "RND_DIRECTOR"] },
-  { label: "核价文件", description: "样品通过后生成核价文件并通知财务", path: "/pricing/list", roles: ["RND_ASSISTANT", "RND_DIRECTOR", "FINANCE", "MANAGER"] },
+  { label: "核价文件", description: "样品通过后生成核价文件，审核通过后自动移交财务", path: "/pricing/list", roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER"] },
   { label: "需求审核", description: "研发总监判断资料是否完整，通过后进入任务池", path: "/demand/review", roles: ["RND_DIRECTOR", "MANAGER"] },
   { label: "任务分发", description: "研发总监分发给具体研发人员", path: "/rnd/assign", roles: ["RND_DIRECTOR"] },
   { label: "我的打样任务", description: "接受任务、填写实验单并提交内部测试", path: "/rnd/my-tasks", roles: ["RND_ENGINEER", "RND_DIRECTOR"] },
-  { label: "内部测试待办", description: "测试人员对待测任务进行评价", path: "/rnd/pending-tests", roles: ["TESTER", "QA_TESTER"] },
+  { label: "内部测试待办", description: "任何登录人员均可填写并提交测试结论", path: "/rnd/pending-tests", roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER"] },
 ];
 
 const primaryActions = computed(() => {

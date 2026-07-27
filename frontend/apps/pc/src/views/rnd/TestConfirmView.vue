@@ -136,7 +136,7 @@ async function submitResult() {
   submitting.value = true;
   try {
     const comment = buildComment();
-    const testerName = detail.value?.currentTestAssignment?.testerName || auth.displayName;
+    const testerName = auth.displayName;
     if (conclusion.value === "PASS") {
       await api.task.passInternalTest(testId, testerName, comment);
       message.success("测试通过，实验单已锁定");

@@ -55,7 +55,6 @@
             <a-menu-item v-if="canSee('/shipment/list')" key="/shipment/list">寄样反馈</a-menu-item>
             <a-menu-item v-if="canSee('/shipment/record')" key="/shipment/record">录入反馈</a-menu-item>
             <a-menu-item v-if="canSee('/pricing/list')" key="/pricing/list">核价文件</a-menu-item>
-            <a-menu-item v-if="canSee('/finance')" key="/finance">通知财务</a-menu-item>
             <a-menu-item v-if="canSee('/archive')" key="/archive">文件归档</a-menu-item>
           </a-sub-menu>
           <a-menu-item v-if="canSee('/reports')" key="/reports">
