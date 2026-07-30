@@ -29,6 +29,10 @@ import com.lhr.rnd.model.PricingFileRecord;
 import com.lhr.rnd.model.PricingReadyVersion;
 import com.lhr.rnd.model.PricingFileDetailView;
 import com.lhr.rnd.model.PricingFileStatus;
+import com.lhr.rnd.model.PricingPackagingItem;
+import com.lhr.rnd.model.PricingPackagingSource;
+import com.lhr.rnd.model.PricingPackagingStatus;
+import com.lhr.rnd.model.PackagingTemplateItem;
 import com.lhr.rnd.model.SampleProject;
 import com.lhr.rnd.model.SampleProjectSummary;
 import com.lhr.rnd.model.SampleRequest;
@@ -48,6 +52,8 @@ import com.lhr.rnd.persistence.entity.ExperimentMaterialEntity;
 import com.lhr.rnd.persistence.entity.ExperimentProcessEntity;
 import com.lhr.rnd.persistence.entity.FinanceNotificationEntity;
 import com.lhr.rnd.persistence.entity.PricingFileEntity;
+import com.lhr.rnd.persistence.entity.PricingPackagingItemEntity;
+import com.lhr.rnd.persistence.entity.PackagingTemplateItemEntity;
 import com.lhr.rnd.persistence.entity.RndTaskEntity;
 import com.lhr.rnd.persistence.entity.SampleProjectEntity;
 import com.lhr.rnd.persistence.entity.SampleRequestEntity;
@@ -62,6 +68,8 @@ import com.lhr.rnd.persistence.repository.ExperimentMaterialRepository;
 import com.lhr.rnd.persistence.repository.ExperimentProcessRepository;
 import com.lhr.rnd.persistence.repository.FinanceNotificationRepository;
 import com.lhr.rnd.persistence.repository.PricingFileRepository;
+import com.lhr.rnd.persistence.repository.PricingPackagingItemRepository;
+import com.lhr.rnd.persistence.repository.PackagingTemplateItemRepository;
 import com.lhr.rnd.persistence.repository.RndTaskRepository;
 import com.lhr.rnd.persistence.repository.SampleProjectRepository;
 import com.lhr.rnd.persistence.repository.SampleRequestRepository;
@@ -107,6 +115,7 @@ public class SampleWorkflowService {
 
     private final Clock clock;
     private final PricingFileService pricingFileService = new PricingFileService();
+    private final PricingPackagingService pricingPackagingService = new PricingPackagingService();
     private final ExperimentCalculationService experimentCalculationService = new ExperimentCalculationService();
     private final LocalArchiveStorageService archiveStorageService;
     private final FeishuIntegrationService feishuIntegrationService;
@@ -124,6 +133,8 @@ public class SampleWorkflowService {
     private final ShipmentRecordRepository shipmentRecordRepository;
     private final CustomerFeedbackRepository customerFeedbackRepository;
     private final PricingFileRepository pricingFileRepository;
+    private final PricingPackagingItemRepository pricingPackagingItemRepository;
+    private final PackagingTemplateItemRepository packagingTemplateItemRepository;
     private final FinanceNotificationRepository financeNotificationRepository;
     private final ArchiveFileRepository archiveFileRepository;
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
@@ -149,11 +160,11 @@ public class SampleWorkflowService {
     private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
-        this(Clock.systemDefaultZone(), new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(Clock.systemDefaultZone(), new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     SampleWorkflowService(Clock clock) {
-        this(clock, new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(clock, new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -174,6 +185,8 @@ public class SampleWorkflowService {
             ShipmentRecordRepository shipmentRecordRepository,
             CustomerFeedbackRepository customerFeedbackRepository,
             PricingFileRepository pricingFileRepository,
+            PricingPackagingItemRepository pricingPackagingItemRepository,
+            PackagingTemplateItemRepository packagingTemplateItemRepository,
             FinanceNotificationRepository financeNotificationRepository,
             ArchiveFileRepository archiveFileRepository
     ) {
@@ -195,6 +208,8 @@ public class SampleWorkflowService {
                 shipmentRecordRepository,
                 customerFeedbackRepository,
                 pricingFileRepository,
+                pricingPackagingItemRepository,
+                packagingTemplateItemRepository,
                 financeNotificationRepository,
                 archiveFileRepository
         );
@@ -218,6 +233,8 @@ public class SampleWorkflowService {
             ShipmentRecordRepository shipmentRecordRepository,
             CustomerFeedbackRepository customerFeedbackRepository,
             PricingFileRepository pricingFileRepository,
+            PricingPackagingItemRepository pricingPackagingItemRepository,
+            PackagingTemplateItemRepository packagingTemplateItemRepository,
             FinanceNotificationRepository financeNotificationRepository,
             ArchiveFileRepository archiveFileRepository
     ) {
@@ -238,6 +255,8 @@ public class SampleWorkflowService {
         this.shipmentRecordRepository = shipmentRecordRepository;
         this.customerFeedbackRepository = customerFeedbackRepository;
         this.pricingFileRepository = pricingFileRepository;
+        this.pricingPackagingItemRepository = pricingPackagingItemRepository;
+        this.packagingTemplateItemRepository = packagingTemplateItemRepository;
         this.financeNotificationRepository = financeNotificationRepository;
         this.archiveFileRepository = archiveFileRepository;
     }
@@ -728,7 +747,7 @@ public class SampleWorkflowService {
             String role,
             String operatorName
     ) {
-        return pricingFiles.values().stream()
+        return allPricingFiles().stream()
                 .filter(pricingFile -> !hasRole(role, "FINANCE") || isFinanceVisible(pricingFile))
                 .filter(pricingFile -> !hasRole(role, "RND_ENGINEER") || isPricingOwner(pricingFile, operatorName))
                 .filter(pricingFile -> matchesStatus(status, pricingFile.status().name()))
@@ -872,6 +891,7 @@ public class SampleWorkflowService {
                 pricingFile,
                 version,
                 financeNotification,
+                pricingPackagingItems(pricingFile.id()),
                 pricingFileFieldGroups(financeNotification),
                 pricingFileActions(pricingFile, role)
         );
@@ -896,10 +916,10 @@ public class SampleWorkflowService {
         var completedSampleCount = tasks.values().stream()
                 .filter(task -> task.status() == RndTaskStatus.COMPLETED)
                 .count();
-        var pendingPricingCount = pricingFiles.values().stream()
+        var pendingPricingCount = allPricingFiles().stream()
                 .filter(pricingFile -> pricingFile.status() == PricingFileStatus.PENDING_PRICING_REVIEW)
                 .count();
-        var financeNotifiedCount = pricingFiles.values().stream()
+        var financeNotifiedCount = allPricingFiles().stream()
                 .filter(pricingFile -> pricingFile.status() == PricingFileStatus.FINANCE_NOTIFIED)
                 .count();
         var stoppedCount = projects.values().stream()
@@ -911,7 +931,7 @@ public class SampleWorkflowService {
                 .limit(3)
                 .map(this::dashboardTaskItem)
                 .toList();
-        var pendingPricingFiles = pricingFiles.values().stream()
+        var pendingPricingFiles = allPricingFiles().stream()
                 .filter(pricingFile -> pricingFile.status() == PricingFileStatus.PENDING_PRICING_REVIEW)
                 .sorted(Comparator.comparing(PricingFileRecord::generatedAt).reversed())
                 .limit(5)
@@ -1164,6 +1184,14 @@ public class SampleWorkflowService {
 
     private PricingFileRecord requiredPricingFile(String pricingFileId) {
         var pricingFile = pricingFiles.get(pricingFileId);
+        if (pricingFile == null && pricingFileRepository != null) {
+            pricingFile = pricingFileRepository.findById(pricingFileId)
+                    .map(this::toPricingFileRecord)
+                    .orElse(null);
+            if (pricingFile != null) {
+                pricingFiles.put(pricingFile.id(), pricingFile);
+            }
+        }
         if (pricingFile == null) {
             throw new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在");
         }
@@ -1532,13 +1560,25 @@ public class SampleWorkflowService {
             return List.of();
         }
         var actions = new ArrayList<DetailAction>();
-        actions.add(action(
-                "DOWNLOAD_PRICING_FILE",
-                "下载核价文件",
-                "GET",
-                "/api/v1/pricing-files/" + pricingFile.id() + "/download",
-                true
-        ));
+        if (pricingFile.status() != PricingFileStatus.DRAFT_PACKAGING) {
+            actions.add(action(
+                    "DOWNLOAD_PRICING_FILE",
+                    "下载核价文件",
+                    "GET",
+                    "/api/v1/pricing-files/" + pricingFile.id() + "/download",
+                    true
+            ));
+        }
+        if (hasRole(role, "RND_DIRECTOR", "RND_ENGINEER")
+                && pricingFile.status() == PricingFileStatus.DRAFT_PACKAGING) {
+            actions.add(action(
+                    "CONFIRM_PRICING_PACKAGING",
+                    "确认包装并生成核价文件",
+                    "PUT",
+                    "/api/v1/pricing-files/" + pricingFile.id() + "/packaging-items",
+                    true
+            ));
+        }
         if (hasRole(role, "RND_DIRECTOR", "RND_ENGINEER")
                 && pricingFile.status() == PricingFileStatus.PENDING_PRICING_REVIEW) {
             actions.add(action(
@@ -1703,28 +1743,174 @@ public class SampleWorkflowService {
         var customerName = projects.containsKey(version.projectId())
                 ? projects.get(version.projectId()).customerName()
                 : "LHYC";
-        var generated = pricingFileService.generate(
-                versionWithMaterials,
-                pricingVersionNo,
-                customerName,
-                lockedForm.yieldCalculationMode());
         var record = new PricingFileRecord(
                 "PRICE-%04d".formatted(pricingFileSequence++),
                 version.id(),
                 version.sampleNo(),
                 version.productName(),
                 version.versionCode(),
-                generated.pricingVersion(),
-                generated.fileName(),
-                PricingFileStatus.PENDING_PRICING_REVIEW,
-                generated.content().length,
+                version.versionNo() + "-核价" + pricingVersionNo,
+                version.productName() + "（核价）" + version.versionNo() + "-待确认.xlsx",
+                PricingFileStatus.DRAFT_PACKAGING,
+                0,
                 now()
         );
         pricingFiles.put(record.id(), record);
-        persistPricingFile(record, generated.content());
+        persistPricingDraft(record);
+        var suggestedItems = pricingPackagingService.createSuggestedItems(
+                record.id(),
+                versionWithMaterials.productName(),
+                referenceOutputKg,
+                unitWeightKg,
+                bagsPerBox(versionWithMaterials.specification()),
+                packagingTemplateItems("DEFAULT_BAG")
+        );
+        persistPricingPackagingItems(record.id(), suggestedItems);
         return record;
     }
 
+    @Transactional
+    public synchronized PricingFileRecord confirmPricingPackaging(
+            String pricingFileId,
+            List<PricingPackagingItem> requestedItems,
+            String operatorName,
+            String operatorRole
+    ) {
+        var pricingFile = requiredPricingFile(pricingFileId);
+        ensurePricingReviewer(pricingFile, operatorName, operatorRole);
+        if (pricingFile.status() != PricingFileStatus.DRAFT_PACKAGING) {
+            throw new BusinessException("PRICING_PACKAGING_CONFIRM_ILLEGAL", "当前核价文件不处于包装确认状态");
+        }
+        var confirmedItems = normalizeConfirmedPackagingItems(pricingFileId, requestedItems);
+        pricingPackagingService.validateForSubmission(confirmedItems);
+        persistPricingPackagingItems(pricingFileId, confirmedItems);
+
+        var version = requiredVersion(pricingFile.versionId());
+        var lockedForm = lockedExperimentForm(pricingFile.versionId());
+        var referenceOutputKg = resolvePricingReferenceOutput(version, lockedForm);
+        var unitWeightKg = resolvePricingUnitWeight(version, lockedForm, referenceOutputKg);
+        var versionWithMaterials = pricingVersionWithLockedExperiment(version, lockedForm, referenceOutputKg, unitWeightKg);
+        var customerName = projects.containsKey(version.projectId())
+                ? projects.get(version.projectId()).customerName()
+                : "LHYC";
+        var generated = pricingFileService.generate(
+                versionWithMaterials,
+                pricingFile.pricingVersion().replace(version.versionNo() + "-核价", ""),
+                customerName,
+                lockedForm.yieldCalculationMode(),
+                confirmedItems
+        );
+        var generatedRecord = pricingFile.generated(generated.fileName(), generated.content().length);
+        persistGeneratedPricingFile(generatedRecord, generated.content());
+        if (auditLogService != null) {
+            auditLogService.record("PRICING_FILE", pricingFileId, "PACKAGING_CONFIRMED", operatorName,
+                    "items=" + confirmedItems.size());
+        }
+        cacheAfterCommit(() -> pricingFiles.put(generatedRecord.id(), generatedRecord));
+        return generatedRecord;
+    }
+
+    public synchronized List<PricingPackagingItem> pricingPackagingItems(String pricingFileId) {
+        if (pricingPackagingItemRepository == null) {
+            return List.of();
+        }
+        return pricingPackagingItemRepository.findByPricingFileIdOrderBySequenceAsc(pricingFileId).stream()
+                .map(this::toPricingPackagingItem)
+                .toList();
+    }
+
+    private SampleVersion pricingVersionWithLockedExperiment(
+            SampleVersion version,
+            ExperimentForm lockedForm,
+            BigDecimal referenceOutputKg,
+            BigDecimal unitWeightKg
+    ) {
+        return SampleVersion.builder()
+                .id(version.id()).projectId(version.projectId()).sampleNo(version.sampleNo())
+                .productName(version.productName()).productType(version.productType())
+                .specification(version.specification()).applicationScenario(version.applicationScenario())
+                .flavorRequirement(version.flavorRequirement()).versionNo(version.versionNo())
+                .versionNumber(version.versionNumber()).versionCode(version.versionCode())
+                .ownerName(version.ownerName()).authorName(lockedForm.operatorName())
+                .effectiveDate(version.effectiveDate()).referenceOutputKg(referenceOutputKg)
+                .unitWeightKg(unitWeightKg).materials(lockedForm.materials()).createdAt(version.createdAt())
+                .build();
+    }
+
+    private List<PricingPackagingItem> normalizeConfirmedPackagingItems(
+            String pricingFileId,
+            List<PricingPackagingItem> requestedItems
+    ) {
+        if (requestedItems == null || requestedItems.isEmpty()) {
+            return List.of();
+        }
+        var normalized = new ArrayList<PricingPackagingItem>();
+        for (int index = 0; index < requestedItems.size(); index++) {
+            var item = requestedItems.get(index);
+            normalized.add(new PricingPackagingItem(
+                    item.id() == null || item.id().isBlank()
+                            ? "PKG-" + UUID.randomUUID().toString().replace("-", "").substring(0, 28)
+                            : item.id(),
+                    pricingFileId,
+                    index + 1,
+                    item.source() == null ? PricingPackagingSource.MANUAL : item.source(),
+                    blankToNull(item.materialCode()),
+                    item.materialName(),
+                    item.quantity(),
+                    item.packageSpec(),
+                    item.conversionRule(),
+                    item.remark(),
+                    PricingPackagingStatus.CONFIRMED,
+                    blankToNull(item.modificationReason())
+            ));
+        }
+        return normalized;
+    }
+
+    private List<PackagingTemplateItem> packagingTemplateItems(String templateCode) {
+        if (packagingTemplateItemRepository == null) {
+            return List.of();
+        }
+        return packagingTemplateItemRepository.findByTemplateCodeAndEnabledTrueOrderBySequenceAsc(templateCode).stream()
+                .map(this::toPackagingTemplateItem)
+                .toList();
+    }
+
+    private int bagsPerBox(String specification) {
+        if (specification == null) {
+            return 1;
+        }
+        var matcher = java.util.regex.Pattern.compile("(\\d+)袋/箱").matcher(specification);
+        return matcher.find() ? Integer.parseInt(matcher.group(1)) : 1;
+    }
+
+    /**
+     * 核价以版本上人工确认的参考值为准；未维护时，直接复用已锁定实验单的实际出成，避免研发重复填写。
+     */
+    private BigDecimal resolvePricingReferenceOutput(SampleVersion version, ExperimentForm lockedForm) {
+        return version.referenceOutputKg() != null
+                ? version.referenceOutputKg()
+                : lockedForm.finishedOutputWeightKg();
+    }
+
+    private BigDecimal resolvePricingUnitWeight(
+            SampleVersion version,
+            ExperimentForm lockedForm,
+            BigDecimal referenceOutputKg
+    ) {
+        if (version.unitWeightKg() != null) {
+            return version.unitWeightKg();
+        }
+        if (referenceOutputKg == null || lockedForm.finishedOutputQuantity() == null
+                || lockedForm.finishedOutputQuantity() <= 0) {
+            return null;
+        }
+        return referenceOutputKg.divide(
+                BigDecimal.valueOf(lockedForm.finishedOutputQuantity()),
+                6,
+                RoundingMode.HALF_UP
+        );
+}
     @Transactional
     public synchronized NotifyFinanceResult notifyFinance(String pricingFileId, String recipientName, String remark) {
         var pricingFile = requiredPricingFile(pricingFileId);
@@ -1890,6 +2076,9 @@ public class SampleWorkflowService {
         var pricingFile = pricingFileRepository.findById(pricingFileId)
                 .orElseThrow(() -> new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在"));
         var pricingFileRecord = toPricingFileRecord(pricingFile);
+        if (pricingFileRecord.status() == PricingFileStatus.DRAFT_PACKAGING) {
+            throw new BusinessException("PRICING_FILE_NOT_GENERATED", "请先确认包装清单，再生成并下载核价文件");
+        }
         if (hasRole(role, "FINANCE") && !isFinanceVisible(pricingFileRecord)) {
             throw new BusinessException("PRICING_FILE_NOT_AVAILABLE_FOR_FINANCE", "财务只能下载已通过审核并通知的核价文件");
         }
@@ -2649,7 +2838,7 @@ public class SampleWorkflowService {
         sampleProjectRepository.save(projectEntity);
     }
 
-    private void persistPricingFile(PricingFileRecord pricingFile, byte[] content) {
+    private void persistPricingDraft(PricingFileRecord pricingFile) {
         if (pricingFileRepository == null) {
             return;
         }
@@ -2671,7 +2860,31 @@ public class SampleWorkflowService {
                 pricingFile.reviewComment(),
                 pricingFile.rejectionReason()
         ));
+    }
+
+    private void persistGeneratedPricingFile(PricingFileRecord pricingFile, byte[] content) {
+        if (pricingFileRepository == null) {
+            return;
+        }
+        var entity = pricingFileRepository.findById(pricingFile.id())
+                .orElseThrow(() -> new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在"));
+        entity.markGenerated(pricingFile.fileName(), pricingFile.contentLength());
+        pricingFileRepository.save(entity);
         persistPricingArchive(pricingFile, content);
+    }
+
+    private void persistPricingPackagingItems(String pricingFileId, List<PricingPackagingItem> items) {
+        if (pricingPackagingItemRepository == null) {
+            return;
+        }
+        pricingPackagingItemRepository.deleteByPricingFileId(pricingFileId);
+        pricingPackagingItemRepository.saveAll(items.stream()
+                .map(item -> new PricingPackagingItemEntity(
+                        item.id(), item.pricingFileId(), item.sequence(), item.source().name(),
+                        item.materialCode(), item.materialName(), item.quantity(), item.packageSpec(),
+                        item.conversionRule(), item.remark(), item.confirmationStatus().name(),
+                        item.modificationReason()))
+                .toList());
     }
 
     private void persistPricingArchive(PricingFileRecord pricingFile, byte[] content) {
@@ -2858,25 +3071,24 @@ public class SampleWorkflowService {
     }
 
     private long nextPricingVersionNumber(String versionId) {
-        var cachedCount = pricingFiles.values().stream().filter(file -> file.versionId().equals(versionId)).count();
-        var persistedCount = pricingFileRepository == null ? 0
-                : pricingFileRepository.findAll().stream().filter(file -> file.getVersionId().equals(versionId)).count();
-        return Math.max(cachedCount, persistedCount) + 1;
+        return allPricingFiles().stream().filter(file -> file.versionId().equals(versionId)).count() + 1;
     }
 
     private boolean canGenerateNextPricingVersion(String versionId) {
-        var latest = pricingFiles.values().stream()
+        var latest = allPricingFiles().stream()
                 .filter(file -> file.versionId().equals(versionId))
                 .max(Comparator.comparing(PricingFileRecord::generatedAt))
                 .orElse(null);
-        if (latest == null && pricingFileRepository != null) {
-            latest = pricingFileRepository.findAll().stream()
-                    .filter(file -> file.getVersionId().equals(versionId))
-                    .max(Comparator.comparing(com.lhr.rnd.persistence.entity.PricingFileEntity::getGeneratedAt))
-                    .map(this::toPricingFileRecord)
-                    .orElse(null);
-        }
         return latest == null || latest.status() == PricingFileStatus.PRICING_REJECTED;
+    }
+
+    private List<PricingFileRecord> allPricingFiles() {
+        if (pricingFileRepository != null) {
+            pricingFileRepository.findAll().stream()
+                    .map(this::toPricingFileRecord)
+                    .forEach(file -> pricingFiles.put(file.id(), file));
+        }
+        return new ArrayList<>(pricingFiles.values());
     }
 
     private boolean isFinanceVisible(PricingFileRecord pricingFile) {
@@ -2939,6 +3151,28 @@ public class SampleWorkflowService {
                 PricingFileStatus.valueOf(entity.getStatus()), entity.getContentLength(), entity.getGeneratedAt(),
                 entity.getReviewedBy(), entity.getReviewedAt(), entity.getReviewComment(), entity.getRejectionReason()
         );
+    }
+
+    private PricingPackagingItem toPricingPackagingItem(PricingPackagingItemEntity entity) {
+        return new PricingPackagingItem(
+                entity.getId(), entity.getPricingFileId(), entity.getSequence(),
+                PricingPackagingSource.valueOf(entity.getSource()), entity.getMaterialCode(),
+                entity.getMaterialName(), entity.getQuantity(), entity.getPackageSpec(),
+                entity.getConversionRule(), entity.getRemark(),
+                PricingPackagingStatus.valueOf(entity.getConfirmationStatus()), entity.getModificationReason()
+        );
+    }
+
+    private PackagingTemplateItem toPackagingTemplateItem(PackagingTemplateItemEntity entity) {
+        return new PackagingTemplateItem(
+                entity.getTemplateCode(), entity.getSequence(), entity.getMaterialCode(),
+                entity.getMaterialName(), entity.getConversionType(), entity.getUnitsPerParent(),
+                entity.getPackageSpec(), entity.getRemark()
+        );
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private FinanceNotification toFinanceNotification(FinanceNotificationEntity entity) {

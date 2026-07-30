@@ -4,6 +4,7 @@ import type {
   PagedResult,
   PricingFileDetailView,
   PricingFileRecord,
+  PricingPackagingItem,
   PricingReadyVersion,
   ShipmentDetailView,
   ShipmentRecord,
@@ -50,6 +51,9 @@ export function createShipmentApi(client: ApiClient) {
     pricingReadyVersions: () =>
       client.get<PricingReadyVersion[]>("/sample-versions/pricing-ready"),
     pricingDetail: (id: string) => client.get<PricingFileDetailView>(`/pricing-files/${id}/detail`),
+    pricingPackagingItems: (id: string) => client.get<PricingPackagingItem[]>(`/pricing-files/${id}/packaging-items`),
+    confirmPricingPackaging: (id: string, items: PricingPackagingItem[]) =>
+      client.put<PricingFileRecord>(`/pricing-files/${id}/packaging-items`, { items }),
     notifyFinance: (id: string, recipientName: string) =>
       client.post(`/pricing-files/${id}/notify-finance`, { recipientName }),
     reviewPricingFile: (id: string, payload: { decision: "APPROVE" | "REJECT"; comment?: string }) =>

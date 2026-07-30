@@ -1,12 +1,12 @@
 <template>
   <div>
-    <a-page-header title="核价文件列表" sub-title="可从样品完成后单独生成核价，也可从客户通过后生成核价" />
+    <a-page-header title="核价文件列表" sub-title="先确认包装清单，再生成正式核价文件并提交审核" />
     <a-card v-if="canGeneratePricing" title="待生成核价" style="margin-bottom: 16px">
       <a-table :columns="readyColumns" :data-source="readyRows" row-key="versionId" :loading="loadingReady" :pagination="false">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'action'">
             <a-button type="primary" size="small" :loading="generatingId === record.versionId" @click="generate(record.versionId)">
-              生成核价
+              创建包装清单
             </a-button>
           </template>
         </template>
@@ -72,7 +72,7 @@ async function generate(versionId: string) {
   generatingId.value = versionId;
   try {
     const file = await api.shipment.createPricingFile(versionId);
-    message.success(`已生成 ${file.pricingVersion}`);
+    message.success(`已创建 ${file.pricingVersion} 的包装确认清单`);
     await router.push(`/pricing/${file.id}`);
   } finally {
     generatingId.value = "";

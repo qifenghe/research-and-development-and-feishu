@@ -1,6 +1,9 @@
 package com.lhr.rnd.service;
 
 import com.lhr.rnd.model.ExperimentMaterial;
+import com.lhr.rnd.model.PricingPackagingItem;
+import com.lhr.rnd.model.PricingPackagingSource;
+import com.lhr.rnd.model.PricingPackagingStatus;
 import com.lhr.rnd.model.SampleVersion;
 import com.lhr.rnd.model.YieldCalculationMode;
 import org.apache.poi.ss.usermodel.CellType;
@@ -40,6 +43,34 @@ class PricingFileServiceTest {
 
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
             PricingWorkbookAssertions.assertFormalLayout(workbook, 2);
+        }
+    }
+
+    @Test
+    void writesConfirmedPackagingItemsIntoPricingWorkbook() throws Exception {
+        var version = pricingVersionWithCustomMaterials("吮指五香味酱汁", "酱汁", List.of(
+                material("水", "RAW", false, "100"),
+                material("香辛料", "AUXILIARY", false, "10")));
+        var packaging = List.of(
+                packaging("1", 10, PricingPackagingSource.TEMPLATE, "FBZ0003", "瓦楞纸箱", "11", "10袋/箱"),
+                packaging("2", 20, PricingPackagingSource.SYSTEM_LABEL, null, "吮指五香味酱汁内袋标签", "110", "1袋/个"),
+                packaging("3", 30, PricingPackagingSource.SYSTEM_LABEL, null, "吮指五香味酱汁外箱标签", "11", "1箱/个"));
+
+        var result = new PricingFileService().generate(
+                version, "V1", "LHYC", YieldCalculationMode.TOTAL_PICKING_WEIGHT, packaging);
+
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
+            var sheet = workbook.getSheetAt(0);
+            var firstPackagingRow = 22;
+            assertThat(sheet.getRow(firstPackagingRow).getCell(3).getStringCellValue()).isEqualTo("FBZ0003");
+            assertThat(sheet.getRow(firstPackagingRow).getCell(4).getStringCellValue()).isEqualTo("瓦楞纸箱");
+            assertThat(sheet.getRow(firstPackagingRow).getCell(6).getNumericCellValue()).isEqualTo(11D);
+            assertThat(sheet.getRow(firstPackagingRow + 1).getCell(3).getCellType()).isEqualTo(CellType.BLANK);
+            assertThat(sheet.getRow(firstPackagingRow + 1).getCell(4).getStringCellValue())
+                    .isEqualTo("吮指五香味酱汁内袋标签");
+            assertThat(sheet.getRow(firstPackagingRow + 1).getCell(6).getNumericCellValue()).isEqualTo(110D);
+            assertThat(sheet.getRow(firstPackagingRow + 2).getCell(4).getStringCellValue())
+                    .isEqualTo("吮指五香味酱汁外箱标签");
         }
     }
 
@@ -287,6 +318,20 @@ class PricingFileServiceTest {
     private ExperimentMaterial material(String name, String category, boolean primary, String weight) {
         return new ExperimentMaterial(category, 1, null, name, new BigDecimal(weight), BigDecimal.ONE,
                 null, category, primary, null, "kg");
+    }
+
+    private PricingPackagingItem packaging(
+            String id,
+            int sequence,
+            PricingPackagingSource source,
+            String materialCode,
+            String materialName,
+            String quantity,
+            String packageSpec
+    ) {
+        return new PricingPackagingItem(
+                id, "PRICE-0001", sequence, source, materialCode, materialName,
+                new BigDecimal(quantity), packageSpec, null, null, PricingPackagingStatus.CONFIRMED, null);
     }
 
     private SampleVersion sanitizedPricingVersion() {

@@ -133,6 +133,12 @@ public class PricingFileEntity {
         this.status = "FINANCE_NOTIFIED";
     }
 
+    public void markGenerated(String fileName, Long contentLength) {
+        this.fileName = fileName;
+        this.contentLength = contentLength;
+        this.status = "PENDING_PRICING_REVIEW";
+    }
+
     public void markFinanceReceived(String receivedBy, LocalDateTime receivedAt) {
         if ("FINANCE_RECEIVED".equals(status)) {
             return;

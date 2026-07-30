@@ -29,6 +29,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -62,6 +63,7 @@ class SampleWorkflowControllerTest {
                 "audit_log",
                 "archive_file",
                 "finance_notification",
+                "pricing_packaging_item",
                 "pricing_file",
                 "customer_feedback",
                 "shipment_record",
@@ -1356,18 +1358,7 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("customer_feedback", feedbackId, "result")).isEqualTo("PASSED");
         assertThat(valueById("customer_feedback", feedbackId, "comment")).isEqualTo("客户确认通过，可以进入核价");
 
-        var pricingFileId = mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files", versionId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.versionId").value(versionId))
-                .andExpect(jsonPath("$.data.pricingVersion").value("A0-核价V1"))
-                .andExpect(jsonPath("$.data.status").value("PENDING_PRICING_REVIEW"))
-                .andExpect(jsonPath("$.data.fileName").value(org.hamcrest.Matchers.matchesPattern(
-                        "500g香卤大肠头-LHYC（核价）原料清单A0 \\d{4}\\.\\d{2}\\.\\d{2}\\.xlsx")))
-                .andReturn()
-                .getResponse()
-                .getContentAsString()
-                .split("\"id\":\"")[1]
-                .split("\"")[0];
+        var pricingFileId = generatePricingFile(versionId);
 
         assertThat(countById("pricing_file", pricingFileId)).isEqualTo(1);
         assertThat(valueById("pricing_file", pricingFileId, "version_id")).isEqualTo(versionId);
@@ -1735,10 +1726,8 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.status").value("PRICING_REJECTED"))
                 .andExpect(jsonPath("$.data.rejectionReason").value("核价原料规格有误"));
 
-        mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files", versionId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.pricingVersion").value("A0-核价V2"))
-                .andExpect(jsonPath("$.data.status").value("PENDING_PRICING_REVIEW"));
+        var secondPricingFileId = generatePricingFile(versionId);
+        assertThat(valueById("pricing_file", secondPricingFileId, "pricing_version")).isEqualTo("A0-核价V2");
 
         assertThat(valueById("pricing_file", firstPricingFileId, "status")).isEqualTo("PRICING_REJECTED");
     }
@@ -2387,14 +2376,26 @@ class SampleWorkflowControllerTest {
     }
 
     private String generatePricingFile(String versionId) throws Exception {
-        return mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files", versionId))
+        var productOwner = valueById("rnd_task", versionId.replaceFirst("^VER", "TASK"), "product_owner_name");
+        var owner = principal(productOwner, "RND_ENGINEER");
+        var draftResponse = mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files", versionId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("PENDING_PRICING_REVIEW"))
+                .andExpect(jsonPath("$.data.status").value("DRAFT_PACKAGING"))
                 .andReturn()
-                .getResponse()
-                .getContentAsString()
-                .split("\"id\":\"")[1]
-                .split("\"")[0];
+                .getResponse().getContentAsString();
+        var pricingFileId = objectMapper.readTree(draftResponse).path("data").path("id").asText();
+        var packagingItems = mockMvc.perform(get("/api/v1/pricing-files/{id}/packaging-items", pricingFileId)
+                        .requestAttr("sessionPrincipal", owner))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var items = objectMapper.readTree(packagingItems).path("data");
+        mockMvc.perform(put("/api/v1/pricing-files/{id}/packaging-items", pricingFileId)
+                        .requestAttr("sessionPrincipal", owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("items", items))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PENDING_PRICING_REVIEW"));
+        return pricingFileId;
     }
 
     private void approvePricingFile(String pricingFileId) throws Exception {

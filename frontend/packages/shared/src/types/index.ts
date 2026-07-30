@@ -36,6 +36,7 @@ export type YieldCalculationMode = "SELECTED_PRIMARY_MATERIALS" | "TOTAL_PICKING
 export type RemainingDisposition = "REUSE" | "RETURN" | "DISCARD";
 
 export type PricingFileStatus =
+  | "DRAFT_PACKAGING"
   | "PENDING_PRICING_REVIEW"
   | "PRICING_APPROVED"
   | "PRICING_REJECTED"
@@ -335,6 +336,24 @@ export interface PricingFileRecord {
   rejectionReason?: string;
 }
 
+export type PricingPackagingSource = "TEMPLATE" | "SYSTEM_LABEL" | "MANUAL";
+export type PricingPackagingStatus = "PENDING_CONFIRMATION" | "CONFIRMED";
+
+export interface PricingPackagingItem {
+  id?: string;
+  pricingFileId?: string;
+  sequence?: number;
+  source: PricingPackagingSource;
+  materialCode?: string;
+  materialName: string;
+  quantity: number;
+  packageSpec?: string;
+  conversionRule?: string;
+  remark?: string;
+  confirmationStatus?: PricingPackagingStatus;
+  modificationReason?: string;
+}
+
 export interface PricingReadyVersion {
   versionId: string;
   taskId?: string;
@@ -356,6 +375,7 @@ export interface PricingFileDetailView {
   pricingFile: PricingFileRecord;
   version: SampleVersion;
   financeNotification: FinanceNotification | null;
+  packagingItems: PricingPackagingItem[];
   fieldGroups: DetailFieldGroup[];
   availableActions: DetailAction[];
 }

@@ -53,6 +53,14 @@ public record PricingFileRecord(
         );
     }
 
+    public PricingFileRecord generated(String nextFileName, long nextContentLength) {
+        return new PricingFileRecord(
+                id, versionId, sampleNo, productName, versionCode, pricingVersion, nextFileName,
+                PricingFileStatus.PENDING_PRICING_REVIEW, nextContentLength, generatedAt,
+                reviewedBy, reviewedAt, reviewComment, rejectionReason
+        );
+    }
+
     public PricingFileRecord reviewed(
             PricingFileStatus nextStatus,
             String reviewerName,

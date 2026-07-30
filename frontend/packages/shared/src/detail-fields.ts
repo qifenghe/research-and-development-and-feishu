@@ -71,6 +71,7 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const PRICING_FILE_STATUS_LABELS: Record<string, string> = {
+  DRAFT_PACKAGING: "待确认包装",
   PENDING_PRICING_REVIEW: "待核价审核",
   PRICING_APPROVED: "核价审核通过",
   PRICING_REJECTED: "核价已退回",

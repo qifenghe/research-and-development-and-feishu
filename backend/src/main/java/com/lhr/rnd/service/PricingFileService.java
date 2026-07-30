@@ -1,6 +1,7 @@
 package com.lhr.rnd.service;
 
 import com.lhr.rnd.model.ExperimentMaterial;
+import com.lhr.rnd.model.PricingPackagingItem;
 import com.lhr.rnd.model.SampleVersion;
 import com.lhr.rnd.model.YieldCalculationMode;
 import org.apache.poi.ss.usermodel.Cell;
@@ -57,6 +58,16 @@ public class PricingFileService {
             String customerName,
             YieldCalculationMode yieldCalculationMode
     ) {
+        return generate(version, pricingVersionNo, customerName, yieldCalculationMode, List.of());
+    }
+
+    public PricingFileResult generate(
+            SampleVersion version,
+            String pricingVersionNo,
+            String customerName,
+            YieldCalculationMode yieldCalculationMode,
+            List<PricingPackagingItem> packagingItems
+    ) {
         try (InputStream template = requireTemplate();
              Workbook workbook = WorkbookFactory.create(template);
              var output = new ByteArrayOutputStream()) {
@@ -65,13 +76,18 @@ public class PricingFileService {
             var customer = blankToDefault(customerName, "LHYC");
             var effectiveDate = version.effectiveDate() == null ? LocalDate.now() : version.effectiveDate();
             var materials = version.materials() == null ? List.<ExperimentMaterial>of() : version.materials();
-            var layout = layoutRows(materials.size());
+            var confirmedPackaging = packagingItems == null ? List.<PricingPackagingItem>of() : packagingItems;
+            var layout = layoutRows(materials.size(), confirmedPackaging.size());
 
             relocateTemplateStructure(sheet, layout);
             fillHeader(sheet, version, customer, effectiveDate);
             fillMaterials(sheet, materials, layout);
             fillSummary(sheet, materials, version, layout, yieldCalculationMode);
-            fillPackagingQuantities(sheet, version, layout);
+            if (confirmedPackaging.isEmpty()) {
+                fillPackagingQuantities(sheet, version, layout);
+            } else {
+                fillPackagingItems(sheet, confirmedPackaging, layout);
+            }
             configurePrintLayout(workbook, sheet, layout);
 
             var sheetName = version.productName() + "-" + customer + "原料清单";
@@ -93,6 +109,10 @@ public class PricingFileService {
     }
 
     LayoutRows layoutRows(int materialCount) {
+        return layoutRows(materialCount, 6);
+    }
+
+    LayoutRows layoutRows(int materialCount, int packagingItemCount) {
         var actualMaterialCount = Math.max(materialCount, 1);
         var lastMaterialRow = MATERIAL_START_ROW + actualMaterialCount - 1;
         var totalRow = lastMaterialRow + 1;
@@ -106,7 +126,8 @@ public class PricingFileService {
                 referenceOutputRow,
                 yieldRateRow,
                 packageCountRow,
-                packagingStartRow
+                packagingStartRow,
+                Math.max(6, packagingItemCount)
         );
     }
 
@@ -119,9 +140,20 @@ public class PricingFileService {
     }
 
     private void relocateTemplateStructure(Sheet sheet, LayoutRows layout) {
-        var copiedMerges = templateMerges(sheet, TEMPLATE_TOTAL_ROW, TEMPLATE_LAST_ROW, layout.totalRow());
+        var copiedMerges = new ArrayList<CellRangeAddress>();
+        copiedMerges.addAll(templateMerges(sheet, TEMPLATE_TOTAL_ROW, TEMPLATE_PACKAGING_ITEM_FIRST_ROW - 1,
+                layout.totalRow()));
+        for (int itemIndex = 0; itemIndex < layout.packagingItemCount(); itemIndex++) {
+            copiedMerges.addAll(templateMerges(sheet, TEMPLATE_PACKAGING_ITEM_FIRST_ROW, TEMPLATE_PACKAGING_ITEM_FIRST_ROW,
+                    packagingItemRow(layout, itemIndex)));
+        }
+        copiedMerges.addAll(templateMerges(sheet, TEMPLATE_FOOTER_ROW, TEMPLATE_FOOTER_ROW, footerRow(layout)));
         removeMergesIntersecting(sheet, MATERIAL_START_ROW, Math.max(TEMPLATE_LAST_ROW, footerRow(layout)));
-        copyTemplateRows(sheet, TEMPLATE_TOTAL_ROW, TEMPLATE_LAST_ROW, layout.totalRow());
+        copyTemplateRows(sheet, TEMPLATE_TOTAL_ROW, TEMPLATE_PACKAGING_ITEM_FIRST_ROW - 1, layout.totalRow());
+        copyTemplateRow(sheet, TEMPLATE_FOOTER_ROW, footerRow(layout));
+        for (int itemIndex = 0; itemIndex < layout.packagingItemCount(); itemIndex++) {
+            copyTemplateRow(sheet, TEMPLATE_PACKAGING_ITEM_FIRST_ROW, packagingItemRow(layout, itemIndex));
+        }
         clearRowsExcept(sheet, TEMPLATE_TOTAL_ROW, TEMPLATE_LAST_ROW, layout.totalRow(), footerRow(layout));
         copiedMerges.forEach(sheet::addMergedRegion);
     }
@@ -376,10 +408,30 @@ public class PricingFileService {
                         .divide(BigDecimal.valueOf(bagsPerBox), 0, RoundingMode.CEILING)
                         .intValue();
 
-        setNumeric(sheet, layout.packagingStartRow() + TEMPLATE_PACKAGING_ITEM_FIRST_ROW - TEMPLATE_PACKAGING_TITLE_ROW, packageCount);
-        setNumeric(sheet, layout.packagingStartRow() + TEMPLATE_PACKAGING_ITEM_FIRST_ROW - TEMPLATE_PACKAGING_TITLE_ROW + 1, packageCount);
-        setNumeric(sheet, layout.packagingStartRow() + TEMPLATE_PACKAGING_ITEM_FIRST_ROW - TEMPLATE_PACKAGING_TITLE_ROW + 2, boxCount);
-        setNumeric(sheet, layout.packagingStartRow() + TEMPLATE_PACKAGING_ITEM_FIRST_ROW - TEMPLATE_PACKAGING_TITLE_ROW + 3, boxCount);
+        setNumeric(sheet, packagingItemRow(layout, 0), packageCount);
+        setNumeric(sheet, packagingItemRow(layout, 1), packageCount);
+        setNumeric(sheet, packagingItemRow(layout, 2), boxCount);
+        setNumeric(sheet, packagingItemRow(layout, 3), boxCount);
+    }
+
+    private void fillPackagingItems(
+            Sheet sheet,
+            List<PricingPackagingItem> packagingItems,
+            LayoutRows layout
+    ) {
+        for (int index = 0; index < packagingItems.size(); index++) {
+            var item = packagingItems.get(index);
+            var rowIndex = packagingItemRow(layout, index);
+            setNumeric(sheet, rowIndex, 2, item.sequence());
+            if (item.materialCode() == null || item.materialCode().isBlank()) {
+                cell(sheet, rowIndex, 3).setBlank();
+            } else {
+                setText(sheet, rowIndex, 3, item.materialCode());
+            }
+            setText(sheet, rowIndex, 4, item.materialName());
+            setNumeric(sheet, rowIndex, 6, decimalValue(item.quantity()));
+            setText(sheet, rowIndex, 9, item.packageSpec());
+        }
     }
 
     private void setNumeric(Sheet sheet, int rowIndex, int columnIndex, double value) {
@@ -495,7 +547,11 @@ public class PricingFileService {
     }
 
     private int footerRow(LayoutRows layout) {
-        return layout.packagingStartRow() + TEMPLATE_FOOTER_ROW - TEMPLATE_PACKAGING_TITLE_ROW;
+        return packagingItemRow(layout, layout.packagingItemCount());
+    }
+
+    private int packagingItemRow(LayoutRows layout, int index) {
+        return layout.packagingStartRow() + TEMPLATE_PACKAGING_ITEM_FIRST_ROW - TEMPLATE_PACKAGING_TITLE_ROW + index;
     }
 
     private int parseBagsPerBox(String specification) {
@@ -557,6 +613,7 @@ record LayoutRows(
         int referenceOutputRow,
         int yieldRateRow,
         int packageCountRow,
-        int packagingStartRow
+        int packagingStartRow,
+        int packagingItemCount
 ) {
 }

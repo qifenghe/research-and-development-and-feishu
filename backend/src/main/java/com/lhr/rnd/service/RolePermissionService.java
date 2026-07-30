@@ -103,6 +103,7 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/sample-versions/pricing-ready", "查看待生成核价版本", 75),
                         rule("POST", "/api/v1/pricing-files/*/notify-finance", "通知财务接收核价", 78),
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 80),
+                        rule("GET", "/api/v1/pricing-files/*/packaging-items", "查看核价包装清单", 85),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看核价文件详情", 90),
                         rule("GET", "/api/v1/pricing-files/*/download", "下载核价文件", 100),
                         rule("GET", "/api/v1/reports/rnd-tasks/export", "导出打样任务列表", 101),
@@ -132,8 +133,10 @@ public class RolePermissionService {
                         rule("POST", "/api/v1/rnd-tasks/*/experiment-form/draft", "保存实验单草稿", 77),
                         rule("POST", "/api/v1/experiment-forms/*/submit-test", "提交内部测试", 78),
                         rule("POST", "/api/v1/pricing-files/*/review", "审核核价文件", 79),
+                        rule("PUT", "/api/v1/pricing-files/*/packaging-items", "确认核价包装清单", 79),
                         rule("POST", "/api/v1/experiment-forms/*/attachments", "上传实验附件", 79),
                         rule("GET", "/api/v1/pricing-files", "查看核价文件列表", 80),
+                        rule("GET", "/api/v1/pricing-files/*/packaging-items", "查看核价包装清单", 85),
                         rule("GET", "/api/v1/shipments", "查看寄样列表", 85),
                         rule("GET", "/api/v1/shipments/*/detail", "查看寄样详情", 90),
                         rule("GET", "/api/v1/rnd-assignees", "查看可分配研发人员", 95),
@@ -162,7 +165,9 @@ public class RolePermissionService {
                         rule("POST", "/api/v1/rnd-tasks/*/experiment-form/draft", "保存实验单草稿", 60),
                         rule("POST", "/api/v1/experiment-forms/*/submit-test", "提交内部测试", 70),
                         rule("POST", "/api/v1/pricing-files/*/review", "审核本人负责产品的核价文件", 75),
+                        rule("PUT", "/api/v1/pricing-files/*/packaging-items", "确认本人负责产品的包装清单", 75),
                         rule("GET", "/api/v1/pricing-files", "查看本人负责产品的核价文件", 76),
+                        rule("GET", "/api/v1/pricing-files/*/packaging-items", "查看本人负责产品的包装清单", 76),
                         rule("GET", "/api/v1/pricing-files/*/detail", "查看本人负责产品的核价文件详情", 77),
                         rule("GET", "/api/v1/pricing-files/*/download", "下载本人负责产品的核价文件", 78),
                         rule("POST", "/api/v1/experiment-forms/*/attachments", "上传实验附件", 80),
@@ -321,6 +326,9 @@ public class RolePermissionService {
         if (isPricingDownload(method, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER");
         }
+        if (isPricingPackagingRead(method, uri)) {
+            return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "MANAGER");
+        }
         if (isVersionTimelineRead(method, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "MANAGER");
         }
@@ -350,12 +358,14 @@ public class RolePermissionService {
                     || isTaskAccept(method, uri)
                     || isExperimentWrite(method, uri)
                     || isProcessPlanWrite(method, uri)
+                    || isPricingPackagingWrite(method, uri)
                     || isFeishuOperation(method, uri);
             case "RND_ENGINEER" -> isTaskPool(method, uri)
                     || isSampleRequestList(method, uri)
                     || isTaskAccept(method, uri)
                     || isExperimentWrite(method, uri)
                     || isProcessPlanWrite(method, uri)
+                    || isPricingPackagingWrite(method, uri)
                     || isFeishuOperation(method, uri);
             case "TESTER", "QA_TESTER" -> isTestWrite(method, uri);
             case "FINANCE" -> isFinanceWrite(method, uri);
@@ -480,6 +490,14 @@ public class RolePermissionService {
 
     private boolean isPricingDownload(String method, String uri) {
         return "GET".equals(method) && uri.matches("^/api/v1/pricing-files/[^/]+/download$");
+    }
+
+    private boolean isPricingPackagingRead(String method, String uri) {
+        return "GET".equals(method) && uri.matches("^/api/v1/pricing-files/[^/]+/packaging-items$");
+    }
+
+    private boolean isPricingPackagingWrite(String method, String uri) {
+        return "PUT".equals(method) && uri.matches("^/api/v1/pricing-files/[^/]+/packaging-items$");
     }
 
     private boolean isFinanceWrite(String method, String uri) {

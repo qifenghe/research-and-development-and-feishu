@@ -9,6 +9,7 @@ import com.lhr.rnd.model.ExperimentProcessStep;
 import com.lhr.rnd.model.SampleVersionTimelineItem;
 import com.lhr.rnd.model.PricingFileDetailView;
 import com.lhr.rnd.model.PricingFileRecord;
+import com.lhr.rnd.model.PricingPackagingItem;
 import com.lhr.rnd.model.PricingReadyVersion;
 import com.lhr.rnd.model.SampleRequest;
 import com.lhr.rnd.model.ShipmentDetailView;
@@ -34,6 +35,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -315,6 +317,22 @@ public class SampleWorkflowController {
                 principal == null ? null : principal.role(),
                 principal == null ? null : principal.name()
         ));
+    }
+
+    @GetMapping("/pricing-files/{id}/packaging-items")
+    public ApiResponse<List<PricingPackagingItem>> pricingPackagingItems(@PathVariable String id) {
+        return ApiResponse.success(workflowService.pricingPackagingItems(id));
+    }
+
+    @PutMapping("/pricing-files/{id}/packaging-items")
+    public ApiResponse<PricingFileRecord> confirmPricingPackaging(
+            @PathVariable String id,
+            @Valid @RequestBody ConfirmPricingPackagingRequest request,
+            HttpServletRequest servletRequest
+    ) {
+        var principal = requiredSessionPrincipal(servletRequest);
+        return ApiResponse.success(workflowService.confirmPricingPackaging(
+                id, request.items(), principal.name(), principal.role()));
     }
 
     @PostMapping("/pricing-files/{id}/review")

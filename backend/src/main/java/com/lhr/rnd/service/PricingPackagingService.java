@@ -29,7 +29,7 @@ public class PricingPackagingService {
         for (var template : templateItems) {
             var quantity = quantityForTemplateItem(template, packageCount, boxCount);
             items.add(new PricingPackagingItem(
-                    "PKG-" + UUID.randomUUID(), pricingFileId, template.sequence(), PricingPackagingSource.TEMPLATE,
+                    nextId(), pricingFileId, template.sequence(), PricingPackagingSource.TEMPLATE,
                     blankToNull(template.materialCode()), template.materialName(), quantity, template.packageSpec(),
                     conversionRule(template), template.remark(), PricingPackagingStatus.PENDING_CONFIRMATION, null
             ));
@@ -66,7 +66,7 @@ public class PricingPackagingService {
             String packageSpec
     ) {
         return new PricingPackagingItem(
-                "PKG-" + UUID.randomUUID(), pricingFileId, sequence, PricingPackagingSource.SYSTEM_LABEL,
+                nextId(), pricingFileId, sequence, PricingPackagingSource.SYSTEM_LABEL,
                 null, name, quantity, packageSpec, packageSpec, null,
                 PricingPackagingStatus.PENDING_CONFIRMATION, null
         );
@@ -110,5 +110,9 @@ public class PricingPackagingService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    private String nextId() {
+        return "PKG-" + UUID.randomUUID().toString().replace("-", "").substring(0, 28);
     }
 }

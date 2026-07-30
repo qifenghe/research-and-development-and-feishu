@@ -6,6 +6,7 @@ public record PricingFileDetailView(
         PricingFileRecord pricingFile,
         SampleVersion version,
         FinanceNotification financeNotification,
+        List<PricingPackagingItem> packagingItems,
         List<DetailFieldGroup> fieldGroups,
         List<DetailAction> availableActions
 ) {
