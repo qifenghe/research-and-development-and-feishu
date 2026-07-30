@@ -52,6 +52,8 @@ class SchemaMigrationTest {
         assertTableExists("experiment_step_material");
         assertTableExists("experiment_process_input");
         assertTableExists("experiment_process_output");
+        assertTableExists("pricing_packaging_item");
+        assertTableExists("packaging_template_item");
 
         assertUniqueConstraintExists("sample_version", "uk_sample_version_project_version");
         assertUniqueConstraintExists("pricing_file", "uk_pricing_file_version_pricing_version");
@@ -60,6 +62,7 @@ class SchemaMigrationTest {
         assertForeignKeyExists("shipment_record", "fk_shipment_record_version");
         assertForeignKeyExists("pricing_file", "fk_pricing_file_version");
         assertForeignKeyExists("finance_notification", "fk_finance_notification_pricing_file");
+        assertForeignKeyExists("pricing_packaging_item", "fk_pricing_packaging_item_file");
         assertForeignKeyExists("feishu_notification", "fk_feishu_notification_user");
 
         assertColumnExists("archive_file", "category");
@@ -106,6 +109,16 @@ class SchemaMigrationTest {
         assertColumnExists("pricing_file", "reviewed_at");
         assertColumnExists("pricing_file", "review_comment");
         assertColumnExists("pricing_file", "rejection_reason");
+        assertColumnExists("pricing_packaging_item", "source");
+        assertColumnExists("pricing_packaging_item", "material_code");
+        assertColumnExists("pricing_packaging_item", "quantity");
+        assertColumnExists("pricing_packaging_item", "confirmation_status");
+        assertColumnExists("pricing_packaging_item", "modification_reason");
+        assertColumnExists("packaging_template_item", "template_code");
+        assertColumnExists("packaging_template_item", "material_name");
+        assertColumnExists("packaging_template_item", "conversion_type");
+        assertColumnExists("packaging_template_item", "units_per_parent");
+        assertColumnExists("packaging_template_item", "enabled");
 
         assertColumnDefinition("experiment_material", "material_category", false, "'RAW'");
         assertColumnDefinition("experiment_material", "is_primary_material", false, "FALSE");
