@@ -72,8 +72,13 @@
             <a-button v-if="!readOnly" type="dashed" block style="margin-top:12px" @click="addMaterial">+ 添加物料</a-button>
           </a-card>
 
-          <a-card title="关键工序" class="page-card">
-            <ProcessTabsEditor v-model="processSteps" :readonly="readOnly" :create-row="blankProcess" />
+          <a-card title="工艺编排与得率" class="page-card process-plan-card">
+            <ProcessHierarchyEditor v-model="processPlan" :readonly="readOnly" />
+            <a-collapse v-if="showLegacyProcessEditor" ghost style="margin-top:12px">
+              <a-collapse-panel key="legacy" header="兼容模式：旧版工序编辑器">
+                <ProcessTabsEditor v-model="processSteps" :readonly="readOnly" :create-row="blankProcess" />
+              </a-collapse-panel>
+            </a-collapse>
           </a-card>
 
           <a-card title="成品产出" class="page-card">
@@ -146,7 +151,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { message } from "ant-design-vue";
 import type {
@@ -156,9 +161,11 @@ import type {
   RemainingDisposition,
   RndTaskDetailView,
   YieldCalculationMode,
+  ProcessPlanDraft,
 } from "@rnd/shared";
-import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, clearExperimentDraft, experimentDraftKey, formulaRatios, isCachedDraftNewer, normalizePositiveIntegerQuantity, readExperimentDraft, writeExperimentDraft, yieldBasisWeightKg } from "@rnd/shared";
+import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, clearExperimentDraft, createEmptyProcessPlan, experimentDraftKey, formulaRatios, isCachedDraftNewer, nextProcessKey, normalizePositiveIntegerQuantity, normalizeProcessPlan, processPlanToLegacySteps, readExperimentDraft, writeExperimentDraft, yieldBasisWeightKg } from "@rnd/shared";
 import ProcessTabsEditor from "../../components/ProcessTabsEditor.vue";
+import ProcessHierarchyEditor from "../../components/ProcessHierarchyEditor.vue";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
 
@@ -198,6 +205,7 @@ const experimentPhase = ref<"arrange" | "form">("arrange");
 const yieldCalculationMode = ref<YieldCalculationMode>("SELECTED_PRIMARY_MATERIALS");
 const hydrated = ref(false);
 let autoSaveTimer: number | undefined;
+let suppressAutoSave = false;
 const detail = ref<RndTaskDetailView | null>(null);
 const headerTitle = ref("打样实验单");
 let rowKey = 1;
@@ -222,6 +230,8 @@ const form = reactive({
 
 const materials = ref<MaterialRow[]>([blankMaterial(false)]);
 const processSteps = ref<ProcessRow[]>([blankProcess()]);
+const processPlan = ref<ProcessPlanDraft>(createEmptyProcessPlan());
+const showLegacyProcessEditor = computed(() => processPlan.value.legacy && !processPlan.value.majorProcesses.some((item) => item.steps.length));
 const formulaRatioValues = computed(() => formulaRatios(materials.value.map((item) => item.weightKg ?? 0)));
 const totalFormulaWeight = computed(() => materials.value.reduce((sum, item) => sum + (item.weightKg ?? 0), 0));
 const yieldBasisWeight = computed(() => yieldBasisWeightKg(materials.value.map((item) => ({
@@ -353,6 +363,18 @@ function confirmArrangement() {
     return;
   }
   processSteps.value = valid;
+  if (!processPlan.value.majorProcesses.length) {
+    processPlan.value = normalizeProcessPlan({
+      ...createEmptyProcessPlan(),
+      majorProcesses: valid.map((step, index) => ({
+        key: nextProcessKey("major"), sequence: index + 1, processCode: "", processName: step.processName,
+        description: step.remark, yieldBasis: "PRIMARY_INPUT" as const, remark: step.remark,
+        steps: [],
+        inputs: step.beforeWeightKg ? [{ key: nextProcessKey("input"), sequence: 1, inputRole: "PRIMARY" as const, materialName: "本步投入", weightKg: step.beforeWeightKg }] : [],
+        outputs: step.afterWeightKg ? [{ key: nextProcessKey("output"), sequence: 1, outputType: "QUALIFIED" as const, weightKg: step.afterWeightKg, remark: "" }] : [],
+      })),
+    });
+  }
   experimentPhase.value = "form";
 }
 
@@ -386,6 +408,7 @@ function buildMaterials(): ExperimentMaterial[] {
 }
 
 function buildProcessSteps(): ExperimentProcessStep[] {
+  if (processPlan.value.majorProcesses.length) return processPlanToLegacySteps(processPlan.value);
   return processSteps.value
     .filter((step) => step.processName.trim())
     .map((step, index) => {
@@ -479,6 +502,13 @@ onMounted(async () => {
         }));
       }
     }
+    if (detail.value.currentExperimentForm?.id) {
+      try {
+        processPlan.value = normalizeProcessPlan(await api.task.getProcessPlan(detail.value.currentExperimentForm.id));
+      } catch {
+        processPlan.value = createEmptyProcessPlan();
+      }
+    }
     restoreLocalDraft(detail.value.currentExperimentForm?.savedAt);
   } finally {
     loading.value = false;
@@ -508,6 +538,7 @@ function draftSnapshot() {
     form: { ...form },
     materials: materials.value.map((item) => ({ ...item })),
     processSteps: processSteps.value.map((item) => ({ ...item })),
+    processPlan: structuredClone(processPlan.value),
   };
 }
 
@@ -529,11 +560,12 @@ function restoreLocalDraft(serverSavedAt?: string) {
   Object.assign(form, cached.value.form);
   materials.value = cached.value.materials;
   processSteps.value = cached.value.processSteps;
+  if (cached.value.processPlan) processPlan.value = normalizeProcessPlan(cached.value.processPlan);
   draftSyncState.value = "local";
 }
 
 function scheduleAutoSave() {
-  if (!hydrated.value || readOnly.value) return;
+  if (!hydrated.value || readOnly.value || suppressAutoSave) return;
   persistLocalDraft();
   if (autoSaveTimer) window.clearTimeout(autoSaveTimer);
   autoSaveTimer = window.setTimeout(() => void autoSave(), 1500);
@@ -544,7 +576,7 @@ async function autoSave() {
   await saveDraft({ silent: true });
 }
 
-watch([form, materials, processSteps, yieldCalculationMode, experimentPhase], scheduleAutoSave, { deep: true });
+watch([form, materials, processSteps, processPlan, yieldCalculationMode, experimentPhase], scheduleAutoSave, { deep: true });
 
 async function saveDraft(options: { silent?: boolean } = {}) {
   const finishedOutputQuantity = validateFinishedOutputQuantity();
@@ -563,6 +595,16 @@ async function saveDraft(options: { silent?: boolean } = {}) {
       yieldCalculationMode: yieldCalculationMode.value,
     });
     detail.value = { ...detail.value!, currentExperimentForm: saved };
+    if (processPlan.value.majorProcesses.length) {
+      const savedPlan = await api.task.saveProcessPlan(saved.id, {
+        ...processPlan.value,
+        experimentFormId: saved.id,
+      });
+      suppressAutoSave = true;
+      processPlan.value = normalizeProcessPlan(savedPlan);
+      await nextTick();
+      suppressAutoSave = false;
+    }
     draftSaved.value = true;
     draftSyncState.value = "saved";
     writeExperimentDraft(localStorage, localDraftKey.value, draftSnapshot(), saved.savedAt);

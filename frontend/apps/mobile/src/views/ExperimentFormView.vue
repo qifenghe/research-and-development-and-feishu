@@ -49,9 +49,9 @@
             <van-button v-if="!readOnly" block plain type="primary" size="small" @click="addMaterial">+ 添加物料</van-button>
           </section>
           <section class="form-section">
-            <div v-if="!readOnly" class="execution-heading"><div><h2>关键工序</h2><span>一次只填写一个工序</span></div><van-button size="small" plain @click="startArrangeMode">调整工序</van-button></div>
-            <h2 v-else>关键工序</h2>
-            <ProcessStepEditor v-model="processSteps" :mode="readOnly ? 'readonly' : 'execute'" :readonly="readOnly" :current-index="currentStepIndex" @previous="previousStep" @next="nextStep" />
+            <div class="execution-heading"><div><h2>分层工艺</h2><span>{{ processPlan.majorProcesses.length ? '手机端只读查看' : '兼容旧版工序记录' }}</span></div><van-button v-if="!processPlan.majorProcesses.length && !readOnly" size="small" plain @click="startArrangeMode">调整工序</van-button></div>
+            <ProcessHierarchyReadonly v-if="processPlan.majorProcesses.length" :plan="processPlan" />
+            <ProcessStepEditor v-else v-model="processSteps" :mode="readOnly ? 'readonly' : 'execute'" :readonly="readOnly" :current-index="currentStepIndex" @previous="previousStep" @next="nextStep" />
           </section>
           <section class="form-section">
             <h2>成品产出</h2>
@@ -81,12 +81,13 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { showFailToast, showSuccessToast } from "vant";
-import type { ExperimentMaterial, MaterialCategory, RndTaskDetailView, YieldCalculationMode } from "@rnd/shared";
-import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, clearExperimentDraft, experimentDraftKey, formulaRatios, isCachedDraftNewer, normalizePositiveIntegerQuantity, readExperimentDraft, writeExperimentDraft, yieldBasisWeightKg } from "@rnd/shared";
+import type { ExperimentMaterial, MaterialCategory, ProcessPlanDraft, RndTaskDetailView, YieldCalculationMode } from "@rnd/shared";
+import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, clearExperimentDraft, createEmptyProcessPlan, experimentDraftKey, formulaRatios, isCachedDraftNewer, normalizePositiveIntegerQuantity, normalizeProcessPlan, readExperimentDraft, writeExperimentDraft, yieldBasisWeightKg } from "@rnd/shared";
 import PageHeader from "../components/PageHeader.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import FixedActionBar from "../components/FixedActionBar.vue";
 import ProcessStepEditor from "../components/ProcessStepEditor.vue";
+import ProcessHierarchyReadonly from "../components/ProcessHierarchyReadonly.vue";
 import { blankProcessStep, fromProcessSteps, toProcessSteps, type EditableProcessStep } from "../components/ProcessStepEditor.helpers";
 import { useAuthStore } from "../stores/auth";
 import { api } from "../services/api";
@@ -132,6 +133,7 @@ const blankMaterial=(primaryMaterial=false):EditableMaterial=>({
 });
 const materials=ref<EditableMaterial[]>([blankMaterial(false)]);
 const processSteps=ref<EditableProcessStep[]>([blankProcessStep()]);
+const processPlan=ref<ProcessPlanDraft>(createEmptyProcessPlan());
 const form=reactive<{summary:string;finishedOutputWeightKg:string;finishedOutputQuantity:string;finishedOutputUnit:FinishedOutputUnit}>({summary:"",finishedOutputWeightKg:"",finishedOutputQuantity:"",finishedOutputUnit:"袋"});
 
 const canSaveDraft=computed(()=>detail.value?canEditExperiment(detail.value,auth.displayName,auth.role):false);
@@ -182,7 +184,7 @@ async function loadProcessTemplate(versionId:string){
 
 async function loadDetail(){
   loading.value=true;loadError.value="";
-  try{await ensureAuthReady();const data=await api.task.detail(String(route.params.id),auth.role,auth.displayName);applyDetail(data);if(!data.currentExperimentForm?.processSteps?.length&&!readOnly.value)await loadProcessTemplate(data.task.versionId);restoreLocalDraft(data.currentExperimentForm?.savedAt)}
+  try{await ensureAuthReady();const data=await api.task.detail(String(route.params.id),auth.role,auth.displayName);applyDetail(data);if(!data.currentExperimentForm?.processSteps?.length&&!readOnly.value)await loadProcessTemplate(data.task.versionId);if(data.currentExperimentForm?.id){try{processPlan.value=normalizeProcessPlan(await api.task.getProcessPlan(data.currentExperimentForm.id))}catch{processPlan.value=createEmptyProcessPlan()}}restoreLocalDraft(data.currentExperimentForm?.savedAt)}
   catch(error){loadError.value=error instanceof Error?error.message:"无法打开实验单"}
   finally{loading.value=false}
 }

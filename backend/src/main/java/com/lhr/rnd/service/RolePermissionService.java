@@ -127,6 +127,8 @@ public class RolePermissionService {
                         rule("POST", "/api/v1/rnd-tasks/*/assign", "分发研发任务", 70),
                         rule("POST", "/api/v1/rnd-tasks/*/accept", "接受研发任务", 75),
                         rule("GET", "/api/v1/sample-versions/*/process-steps", "查看工序步骤", 76),
+                        rule("GET", "/api/v1/experiment-forms/*/process-plan", "查看分层工艺", 76),
+                        rule("PUT", "/api/v1/experiment-forms/*/process-plan", "编辑分层工艺", 77),
                         rule("POST", "/api/v1/rnd-tasks/*/experiment-form/draft", "保存实验单草稿", 77),
                         rule("POST", "/api/v1/experiment-forms/*/submit-test", "提交内部测试", 78),
                         rule("POST", "/api/v1/pricing-files/*/review", "审核核价文件", 79),
@@ -151,6 +153,8 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 12),
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 15),
                         rule("GET", "/api/v1/sample-versions/*/process-steps", "查看工序步骤", 16),
+                        rule("GET", "/api/v1/experiment-forms/*/process-plan", "查看分层工艺", 16),
+                        rule("PUT", "/api/v1/experiment-forms/*/process-plan", "编辑分层工艺", 17),
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 20),
                         rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 30),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 40),
@@ -172,6 +176,7 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 8),
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 5),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 10),
+                        rule("GET", "/api/v1/experiment-forms/*/process-plan", "查看分层工艺", 11),
                         rule("POST", "/api/v1/test-assignments/*/pass", "提交测试通过", 20),
                         rule("POST", "/api/v1/test-assignments/*/fail-resample", "提交测试不通过复打样", 30),
                         rule("GET", "/api/v1/reports/test-records/*/export", "导出测试单", 35),
@@ -322,6 +327,9 @@ public class RolePermissionService {
         if (isProcessStepsRead(method, uri)) {
             return hasAnyRole(role, "RND_ENGINEER", "RND_DIRECTOR", "RND_ASSISTANT", "MANAGER");
         }
+        if (isProcessPlanRead(method, uri)) {
+            return hasAnyRole(role, "RND_ENGINEER", "RND_DIRECTOR", "RND_ASSISTANT", "TESTER", "QA_TESTER", "MANAGER");
+        }
         if (isSampleRequestDetail(method, uri)) {
             return hasAnyRole(role, "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "MANAGER");
         }
@@ -341,11 +349,13 @@ public class RolePermissionService {
                     || isTaskAssign(method, uri)
                     || isTaskAccept(method, uri)
                     || isExperimentWrite(method, uri)
+                    || isProcessPlanWrite(method, uri)
                     || isFeishuOperation(method, uri);
             case "RND_ENGINEER" -> isTaskPool(method, uri)
                     || isSampleRequestList(method, uri)
                     || isTaskAccept(method, uri)
                     || isExperimentWrite(method, uri)
+                    || isProcessPlanWrite(method, uri)
                     || isFeishuOperation(method, uri);
             case "TESTER", "QA_TESTER" -> isTestWrite(method, uri);
             case "FINANCE" -> isFinanceWrite(method, uri);
@@ -389,6 +399,14 @@ public class RolePermissionService {
 
     private boolean isProcessStepsRead(String method, String uri) {
         return "GET".equals(method) && uri.matches("^/api/v1/sample-versions/[^/]+/process-steps$");
+    }
+
+    private boolean isProcessPlanRead(String method, String uri) {
+        return "GET".equals(method) && uri.matches("^/api/v1/experiment-forms/[^/]+/process-plan(?:/legacy-summary)?$");
+    }
+
+    private boolean isProcessPlanWrite(String method, String uri) {
+        return "PUT".equals(method) && uri.matches("^/api/v1/experiment-forms/[^/]+/process-plan$");
     }
 
     private boolean isSampleRequestApprove(String method, String uri) {

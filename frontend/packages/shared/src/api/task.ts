@@ -11,6 +11,7 @@ import type {
   UserAccount,
   YieldCalculationMode,
 } from "../types";
+import type { ProcessPlanDraft } from "../process-plan";
 
 export interface SaveExperimentDraftPayload {
   operatorName: string;
@@ -89,6 +90,10 @@ export function createTaskApi(client: ApiClient) {
       client.post<RndTask>(`/rnd-tasks/${id}/accept`, { acceptedBy }),
     saveExperimentDraft: (taskId: string, payload: SaveExperimentDraftPayload) =>
       client.post<ExperimentForm>(`/rnd-tasks/${taskId}/experiment-form/draft`, payload),
+    getProcessPlan: (formId: string) =>
+      client.get<ProcessPlanDraft>(`/experiment-forms/${formId}/process-plan`),
+    saveProcessPlan: (formId: string, plan: ProcessPlanDraft) =>
+      client.put<ProcessPlanDraft>(`/experiment-forms/${formId}/process-plan`, plan),
     submitExperimentForTest: (experimentFormId: string, testerName: string) =>
       client.post(`/experiment-forms/${experimentFormId}/submit-test`, { testerName }),
     uploadAttachment: (

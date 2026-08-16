@@ -12,6 +12,7 @@ declare module 'vue' {
     HeroCard: typeof import('./src/components/HeroCard.vue')['default']
     InfoCard: typeof import('./src/components/InfoCard.vue')['default']
     PageHeader: typeof import('./src/components/PageHeader.vue')['default']
+    ProcessHierarchyReadonly: typeof import('./src/components/ProcessHierarchyReadonly.vue')['default']
     ProcessStepEditor: typeof import('./src/components/ProcessStepEditor.vue')['default']
     RoleEntryGrid: typeof import('./src/components/RoleEntryGrid.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

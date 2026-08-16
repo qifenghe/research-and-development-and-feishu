@@ -1,0 +1,68 @@
+package com.lhr.rnd.service;
+
+import com.lhr.rnd.api.BusinessException;
+import com.lhr.rnd.model.ProcessPlan;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+@SpringBootTest
+@ActiveProfiles("test")
+class ProcessPlanServiceTest {
+    @Autowired ProcessPlanService service;
+    @Autowired JdbcTemplate jdbc;
+
+    @BeforeEach
+    void seedForm() {
+        if (jdbc.queryForObject("select count(*) from experiment_form where id='FORM-PROCESS'", Integer.class) > 0) return;
+        var now = LocalDateTime.now();
+        jdbc.update("insert into sample_request(id,sample_no,product_name,product_type,customer_name,specification,creator_name,status,created_at) values (?,?,?,?,?,?,?,?,?)",
+                "REQ-PROCESS", "S-PROCESS", "牛腩", "预制菜", "客户", "1kg", "研发", "APPROVED", now);
+        jdbc.update("insert into sample_project(id,request_id,sample_no,product_name,product_type,customer_name,specification,status,created_at) values (?,?,?,?,?,?,?,?,?)",
+                "PRJ-PROCESS", "REQ-PROCESS", "S-PROCESS", "牛腩", "预制菜", "客户", "1kg", "ACTIVE", now);
+        jdbc.update("insert into sample_version(id,project_id,sample_no,product_name,product_type,specification,version_no,version_number,version_code,created_at) values (?,?,?,?,?,?,?,?,?,?)",
+                "VER-PROCESS", "PRJ-PROCESS", "S-PROCESS", "牛腩", "预制菜", "1kg", "1", 1, "V1", now);
+        jdbc.update("insert into rnd_task(id,project_id,version_id,sample_no,product_name,version_code,status,created_at) values (?,?,?,?,?,?,?,?)",
+                "TASK-PROCESS", "PRJ-PROCESS", "VER-PROCESS", "S-PROCESS", "牛腩", "V1", "IN_PROGRESS", now);
+        jdbc.update("insert into experiment_form(id,task_id,project_id,version_id,sample_no,product_name,version_code,status,operator_name,saved_at) values (?,?,?,?,?,?,?,?,?,?)",
+                "FORM-PROCESS", "TASK-PROCESS", "PRJ-PROCESS", "VER-PROCESS", "S-PROCESS", "牛腩", "V1", "DRAFT", "研发", now);
+    }
+
+    @Test
+    void savesAndReloadsNestedPlanWithCalculatedYield() {
+        var step = new ProcessPlan.MinorStep(null, 1, "BOIL", "煮制", "NORMAL", "温度", "95", "℃",
+                "时间", "40", "min", "夹层锅", "保持微沸", List.of(
+                new ProcessPlan.StepMaterial(null, 1, "AUXILIARY", "SALT", "盐", "SOLID", new BigDecimal("0.2"), null, null)));
+        var major = new ProcessPlan.MajorProcess(null, 1, "HEAT", "热加工", "煮制与焖制", "PRIMARY_INPUT", null,
+                List.of(step), List.of(new ProcessPlan.ProcessInput(null, 1, "PRIMARY", "BEEF", "牛肉", new BigDecimal("10"), null)),
+                List.of(new ProcessPlan.ProcessOutput(null, 1, "QUALIFIED", new BigDecimal("8"), null)), null);
+
+        var saved = service.save("FORM-PROCESS", new ProcessPlan(null, "FORM-PROCESS", 0, "DRAFT", List.of(major), null, false));
+        var loaded = service.find("FORM-PROCESS");
+
+        assertThat(saved.versionNo()).isEqualTo(1);
+        assertThat(loaded.majorProcesses()).hasSize(1);
+        assertThat(loaded.majorProcesses().get(0).steps()).hasSize(1);
+        assertThat(loaded.majorProcesses().get(0).steps().get(0).materials()).hasSize(1);
+        assertThat(loaded.majorProcesses().get(0).yield().mainYieldPercent()).isEqualByComparingTo("80.000000");
+    }
+
+    @Test
+    void rejectsStaleVersion() {
+        var current = service.find("FORM-PROCESS");
+        assertThatThrownBy(() -> service.save("FORM-PROCESS",
+                new ProcessPlan(null, "FORM-PROCESS", current.versionNo() + 5, "DRAFT", List.of(), null, false)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("刷新");
+    }
+}

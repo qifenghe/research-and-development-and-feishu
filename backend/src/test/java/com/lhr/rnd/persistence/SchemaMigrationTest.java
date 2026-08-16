@@ -46,6 +46,12 @@ class SchemaMigrationTest {
         assertTableExists("feishu_notification");
         assertTableExists("archive_file");
         assertTableExists("audit_log");
+        assertTableExists("experiment_process_plan");
+        assertTableExists("experiment_major_process");
+        assertTableExists("experiment_minor_step");
+        assertTableExists("experiment_step_material");
+        assertTableExists("experiment_process_input");
+        assertTableExists("experiment_process_output");
 
         assertUniqueConstraintExists("sample_version", "uk_sample_version_project_version");
         assertUniqueConstraintExists("pricing_file", "uk_pricing_file_version_pricing_version");
@@ -110,6 +116,9 @@ class SchemaMigrationTest {
         assertNumericColumn("experiment_form", "finished_output_weight_kg", 14, 4);
         assertColumnDefinition("experiment_form", "finished_output_unit", false, "U&'\\888b'");
         assertNumericColumn("experiment_form", "finished_yield_percent", 10, 6);
+        assertNumericColumn("experiment_step_material", "weight_kg", 14, 4);
+        assertNumericColumn("experiment_process_input", "weight_kg", 14, 4);
+        assertNumericColumn("experiment_process_output", "weight_kg", 14, 4);
         assertColumnDefinition("experiment_form", "yield_calculation_mode", false, "'SELECTED_PRIMARY_MATERIALS'");
     }
 
