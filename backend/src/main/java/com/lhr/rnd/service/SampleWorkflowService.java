@@ -104,6 +104,8 @@ import java.util.UUID;
 public class SampleWorkflowService {
     private static final Set<String> FINISHED_OUTPUT_UNITS = Set.of("袋", "盒", "份", "个", "盘");
     private static final int MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
+    private static final String DEFAULT_FINANCE_RECIPIENT = "财务核价员";
+    private static final String AUTO_FINANCE_REMARK = "核价文件已审核通过，系统自动移交财务核价";
     private static final Set<String> ALLOWED_ATTACHMENT_CONTENT_TYPES = Set.of(
             "image/jpeg",
             "image/png",
@@ -1589,15 +1591,6 @@ public class SampleWorkflowService {
                     true
             ));
         }
-        if (hasRole(role, "RND_ASSISTANT") && pricingFile.status() == PricingFileStatus.PRICING_APPROVED) {
-            actions.add(action(
-                    "NOTIFY_FINANCE",
-                    "通知财务核价",
-                    "POST",
-                    "/api/v1/pricing-files/" + pricingFile.id() + "/notify-finance",
-                    true
-            ));
-        }
         return actions;
     }
 
@@ -1720,6 +1713,8 @@ public class SampleWorkflowService {
         ensureWorkflowAllows(SampleStatus.SAMPLE_COMPLETED, SampleAction.REQUEST_PRICING);
         ensurePricingArchiveAllowed();
         var pricingVersionNo = "V" + nextPricingVersionNumber(versionId);
+        var referenceOutputKg = resolvePricingReferenceOutput(version, lockedForm);
+        var unitWeightKg = resolvePricingUnitWeight(version, lockedForm, referenceOutputKg);
         var versionWithMaterials = SampleVersion.builder()
                 .id(version.id())
                 .projectId(version.projectId())
@@ -1735,8 +1730,8 @@ public class SampleWorkflowService {
                 .ownerName(version.ownerName())
                 .authorName(lockedForm.operatorName())
                 .effectiveDate(version.effectiveDate())
-                .referenceOutputKg(version.referenceOutputKg())
-                .unitWeightKg(version.unitWeightKg())
+                .referenceOutputKg(referenceOutputKg)
+                .unitWeightKg(unitWeightKg)
                 .materials(lockedForm.materials())
                 .createdAt(version.createdAt())
                 .build();
@@ -1977,7 +1972,9 @@ public class SampleWorkflowService {
     ) {
         var pricingFile = requiredPricingFile(pricingFileId);
         ensurePricingReviewer(pricingFile, reviewerName, reviewerRole);
-        if (pricingFile.status() == PricingFileStatus.PRICING_APPROVED
+        if (pricingFile.status() == PricingFileStatus.FINANCE_NOTIFIED
+                || pricingFile.status() == PricingFileStatus.FINANCE_RECEIVED
+                || pricingFile.status() == PricingFileStatus.PRICING_APPROVED
                 || pricingFile.status() == PricingFileStatus.PRICING_REJECTED) {
             return pricingFile;
         }
@@ -2005,13 +2002,38 @@ public class SampleWorkflowService {
                 rejected ? normalizedComment : null
         );
         persistPricingReview(reviewed);
+        var result = reviewed;
+        FinanceNotification financeNotification = null;
+        if (approved) {
+            result = reviewed.withStatus(PricingFileStatus.FINANCE_NOTIFIED);
+            financeNotification = new FinanceNotification(
+                    "FIN-%04d".formatted(financeNotificationSequence++),
+                    reviewed.id(),
+                    DEFAULT_FINANCE_RECIPIENT,
+                    AUTO_FINANCE_REMARK,
+                    FinanceNotificationStatus.SENT,
+                    reviewedAt
+            );
+            persistFinanceNotification(result, financeNotification);
+        }
         if (auditLogService != null) {
             auditLogService.record("PRICING_FILE", pricingFileId,
                     approved ? "PRICING_REVIEW_APPROVE" : "PRICING_REVIEW_REJECT", reviewerName,
                     "comment=" + normalizedComment);
+            if (financeNotification != null) {
+                auditLogService.record("PRICING_FILE", pricingFileId, "FINANCE_AUTO_HANDOFF", reviewerName,
+                        "recipient=" + financeNotification.recipientName());
+            }
         }
-        cacheAfterCommit(() -> pricingFiles.put(reviewed.id(), reviewed));
-        return reviewed;
+        var pricingFileToCache = result;
+        var notificationToCache = financeNotification;
+        cacheAfterCommit(() -> {
+            pricingFiles.put(pricingFileToCache.id(), pricingFileToCache);
+            if (notificationToCache != null) {
+                financeNotifications.put(notificationToCache.id(), notificationToCache);
+            }
+        });
+        return result;
     }
 
     public synchronized List<ArchiveFileView> archiveFiles(String versionId) {

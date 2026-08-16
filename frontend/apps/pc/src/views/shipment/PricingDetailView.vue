@@ -63,10 +63,6 @@
                 <a-button type="primary" block @click="review('APPROVE')">审核通过并移交财务</a-button>
                 <a-button danger block @click="review('REJECT')">退回核价</a-button>
               </template>
-              <template v-if="canNotifyFinance">
-                <a-input v-model:value="recipientName" placeholder="财务接收人" />
-                <a-button type="primary" block @click="notifyFinance">通知财务核价</a-button>
-              </template>
             </a-space>
           </a-card>
         </a-col>
@@ -92,7 +88,6 @@ const downloading = ref(false);
 const exporting = ref(false);
 const confirmingPackaging = ref(false);
 const detail = ref<PricingFileDetailView | null>(null);
-const recipientName = ref("财务部");
 const packagingItems = ref<EditablePackagingItem[]>([]);
 const reviewComment = ref("");
 const resolvedGroups = computed(() => (detail.value ? resolvePricingDetailFields(detail.value) : []));
@@ -103,8 +98,6 @@ const canDownload = computed(() => !isPackagingDraft.value && [
 ].includes(auth.role ?? ""));
 const canReview = computed(() => (auth.role === "RND_DIRECTOR" || auth.role === "RND_ENGINEER")
   && detail.value?.pricingFile.status === "PENDING_PRICING_REVIEW");
-const canNotifyFinance = computed(() => auth.role === "RND_ASSISTANT"
-  && detail.value?.pricingFile.status === "PRICING_APPROVED");
 
 const packagingColumns = [
   { title: "来源", key: "source", width: 96 },
@@ -205,16 +198,6 @@ function downloadBlob(blob: Blob, filename: string) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-async function notifyFinance() {
-  try {
-    await api.shipment.notifyFinance(String(route.params.id), recipientName.value.trim());
-    message.success("已通知财务");
-    await load();
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : "通知失败");
-  }
 }
 
 async function review(decision: "APPROVE" | "REJECT") {
