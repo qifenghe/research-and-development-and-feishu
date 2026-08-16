@@ -9,8 +9,34 @@
         <van-button round type="primary" @click="load">重新加载</van-button>
       </van-empty>
 
+      <section v-if="isPackagingDraft && !loadError" class="packaging-panel">
+        <div class="packaging-panel__header">
+          <div>
+            <h2>确认包装</h2>
+            <p>包装可在此补充或调整；产品内袋标签、外箱标签已自动带入。</p>
+          </div>
+          <van-tag type="primary" plain>待确认</van-tag>
+        </div>
+        <div v-for="(item, index) in packagingItems" :key="item.clientKey" class="packaging-item">
+          <div class="packaging-item__topline">
+            <van-tag :type="item.source === 'SYSTEM_LABEL' ? 'primary' : item.source === 'MANUAL' ? 'warning' : 'default'">
+              {{ sourceLabel(item.source) }}
+            </van-tag>
+            <van-button v-if="canEditPackaging && item.source !== 'SYSTEM_LABEL'" size="small" plain type="danger" @click="removePackagingItem(index)">删除</van-button>
+          </div>
+          <van-field v-model="item.materialName" label="包装名称" placeholder="如：内袋、外箱" :readonly="!canEditPackaging || item.source === 'SYSTEM_LABEL'" />
+          <van-field v-model.number="item.quantity" label="数量" type="number" inputmode="decimal" placeholder="填写数量" :readonly="!canEditPackaging" />
+          <van-field v-model="item.packageSpec" label="规格" placeholder="如：500g/袋、1张/箱" :readonly="!canEditPackaging" />
+          <van-field v-model="item.remark" label="备注" placeholder="可选" :readonly="!canEditPackaging" />
+        </div>
+        <van-button v-if="canEditPackaging" block plain @click="addPackagingItem">+ 添加包装</van-button>
+        <van-notice-bar v-else left-icon="info-o" color="#576b95" background="#f5f7fb">
+          核价草稿已生成，等待研发总监或产品负责人确认包装。
+        </van-notice-bar>
+      </section>
+
       <InfoCard
-        v-else
+        v-else-if="!isPackagingDraft"
         v-for="group in resolvedGroups"
         :key="group.title"
         :title="group.title"
@@ -39,6 +65,11 @@
           审核通过
         </van-button>
         <van-button block @click="reviewActionsVisible = true">更多操作</van-button>
+      </template>
+      <template v-else-if="isPackagingDraft && canEditPackaging">
+        <van-button type="primary" block :loading="confirmingPackaging" @click="confirmPackaging">
+          确认包装并生成核价文件
+        </van-button>
       </template>
       <template v-else>
         <van-button
@@ -69,7 +100,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { showFailToast, showSuccessToast } from "vant";
-import { resolvePricingDetailFields, type PricingFileDetailView } from "@rnd/shared";
+import { resolvePricingDetailFields, type PricingFileDetailView, type PricingPackagingItem } from "@rnd/shared";
 import PageHeader from "../components/PageHeader.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import InfoCard from "../components/InfoCard.vue";
@@ -84,9 +115,12 @@ const loading = ref(false);
 const downloading = ref(false);
 const receiving = ref(false);
 const reviewing = ref(false);
+const confirmingPackaging = ref(false);
 const reviewComment = ref("");
 const reviewActionsVisible = ref(false);
 const detail = ref<PricingFileDetailView | null>(null);
+type EditablePackagingItem = PricingPackagingItem & { clientKey: string };
+const packagingItems = ref<EditablePackagingItem[]>([]);
 const loadError = ref("");
 const reviewActions = [
   { name: "下载核价文件", value: "download" },
@@ -102,6 +136,8 @@ const canReview = computed(() => (
   (auth.role === "RND_DIRECTOR" || auth.role === "RND_ENGINEER")
   && detail.value?.pricingFile.status === "PENDING_PRICING_REVIEW"
 ));
+const canEditPackaging = computed(() => ["RND_DIRECTOR", "RND_ENGINEER", "SUPER_ADMIN"].includes(auth.role ?? ""));
+const isPackagingDraft = computed(() => detail.value?.pricingFile.status === "DRAFT_PACKAGING");
 const hasWorkflowAction = computed(() => canReview.value || canReceive.value);
 
 const headerTitle = computed(() => {
@@ -138,11 +174,63 @@ async function load() {
   loadError.value = "";
   try {
     detail.value = await api.shipment.pricingDetail(String(route.params.id));
+    packagingItems.value = (detail.value.packagingItems ?? []).map((item, index) => ({
+      ...item,
+      clientKey: item.id ?? `packaging-${index}`,
+    }));
   } catch (error) {
     detail.value = null;
     loadError.value = error instanceof Error ? error.message : "核价文件加载失败";
   } finally {
     loading.value = false;
+  }
+}
+
+function sourceLabel(source: PricingPackagingItem["source"]) {
+  return { TEMPLATE: "模板", SYSTEM_LABEL: "自动标签", MANUAL: "手工添加" }[source];
+}
+
+function addPackagingItem() {
+  packagingItems.value.push({
+    clientKey: `manual-${Date.now()}`,
+    source: "MANUAL",
+    materialName: "",
+    quantity: 1,
+    packageSpec: "",
+    remark: "",
+  });
+}
+
+function removePackagingItem(index: number) {
+  packagingItems.value.splice(index, 1);
+}
+
+async function confirmPackaging() {
+  if (!packagingItems.value.length) {
+    showFailToast("请至少保留一项包装");
+    return;
+  }
+  if (packagingItems.value.some((item) => !item.materialName.trim() || !Number(item.quantity) || Number(item.quantity) <= 0)) {
+    showFailToast("请补全每项包装的名称和数量");
+    return;
+  }
+  confirmingPackaging.value = true;
+  try {
+    await api.shipment.confirmPricingPackaging(String(route.params.id), packagingItems.value.map(({ clientKey, ...item }, index) => ({
+      ...item,
+      sequence: index + 1,
+      materialCode: item.source === "SYSTEM_LABEL" ? undefined : item.materialCode?.trim() || undefined,
+      materialName: item.materialName.trim(),
+      packageSpec: item.packageSpec?.trim() || undefined,
+      remark: item.remark?.trim() || undefined,
+      confirmationStatus: "CONFIRMED",
+    })));
+    showSuccessToast("包装已确认，等待核价审核");
+    await load();
+  } catch (error) {
+    showFailToast(error instanceof Error ? error.message : "确认包装失败");
+  } finally {
+    confirmingPackaging.value = false;
   }
 }
 
@@ -216,3 +304,12 @@ function downloadBlob(blob: Blob, filename: string) {
 
 onMounted(load);
 </script>
+
+<style scoped>
+.packaging-panel { margin: 12px; padding: 16px; border-radius: 12px; background: #fff; }
+.packaging-panel__header { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.packaging-panel h2 { margin: 0 0 6px; font-size: 18px; }
+.packaging-panel p { margin: 0; color: #64748b; font-size: 13px; line-height: 1.5; }
+.packaging-item { margin-bottom: 12px; overflow: hidden; border: 1px solid #e7ebf2; border-radius: 10px; }
+.packaging-item__topline { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: #f8fafc; }
+</style>

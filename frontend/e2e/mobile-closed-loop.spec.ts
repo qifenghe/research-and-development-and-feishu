@@ -85,7 +85,15 @@ test("five roles complete request-to-finance pricing handoff", async ({ page }) 
   await expect(pricingReadyCard).toBeVisible();
   await pricingReadyCard.click();
   await page.getByRole("button", { name: "生成核价 Excel" }).click();
-  await expect(page.locator(".status-badge").filter({ hasText: "待核价审核" })).toBeVisible();
+
+  await relogin(page, "rnd_engineer");
+  await page.goto("./pricing");
+  const packagingDraftCard = page.locator("a, .task-card").filter({ hasText: productName }).first();
+  await expect(packagingDraftCard).toBeVisible();
+  await packagingDraftCard.click();
+  await expect(page.getByRole("button", { name: "确认包装并生成核价文件" })).toBeVisible();
+  await page.getByRole("button", { name: "确认包装并生成核价文件" }).click();
+  await expect(page.getByText("包装已确认，等待核价审核")).toBeVisible();
 
   await relogin(page, "finance");
   await page.goto("./pricing");
@@ -97,14 +105,7 @@ test("five roles complete request-to-finance pricing handoff", async ({ page }) 
   await expect(pendingReviewCard).toBeVisible();
   await pendingReviewCard.click();
   await page.getByRole("button", { name: "审核通过" }).click();
-  await expect(page.locator(".status-badge").filter({ hasText: "审核通过" })).toBeVisible();
-  const approvedPricingUrl = page.url();
-
-  await relogin(page, "rnd_assistant");
-  await page.goto(approvedPricingUrl);
-  await expect(page.getByRole("button", { name: "通知财务" })).toBeVisible();
-  await page.getByRole("button", { name: "通知财务" }).click();
-  await expect(page.getByText("已通知财务")).toBeVisible();
+  await expect(page.getByText("审核通过，已移交财务")).toBeVisible();
 
   await relogin(page, "finance");
   await page.goto("./pricing");

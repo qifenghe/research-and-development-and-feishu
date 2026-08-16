@@ -70,6 +70,7 @@ const chips = computed<Array<{ label: string; value: PricingFileStatus | "" }>>(
         { label: "全部", value: "" },
       ]
     : [
+        { label: "待确认包装", value: "DRAFT_PACKAGING" },
         { label: "待审核", value: "PENDING_PRICING_REVIEW" },
         { label: "已退回", value: "PRICING_REJECTED" },
         { label: "待财务接收", value: "FINANCE_NOTIFIED" },
@@ -79,6 +80,7 @@ const chips = computed<Array<{ label: string; value: PricingFileStatus | "" }>>(
 ));
 
 function statusLabel(status: PricingFileStatus) {
+  if (status === "DRAFT_PACKAGING") return "待确认包装";
   if (status === "FINANCE_RECEIVED") return "财务已接收";
   if (status === "FINANCE_NOTIFIED") return "待财务接收";
   if (status === "PRICING_APPROVED") return "待自动移交";
@@ -124,7 +126,7 @@ async function load() {
 }
 
 onMounted(() => {
-  activeStatus.value = auth.role === "FINANCE" ? "FINANCE_NOTIFIED" : "PENDING_PRICING_REVIEW";
+  activeStatus.value = auth.role === "FINANCE" ? "FINANCE_NOTIFIED" : "";
   load();
 });
 </script>

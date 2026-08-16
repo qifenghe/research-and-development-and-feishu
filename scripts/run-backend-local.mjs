@@ -42,6 +42,7 @@ export function buildBackendCommand(options = {}) {
     env: {
       ...process.env,
       JAVA_HOME: javaHome,
+      JAVA_TOOL_OPTIONS: [process.env.JAVA_TOOL_OPTIONS, "-Djava.net.preferIPv4Stack=true"].filter(Boolean).join(" "),
     },
   };
 }

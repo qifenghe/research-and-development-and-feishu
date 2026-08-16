@@ -12,6 +12,7 @@
               description="内袋标签、外箱标签已按产品名称自动带入且不显示编码。请补充或调整实际包装，确认后生成正式 Excel。"
               style="margin-bottom: 16px"
             />
+            <a-alert v-if="!canEditPackaging" type="warning" show-icon message="核价草稿已生成，等待研发总监或产品负责人确认包装。" style="margin-bottom: 16px" />
             <a-table :columns="packagingColumns" :data-source="packagingItems" :pagination="false" row-key="clientKey" size="small">
               <template #bodyCell="{ column, record, index }">
                 <template v-if="column.key === 'source'">
@@ -20,26 +21,26 @@
                   </a-tag>
                 </template>
                 <template v-else-if="column.key === 'materialCode'">
-                  <a-input v-model:value="record.materialCode" :disabled="record.source === 'SYSTEM_LABEL'" placeholder="无编码可留空" />
+                  <a-input v-model:value="record.materialCode" :disabled="!canEditPackaging || record.source === 'SYSTEM_LABEL'" placeholder="无编码可留空" />
                 </template>
                 <template v-else-if="column.key === 'materialName'">
-                  <a-input v-model:value="record.materialName" placeholder="包装名称" />
+                  <a-input v-model:value="record.materialName" :disabled="!canEditPackaging || record.source === 'SYSTEM_LABEL'" placeholder="包装名称" />
                 </template>
                 <template v-else-if="column.key === 'quantity'">
-                  <a-input-number v-model:value="record.quantity" :min="0.001" :precision="3" style="width: 100%" />
+                  <a-input-number v-model:value="record.quantity" :disabled="!canEditPackaging" :min="0.001" :precision="3" style="width: 100%" />
                 </template>
                 <template v-else-if="column.key === 'packageSpec'">
-                  <a-input v-model:value="record.packageSpec" placeholder="如 500g/袋" />
+                  <a-input v-model:value="record.packageSpec" :disabled="!canEditPackaging" placeholder="如 500g/袋" />
                 </template>
                 <template v-else-if="column.key === 'remark'">
-                  <a-input v-model:value="record.remark" placeholder="可选" />
+                  <a-input v-model:value="record.remark" :disabled="!canEditPackaging" placeholder="可选" />
                 </template>
                 <template v-else-if="column.key === 'action'">
-                  <a-button type="link" danger @click="removePackagingItem(index)">删除</a-button>
+                  <a-button v-if="canEditPackaging && record.source !== 'SYSTEM_LABEL'" type="link" danger @click="removePackagingItem(index)">删除</a-button>
                 </template>
               </template>
             </a-table>
-            <a-space style="margin-top: 16px">
+            <a-space v-if="canEditPackaging" style="margin-top: 16px">
               <a-button @click="addPackagingItem">添加包装</a-button>
               <a-button type="primary" :loading="confirmingPackaging" @click="confirmPackaging">确认包装并生成核价文件</a-button>
             </a-space>
