@@ -21,6 +21,27 @@
 - Shared, PC, and mobile offline TypeScript checks — PASS.
 - `git diff --check` — PASS.
 
+## Review remediation — round 3
+
+### RED
+
+- Expanded the V22→V23 migration test to pre-seed one legacy experiment form plus `experiment_material`, `experiment_process`, `test_assignment`, and `test_record` rows. Before the migration correction, their `experiment_form_id` metadata remained 32 and the test failed on the first 64-length assertion.
+- The same test then creates a 64-character form and inserts every legacy child type, while proving all four preserved foreign keys reject an orphan form ID.
+
+### GREEN
+
+- Exhaustive migration/source search found four pre-existing narrow references in addition to the already-64 process-plan and newly-created process-revision references: material, legacy process, assignment, and test record.
+- V23 now drops the five dependent named form FKs (including process-plan), widens the parent and all four old child columns to `varchar(64)`, then recreates every FK with its prior delete policy. This ordering works for both H2 and PostgreSQL and preserves V22 data.
+- The matching JPA mappings explicitly declare 64-character experiment-form IDs/references.
+- Migration tests assert all six form-reference columns are 64, old child data survives V22→V23, the form FKs exist, legal 64-character child references insert, and orphan references remain rejected.
+
+### Fresh verification
+
+- `mvn -q -Dtest=ProcessRevisionServiceTest,ProcessPlanServiceTest,ProcessPlanControllerTest,ProcessSubmissionValidatorTest,SessionAuthenticationInterceptorTest,RolePermissionServiceTest,SchemaMigrationTest test` — PASS.
+- `node scripts/check-api-contracts.mjs` — PASS.
+- Shared, PC, and mobile direct TypeScript checks — PASS.
+- `git diff --check` — PASS.
+
 ## Review remediation — round 2
 
 ### RED

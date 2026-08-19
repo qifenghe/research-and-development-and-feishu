@@ -15,7 +15,22 @@ create table experiment_step_output (
 );
 
 -- Formal process identifiers and audit context may both legitimately use the full form-id/reason sizes.
+-- Drop/recreate form foreign keys around the type widening so this V22 -> V23 migration is valid in H2 and PostgreSQL.
+alter table experiment_material drop constraint fk_experiment_material_form;
+alter table test_assignment drop constraint fk_test_assignment_form;
+alter table test_record drop constraint fk_test_record_form;
+alter table experiment_process drop constraint fk_experiment_process_form;
+alter table experiment_process_plan drop constraint fk_process_plan_form;
 alter table experiment_form alter column id type varchar(64);
+alter table experiment_material alter column experiment_form_id type varchar(64);
+alter table test_assignment alter column experiment_form_id type varchar(64);
+alter table test_record alter column experiment_form_id type varchar(64);
+alter table experiment_process alter column experiment_form_id type varchar(64);
+alter table experiment_material add constraint fk_experiment_material_form foreign key (experiment_form_id) references experiment_form(id);
+alter table test_assignment add constraint fk_test_assignment_form foreign key (experiment_form_id) references experiment_form(id);
+alter table test_record add constraint fk_test_record_form foreign key (experiment_form_id) references experiment_form(id);
+alter table experiment_process add constraint fk_experiment_process_form foreign key (experiment_form_id) references experiment_form(id);
+alter table experiment_process_plan add constraint fk_process_plan_form foreign key (experiment_form_id) references experiment_form(id) on delete cascade;
 alter table audit_log alter column business_id type varchar(64);
 alter table audit_log alter column detail type text;
 

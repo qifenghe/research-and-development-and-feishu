@@ -13,7 +13,7 @@ public class ExperimentMaterialEntity {
     @Id
     private String id;
 
-    @Column(name = "experiment_form_id", nullable = false)
+    @Column(name = "experiment_form_id", nullable = false, length = 64)
     private String experimentFormId;
 
     @Column(name = "stage")

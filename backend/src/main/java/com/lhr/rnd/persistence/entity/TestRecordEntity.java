@@ -16,7 +16,7 @@ public class TestRecordEntity {
     @Column(name = "test_assignment_id", nullable = false)
     private String testAssignmentId;
 
-    @Column(name = "experiment_form_id", nullable = false)
+    @Column(name = "experiment_form_id", nullable = false, length = 64)
     private String experimentFormId;
 
     @Column(name = "tester_name", nullable = false)

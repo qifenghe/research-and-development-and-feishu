@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 @Table(name = "experiment_form")
 public class ExperimentFormEntity {
     @Id
+    @Column(length = 64)
     private String id;
 
     @Column(name = "task_id", nullable = false)

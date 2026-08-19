@@ -157,6 +157,9 @@ class SchemaMigrationTest {
         assertColumnDefinition("experiment_form", "yield_calculation_mode", false, "'SELECTED_PRIMARY_MATERIALS'");
         assertColumnDefinition("experiment_step_material", "source_type", false, "'EXTERNAL'");
         assertVarcharLength("experiment_form", "id", 64);
+        for (var table : java.util.List.of("experiment_material", "test_assignment", "test_record", "experiment_process", "experiment_process_plan", "experiment_process_revision")) {
+            assertVarcharLength(table, "experiment_form_id", 64);
+        }
         assertVarcharLength("audit_log", "business_id", 64);
         assertThat(jdbcTemplate.queryForObject("""
                         select character_maximum_length
@@ -448,12 +451,40 @@ class SchemaMigrationTest {
                     10
             );
         }
+        seedFormAndAllLegacyFormChildren(legacyJdbcTemplate, "FORM-V22-CHILDREN", "V22-CHILDREN");
         Flyway.configure()
                 .dataSource(databaseUrl, "sa", "")
                 .locations("classpath:db/migration")
                 .target("23")
                 .load()
                 .migrate();
+
+        for (var table : java.util.List.of("experiment_material", "test_assignment", "test_record", "experiment_process", "experiment_process_plan", "experiment_process_revision")) {
+            assertVarcharLength(legacyJdbcTemplate, table, "experiment_form_id", 64);
+        }
+        assertForeignKeyExists(legacyJdbcTemplate, "experiment_material", "fk_experiment_material_form");
+        assertForeignKeyExists(legacyJdbcTemplate, "test_assignment", "fk_test_assignment_form");
+        assertForeignKeyExists(legacyJdbcTemplate, "test_record", "fk_test_record_form");
+        assertForeignKeyExists(legacyJdbcTemplate, "experiment_process", "fk_experiment_process_form");
+        assertForeignKeyExists(legacyJdbcTemplate, "experiment_process_plan", "fk_process_plan_form");
+        assertThat(legacyJdbcTemplate.queryForObject("select count(*) from experiment_material where experiment_form_id = ?", Integer.class, "FORM-V22-CHILDREN")).isEqualTo(1);
+        assertThat(legacyJdbcTemplate.queryForObject("select count(*) from test_assignment where experiment_form_id = ?", Integer.class, "FORM-V22-CHILDREN")).isEqualTo(1);
+        assertThat(legacyJdbcTemplate.queryForObject("select count(*) from test_record where experiment_form_id = ?", Integer.class, "FORM-V22-CHILDREN")).isEqualTo(1);
+        assertThat(legacyJdbcTemplate.queryForObject("select count(*) from experiment_process where experiment_form_id = ?", Integer.class, "FORM-V22-CHILDREN")).isEqualTo(1);
+        var longFormId = "F".repeat(64);
+        seedFormAndAllLegacyFormChildren(legacyJdbcTemplate, longFormId, "V23-LONG");
+        assertThatThrownBy(() -> legacyJdbcTemplate.update("insert into experiment_material(id, experiment_form_id, sequence, material_name, weight_kg, utilization_rate) values (?,?,?,?,?,?)",
+                "MAT-NO-FORM", "FORM-DOES-NOT-EXIST", 9, "不存在实验单物料", 1, 1))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> legacyJdbcTemplate.update("insert into experiment_process(id, experiment_form_id, sequence, process_name) values (?,?,?,?)",
+                "PROC-NO-FORM", "FORM-DOES-NOT-EXIST", 9, "不存在实验单工序"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> legacyJdbcTemplate.update("insert into test_assignment(id, experiment_form_id, task_id, version_id, tester_name, status, assigned_at) values (?,?,?,?,?,?,current_timestamp)",
+                "ASSIGN-NO-FORM", "FORM-DOES-NOT-EXIST", "TASK-V23-LONG", "VERSION-V23-LONG", "测试", "ASSIGNED"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> legacyJdbcTemplate.update("insert into test_record(id, test_assignment_id, experiment_form_id, tester_name, result, tested_at) values (?,?,?,?,?,current_timestamp)",
+                "RECORD-NO-FORM", "ASSIGN-V23-LONG", "FORM-DOES-NOT-EXIST", "测试", "PASS"))
+                .isInstanceOf(DataIntegrityViolationException.class);
 
         for (var role : java.util.List.of("RND_DIRECTOR", "RND_ENGINEER", "TESTER")) {
             assertThat(legacyJdbcTemplate.queryForObject(
@@ -567,7 +598,11 @@ class SchemaMigrationTest {
     }
 
     private void assertForeignKeyExists(String tableName, String constraintName) {
-        Integer count = jdbcTemplate.queryForObject(
+        assertForeignKeyExists(jdbcTemplate, tableName, constraintName);
+    }
+
+    private void assertForeignKeyExists(JdbcTemplate template, String tableName, String constraintName) {
+        Integer count = template.queryForObject(
                 """
                         select count(*)
                         from information_schema.table_constraints
@@ -645,7 +680,11 @@ class SchemaMigrationTest {
     }
 
     private void assertVarcharLength(String tableName, String columnName, int length) {
-        var actual = jdbcTemplate.queryForObject("""
+        assertVarcharLength(jdbcTemplate, tableName, columnName, length);
+    }
+
+    private void assertVarcharLength(JdbcTemplate template, String tableName, String columnName, int length) {
+        var actual = template.queryForObject("""
                         select character_maximum_length
                         from information_schema.columns
                         where table_schema = 'PUBLIC' and table_name = ? and column_name = ?
@@ -672,6 +711,45 @@ class SchemaMigrationTest {
                 values (?, ?, ?, ?)
                 """, stepId, majorId, 1, "Test minor step");
         return new ProcessGraph(majorId, stepId, outputId);
+    }
+
+    private void seedFormAndAllLegacyFormChildren(JdbcTemplate template, String formId, String suffix) {
+        var projectId = "PROJECT-" + suffix;
+        var versionId = "VERSION-" + suffix;
+        var taskId = "TASK-" + suffix;
+        var assignmentId = "ASSIGN-" + suffix;
+        template.update("""
+                insert into sample_project (id, sample_no, product_name, product_type, customer_name, specification, status, created_at)
+                values (?, ?, '迁移产品', 'TEST', '迁移客户', '迁移规格', 'SAMPLING', current_timestamp)
+                """, projectId, "SAMPLE-" + suffix);
+        template.update("""
+                insert into sample_version (id, project_id, sample_no, product_name, product_type, specification, version_no, version_number, version_code, created_at)
+                values (?, ?, ?, '迁移产品', 'TEST', '迁移规格', 'A0', 1, 'A0', current_timestamp)
+                """, versionId, projectId, "SAMPLE-" + suffix);
+        template.update("""
+                insert into rnd_task (id, project_id, version_id, sample_no, product_name, version_code, status, created_at)
+                values (?, ?, ?, ?, '迁移产品', 'A0', 'SAMPLING', current_timestamp)
+                """, taskId, projectId, versionId, "SAMPLE-" + suffix);
+        template.update("""
+                insert into experiment_form (id, task_id, project_id, version_id, sample_no, product_name, version_code, status, operator_name, saved_at)
+                values (?, ?, ?, ?, ?, '迁移产品', 'A0', 'DRAFT', '迁移研发', current_timestamp)
+                """, formId, taskId, projectId, versionId, "SAMPLE-" + suffix);
+        template.update("""
+                insert into experiment_material (id, experiment_form_id, sequence, material_name, weight_kg, utilization_rate)
+                values (?, ?, 1, '迁移物料', 1, 1)
+                """, "MAT-" + suffix, formId);
+        template.update("""
+                insert into experiment_process (id, experiment_form_id, sequence, process_name)
+                values (?, ?, 1, '迁移工序')
+                """, "PROC-" + suffix, formId);
+        template.update("""
+                insert into test_assignment (id, experiment_form_id, task_id, version_id, tester_name, status, assigned_at)
+                values (?, ?, ?, ?, '迁移测试', 'ASSIGNED', current_timestamp)
+                """, assignmentId, formId, taskId, versionId);
+        template.update("""
+                insert into test_record (id, test_assignment_id, experiment_form_id, tester_name, result, tested_at)
+                values (?, ?, ?, '迁移测试', 'PASS', current_timestamp)
+                """, "RECORD-" + suffix, assignmentId, formId);
     }
 
     private TestForm insertExperimentForm(String prefix) {
