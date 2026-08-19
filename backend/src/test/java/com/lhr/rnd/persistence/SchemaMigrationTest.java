@@ -156,6 +156,13 @@ class SchemaMigrationTest {
         assertColumnDefinition("experiment_process_plan", "balance_tolerance_kg", false, "0.0100");
         assertColumnDefinition("experiment_form", "yield_calculation_mode", false, "'SELECTED_PRIMARY_MATERIALS'");
         assertColumnDefinition("experiment_step_material", "source_type", false, "'EXTERNAL'");
+        assertVarcharLength("experiment_form", "id", 64);
+        assertVarcharLength("audit_log", "business_id", 64);
+        assertThat(jdbcTemplate.queryForObject("""
+                        select character_maximum_length
+                        from information_schema.columns
+                        where table_schema = 'PUBLIC' and table_name = 'AUDIT_LOG' and column_name = 'DETAIL'
+                        """, Integer.class)).isGreaterThan(1000);
     }
 
     @Test
@@ -635,6 +642,15 @@ class SchemaMigrationTest {
         assertThat(((Number) metadata.get("NUMERIC_SCALE")).intValue())
                 .as("column %s.%s scale", tableName, columnName)
                 .isEqualTo(scale);
+    }
+
+    private void assertVarcharLength(String tableName, String columnName, int length) {
+        var actual = jdbcTemplate.queryForObject("""
+                        select character_maximum_length
+                        from information_schema.columns
+                        where table_schema = 'PUBLIC' and table_name = ? and column_name = ?
+                        """, Integer.class, tableName.toUpperCase(), columnName.toUpperCase());
+        assertThat(actual).as("column %s.%s length", tableName, columnName).isEqualTo(length);
     }
 
     private ProcessGraph insertProcessGraph(String prefix) {

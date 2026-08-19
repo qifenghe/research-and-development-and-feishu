@@ -198,11 +198,35 @@ class ProcessPlanServiceTest {
         assertThat(service.find("FORM-PROCESS").versionNo()).isEqualTo(current.versionNo() + 1);
     }
 
+    @Test
+    void concurrentFirstSavesOnAnEmptyIndependentFormHaveOneStableConflictAndOneCompleteGraph() throws Exception {
+        var formId = "FORM-PROCESS-FIRST-SAVE";
+        seedIndependentEmptyForm(formId);
+        var request = new ProcessPlan(null, formId, 0, "DRAFT", List.of(), null, false);
+        var ready = new CountDownLatch(2);
+        var go = new CountDownLatch(1);
+        var first = CompletableFuture.supplyAsync(() -> saveFirstTogether(formId, request, ready, go));
+        var second = CompletableFuture.supplyAsync(() -> saveFirstTogether(formId, request, ready, go));
+
+        ready.await();
+        go.countDown();
+
+        assertThat(List.of(first.join(), second.join())).filteredOn(Boolean::booleanValue).hasSize(1);
+        var saved = service.find(formId);
+        assertThat(saved.versionNo()).isEqualTo(1);
+        assertThat(saved.status()).isEqualTo("DRAFT");
+        assertThat(saved.majorProcesses()).isEmpty();
+    }
+
     private boolean saveTogether(ProcessPlan request, CountDownLatch ready, CountDownLatch go) {
+        return saveFirstTogether("FORM-PROCESS", request, ready, go);
+    }
+
+    private boolean saveFirstTogether(String formId, ProcessPlan request, CountDownLatch ready, CountDownLatch go) {
         ready.countDown();
         try {
             go.await();
-            service.save("FORM-PROCESS", request);
+            service.save(formId, request);
             return true;
         } catch (BusinessException exception) {
             assertThat(exception.code()).isEqualTo("PROCESS_PLAN_VERSION_CONFLICT");
@@ -210,5 +234,16 @@ class ProcessPlanServiceTest {
         } catch (Exception exception) {
             throw new RuntimeException(exception);
         }
+    }
+
+    private void seedIndependentEmptyForm(String formId) {
+        jdbc.update("delete from experiment_process_revision where experiment_form_id = ?", formId);
+        jdbc.update("delete from experiment_step_material where minor_step_id in (select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id join experiment_process_plan plan on major.process_plan_id = plan.id where plan.experiment_form_id = ?)", formId);
+        jdbc.update("delete from experiment_major_process where process_plan_id in (select id from experiment_process_plan where experiment_form_id = ?)", formId);
+        jdbc.update("delete from experiment_process_plan where experiment_form_id = ?", formId);
+        jdbc.update("delete from experiment_form where id = ?", formId);
+        var now = LocalDateTime.now();
+        jdbc.update("insert into experiment_form(id,task_id,project_id,version_id,sample_no,product_name,version_code,status,operator_name,saved_at) values (?,?,?,?,?,?,?,?,?,?)",
+                formId, "TASK-PROCESS", "PRJ-PROCESS", "VER-PROCESS", "S-PROCESS", "牛腩", "V1", "DRAFT", "研发", now);
     }
 }

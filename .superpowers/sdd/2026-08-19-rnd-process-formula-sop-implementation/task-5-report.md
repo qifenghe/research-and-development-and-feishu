@@ -21,6 +21,26 @@
 - Shared, PC, and mobile offline TypeScript checks — PASS.
 - `git diff --check` — PASS.
 
+## Review remediation — round 2
+
+### RED
+
+- Added a database-backed boundary test using a 64-character form ID and a 1000-character change reason through submit then new-draft. Before the V23 capacity migration, the form/audit widths rejected the legal boundary values.
+- Added an isolated, explicitly cleared empty-header first-save race. Before the service fix, the losing insert surfaced a raw `DuplicateKeyException` from `uk_process_plan_form` instead of the stable process version-conflict code.
+
+### GREEN
+
+- The still-unreleased V23 migration now widens `experiment_form.id` and `audit_log.business_id` to `varchar(64)` and changes `audit_log.detail` to `text`. `AuditLogEntity` mirrors the widened ID and text detail. The full audit prefix plus all 1000 reason characters commit for both formal actions.
+- The first-header insert is now treated as a creation CAS: only the `uk_process_plan_form` SQLState `23505` violation is translated to `PROCESS_PLAN_VERSION_CONFLICT`; unrelated integrity failures remain intact.
+- Schema assertions cover the migrated widths, and the boundary test verifies the formal revision, reopened live draft, both audit rows, revision/source-revision IDs, and untruncated reason context.
+
+### Fresh verification
+
+- `mvn -q -Dtest=ProcessRevisionServiceTest,ProcessPlanServiceTest,ProcessPlanControllerTest,ProcessSubmissionValidatorTest,SessionAuthenticationInterceptorTest,RolePermissionServiceTest,SchemaMigrationTest test` — PASS.
+- `node scripts/check-api-contracts.mjs` — PASS.
+- Shared, PC, and mobile direct TypeScript checks — PASS.
+- `git diff --check` — PASS.
+
 ## Self-review
 
 - Snapshot coverage exercises `balanceToleranceKg`, step outputs, material source data, and calculated fields through the full persisted `ProcessPlan`; prior Task 4 round-trip coverage covers controls and measurements.

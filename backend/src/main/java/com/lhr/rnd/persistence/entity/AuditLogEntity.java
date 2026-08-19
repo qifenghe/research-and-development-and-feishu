@@ -16,7 +16,7 @@ public class AuditLogEntity {
     @Column(name = "business_type", nullable = false)
     private String businessType;
 
-    @Column(name = "business_id", nullable = false)
+    @Column(name = "business_id", nullable = false, length = 64)
     private String businessId;
 
     @Column(nullable = false)
@@ -25,7 +25,7 @@ public class AuditLogEntity {
     @Column(name = "operator_name", nullable = false)
     private String operatorName;
 
-    @Column(length = 1000)
+    @Column(columnDefinition = "text")
     private String detail;
 
     @Column(name = "created_at", nullable = false)

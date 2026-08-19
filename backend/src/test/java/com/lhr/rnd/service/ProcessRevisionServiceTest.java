@@ -12,6 +12,7 @@ import org.springframework.test.context.ActiveProfiles;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 
@@ -165,6 +166,30 @@ class ProcessRevisionServiceTest {
     }
 
     @Test
+    void commitsFullAuditContextFor64CharacterFormIdsAnd1000CharacterReasons() {
+        var boundaryFormId = "F".repeat(64);
+        var reason = "变".repeat(1000);
+        jdbc.update("delete from audit_log where business_id = ?", boundaryFormId);
+        jdbc.update("delete from experiment_process_revision where experiment_form_id = ?", boundaryFormId);
+        jdbc.update("delete from experiment_form where id = ?", boundaryFormId);
+        jdbc.update("insert into experiment_form(id,task_id,project_id,version_id,sample_no,product_name,version_code,status,operator_name,saved_at) values (?,?,?,?,?,?,?,?,?,?)",
+                boundaryFormId, "TASK-PROCESS-REVISION", "PRJ-PROCESS-REVISION", "VER-PROCESS-REVISION", "S-PROCESS-REVISION", "牛腩", "V1", "DRAFT", "研发", LocalDateTime.now());
+
+        var saved = saveReadyDraft(boundaryFormId);
+        var revision = service.submit(boundaryFormId, new ProcessRevisionService.SubmitCommand(
+                saved.versionNo(), true, reason, "可信研发"));
+        var draft = service.createDraftFromRevision(boundaryFormId, revision.id(), reason);
+
+        assertThat(planService.find(boundaryFormId).status()).isEqualTo("DRAFT");
+        assertThat(draft.changeReason()).isEqualTo(reason);
+        assertThat(jdbc.queryForObject("select count(*) from audit_log where business_id = ?", Integer.class, boundaryFormId)).isEqualTo(2);
+        var details = jdbc.queryForList("select detail from audit_log where business_id = ? order by created_at", String.class, boundaryFormId);
+        assertThat(details).allSatisfy(detail -> assertThat(detail).contains(reason));
+        assertThat(details).anySatisfy(detail -> assertThat(detail).contains("revisionId=" + revision.id()));
+        assertThat(details).anySatisfy(detail -> assertThat(detail).contains("sourceRevisionId=" + revision.id()));
+    }
+
+    @Test
     void rejectsRevisionLookupForAnotherForm() {
         var first = service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(
                 saveReadyDraft().versionNo(), true, "首次正式提交", "可信研发"));
@@ -260,18 +285,25 @@ class ProcessRevisionServiceTest {
     }
 
     private ProcessPlan saveReadyDraft() {
+        return saveReadyDraft(FORM_ID);
+    }
+
+    private ProcessPlan saveReadyDraft(String formId) {
+        var outputId = "OUT-REVISION-" + UUID.randomUUID();
+        var controlPointId = "CP-REVISION-" + UUID.randomUUID();
+        var measurementId = "CM-REVISION-" + UUID.randomUUID();
         var step = new ProcessPlan.MinorStep(null, 1, "COOK", "熟制", "NORMAL", null, null, null, null, null, null,
                 null, null, List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF", "鲜牛腩", "SOLID",
                 new BigDecimal("10.0000"), "MAT-BEEF", null, "EXTERNAL", null)), List.of(
-                new ProcessPlan.StepOutput("OUT-REVISION", 1, "FINISHED", "熟制牛腩", "SEMI_SOLID", new BigDecimal("10.0000"), true, false, null)), List.of(
-                new ProcessPlan.ControlPoint("CP-REVISION", 1, "QUALITY", "NORMAL", "中心温度", new BigDecimal("75"),
+                new ProcessPlan.StepOutput(outputId, 1, "FINISHED", "熟制牛腩", "SEMI_SOLID", new BigDecimal("10.0000"), true, false, null)), List.of(
+                new ProcessPlan.ControlPoint(controlPointId, 1, "QUALITY", "NORMAL", "中心温度", new BigDecimal("75"),
                         new BigDecimal("70"), new BigDecimal("85"), "℃", "探针测温", "数字探针", "每锅", null,
                         true, "可信研发", "2026-08-19T22:00:00", "研发记录", List.of(
-                                new ProcessPlan.ControlMeasurement("CM-REVISION", 1, new BigDecimal("76"), "2026-08-19T22:00:00", "PASS", null, null, "正常")))));
+                                new ProcessPlan.ControlMeasurement(measurementId, 1, new BigDecimal("76"), "2026-08-19T22:00:00", "PASS", null, null, "正常")))));
         var major = new ProcessPlan.MajorProcess(null, 1, "COOK", "熟制", null, "PRIMARY_INPUT", null,
                 List.of(step), List.of(), List.of(), null);
-        var current = planService.find(FORM_ID);
-        return planService.save(FORM_ID, new ProcessPlan(null, FORM_ID, current.versionNo(), "DRAFT", List.of(major), null,
+        var current = planService.find(formId);
+        return planService.save(formId, new ProcessPlan(null, formId, current.versionNo(), "DRAFT", List.of(major), null,
                 new BigDecimal("0.0100"), false));
     }
 }

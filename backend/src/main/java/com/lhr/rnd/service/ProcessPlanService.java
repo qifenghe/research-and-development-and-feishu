@@ -5,6 +5,7 @@ import com.lhr.rnd.domain.ProcessPlanCalculationService;
 import com.lhr.rnd.model.ProcessPlan;
 import com.lhr.rnd.persistence.repository.ExperimentFormRepository;
 import com.lhr.rnd.persistence.repository.ExperimentProcessRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -66,8 +67,13 @@ public class ProcessPlanService {
             if (request.versionNo() > 1) throw conflict();
             planId = id("PLAN");
             nextVersion = 1;
-            jdbc.update("insert into experiment_process_plan(id, experiment_form_id, version_no, status, calculation_mode, balance_tolerance_kg, created_at, updated_at) values (?,?,?,?,?,?,?,?)",
-                    planId, formId, nextVersion, "DRAFT", "PRIMARY_INPUT", balanceTolerance, LocalDateTime.now(), LocalDateTime.now());
+            try {
+                jdbc.update("insert into experiment_process_plan(id, experiment_form_id, version_no, status, calculation_mode, balance_tolerance_kg, created_at, updated_at) values (?,?,?,?,?,?,?,?)",
+                        planId, formId, nextVersion, "DRAFT", "PRIMARY_INPUT", balanceTolerance, LocalDateTime.now(), LocalDateTime.now());
+            } catch (DataIntegrityViolationException exception) {
+                if (isProcessPlanFormUniqueViolation(exception)) throw conflict();
+                throw exception;
+            }
         } else {
             var stored = current.get(0);
             if (request.versionNo() != stored.versionNo()) throw conflict();
@@ -261,6 +267,17 @@ public class ProcessPlanService {
                 rs.getString("step_type"), rs.getString("parameter_1_name"), rs.getString("parameter_1_value"),
                 rs.getString("parameter_1_unit"), rs.getString("parameter_2_name"), rs.getString("parameter_2_value"),
                 rs.getString("parameter_2_unit"), rs.getString("equipment"), rs.getString("instruction"), materials, outputs, controlPoints);
+    }
+
+    private boolean isProcessPlanFormUniqueViolation(DataIntegrityViolationException exception) {
+        var message = exception.getMessage();
+        if (message == null || !message.toLowerCase(java.util.Locale.ROOT).contains("uk_process_plan_form")) return false;
+        Throwable cause = exception;
+        while (cause != null) {
+            if (cause instanceof SQLException sqlException) return "23505".equals(sqlException.getSQLState());
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     private ProcessPlan.MajorProcess withYield(ProcessPlan.MajorProcess major) {

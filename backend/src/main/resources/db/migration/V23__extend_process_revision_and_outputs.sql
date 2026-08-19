@@ -14,6 +14,11 @@ create table experiment_step_output (
         references experiment_minor_step(id) on delete cascade
 );
 
+-- Formal process identifiers and audit context may both legitimately use the full form-id/reason sizes.
+alter table experiment_form alter column id type varchar(64);
+alter table audit_log alter column business_id type varchar(64);
+alter table audit_log alter column detail type text;
+
 alter table experiment_process_plan add column balance_tolerance_kg numeric(14,4) not null default 0.0100;
 alter table experiment_process_plan add column source_revision_id varchar(64);
 alter table experiment_process_plan add column change_reason varchar(1000);
