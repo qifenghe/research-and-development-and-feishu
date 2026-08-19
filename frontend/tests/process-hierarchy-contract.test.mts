@@ -92,6 +92,34 @@ test("previews recipe aggregation and submission flow errors without including i
   assert.ok(previewProcessSubmission(plan).errors.some((issue) => issue.code === "PRIMARY_FLOW_BROKEN"));
 });
 
+test("rejects a primary output before input and unresolved individual critical measurements in previews", () => {
+  const plan = createEmptyProcessPlan();
+  plan.majorProcesses.push({
+    key: "major-reversed", sequence: 1, processName: "热加工", yieldBasis: "PRIMARY_INPUT", remark: "", inputs: [], outputs: [],
+    steps: [
+      { key: "out-first", sequence: 1, stepName: "预处理", stepType: "NORMAL", materials: [], outputs: [{
+        key: "out-first-id", id: "out-first-id", sequence: 1, outputType: "INTERMEDIATE", outputName: "预处理产出",
+        materialState: "SOLID", weightKg: 9, primaryOutput: true, continueFlow: true,
+      }], controlPoints: [] },
+      { key: "input-last", sequence: 2, stepName: "投料", stepType: "NORMAL", materials: [{
+        key: "input-last-id", sequence: 1, materialRole: "PRIMARY", sourceType: "EXTERNAL", materialName: "牛肉",
+        materialState: "SOLID", weightKg: 10,
+      }], outputs: [], controlPoints: [{
+        key: "critical", sequence: 1, controlType: "FOOD_SAFETY", importance: "CRITICAL", itemName: "中心温度",
+        lowerLimit: 75, resolved: true, confirmedBy: "研发", measurements: [
+          { key: "pass", sequence: 1, measuredValue: 76, result: "PASS", deviationAction: "记录", retestResult: "PASS" },
+          { key: "fail", sequence: 2, measuredValue: 72, result: "FAIL" },
+        ],
+      }] },
+    ],
+  });
+
+  assert.equal(calculateMajorProcessYield(plan.majorProcesses[0]!).mainYieldPercent, null);
+  const preview = previewProcessSubmission(plan);
+  assert.ok(preview.errors.some((issue) => issue.code === "MAJOR_PRIMARY_FLOW_INVALID"));
+  assert.ok(preview.errors.some((issue) => issue.code === "CRITICAL_CONTROL_UNRESOLVED"));
+});
+
 function majorWithFlow(inputWeight: string, outputWeight: string) {
   return {
     key: `major-${inputWeight}-${outputWeight}`, sequence: 1, processCode: "HEAT", processName: "热加工", description: "",

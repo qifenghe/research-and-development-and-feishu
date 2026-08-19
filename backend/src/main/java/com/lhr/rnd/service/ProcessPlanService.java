@@ -39,30 +39,33 @@ public class ProcessPlanService {
     public ProcessPlan find(String formId) {
         requireForm(formId);
         var plans = jdbc.query("select * from experiment_process_plan where experiment_form_id = ?",
-                (rs, row) -> new PlanHeader(rs.getString("id"), rs.getInt("version_no"), rs.getString("status")), formId);
+                (rs, row) -> new PlanHeader(rs.getString("id"), rs.getInt("version_no"), rs.getString("status"),
+                        rs.getBigDecimal("balance_tolerance_kg")), formId);
         if (plans.isEmpty()) return legacyPlan(formId);
         var header = plans.get(0);
         var majors = jdbc.query("select * from experiment_major_process where process_plan_id = ? order by sequence",
                 (rs, row) -> mapMajor(rs), header.id());
         var calculated = majors.stream().map(this::withYield).toList();
-        var plan = new ProcessPlan(header.id(), formId, header.versionNo(), header.status(), calculated, null, false);
+        var plan = new ProcessPlan(header.id(), formId, header.versionNo(), header.status(), calculated, null,
+                header.balanceToleranceKg(), false);
         return new ProcessPlan(plan.id(), plan.experimentFormId(), plan.versionNo(), plan.status(), plan.majorProcesses(),
-                calculations.calculateBatch(plan), false);
+                calculations.calculateBatch(plan), plan.balanceToleranceKg(), false);
     }
 
     @Transactional
     public ProcessPlan save(String formId, ProcessPlan request) {
         requireForm(formId);
+        var balanceTolerance = requireBalanceTolerance(request.balanceToleranceKg());
         var current = jdbc.query("select id, version_no from experiment_process_plan where experiment_form_id = ?",
-                (rs, row) -> new PlanHeader(rs.getString("id"), rs.getInt("version_no"), "DRAFT"), formId);
+                (rs, row) -> new PlanHeader(rs.getString("id"), rs.getInt("version_no"), "DRAFT", null), formId);
         String planId;
         int nextVersion;
         if (current.isEmpty()) {
             if (request.versionNo() > 1) throw conflict();
             planId = id("PLAN");
             nextVersion = 1;
-            jdbc.update("insert into experiment_process_plan(id, experiment_form_id, version_no, status, calculation_mode, created_at, updated_at) values (?,?,?,?,?,?,?)",
-                    planId, formId, nextVersion, "DRAFT", "PRIMARY_INPUT", LocalDateTime.now(), LocalDateTime.now());
+            jdbc.update("insert into experiment_process_plan(id, experiment_form_id, version_no, status, calculation_mode, balance_tolerance_kg, created_at, updated_at) values (?,?,?,?,?,?,?,?)",
+                    planId, formId, nextVersion, "DRAFT", "PRIMARY_INPUT", balanceTolerance, LocalDateTime.now(), LocalDateTime.now());
         } else {
             var stored = current.get(0);
             if (request.versionNo() != stored.versionNo()) throw conflict();
@@ -71,8 +74,8 @@ public class ProcessPlanService {
             // Remove referencing materials before the cascaded step-output deletion so STEP_OUTPUT foreign keys stay valid.
             jdbc.update("delete from experiment_step_material where minor_step_id in (select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id where major.process_plan_id = ?)", planId);
             jdbc.update("delete from experiment_major_process where process_plan_id = ?", planId);
-            jdbc.update("update experiment_process_plan set version_no = ?, updated_at = ? where id = ?",
-                    nextVersion, LocalDateTime.now(), planId);
+            jdbc.update("update experiment_process_plan set version_no = ?, balance_tolerance_kg = ?, updated_at = ? where id = ?",
+                    nextVersion, balanceTolerance, LocalDateTime.now(), planId);
         }
         var majors = request.majorProcesses() == null ? List.<ProcessPlan.MajorProcess>of() : request.majorProcesses();
         for (int index = 0; index < majors.size(); index++) saveMajor(planId, index + 1, majors.get(index));
@@ -248,6 +251,12 @@ public class ProcessPlanService {
         if (value != null && value.signum() < 0) throw new BusinessException("PROCESS_WEIGHT_INVALID", "工艺重量不能为负数");
     }
 
+    private BigDecimal requireBalanceTolerance(BigDecimal value) {
+        var tolerance = value == null ? ProcessPlan.DEFAULT_BALANCE_TOLERANCE_KG : value;
+        if (tolerance.signum() < 0) throw new BusinessException("PROCESS_BALANCE_TOLERANCE_INVALID", "物料平衡允许差不能为负数");
+        return tolerance;
+    }
+
     private BusinessException conflict() {
         return new BusinessException("PROCESS_PLAN_VERSION_CONFLICT", "工艺方案已被更新，请刷新后重试");
     }
@@ -264,6 +273,6 @@ public class ProcessPlanService {
         return value == null || value.isBlank() ? null : Timestamp.valueOf(LocalDateTime.parse(value));
     }
 
-    private record PlanHeader(String id, int versionNo, String status) {
+    private record PlanHeader(String id, int versionNo, String status, BigDecimal balanceToleranceKg) {
     }
 }

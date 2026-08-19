@@ -14,6 +14,8 @@ create table experiment_step_output (
         references experiment_minor_step(id) on delete cascade
 );
 
+alter table experiment_process_plan add column balance_tolerance_kg numeric(14,4) not null default 0.0100;
+
 alter table experiment_step_material add column source_type varchar(30) not null default 'EXTERNAL';
 alter table experiment_step_material add column source_step_output_id varchar(64);
 alter table experiment_step_material add constraint fk_step_material_source_output

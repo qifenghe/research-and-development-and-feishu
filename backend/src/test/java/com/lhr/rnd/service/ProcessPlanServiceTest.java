@@ -55,7 +55,8 @@ class ProcessPlanServiceTest {
                 List.of(new ProcessPlan.ProcessOutput(null, 1, "QUALIFIED", new BigDecimal("8"), null)), null);
 
         var current = service.find("FORM-PROCESS");
-        var saved = service.save("FORM-PROCESS", new ProcessPlan(null, "FORM-PROCESS", current.versionNo(), "DRAFT", List.of(major), null, false));
+        var saved = service.save("FORM-PROCESS", new ProcessPlan(null, "FORM-PROCESS", current.versionNo(), "DRAFT", List.of(major), null,
+                new BigDecimal("0.0250"), false));
         var loaded = service.find("FORM-PROCESS");
 
         assertThat(saved.versionNo()).isPositive();
@@ -71,6 +72,7 @@ class ProcessPlanServiceTest {
                     assertThat(point.measurements().get(0).measuredAt()).isEqualTo("2026-08-19T21:00");
                 });
         assertThat(loaded.majorProcesses().get(0).yield().mainYieldPercent()).isEqualByComparingTo("80.000000");
+        assertThat(loaded.balanceToleranceKg()).isEqualByComparingTo("0.0250");
     }
 
     @Test

@@ -124,6 +124,7 @@ class SchemaMigrationTest {
         assertColumnExists("pricing_file", "process_revision_id");
         assertColumnExists("experiment_step_material", "source_type");
         assertColumnExists("experiment_step_material", "source_step_output_id");
+        assertColumnExists("experiment_process_plan", "balance_tolerance_kg");
         assertColumnExists("pricing_packaging_item", "source");
         assertColumnExists("pricing_packaging_item", "material_code");
         assertColumnExists("pricing_packaging_item", "quantity");
@@ -149,6 +150,8 @@ class SchemaMigrationTest {
         assertNumericColumn("experiment_control_measurement", "measured_value", 14, 4);
         assertNumericColumn("experiment_process_input", "weight_kg", 14, 4);
         assertNumericColumn("experiment_process_output", "weight_kg", 14, 4);
+        assertNumericColumn("experiment_process_plan", "balance_tolerance_kg", 14, 4);
+        assertColumnDefinition("experiment_process_plan", "balance_tolerance_kg", false, "0.0100");
         assertColumnDefinition("experiment_form", "yield_calculation_mode", false, "'SELECTED_PRIMARY_MATERIALS'");
         assertColumnDefinition("experiment_step_material", "source_type", false, "'EXTERNAL'");
     }

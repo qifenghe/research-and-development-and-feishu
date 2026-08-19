@@ -82,6 +82,19 @@ class ProcessPlanCalculationServiceTest {
     }
 
     @Test
+    void returnsNoMajorYieldWhenTheOnlyPrimaryOutputPrecedesThePrimaryInput() {
+        var outputBeforeInput = new ProcessPlan.MajorProcess(null, 1, "HEAT", "热加工", null, "PRIMARY_INPUT", null,
+                List.of(
+                        new ProcessPlan.MinorStep(null, 1, "PREP", "预处理", "NORMAL", null, null, null,
+                                null, null, null, null, null, List.of(), List.of(primaryOutput("预处理产出", "9")), List.of()),
+                        new ProcessPlan.MinorStep(null, 2, "ADD", "投料", "NORMAL", null, null, null,
+                                null, null, null, null, null, List.of(material("PRIMARY", "EXTERNAL", null, "牛肉", "10")), List.of(), List.of())),
+                List.of(), List.of(), null);
+
+        assertThat(service.calculate(outputBeforeInput).mainYieldPercent()).isNull();
+    }
+
+    @Test
     void fallsBackToLegacyMajorTotalsWhenAHistoricalStepOnlyContainsAuxiliaryMaterial() {
         var historicalStep = new ProcessPlan.MinorStep(null, 1, "BOIL", "煮制", "NORMAL", null, null, null,
                 null, null, null, null, null, List.of(material("AUXILIARY", "EXTERNAL", null, "盐", "0.2")), List.of(), List.of());

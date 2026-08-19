@@ -12,7 +12,7 @@ public final class ProcessPlanCalculationService {
 
     public ProcessPlan.ProcessYield calculate(ProcessPlan.MajorProcess process) {
         if (process != null) values(process.steps()).forEach(this::validateStep);
-        if (hasStepFlow(process)) return calculateFromStepFlow(process);
+        if (hasLayeredPrimaryFlowData(process)) return calculateFromStepFlow(process);
         return calculateFromLegacyProcessTotals(process);
     }
 
@@ -37,21 +37,21 @@ public final class ProcessPlanCalculationService {
     private ProcessPlan.ProcessYield calculateFromStepFlow(ProcessPlan.MajorProcess process) {
         var steps = values(process.steps());
         var materials = steps.stream().flatMap(step -> values(step.materials()).stream()).toList();
-        var primaryInput = materials.stream()
-                .filter(item -> "PRIMARY".equals(item.materialRole()) && item.weightKg() != null)
-                .findFirst().map(ProcessPlan.StepMaterial::weightKg).map(this::safe).orElse(BigDecimal.ZERO);
+        var firstPrimaryInput = firstPrimaryInput(steps);
+        var lastPrimaryOutput = lastPrimaryOutput(steps);
+        var primaryInput = firstPrimaryInput == null ? BigDecimal.ZERO : safe(firstPrimaryInput.material().weightKg());
         var externalInput = materials.stream()
                 .filter(item -> !"STEP_OUTPUT".equals(item.sourceType()))
                 .map(ProcessPlan.StepMaterial::weightKg).map(this::safe).reduce(BigDecimal.ZERO, BigDecimal::add);
         var lastStepOutputs = steps.stream().map(ProcessPlan.MinorStep::outputs).filter(outputs -> outputs != null && !outputs.isEmpty())
                 .reduce((first, last) -> last).orElse(List.of());
-        var primaryOutput = steps.stream().flatMap(step -> values(step.outputs()).stream())
-                .filter(item -> item.primaryOutput() && item.weightKg() != null)
-                .reduce((first, last) -> last).map(ProcessPlan.StepOutput::weightKg).orElse(null);
+        BigDecimal primaryOutput = lastPrimaryOutput == null ? null : lastPrimaryOutput.output().weightKg();
         var reusable = sumStepOutputs(lastStepOutputs, "REUSABLE").add(sumStepOutputs(lastStepOutputs, "TAILING"));
         var totalOutput = lastStepOutputs.stream().map(ProcessPlan.StepOutput::weightKg).map(this::safe)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return result(primaryInput, externalInput, safe(primaryOutput), reusable, totalOutput, primaryOutput != null);
+        var validPrimaryFlow = firstPrimaryInput != null && lastPrimaryOutput != null
+                && firstPrimaryInput.step().sequence() <= lastPrimaryOutput.step().sequence();
+        return result(primaryInput, externalInput, safe(primaryOutput), reusable, totalOutput, validPrimaryFlow);
     }
 
     private ProcessPlan.ProcessYield calculateFromLegacyProcessTotals(ProcessPlan.MajorProcess process) {
@@ -107,12 +107,28 @@ public final class ProcessPlanCalculationService {
                 .map(ProcessPlan.StepOutput::weightKg).map(this::safe).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private boolean hasStepFlow(ProcessPlan.MajorProcess process) {
+    private boolean hasLayeredPrimaryFlowData(ProcessPlan.MajorProcess process) {
         return process != null && process.steps() != null && process.steps().stream()
                 .flatMap(step -> values(step.materials()).stream())
-                .anyMatch(material -> "PRIMARY".equals(material.materialRole()) && material.weightKg() != null)
-                && process.steps().stream().flatMap(step -> values(step.outputs()).stream())
-                .anyMatch(output -> output.primaryOutput() && output.weightKg() != null);
+                .anyMatch(material -> "PRIMARY".equals(material.materialRole()))
+                || process != null && process.steps() != null && process.steps().stream()
+                .flatMap(step -> values(step.outputs()).stream()).anyMatch(ProcessPlan.StepOutput::primaryOutput);
+    }
+
+    private PrimaryInput firstPrimaryInput(List<ProcessPlan.MinorStep> steps) {
+        return steps.stream().flatMap(step -> values(step.materials()).stream()
+                        .filter(material -> "PRIMARY".equals(material.materialRole()) && material.weightKg() != null)
+                        .map(material -> new PrimaryInput(step, material)))
+                .min(java.util.Comparator.comparingInt((PrimaryInput value) -> value.step().sequence())
+                        .thenComparingInt(value -> value.material().sequence())).orElse(null);
+    }
+
+    private PrimaryOutput lastPrimaryOutput(List<ProcessPlan.MinorStep> steps) {
+        return steps.stream().flatMap(step -> values(step.outputs()).stream()
+                        .filter(output -> output.primaryOutput() && output.weightKg() != null)
+                        .map(output -> new PrimaryOutput(step, output)))
+                .max(java.util.Comparator.comparingInt((PrimaryOutput value) -> value.step().sequence())
+                        .thenComparingInt(value -> value.output().sequence())).orElse(null);
     }
 
     public void validateStep(ProcessPlan.MinorStep step) {
@@ -141,5 +157,11 @@ public final class ProcessPlanCalculationService {
     private BigDecimal percent(BigDecimal numerator, BigDecimal denominator) {
         return denominator == null || denominator.signum() == 0 ? null
                 : numerator.multiply(BigDecimal.valueOf(100)).divide(denominator, RATE_SCALE, RoundingMode.HALF_UP);
+    }
+
+    private record PrimaryInput(ProcessPlan.MinorStep step, ProcessPlan.StepMaterial material) {
+    }
+
+    private record PrimaryOutput(ProcessPlan.MinorStep step, ProcessPlan.StepOutput output) {
     }
 }

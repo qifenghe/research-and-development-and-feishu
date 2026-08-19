@@ -137,6 +137,7 @@ export interface ProcessPlanDraft {
   status: "DRAFT" | "LOCKED";
   majorProcesses: MajorProcessDraft[];
   batchYieldPercent?: number | null;
+  balanceToleranceKg?: number;
   legacy?: boolean;
 }
 
@@ -176,12 +177,12 @@ let processKey = 1;
 export const nextProcessKey = (prefix = "process") => `${prefix}-${Date.now()}-${processKey++}`;
 
 export function createEmptyProcessPlan(): ProcessPlanDraft {
-  return { versionNo: 0, status: "DRAFT", majorProcesses: [], batchYieldPercent: null, legacy: false };
+  return { versionNo: 0, status: "DRAFT", majorProcesses: [], batchYieldPercent: null, balanceToleranceKg: 0.01, legacy: false };
 }
 
 export function calculateMajorProcessYield(process: MajorProcessDraft): ProcessYieldResult {
   (process.steps || []).forEach(validateMinorStep);
-  if (hasCompleteStepFlow(process)) {
+  if (hasLayeredPrimaryFlowData(process)) {
     return calculateProcessYieldFromStepFlow(process);
   }
   const sum = (items: Array<{ weightKg?: number }>) => items.reduce((total, item) => total + Number(item.weightKg || 0), 0);
@@ -221,25 +222,34 @@ export function calculateBatchYield(plan: ProcessPlanDraft): number | null {
 
 function calculateProcessYieldFromStepFlow(process: MajorProcessDraft): ProcessYieldResult {
   const allMaterials = process.steps.flatMap((step) => step.materials || []);
-  const primaryInput = allMaterials.find((item) => item.materialRole === "PRIMARY" && item.weightKg != null)?.weightKg || 0;
+  const firstPrimaryInput = process.steps.flatMap((step) => (step.materials || [])
+    .filter((item) => item.materialRole === "PRIMARY" && item.weightKg != null)
+    .map((material) => ({ step, material })))
+    .sort((left, right) => left.step.sequence - right.step.sequence || left.material.sequence - right.material.sequence)[0];
+  const lastPrimaryOutput = process.steps.flatMap((step) => (step.outputs || [])
+    .filter((item) => item.primaryOutput && item.weightKg != null)
+    .map((output) => ({ step, output })))
+    .sort((left, right) => right.step.sequence - left.step.sequence || right.output.sequence - left.output.sequence)[0];
+  const primaryInput = firstPrimaryInput?.material.weightKg || 0;
   const externalInput = sumWeight(allMaterials.filter((item) => item.sourceType !== "STEP_OUTPUT"));
   const lastOutputs = [...process.steps].reverse().find((step) => (step.outputs?.length || 0) > 0)?.outputs || [];
-  const primaryOutput = process.steps.flatMap((step) => step.outputs || []).reverse()
-    .find((item) => item.primaryOutput && item.weightKg != null);
+  const primaryOutput = lastPrimaryOutput?.output;
+  const validPrimaryFlow = Boolean(firstPrimaryInput && lastPrimaryOutput
+    && firstPrimaryInput.step.sequence <= lastPrimaryOutput.step.sequence);
   return processYield(
     primaryInput,
     externalInput,
     primaryOutput?.weightKg || 0,
     sumWeight(lastOutputs.filter((item) => item.outputType === "REUSABLE" || item.outputType === "TAILING")),
     sumWeight(lastOutputs),
-    primaryOutput != null,
+    validPrimaryFlow,
   );
 }
 
-function hasCompleteStepFlow(process: MajorProcessDraft) {
+function hasLayeredPrimaryFlowData(process: MajorProcessDraft) {
   const steps = process.steps || [];
-  return steps.some((step) => step.materials.some((item) => item.materialRole === "PRIMARY" && item.weightKg != null))
-    && steps.some((step) => (step.outputs || []).some((item) => item.primaryOutput && item.weightKg != null));
+  return steps.some((step) => step.materials.some((item) => item.materialRole === "PRIMARY"))
+    || steps.some((step) => (step.outputs || []).some((item) => item.primaryOutput));
 }
 
 function validateMinorStep(step: MinorProcessStepDraft) {
@@ -288,6 +298,7 @@ export function processPlanToLegacySteps(plan: ProcessPlanDraft): ExperimentProc
 export function normalizeProcessPlan(plan: ProcessPlanDraft): ProcessPlanDraft {
   const normalized = {
     ...plan,
+    balanceToleranceKg: plan.balanceToleranceKg ?? 0.01,
     majorProcesses: (plan.majorProcesses || []).map((major, majorIndex) => ({
       ...major,
       key: major.key || major.id || nextProcessKey("major"),
@@ -378,6 +389,10 @@ export function previewProcessSubmission(plan: ProcessPlanDraft): ProcessSubmiss
     return { ready: false, errors, warnings };
   }
 
+  const balanceTolerance = plan.balanceToleranceKg ?? 0.01;
+  const validBalanceTolerance = balanceTolerance >= 0;
+  if (!validBalanceTolerance) errors.push(issue("BALANCE_TOLERANCE_INVALID", "物料平衡允许差不能为负数", null, null));
+
   const steps = majors.flatMap((major) => (major.steps || []).map((step) => ({ major, step })));
   previewFlow(steps, errors);
   let externalPrimary = false;
@@ -388,7 +403,7 @@ export function previewProcessSubmission(plan: ProcessPlanDraft): ProcessSubmiss
     if ((major.steps || []).some((step) => step.materials.some((material) => material.materialRole === "PRIMARY" && material.sourceType === "EXTERNAL"))) {
       externalPrimary = true;
     }
-    previewBalance(major, errors, warnings);
+    if (validBalanceTolerance) previewBalance(major, balanceTolerance, errors, warnings);
   }
   if (!externalPrimary) errors.push(issue("EXTERNAL_PRIMARY_REQUIRED", "配方至少需要一项外部主料", null, null));
   return { ready: errors.length === 0, errors, warnings };
@@ -437,14 +452,28 @@ function previewFlow(steps: StepPreviewRef[], errors: ProcessSubmissionIssuePrev
 function previewYieldCompleteness(major: MajorProcessDraft, errors: ProcessSubmissionIssuePreview[]) {
   if (major.yieldBasis === "NONE") return;
   const steps = major.steps || [];
-  const hasPrimaryInput = steps.length
-    ? steps.some((step) => step.materials.some((material) => material.materialRole === "PRIMARY" && material.weightKg != null))
-    : major.inputs.some((input) => input.inputRole === "PRIMARY" && input.weightKg != null);
-  const hasPrimaryOutput = steps.length
-    ? steps.some((step) => (step.outputs || []).some((output) => output.primaryOutput && output.weightKg != null))
-    : major.outputs.some((output) => output.outputType === "QUALIFIED" && output.weightKg != null);
-  if (!hasPrimaryInput) errors.push(issue("MAJOR_PRIMARY_INPUT_REQUIRED", "需计算得率的大工序缺少首端主料投入", major.sequence, null));
-  if (!hasPrimaryOutput) errors.push(issue("MAJOR_PRIMARY_OUTPUT_REQUIRED", "需计算得率的大工序缺少末端主料产出", major.sequence, null));
+  if (!steps.length) {
+    const hasPrimaryInput = major.inputs.some((input) => input.inputRole === "PRIMARY" && input.weightKg != null);
+    const hasPrimaryOutput = major.outputs.some((output) => output.outputType === "QUALIFIED" && output.weightKg != null);
+    if (!hasPrimaryInput) errors.push(issue("MAJOR_PRIMARY_INPUT_REQUIRED", "需计算得率的大工序缺少首端主料投入", major.sequence, null));
+    if (!hasPrimaryOutput) errors.push(issue("MAJOR_PRIMARY_OUTPUT_REQUIRED", "需计算得率的大工序缺少末端主料产出", major.sequence, null));
+    return;
+  }
+  const firstInput = steps.flatMap((step) => step.materials
+    .filter((material) => material.materialRole === "PRIMARY" && material.weightKg != null)
+    .map((material) => ({ step, material })))
+    .sort((left, right) => left.step.sequence - right.step.sequence || left.material.sequence - right.material.sequence)[0];
+  const lastOutput = steps.flatMap((step) => (step.outputs || [])
+    .filter((output) => output.primaryOutput && output.weightKg != null)
+    .map((output) => ({ step, output })))
+    .sort((left, right) => right.step.sequence - left.step.sequence || right.output.sequence - left.output.sequence)[0];
+  if (!firstInput) errors.push(issue("MAJOR_PRIMARY_INPUT_REQUIRED", "需计算得率的大工序缺少首端主料投入", major.sequence, null));
+  if (!lastOutput || (firstInput && lastOutput.step.sequence < firstInput.step.sequence)) {
+    errors.push(issue("MAJOR_PRIMARY_OUTPUT_REQUIRED", "需计算得率的大工序缺少末端主料产出", major.sequence, null));
+  }
+  if (firstInput && lastOutput && lastOutput.step.sequence < firstInput.step.sequence) {
+    errors.push(issue("MAJOR_PRIMARY_FLOW_INVALID", "主料首端投入必须早于末端主产出", major.sequence, null));
+  }
 }
 
 function previewControls(major: MajorProcessDraft, errors: ProcessSubmissionIssuePreview[]) {
@@ -454,18 +483,19 @@ function previewControls(major: MajorProcessDraft, errors: ProcessSubmissionIssu
       const measurements = point.measurements || [];
       const hasMeasurement = measurements.some((measurement) => measurement.measuredValue != null);
       const outOfLimit = measurements.some((measurement) => measurement.result === "FAIL" || measurementOutside(point, measurement));
-      const handled = measurements.some((measurement) => Boolean(measurement.deviationAction?.trim()));
-      if (!hasMeasurement || !point.confirmedBy?.trim() || (outOfLimit && (!point.resolved || !handled))) {
+      const unhandledDeviation = measurements.some((measurement) => (measurement.result === "FAIL" || measurementOutside(point, measurement))
+        && (!measurement.deviationAction?.trim() || !measurement.retestResult || measurement.retestResult === "PENDING" || measurement.retestResult === "FAIL"));
+      if (!hasMeasurement || !point.resolved || !point.confirmedBy?.trim() || (outOfLimit && unhandledDeviation)) {
         errors.push(issue("CRITICAL_CONTROL_UNRESOLVED", "极重要关键控制点未完成", major.sequence, step.sequence));
       }
     }
   }
 }
 
-function previewBalance(major: MajorProcessDraft, errors: ProcessSubmissionIssuePreview[], warnings: ProcessSubmissionIssuePreview[]) {
+function previewBalance(major: MajorProcessDraft, balanceTolerance: number, errors: ProcessSubmissionIssuePreview[], warnings: ProcessSubmissionIssuePreview[]) {
   try {
     const difference = calculateMajorProcessYield(major).balanceDifferenceKg;
-    if (Math.abs(difference) > 0.0001) {
+    if (Math.abs(difference) > balanceTolerance) {
       warnings.push(issue("MATERIAL_BALANCE_EXCEEDED", "物料平衡差超过允许范围", major.sequence, null));
       if (!major.remark?.trim()) errors.push(issue("MATERIAL_BALANCE_UNEXPLAINED", "物料平衡差超限，请填写差异说明", major.sequence, null));
     }

@@ -10,8 +10,28 @@ public record ProcessPlan(
         String status,
         List<MajorProcess> majorProcesses,
         BigDecimal batchYieldPercent,
+        BigDecimal balanceToleranceKg,
         boolean legacy
 ) {
+    public static final BigDecimal DEFAULT_BALANCE_TOLERANCE_KG = new BigDecimal("0.0100");
+
+    public ProcessPlan {
+        balanceToleranceKg = balanceToleranceKg == null ? DEFAULT_BALANCE_TOLERANCE_KG : balanceToleranceKg;
+    }
+
+    public ProcessPlan(
+            String id,
+            String experimentFormId,
+            int versionNo,
+            String status,
+            List<MajorProcess> majorProcesses,
+            BigDecimal batchYieldPercent,
+            boolean legacy
+    ) {
+        this(id, experimentFormId, versionNo, status, majorProcesses, batchYieldPercent,
+                DEFAULT_BALANCE_TOLERANCE_KG, legacy);
+    }
+
     public record MajorProcess(
             String id,
             int sequence,

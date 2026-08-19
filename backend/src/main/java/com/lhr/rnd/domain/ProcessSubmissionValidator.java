@@ -12,8 +12,6 @@ import java.util.Map;
 import java.util.Set;
 
 public final class ProcessSubmissionValidator {
-    private static final BigDecimal BALANCE_TOLERANCE_KG = new BigDecimal("0.0001");
-
     private final ProcessPlanCalculationService calculations = new ProcessPlanCalculationService();
 
     public ProcessSubmissionCheck validate(ProcessPlan plan) {
@@ -25,6 +23,12 @@ public final class ProcessSubmissionValidator {
             return new ProcessSubmissionCheck(false, errors, warnings);
         }
 
+        var balanceTolerance = plan.balanceToleranceKg();
+        var validBalanceTolerance = balanceTolerance.signum() >= 0;
+        if (!validBalanceTolerance) {
+            errors.add(error("BALANCE_TOLERANCE_INVALID", "物料平衡允许差不能为负数", null, null));
+        }
+
         var steps = flatten(majors);
         validateFlow(steps, errors);
         var hasExternalPrimary = false;
@@ -33,7 +37,7 @@ public final class ProcessSubmissionValidator {
             validateMajorYield(major, errors);
             validateControls(major, errors);
             if (hasExternalPrimary(major)) hasExternalPrimary = true;
-            validateMaterialBalance(major, errors, warnings);
+            if (validBalanceTolerance) validateMaterialBalance(major, balanceTolerance, errors, warnings);
         }
         if (!hasExternalPrimary) errors.add(error("EXTERNAL_PRIMARY_REQUIRED", "配方至少需要一项外部主料", null, null));
         return new ProcessSubmissionCheck(errors.isEmpty(), errors, warnings);
@@ -107,12 +111,23 @@ public final class ProcessSubmissionValidator {
             if (!hasLegacyQualifiedOutput(major)) errors.add(error("MAJOR_PRIMARY_OUTPUT_REQUIRED", "需计算得率的大工序缺少末端主料产出", major.sequence(), null));
             return;
         }
-        var primaryInput = steps.stream().flatMap(step -> values(step.materials()).stream())
-                .anyMatch(material -> "PRIMARY".equals(material.materialRole()) && material.weightKg() != null);
-        var primaryOutput = steps.stream().flatMap(step -> values(step.outputs()).stream())
-                .anyMatch(output -> output.primaryOutput() && output.weightKg() != null);
-        if (!primaryInput) errors.add(error("MAJOR_PRIMARY_INPUT_REQUIRED", "需计算得率的大工序缺少首端主料投入", major.sequence(), null));
-        if (!primaryOutput) errors.add(error("MAJOR_PRIMARY_OUTPUT_REQUIRED", "需计算得率的大工序缺少末端主料产出", major.sequence(), null));
+        var firstInput = steps.stream().flatMap(step -> values(step.materials()).stream()
+                        .filter(material -> "PRIMARY".equals(material.materialRole()) && material.weightKg() != null)
+                        .map(material -> new PrimaryInput(step, material)))
+                .min(java.util.Comparator.comparingInt((PrimaryInput value) -> value.step().sequence())
+                        .thenComparingInt(value -> value.material().sequence())).orElse(null);
+        var lastOutput = steps.stream().flatMap(step -> values(step.outputs()).stream()
+                        .filter(output -> output.primaryOutput() && output.weightKg() != null)
+                        .map(output -> new PrimaryOutput(step, output)))
+                .max(java.util.Comparator.comparingInt((PrimaryOutput value) -> value.step().sequence())
+                        .thenComparingInt(value -> value.output().sequence())).orElse(null);
+        if (firstInput == null) errors.add(error("MAJOR_PRIMARY_INPUT_REQUIRED", "需计算得率的大工序缺少首端主料投入", major.sequence(), null));
+        if (lastOutput == null || firstInput != null && lastOutput.step().sequence() < firstInput.step().sequence()) {
+            errors.add(error("MAJOR_PRIMARY_OUTPUT_REQUIRED", "需计算得率的大工序缺少末端主料产出", major.sequence(), null));
+        }
+        if (firstInput != null && lastOutput != null && lastOutput.step().sequence() < firstInput.step().sequence()) {
+            errors.add(error("MAJOR_PRIMARY_FLOW_INVALID", "主料首端投入必须早于末端主产出", major.sequence(), null));
+        }
     }
 
     private void validateControls(ProcessPlan.MajorProcess major, List<ProcessSubmissionCheck.Issue> errors) {
@@ -122,9 +137,10 @@ public final class ProcessSubmissionValidator {
                 var measurements = values(point.measurements());
                 var hasMeasurement = measurements.stream().anyMatch(item -> item.measuredValue() != null);
                 var outOfLimit = measurements.stream().anyMatch(item -> "FAIL".equals(item.result()) || outside(point, item));
-                var hasDeviationAction = measurements.stream().anyMatch(item -> !blank(item.deviationAction()));
-                if (!hasMeasurement || blank(point.confirmedBy())
-                        || (outOfLimit && (!point.resolved() || !hasDeviationAction))) {
+                var hasUnresolvedDeviation = measurements.stream().anyMatch(item -> ("FAIL".equals(item.result()) || outside(point, item))
+                        && (blank(item.deviationAction()) || blank(item.retestResult()) || "PENDING".equals(item.retestResult())
+                        || "FAIL".equals(item.retestResult())));
+                if (!hasMeasurement || !point.resolved() || blank(point.confirmedBy()) || outOfLimit && hasUnresolvedDeviation) {
                     errors.add(error("CRITICAL_CONTROL_UNRESOLVED", "极重要关键控制点未完成", major.sequence(), step.sequence()));
                 }
             }
@@ -137,11 +153,12 @@ public final class ProcessSubmissionValidator {
                 || point.upperLimit() != null && measurement.measuredValue().compareTo(point.upperLimit()) > 0;
     }
 
-    private void validateMaterialBalance(ProcessPlan.MajorProcess major, List<ProcessSubmissionCheck.Issue> errors,
+    private void validateMaterialBalance(ProcessPlan.MajorProcess major, BigDecimal balanceTolerance,
+                                         List<ProcessSubmissionCheck.Issue> errors,
                                          List<ProcessSubmissionCheck.Issue> warnings) {
         try {
             var difference = calculations.calculate(major).balanceDifferenceKg();
-            if (difference != null && difference.abs().compareTo(BALANCE_TOLERANCE_KG) > 0) {
+            if (difference != null && difference.abs().compareTo(balanceTolerance) > 0) {
                 warnings.add(warning("MATERIAL_BALANCE_EXCEEDED", "物料平衡差超过允许范围", major.sequence(), null));
                 if (blank(major.remark())) {
                     errors.add(error("MATERIAL_BALANCE_UNEXPLAINED", "物料平衡差超限，请填写差异说明", major.sequence(), null));
@@ -214,5 +231,11 @@ public final class ProcessSubmissionValidator {
     }
 
     private record OutputRef(StepRef step, ProcessPlan.StepOutput output) {
+    }
+
+    private record PrimaryInput(ProcessPlan.MinorStep step, ProcessPlan.StepMaterial material) {
+    }
+
+    private record PrimaryOutput(ProcessPlan.MinorStep step, ProcessPlan.StepOutput output) {
     }
 }
