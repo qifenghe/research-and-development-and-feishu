@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -124,14 +125,42 @@ public class ProcessPlanService {
                 stepId, majorId, sequence, step.stepCode(), step.stepName(), valueOr(step.stepType(), "NORMAL"),
                 step.parameter1Name(), step.parameter1Value(), step.parameter1Unit(), step.parameter2Name(),
                 step.parameter2Value(), step.parameter2Unit(), step.equipment(), step.instruction());
+        var outputs = step.outputs() == null ? List.<ProcessPlan.StepOutput>of() : step.outputs();
+        for (int index = 0; index < outputs.size(); index++) {
+            var item = outputs.get(index);
+            requireNonNegative(item.weightKg());
+            jdbc.update("insert into experiment_step_output(id, minor_step_id, sequence, output_type, output_name, material_state, weight_kg, primary_output, continue_flow, remark) values (?,?,?,?,?,?,?,?,?,?)",
+                    valueOr(item.id(), id("SOUT")), stepId, index + 1, valueOr(item.outputType(), "INTERMEDIATE"),
+                    valueOr(item.outputName(), "未命名产出"), valueOr(item.materialState(), "SEMI_SOLID"), item.weightKg(),
+                    item.primaryOutput(), item.continueFlow(), item.remark());
+        }
         var materials = step.materials() == null ? List.<ProcessPlan.StepMaterial>of() : step.materials();
         for (int index = 0; index < materials.size(); index++) {
             var item = materials.get(index);
             requireNonNegative(item.weightKg());
-            jdbc.update("insert into experiment_step_material(id, minor_step_id, sequence, material_role, material_code, material_name, material_state, weight_kg, formula_material_id, remark) values (?,?,?,?,?,?,?,?,?,?)",
+            jdbc.update("insert into experiment_step_material(id, minor_step_id, sequence, material_role, material_code, material_name, material_state, weight_kg, formula_material_id, remark, source_type, source_step_output_id) values (?,?,?,?,?,?,?,?,?,?,?,?)",
                     id("MAT"), stepId, index + 1, valueOr(item.materialRole(), "AUXILIARY"), item.materialCode(),
                     valueOr(item.materialName(), "未命名物料"), valueOr(item.materialState(), "SOLID"), item.weightKg(),
-                    item.formulaMaterialId(), item.remark());
+                    item.formulaMaterialId(), item.remark(), valueOr(item.sourceType(), "EXTERNAL"), item.sourceStepOutputId());
+        }
+        var controlPoints = step.controlPoints() == null ? List.<ProcessPlan.ControlPoint>of() : step.controlPoints();
+        for (int index = 0; index < controlPoints.size(); index++) {
+            saveControlPoint(stepId, index + 1, controlPoints.get(index));
+        }
+    }
+
+    private void saveControlPoint(String stepId, int sequence, ProcessPlan.ControlPoint point) {
+        var pointId = valueOr(point.id(), id("CP"));
+        jdbc.update("insert into experiment_control_point(id, minor_step_id, sequence, control_type, importance, item_name, target_value, lower_limit, upper_limit, unit, method, frequency, deviation_action, resolved, confirmed_by) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                pointId, stepId, sequence, valueOr(point.controlType(), "QUALITY"), valueOr(point.importance(), "NORMAL"),
+                valueOr(point.itemName(), "未命名控制点"), point.targetValue(), point.lowerLimit(), point.upperLimit(), point.unit(),
+                point.method(), point.frequency(), point.deviationAction(), point.resolved(), point.confirmedBy());
+        var measurements = point.measurements() == null ? List.<ProcessPlan.ControlMeasurement>of() : point.measurements();
+        for (int index = 0; index < measurements.size(); index++) {
+            var item = measurements.get(index);
+            jdbc.update("insert into experiment_control_measurement(id, control_point_id, sequence, measured_value, measured_at, result, deviation_action, retest_result, remark) values (?,?,?,?,?,?,?,?,?)",
+                    valueOr(item.id(), id("CM")), pointId, index + 1, item.measuredValue(), timestamp(item.measuredAt()),
+                    valueOr(item.result(), "PENDING"), item.deviationAction(), item.retestResult(), item.remark());
         }
     }
 
@@ -157,11 +186,32 @@ public class ProcessPlanService {
                 (item, row) -> new ProcessPlan.StepMaterial(item.getString("id"), item.getInt("sequence"),
                         item.getString("material_role"), item.getString("material_code"), item.getString("material_name"),
                         item.getString("material_state"), item.getBigDecimal("weight_kg"),
-                        item.getString("formula_material_id"), item.getString("remark")), stepId);
+                        item.getString("formula_material_id"), item.getString("remark"), item.getString("source_type"),
+                        item.getString("source_step_output_id")), stepId);
+        var outputs = jdbc.query("select * from experiment_step_output where minor_step_id = ? order by sequence",
+                (item, row) -> new ProcessPlan.StepOutput(item.getString("id"), item.getInt("sequence"),
+                        item.getString("output_type"), item.getString("output_name"), item.getString("material_state"),
+                        item.getBigDecimal("weight_kg"), item.getBoolean("primary_output"), item.getBoolean("continue_flow"),
+                        item.getString("remark")), stepId);
+        var controlPoints = jdbc.query("select * from experiment_control_point where minor_step_id = ? order by sequence",
+                (item, row) -> {
+                    var pointId = item.getString("id");
+                    var measurements = jdbc.query("select * from experiment_control_measurement where control_point_id = ? order by sequence",
+                            (measurement, measurementRow) -> new ProcessPlan.ControlMeasurement(measurement.getString("id"),
+                                    measurement.getInt("sequence"), measurement.getBigDecimal("measured_value"),
+                                    measurement.getTimestamp("measured_at") == null ? null : measurement.getTimestamp("measured_at").toLocalDateTime().toString(),
+                                    measurement.getString("result"), measurement.getString("deviation_action"),
+                                    measurement.getString("retest_result"), measurement.getString("remark")), pointId);
+                    return new ProcessPlan.ControlPoint(pointId, item.getInt("sequence"), item.getString("control_type"),
+                            item.getString("importance"), item.getString("item_name"), item.getBigDecimal("target_value"),
+                            item.getBigDecimal("lower_limit"), item.getBigDecimal("upper_limit"), item.getString("unit"),
+                            item.getString("method"), item.getString("frequency"), item.getString("deviation_action"),
+                            item.getBoolean("resolved"), item.getString("confirmed_by"), measurements);
+                }, stepId);
         return new ProcessPlan.MinorStep(stepId, rs.getInt("sequence"), rs.getString("step_code"), rs.getString("step_name"),
                 rs.getString("step_type"), rs.getString("parameter_1_name"), rs.getString("parameter_1_value"),
                 rs.getString("parameter_1_unit"), rs.getString("parameter_2_name"), rs.getString("parameter_2_value"),
-                rs.getString("parameter_2_unit"), rs.getString("equipment"), rs.getString("instruction"), materials);
+                rs.getString("parameter_2_unit"), rs.getString("equipment"), rs.getString("instruction"), materials, outputs, controlPoints);
     }
 
     private ProcessPlan.MajorProcess withYield(ProcessPlan.MajorProcess major) {
@@ -205,6 +255,10 @@ public class ProcessPlanService {
 
     private String valueOr(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private Timestamp timestamp(String value) {
+        return value == null || value.isBlank() ? null : Timestamp.valueOf(LocalDateTime.parse(value));
     }
 
     private record PlanHeader(String id, int versionNo, String status) {

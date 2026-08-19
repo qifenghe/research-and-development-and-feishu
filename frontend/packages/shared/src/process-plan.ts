@@ -2,6 +2,7 @@ import type { ExperimentProcessStep } from "./types";
 
 export type ProcessMaterialRole = "PRIMARY" | "AUXILIARY" | "PROCESS_WATER";
 export type ProcessOutputType = "QUALIFIED" | "REUSABLE" | "TAILING" | "SAMPLE" | "WASTE" | "HOLD";
+export type ProcessStepOutputType = "INTERMEDIATE" | "FINISHED" | ProcessOutputType;
 export type ProcessStepType = "NORMAL" | "WEIGH" | "MATERIAL_CHANGE" | "SAMPLE" | "WASTE";
 
 export interface ProcessStepMaterialDraft {
@@ -15,6 +16,52 @@ export interface ProcessStepMaterialDraft {
   weightKg?: number;
   formulaMaterialId?: string;
   remark?: string;
+  sourceType?: "EXTERNAL" | "STEP_OUTPUT";
+  sourceStepOutputId?: string;
+}
+
+export interface StepOutputDraft {
+  id?: string;
+  key: string;
+  sequence: number;
+  outputType: ProcessStepOutputType;
+  outputName: string;
+  materialState: "SOLID" | "LIQUID" | "SEMI_SOLID";
+  weightKg?: number;
+  primaryOutput: boolean;
+  continueFlow: boolean;
+  remark?: string;
+}
+
+export interface ControlMeasurementDraft {
+  id?: string;
+  key: string;
+  sequence: number;
+  measuredValue?: number;
+  measuredAt?: string;
+  result?: "PENDING" | "PASS" | "FAIL";
+  deviationAction?: string;
+  retestResult?: "PENDING" | "PASS" | "FAIL";
+  remark?: string;
+}
+
+export interface ControlPointDraft {
+  id?: string;
+  key: string;
+  sequence: number;
+  controlType: string;
+  importance: "CRITICAL" | "IMPORTANT" | "NORMAL";
+  itemName: string;
+  targetValue?: number;
+  lowerLimit?: number;
+  upperLimit?: number;
+  unit?: string;
+  method?: string;
+  frequency?: string;
+  deviationAction?: string;
+  resolved: boolean;
+  confirmedBy?: string;
+  measurements: ControlMeasurementDraft[];
 }
 
 export interface MinorProcessStepDraft {
@@ -33,6 +80,8 @@ export interface MinorProcessStepDraft {
   equipment?: string;
   instruction?: string;
   materials: ProcessStepMaterialDraft[];
+  outputs?: StepOutputDraft[];
+  controlPoints?: ControlPointDraft[];
 }
 
 export interface ProcessInputDraft {
@@ -99,22 +148,76 @@ export function createEmptyProcessPlan(): ProcessPlanDraft {
 }
 
 export function calculateMajorProcessYield(process: MajorProcessDraft): ProcessYieldResult {
+  if (process.steps.some((step) => step.materials.length > 0 || (step.outputs?.length || 0) > 0)) {
+    return calculateProcessYieldFromStepFlow(process);
+  }
   const sum = (items: Array<{ weightKg?: number }>) => items.reduce((total, item) => total + Number(item.weightKg || 0), 0);
   const primary = sum(process.inputs.filter((item) => item.inputRole === "PRIMARY"));
   const totalInput = sum(process.inputs);
   const qualified = sum(process.outputs.filter((item) => item.outputType === "QUALIFIED"));
   const reusable = sum(process.outputs.filter((item) => item.outputType === "REUSABLE" || item.outputType === "TAILING"));
   const totalOutput = sum(process.outputs);
+  return processYield(primary, totalInput, qualified, reusable, totalOutput,
+    process.outputs.some((item) => item.outputType === "QUALIFIED" && item.weightKg != null));
+}
+
+export function calculateMinorStepYield(step: MinorProcessStepDraft): ProcessYieldResult {
+  const materials = step.materials || [];
+  const outputs = step.outputs || [];
+  const primaryInput = materials.find((item) => item.materialRole === "PRIMARY" && item.weightKg != null)?.weightKg || 0;
+  const primaryOutput = [...outputs].reverse().find((item) => item.primaryOutput && item.weightKg != null);
+  return processYield(
+    primaryInput,
+    sumWeight(materials),
+    primaryOutput?.weightKg || 0,
+    sumWeight(outputs.filter((item) => item.outputType === "REUSABLE" || item.outputType === "TAILING")),
+    sumWeight(outputs),
+    primaryOutput != null,
+  );
+}
+
+export function calculateBatchYield(plan: ProcessPlanDraft): number | null {
+  const rates = plan.majorProcesses
+    .filter((major) => major.yieldBasis !== "NONE")
+    .map(calculateMajorProcessYield)
+    .map((result) => result.mainYieldPercent)
+    .filter((value): value is number => value != null);
+  return rates.length ? rates.reduce((value, rate) => value * rate / 100, 100) : null;
+}
+
+function calculateProcessYieldFromStepFlow(process: MajorProcessDraft): ProcessYieldResult {
+  const allMaterials = process.steps.flatMap((step) => step.materials || []);
+  const primaryInput = allMaterials.find((item) => item.materialRole === "PRIMARY" && item.weightKg != null)?.weightKg || 0;
+  const externalInput = sumWeight(allMaterials.filter((item) => item.sourceType !== "STEP_OUTPUT"));
+  const lastOutputs = [...process.steps].reverse().find((step) => (step.outputs?.length || 0) > 0)?.outputs || [];
+  const primaryOutput = process.steps.flatMap((step) => step.outputs || []).reverse()
+    .find((item) => item.primaryOutput && item.weightKg != null);
+  return processYield(
+    primaryInput,
+    externalInput,
+    primaryOutput?.weightKg || 0,
+    sumWeight(lastOutputs.filter((item) => item.outputType === "REUSABLE" || item.outputType === "TAILING")),
+    sumWeight(lastOutputs),
+    primaryOutput != null,
+  );
+}
+
+function processYield(primaryInputWeightKg: number, totalInputWeightKg: number, qualifiedOutputWeightKg: number,
+                      reusableOutputWeightKg: number, totalOutputWeightKg: number, hasPrimaryOutput = true): ProcessYieldResult {
   return {
-    primaryInputWeightKg: primary,
-    totalInputWeightKg: totalInput,
-    qualifiedOutputWeightKg: qualified,
-    reusableOutputWeightKg: reusable,
-    totalOutputWeightKg: totalOutput,
-    mainYieldPercent: primary > 0 ? qualified / primary * 100 : null,
-    recoveryPercent: totalInput > 0 ? (qualified + reusable) / totalInput * 100 : null,
-    balanceDifferenceKg: totalInput - totalOutput,
+    primaryInputWeightKg,
+    totalInputWeightKg,
+    qualifiedOutputWeightKg,
+    reusableOutputWeightKg,
+    totalOutputWeightKg,
+    mainYieldPercent: hasPrimaryOutput && primaryInputWeightKg > 0 ? qualifiedOutputWeightKg / primaryInputWeightKg * 100 : null,
+    recoveryPercent: totalInputWeightKg > 0 ? (qualifiedOutputWeightKg + reusableOutputWeightKg) / totalInputWeightKg * 100 : null,
+    balanceDifferenceKg: totalInputWeightKg - totalOutputWeightKg,
   };
+}
+
+function sumWeight(items: Array<{ weightKg?: number }>) {
+  return items.reduce((total, item) => total + Number(item.weightKg || 0), 0);
 }
 
 export function processPlanToLegacySteps(plan: ProcessPlanDraft): ExperimentProcessStep[] {
@@ -148,6 +251,16 @@ export function normalizeProcessPlan(plan: ProcessPlanDraft): ProcessPlanDraft {
         sequence: stepIndex + 1,
         materials: (step.materials || []).map((material, materialIndex) => ({
           ...material, key: material.key || material.id || nextProcessKey("material"), sequence: materialIndex + 1,
+          sourceType: material.sourceType || "EXTERNAL",
+        })),
+        outputs: (step.outputs || []).map((output, outputIndex) => ({
+          ...output, key: output.key || output.id || nextProcessKey("output"), sequence: outputIndex + 1,
+        })),
+        controlPoints: (step.controlPoints || []).map((point, pointIndex) => ({
+          ...point, key: point.key || point.id || nextProcessKey("control"), sequence: pointIndex + 1,
+          measurements: (point.measurements || []).map((measurement, measurementIndex) => ({
+            ...measurement, key: measurement.key || measurement.id || nextProcessKey("measurement"), sequence: measurementIndex + 1,
+          })),
         })),
       })),
       inputs: (major.inputs || []).map((input, inputIndex) => ({

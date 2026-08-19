@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import { calculateMajorProcessYield, createEmptyProcessPlan, processPlanToLegacySteps } from "../packages/shared/src/process-plan.ts";
+import { calculateBatchYield, calculateMajorProcessYield, calculateMinorStepYield, createEmptyProcessPlan, processPlanToLegacySteps } from "../packages/shared/src/process-plan.ts";
 
 test("calculates major process yield and legacy summary", () => {
   const plan = createEmptyProcessPlan();
@@ -14,6 +14,62 @@ test("calculates major process yield and legacy summary", () => {
   assert.equal(calculateMajorProcessYield(plan.majorProcesses[0]!).mainYieldPercent, 80);
   assert.deepEqual(processPlanToLegacySteps(plan).map((row) => [row.processName, row.beforeWeightKg, row.afterWeightKg]), [["热加工", 10, 8]]);
 });
+
+test("calculates chained batch yield from primary material flow while skipping NONE", () => {
+  const plan = createEmptyProcessPlan();
+  plan.majorProcesses.push(
+    majorWithFlow("10", "9"),
+    { ...majorWithFlow("9", "1"), key: "major-none", yieldBasis: "NONE" },
+    majorWithFlow("9", "7.2"),
+    majorWithFlow("7.2", "5.04"),
+  );
+
+  assert.equal(calculateMinorStepYield(plan.majorProcesses[0]!.steps[1]!).mainYieldPercent, 90);
+  assert.equal(calculateMajorProcessYield(plan.majorProcesses[0]!).mainYieldPercent, 90);
+  assert.equal(calculateBatchYield(plan), 50.4);
+});
+
+test("skips an incomplete primary flow instead of treating it as zero yield", () => {
+  const plan = createEmptyProcessPlan();
+  plan.majorProcesses.push({
+    key: "major-incomplete", sequence: 1, processName: "静置", yieldBasis: "PRIMARY_INPUT", inputs: [], outputs: [],
+    steps: [{ key: "step-incomplete", sequence: 1, stepName: "静置", stepType: "NORMAL", materials: [{
+      key: "material-incomplete", sequence: 1, materialRole: "PRIMARY", sourceType: "EXTERNAL", materialName: "牛肉",
+      materialState: "SOLID", weightKg: 10,
+    }], outputs: [], controlPoints: [] }],
+  }, majorWithFlow("10", "8"));
+
+  assert.equal(calculateMajorProcessYield(plan.majorProcesses[0]!).mainYieldPercent, null);
+  assert.equal(calculateBatchYield(plan), 80);
+});
+
+function majorWithFlow(inputWeight: string, outputWeight: string) {
+  return {
+    key: `major-${inputWeight}-${outputWeight}`, sequence: 1, processCode: "HEAT", processName: "热加工", description: "",
+    yieldBasis: "PRIMARY_INPUT" as const, remark: "", inputs: [], outputs: [],
+    steps: [
+      {
+        key: `step-start-${inputWeight}`, sequence: 1, stepName: "修割", stepType: "NORMAL" as const, materials: [{
+          key: `material-start-${inputWeight}`, sequence: 1, materialRole: "PRIMARY" as const, sourceType: "EXTERNAL" as const,
+          materialName: "鲜牛腩", materialState: "SOLID" as const, weightKg: Number(inputWeight),
+        }], outputs: [{
+          key: `output-start-${inputWeight}`, sequence: 1, outputType: "INTERMEDIATE", outputName: "修割牛腩",
+          materialState: "SOLID" as const, weightKg: Number(inputWeight), primaryOutput: true, continueFlow: true,
+        }], controlPoints: [],
+      },
+      {
+        key: `step-end-${outputWeight}`, sequence: 2, stepName: "熟制", stepType: "NORMAL" as const, materials: [{
+          key: `material-end-${outputWeight}`, sequence: 1, materialRole: "PRIMARY" as const, sourceType: "STEP_OUTPUT" as const,
+          sourceStepOutputId: `output-start-${inputWeight}`, materialName: "修割牛腩", materialState: "SOLID" as const,
+          weightKg: Number(inputWeight),
+        }], outputs: [{
+          key: `output-end-${outputWeight}`, sequence: 1, outputType: "FINISHED", outputName: "熟制牛腩",
+          materialState: "SOLID" as const, weightKg: Number(outputWeight), primaryOutput: true, continueFlow: true,
+        }], controlPoints: [],
+      },
+    ],
+  };
+}
 
 test("PC editor exposes layered drag, edit, material and yield entrances", () => {
   const source = fs.readFileSync(new URL("../apps/pc/src/components/ProcessHierarchyEditor.vue", import.meta.url), "utf8");

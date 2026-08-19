@@ -41,8 +41,29 @@ public record ProcessPlan(
             String parameter2Unit,
             String equipment,
             String instruction,
-            List<StepMaterial> materials
+            List<StepMaterial> materials,
+            List<StepOutput> outputs,
+            List<ControlPoint> controlPoints
     ) {
+        public MinorStep(
+                String id,
+                int sequence,
+                String stepCode,
+                String stepName,
+                String stepType,
+                String parameter1Name,
+                String parameter1Value,
+                String parameter1Unit,
+                String parameter2Name,
+                String parameter2Value,
+                String parameter2Unit,
+                String equipment,
+                String instruction,
+                List<StepMaterial> materials
+        ) {
+            this(id, sequence, stepCode, stepName, stepType, parameter1Name, parameter1Value, parameter1Unit,
+                    parameter2Name, parameter2Value, parameter2Unit, equipment, instruction, materials, List.of(), List.of());
+        }
     }
 
     public record StepMaterial(
@@ -54,6 +75,66 @@ public record ProcessPlan(
             String materialState,
             BigDecimal weightKg,
             String formulaMaterialId,
+            String remark,
+            String sourceType,
+            String sourceStepOutputId
+    ) {
+        public StepMaterial(
+                String id,
+                int sequence,
+                String materialRole,
+                String materialCode,
+                String materialName,
+                String materialState,
+                BigDecimal weightKg,
+                String formulaMaterialId,
+                String remark
+        ) {
+            this(id, sequence, materialRole, materialCode, materialName, materialState, weightKg, formulaMaterialId, remark,
+                    "EXTERNAL", null);
+        }
+    }
+
+    public record StepOutput(
+            String id,
+            int sequence,
+            String outputType,
+            String outputName,
+            String materialState,
+            BigDecimal weightKg,
+            boolean primaryOutput,
+            boolean continueFlow,
+            String remark
+    ) {
+    }
+
+    public record ControlPoint(
+            String id,
+            int sequence,
+            String controlType,
+            String importance,
+            String itemName,
+            BigDecimal targetValue,
+            BigDecimal lowerLimit,
+            BigDecimal upperLimit,
+            String unit,
+            String method,
+            String frequency,
+            String deviationAction,
+            boolean resolved,
+            String confirmedBy,
+            List<ControlMeasurement> measurements
+    ) {
+    }
+
+    public record ControlMeasurement(
+            String id,
+            int sequence,
+            BigDecimal measuredValue,
+            String measuredAt,
+            String result,
+            String deviationAction,
+            String retestResult,
             String remark
     ) {
     }

@@ -42,7 +42,14 @@ class ProcessPlanServiceTest {
     void savesAndReloadsNestedPlanWithCalculatedYield() {
         var step = new ProcessPlan.MinorStep(null, 1, "BOIL", "煮制", "NORMAL", "温度", "95", "℃",
                 "时间", "40", "min", "夹层锅", "保持微沸", List.of(
-                new ProcessPlan.StepMaterial(null, 1, "AUXILIARY", "SALT", "盐", "SOLID", new BigDecimal("0.2"), null, null)));
+                new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF", "牛肉", "SOLID", new BigDecimal("10"), null, null,
+                        "EXTERNAL", null),
+                new ProcessPlan.StepMaterial(null, 2, "AUXILIARY", "SALT", "盐", "SOLID", new BigDecimal("0.2"), null, null,
+                        "EXTERNAL", null)), List.of(
+                new ProcessPlan.StepOutput(null, 1, "FINISHED", "熟制牛肉", "SEMI_SOLID", new BigDecimal("8"), true, false, null)),
+                List.of(new ProcessPlan.ControlPoint(null, 1, "FOOD_SAFETY", "CRITICAL", "中心温度", new BigDecimal("75"),
+                        new BigDecimal("75"), null, "℃", "探针测温", "每锅", "继续加热", true, "研发", List.of(
+                        new ProcessPlan.ControlMeasurement(null, 1, new BigDecimal("76"), "2026-08-19T21:00:00", "PASS", null, null, null)))));
         var major = new ProcessPlan.MajorProcess(null, 1, "HEAT", "热加工", "煮制与焖制", "PRIMARY_INPUT", null,
                 List.of(step), List.of(new ProcessPlan.ProcessInput(null, 1, "PRIMARY", "BEEF", "牛肉", new BigDecimal("10"), null)),
                 List.of(new ProcessPlan.ProcessOutput(null, 1, "QUALIFIED", new BigDecimal("8"), null)), null);
@@ -53,7 +60,15 @@ class ProcessPlanServiceTest {
         assertThat(saved.versionNo()).isEqualTo(1);
         assertThat(loaded.majorProcesses()).hasSize(1);
         assertThat(loaded.majorProcesses().get(0).steps()).hasSize(1);
-        assertThat(loaded.majorProcesses().get(0).steps().get(0).materials()).hasSize(1);
+        assertThat(loaded.majorProcesses().get(0).steps().get(0).materials()).hasSize(2);
+        assertThat(loaded.majorProcesses().get(0).steps().get(0).materials().get(0).sourceType()).isEqualTo("EXTERNAL");
+        assertThat(loaded.majorProcesses().get(0).steps().get(0).outputs()).singleElement()
+                .satisfies(output -> assertThat(output.primaryOutput()).isTrue());
+        assertThat(loaded.majorProcesses().get(0).steps().get(0).controlPoints()).singleElement()
+                .satisfies(point -> {
+                    assertThat(point.measurements()).hasSize(1);
+                    assertThat(point.measurements().get(0).measuredAt()).isEqualTo("2026-08-19T21:00");
+                });
         assertThat(loaded.majorProcesses().get(0).yield().mainYieldPercent()).isEqualByComparingTo("80.000000");
     }
 
