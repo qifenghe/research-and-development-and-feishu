@@ -52,6 +52,11 @@ class SchemaMigrationTest {
         assertTableExists("experiment_step_material");
         assertTableExists("experiment_process_input");
         assertTableExists("experiment_process_output");
+        assertTableExists("experiment_step_output");
+        assertTableExists("experiment_control_point");
+        assertTableExists("experiment_control_measurement");
+        assertTableExists("experiment_process_revision");
+        assertTableExists("experiment_process_artifact");
         assertTableExists("pricing_packaging_item");
         assertTableExists("packaging_template_item");
 
@@ -64,6 +69,13 @@ class SchemaMigrationTest {
         assertForeignKeyExists("finance_notification", "fk_finance_notification_pricing_file");
         assertForeignKeyExists("pricing_packaging_item", "fk_pricing_packaging_item_file");
         assertForeignKeyExists("feishu_notification", "fk_feishu_notification_user");
+        assertForeignKeyExists("experiment_step_output", "fk_step_output_step");
+        assertForeignKeyExists("experiment_step_material", "fk_step_material_source_output");
+        assertForeignKeyExists("experiment_control_point", "fk_control_point_step");
+        assertForeignKeyExists("experiment_control_measurement", "fk_control_measurement_point");
+        assertForeignKeyExists("experiment_process_revision", "fk_process_revision_plan");
+        assertForeignKeyExists("experiment_process_artifact", "fk_process_artifact_revision");
+        assertForeignKeyExists("pricing_file", "fk_pricing_file_process_revision");
 
         assertColumnExists("archive_file", "category");
         assertColumnExists("archive_file", "uploaded_by");
@@ -109,6 +121,9 @@ class SchemaMigrationTest {
         assertColumnExists("pricing_file", "reviewed_at");
         assertColumnExists("pricing_file", "review_comment");
         assertColumnExists("pricing_file", "rejection_reason");
+        assertColumnExists("pricing_file", "process_revision_id");
+        assertColumnExists("experiment_step_material", "source_type");
+        assertColumnExists("experiment_step_material", "source_step_output_id");
         assertColumnExists("pricing_packaging_item", "source");
         assertColumnExists("pricing_packaging_item", "material_code");
         assertColumnExists("pricing_packaging_item", "quantity");
@@ -130,9 +145,12 @@ class SchemaMigrationTest {
         assertColumnDefinition("experiment_form", "finished_output_unit", false, "U&'\\888b'");
         assertNumericColumn("experiment_form", "finished_yield_percent", 10, 6);
         assertNumericColumn("experiment_step_material", "weight_kg", 14, 4);
+        assertNumericColumn("experiment_step_output", "weight_kg", 14, 4);
+        assertNumericColumn("experiment_control_measurement", "measured_value", 14, 4);
         assertNumericColumn("experiment_process_input", "weight_kg", 14, 4);
         assertNumericColumn("experiment_process_output", "weight_kg", 14, 4);
         assertColumnDefinition("experiment_form", "yield_calculation_mode", false, "'SELECTED_PRIMARY_MATERIALS'");
+        assertColumnDefinition("experiment_step_material", "source_type", false, "'EXTERNAL'");
     }
 
     @Test
