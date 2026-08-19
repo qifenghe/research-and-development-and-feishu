@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import { calculateBatchYield, calculateMajorProcessYield, calculateMinorStepYield, createEmptyProcessPlan, normalizeProcessPlan, processPlanToLegacySteps } from "../packages/shared/src/process-plan.ts";
+import { aggregateProcessRecipe, calculateBatchYield, calculateMajorProcessYield, calculateMinorStepYield, createEmptyProcessPlan, normalizeProcessPlan, previewProcessSubmission, processPlanToLegacySteps } from "../packages/shared/src/process-plan.ts";
 
 test("calculates major process yield and legacy summary", () => {
   const plan = createEmptyProcessPlan();
@@ -73,6 +73,23 @@ test("normalizes output IDs so STEP_OUTPUT references persist as stable IDs", ()
 
   assert.equal(first!.outputs![0]!.id, first!.outputs![0]!.key);
   assert.equal(second!.materials[0]!.sourceStepOutputId, first!.outputs![0]!.id);
+});
+
+test("previews recipe aggregation and submission flow errors without including intermediate inputs", () => {
+  const plan = createEmptyProcessPlan();
+  plan.majorProcesses.push(majorWithFlow("10", "8"));
+  plan.majorProcesses[0]!.steps[0]!.materials[0]!.formulaMaterialId = "BEEF-1";
+  plan.majorProcesses[0]!.steps[0]!.materials.push({
+    key: "salt-1", sequence: 2, materialRole: "AUXILIARY", sourceType: "EXTERNAL", materialCode: "SALT",
+    materialName: "食盐", materialState: "SOLID", weightKg: 0.18,
+  });
+
+  assert.deepEqual(aggregateProcessRecipe(plan).map((line) => [line.materialName, line.weightKg]), [["鲜牛腩", 10], ["食盐", 0.18]]);
+
+  plan.majorProcesses[0]!.steps[0]!.materials[0] = {
+    ...plan.majorProcesses[0]!.steps[0]!.materials[0]!, sourceType: "STEP_OUTPUT", sourceStepOutputId: "missing-output",
+  };
+  assert.ok(previewProcessSubmission(plan).errors.some((issue) => issue.code === "PRIMARY_FLOW_BROKEN"));
 });
 
 function majorWithFlow(inputWeight: string, outputWeight: string) {

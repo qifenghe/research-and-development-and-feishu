@@ -140,6 +140,38 @@ export interface ProcessPlanDraft {
   legacy?: boolean;
 }
 
+export interface ProcessRecipeSourcePreview {
+  majorSequence: number;
+  stepSequence: number;
+  materialSequence: number;
+  materialRole: ProcessMaterialRole;
+  materialCode?: string;
+  materialName: string;
+  weightKg: number;
+}
+
+export interface ProcessRecipeLinePreview {
+  formulaMaterialId?: string;
+  materialCode?: string;
+  materialName: string;
+  weightKg: number;
+  ratioPercent: number | null;
+  sources: ProcessRecipeSourcePreview[];
+}
+
+export interface ProcessSubmissionIssuePreview {
+  code: string;
+  message: string;
+  majorSequence: number | null;
+  stepSequence: number | null;
+}
+
+export interface ProcessSubmissionPreview {
+  ready: boolean;
+  errors: ProcessSubmissionIssuePreview[];
+  warnings: ProcessSubmissionIssuePreview[];
+}
+
 let processKey = 1;
 export const nextProcessKey = (prefix = "process") => `${prefix}-${Date.now()}-${processKey++}`;
 
@@ -289,6 +321,221 @@ export function normalizeProcessPlan(plan: ProcessPlanDraft): ProcessPlanDraft {
   };
   validateFlowReferences(normalized);
   return normalized;
+}
+
+/**
+ * UI-only preview. The server-side ProcessSubmissionValidator remains the authority for formal submission.
+ */
+export function aggregateProcessRecipe(plan: ProcessPlanDraft): ProcessRecipeLinePreview[] {
+  const groups = new Map<string, ProcessRecipeLinePreview>();
+  for (const major of plan.majorProcesses || []) {
+    for (const step of major.steps || []) {
+      for (const material of step.materials || []) {
+        if (material.sourceType !== "EXTERNAL") continue;
+        const materialName = normalizeMaterialName(material.materialName);
+        const group = recipeGroup(material.formulaMaterialId, material.materialCode, materialName);
+        const current = groups.get(group.key) || {
+          formulaMaterialId: material.formulaMaterialId,
+          materialCode: material.materialCode,
+          materialName,
+          weightKg: 0,
+          ratioPercent: null,
+          sources: [],
+        };
+        current.weightKg += safeWeight(material.weightKg);
+        current.sources.push({
+          majorSequence: major.sequence,
+          stepSequence: step.sequence,
+          materialSequence: material.sequence,
+          materialRole: material.materialRole,
+          materialCode: material.materialCode,
+          materialName,
+          weightKg: safeWeight(material.weightKg),
+        });
+        groups.set(group.key, current);
+      }
+    }
+  }
+  const total = [...groups.values()].reduce((sum, line) => sum + line.weightKg, 0);
+  return [...groups.entries()]
+    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+    .map(([, line]) => ({
+      ...line,
+      ratioPercent: total > 0 ? line.weightKg / total * 100 : null,
+      sources: [...line.sources].sort(compareSource),
+    }));
+}
+
+/**
+ * UI-only preview that mirrors submission rules for immediate feedback. Formal submission must use the backend result.
+ */
+export function previewProcessSubmission(plan: ProcessPlanDraft): ProcessSubmissionPreview {
+  const errors: ProcessSubmissionIssuePreview[] = [];
+  const warnings: ProcessSubmissionIssuePreview[] = [];
+  const majors = plan.majorProcesses || [];
+  if (!majors.length) {
+    errors.push(issue("MAJOR_PROCESS_REQUIRED", "至少需要一个大工序", null, null));
+    return { ready: false, errors, warnings };
+  }
+
+  const steps = majors.flatMap((major) => (major.steps || []).map((step) => ({ major, step })));
+  previewFlow(steps, errors);
+  let externalPrimary = false;
+  for (const major of majors) {
+    previewWeights(major, errors);
+    previewYieldCompleteness(major, errors);
+    previewControls(major, errors);
+    if ((major.steps || []).some((step) => step.materials.some((material) => material.materialRole === "PRIMARY" && material.sourceType === "EXTERNAL"))) {
+      externalPrimary = true;
+    }
+    previewBalance(major, errors, warnings);
+  }
+  if (!externalPrimary) errors.push(issue("EXTERNAL_PRIMARY_REQUIRED", "配方至少需要一项外部主料", null, null));
+  return { ready: errors.length === 0, errors, warnings };
+}
+
+type StepPreviewRef = { major: MajorProcessDraft; step: MinorProcessStepDraft };
+type OutputPreviewRef = StepPreviewRef & { output: StepOutputDraft };
+
+function previewFlow(steps: StepPreviewRef[], errors: ProcessSubmissionIssuePreview[]) {
+  const outputs = new Map<string, OutputPreviewRef>();
+  const duplicateIds = new Set<string>();
+  for (const ref of steps) {
+    for (const output of ref.step.outputs || []) {
+      const id = output.id || output.key;
+      if (outputs.has(id)) duplicateIds.add(id);
+      else outputs.set(id, { ...ref, output });
+    }
+  }
+  const graph = new Map<string, string[]>();
+  for (const ref of steps) {
+    for (const material of ref.step.materials || []) {
+      if (material.sourceType === "STEP_OUTPUT") {
+        const source = material.sourceStepOutputId;
+        if (!source || duplicateIds.has(source)) {
+          errors.push(flowIssue(ref));
+          continue;
+        }
+        const output = outputs.get(source);
+        if (!output || !precedesStep(output, ref) || !output.output.continueFlow
+          || (material.materialRole === "PRIMARY" && !output.output.primaryOutput)) {
+          errors.push(flowIssue(ref));
+          continue;
+        }
+        for (const target of ref.step.outputs || []) {
+          const targetId = target.id || target.key;
+          graph.set(source, [...(graph.get(source) || []), targetId]);
+        }
+      } else if (material.sourceType === "EXTERNAL" && material.sourceStepOutputId) {
+        errors.push(flowIssue(ref));
+      }
+    }
+  }
+  if (hasFlowCycle(graph)) errors.push(issue("PRIMARY_FLOW_BROKEN", "主料中间产物流转存在断链或循环", null, null));
+}
+
+function previewYieldCompleteness(major: MajorProcessDraft, errors: ProcessSubmissionIssuePreview[]) {
+  if (major.yieldBasis === "NONE") return;
+  const steps = major.steps || [];
+  const hasPrimaryInput = steps.length
+    ? steps.some((step) => step.materials.some((material) => material.materialRole === "PRIMARY" && material.weightKg != null))
+    : major.inputs.some((input) => input.inputRole === "PRIMARY" && input.weightKg != null);
+  const hasPrimaryOutput = steps.length
+    ? steps.some((step) => (step.outputs || []).some((output) => output.primaryOutput && output.weightKg != null))
+    : major.outputs.some((output) => output.outputType === "QUALIFIED" && output.weightKg != null);
+  if (!hasPrimaryInput) errors.push(issue("MAJOR_PRIMARY_INPUT_REQUIRED", "需计算得率的大工序缺少首端主料投入", major.sequence, null));
+  if (!hasPrimaryOutput) errors.push(issue("MAJOR_PRIMARY_OUTPUT_REQUIRED", "需计算得率的大工序缺少末端主料产出", major.sequence, null));
+}
+
+function previewControls(major: MajorProcessDraft, errors: ProcessSubmissionIssuePreview[]) {
+  for (const step of major.steps || []) {
+    for (const point of step.controlPoints || []) {
+      if (point.importance !== "CRITICAL") continue;
+      const measurements = point.measurements || [];
+      const hasMeasurement = measurements.some((measurement) => measurement.measuredValue != null);
+      const outOfLimit = measurements.some((measurement) => measurement.result === "FAIL" || measurementOutside(point, measurement));
+      const handled = measurements.some((measurement) => Boolean(measurement.deviationAction?.trim()));
+      if (!hasMeasurement || !point.confirmedBy?.trim() || (outOfLimit && (!point.resolved || !handled))) {
+        errors.push(issue("CRITICAL_CONTROL_UNRESOLVED", "极重要关键控制点未完成", major.sequence, step.sequence));
+      }
+    }
+  }
+}
+
+function previewBalance(major: MajorProcessDraft, errors: ProcessSubmissionIssuePreview[], warnings: ProcessSubmissionIssuePreview[]) {
+  try {
+    const difference = calculateMajorProcessYield(major).balanceDifferenceKg;
+    if (Math.abs(difference) > 0.0001) {
+      warnings.push(issue("MATERIAL_BALANCE_EXCEEDED", "物料平衡差超过允许范围", major.sequence, null));
+      if (!major.remark?.trim()) errors.push(issue("MATERIAL_BALANCE_UNEXPLAINED", "物料平衡差超限，请填写差异说明", major.sequence, null));
+    }
+  } catch {
+    // Input cardinality is already surfaced by the editor; the backend remains authoritative.
+  }
+}
+
+function previewWeights(major: MajorProcessDraft, errors: ProcessSubmissionIssuePreview[]) {
+  for (const step of major.steps || []) {
+    if ([...step.materials, ...(step.outputs || [])].some((item) => item.weightKg != null && item.weightKg < 0)) {
+      errors.push(issue("PROCESS_WEIGHT_INVALID", "工艺重量不能为负数", major.sequence, step.sequence));
+    }
+  }
+  if ([...major.inputs, ...major.outputs].some((item) => item.weightKg != null && item.weightKg < 0)) {
+    errors.push(issue("PROCESS_WEIGHT_INVALID", "工艺重量不能为负数", major.sequence, null));
+  }
+}
+
+function recipeGroup(formulaMaterialId: string | undefined, materialCode: string | undefined, materialName: string) {
+  if (formulaMaterialId?.trim()) return { key: `0:${formulaMaterialId.trim()}` };
+  if (materialCode?.trim()) return { key: `1:${materialCode.trim()}` };
+  return { key: `2:${materialName}` };
+}
+
+function normalizeMaterialName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function safeWeight(value: number | undefined) {
+  return Number(value || 0);
+}
+
+function compareSource(left: ProcessRecipeSourcePreview, right: ProcessRecipeSourcePreview) {
+  return left.majorSequence - right.majorSequence || left.stepSequence - right.stepSequence || left.materialSequence - right.materialSequence;
+}
+
+function precedesStep(source: OutputPreviewRef, consumer: StepPreviewRef) {
+  return source.major.sequence !== consumer.major.sequence
+    ? source.major.sequence < consumer.major.sequence
+    : source.step.sequence < consumer.step.sequence;
+}
+
+function hasFlowCycle(graph: Map<string, string[]>) {
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (node: string): boolean => {
+    if (visited.has(node)) return false;
+    if (visiting.has(node)) return true;
+    visiting.add(node);
+    if ((graph.get(node) || []).some(visit)) return true;
+    visiting.delete(node);
+    visited.add(node);
+    return false;
+  };
+  return [...graph.keys()].some(visit);
+}
+
+function measurementOutside(point: ControlPointDraft, measurement: ControlMeasurementDraft) {
+  if (measurement.measuredValue == null) return false;
+  return (point.lowerLimit != null && measurement.measuredValue < point.lowerLimit)
+    || (point.upperLimit != null && measurement.measuredValue > point.upperLimit);
+}
+
+function issue(code: string, message: string, majorSequence: number | null, stepSequence: number | null): ProcessSubmissionIssuePreview {
+  return { code, message, majorSequence, stepSequence };
+}
+
+function flowIssue(ref: StepPreviewRef) {
+  return issue("PRIMARY_FLOW_BROKEN", "主料中间产物流转存在断链或循环", ref.major.sequence, ref.step.sequence);
 }
 
 function validateFlowReferences(plan: ProcessPlanDraft) {
