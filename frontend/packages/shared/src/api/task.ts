@@ -11,7 +11,7 @@ import type {
   UserAccount,
   YieldCalculationMode,
 } from "../types";
-import type { ProcessPlanDraft, ProcessRevision, ProcessRevisionSummary, SubmitProcessPlanRequest } from "../process-plan";
+import type { ProcessArtifact, ProcessArtifactType, ProcessPlanDraft, ProcessRevision, ProcessRevisionSummary, SubmitProcessPlanRequest } from "../process-plan";
 
 export interface SaveExperimentDraftPayload {
   operatorName: string;
@@ -100,6 +100,10 @@ export function createTaskApi(client: ApiClient) {
       client.get<ProcessRevisionSummary[]>(`/experiment-forms/${formId}/process-plan/revisions`),
     getProcessRevision: (formId: string, revisionId: string) =>
       client.get<ProcessRevision>(`/experiment-forms/${formId}/process-plan/revisions/${revisionId}`),
+    getProcessArtifacts: (formId: string, revisionId: string) =>
+      client.get<ProcessArtifact[]>(`/experiment-forms/${formId}/process-plan/revisions/${revisionId}/artifacts`),
+    generateProcessArtifact: (formId: string, revisionId: string, artifactType: ProcessArtifactType) =>
+      client.post<ProcessArtifact>(`/experiment-forms/${formId}/process-plan/revisions/${revisionId}/artifacts`, { artifactType }),
     createDraftFromRevision: (formId: string, revisionId: string, changeReason: string) =>
       client.post<ProcessPlanDraft>(`/experiment-forms/${formId}/process-plan/revisions/${revisionId}/new-draft`, { changeReason }),
     submitExperimentForTest: (experimentFormId: string, testerName: string) =>

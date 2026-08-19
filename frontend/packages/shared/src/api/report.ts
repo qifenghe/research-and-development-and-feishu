@@ -17,6 +17,8 @@ export function createReportApi(client: ApiClient) {
       client.get<Blob>(`/reports/test-records/${id}/export`),
     exportPricingFile: (id: string) =>
       client.get<Blob>(`/reports/pricing-files/${id}/export`),
+    downloadProcessArtifact: (formId: string, revisionId: string, artifactId: string) =>
+      client.get<Blob>(`/experiment-forms/${formId}/process-plan/revisions/${revisionId}/artifacts/${artifactId}/download`),
     exportRndTasks: (params: { keyword?: string; status?: string; startDate?: string; endDate?: string } = {}) =>
       client.get<Blob>(`/reports/rnd-tasks/export${query(params)}`),
     exportShipments: (params: { keyword?: string; status?: string; startDate?: string; endDate?: string } = {}) =>

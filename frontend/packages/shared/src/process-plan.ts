@@ -162,6 +162,22 @@ export interface ProcessRevision extends ProcessRevisionSummary {
   snapshot: ProcessPlanDraft;
 }
 
+export type ProcessArtifactType = "FORMULA_XLSX" | "SOP_DOCX";
+export type ProcessArtifactStatus = "READY" | "FAILED";
+
+export interface ProcessArtifact {
+  id: string;
+  processRevisionId: string;
+  artifactType: ProcessArtifactType;
+  documentVersion: string;
+  status: ProcessArtifactStatus;
+  generatedAt: string;
+  generatedBy?: string;
+  storageKey?: string;
+  contentSummary?: string;
+  failureReason?: string;
+}
+
 export interface SubmitProcessPlanRequest {
   versionNo: number;
   confirmed: boolean;

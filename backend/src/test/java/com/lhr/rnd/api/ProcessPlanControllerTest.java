@@ -20,6 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -33,6 +34,7 @@ class ProcessPlanControllerTest {
 
     @BeforeEach
     void seedForm() {
+        jdbc.update("delete from experiment_process_artifact where process_revision_id in (select id from experiment_process_revision where experiment_form_id = ?)", FORM_ID);
         jdbc.update("delete from experiment_process_revision where experiment_form_id = ?", FORM_ID);
         jdbc.update("delete from experiment_step_material where minor_step_id in (select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id join experiment_process_plan plan on major.process_plan_id = plan.id where plan.experiment_form_id = ?)", FORM_ID);
         jdbc.update("delete from experiment_major_process where process_plan_id in (select id from experiment_process_plan where experiment_form_id = ?)", FORM_ID);
@@ -150,6 +152,34 @@ class ProcessPlanControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"versionNo\":1,\"confirmed\":true,\"submittedBy\":\"伪造用户\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("SESSION_PRINCIPAL_REQUIRED"));
+    }
+
+    @Test
+    void generatesListsAndDownloadsFormalRevisionArtifactsWithTheSessionPrincipal() throws Exception {
+        saveReadyDraft();
+        var principal = new SessionPrincipal("USER-PROCESS", "rnd_engineer", "会话研发", "ou-process", "RND_ENGINEER", Instant.now().plusSeconds(60));
+        var revisionBody = mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/submit", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, principal)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"versionNo\":1,\"confirmed\":true}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var revisionId = revisionBody.split("\\\"id\\\":\\\"")[1].split("\\\"")[0];
+
+        var artifactBody = mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/artifacts", FORM_ID, revisionId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, principal)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"artifactType\":\"FORMULA_XLSX\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.generatedBy").value("会话研发"))
+                .andReturn().getResponse().getContentAsString();
+        var artifactId = artifactBody.split("\\\"id\\\":\\\"")[1].split("\\\"")[0];
+
+        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/artifacts", FORM_ID, revisionId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, principal))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].id").value(artifactId));
+        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/artifacts/{artifactId}/download", FORM_ID, revisionId, artifactId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, principal))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("attachment")));
     }
 
     private void saveReadyDraft() throws Exception {

@@ -121,6 +121,47 @@ class SessionAuthenticationInterceptorTest {
     }
 
     @Test
+    void enforcesRealSessionRolesAndFormOwnershipForFormalArtifactGenerationAndDownload() throws Exception {
+        var authRequired = sessionProperties.isAuthRequired();
+        var testBypass = sessionProperties.isTestBusinessApiAuthenticationBypass();
+        sessionProperties.setAuthRequired(true);
+        sessionProperties.setTestBusinessApiAuthenticationBypass(false);
+        try {
+            var formId = "FORM-AUTH-ARTIFACT";
+            seedProcessForm(formId, "制品归属研发");
+            var draft = processPlanService.save(formId, readyPlan(formId, processPlanService.find(formId).versionNo()));
+            var revision = processRevisionService.submit(formId, new ProcessRevisionService.SubmitCommand(
+                    draft.versionNo(), true, "首次正式提交", "制品归属研发"));
+            var owner = tokenFor("制品归属研发", "ou_process_artifact_owner", "RND_ENGINEER");
+            var tester = tokenFor("制品只读测试", "ou_process_artifact_tester", "TESTER");
+            var otherEngineer = tokenFor("制品越权研发", "ou_process_artifact_other", "RND_ENGINEER");
+
+            mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/artifacts", formId, revision.id())
+                            .header("Authorization", "Bearer " + owner)
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"artifactType\":\"SOP_DOCX\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.generatedBy").value("制品归属研发"));
+            mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/artifacts", formId, revision.id())
+                            .header("Authorization", "Bearer " + tester))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data[0].artifactType").value("SOP_DOCX"));
+            mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/artifacts", formId, revision.id())
+                            .header("Authorization", "Bearer " + tester)
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"artifactType\":\"FORMULA_XLSX\"}"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("SESSION_ROLE_FORBIDDEN"));
+            mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/artifacts", formId, revision.id())
+                            .header("Authorization", "Bearer " + otherEngineer)
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"artifactType\":\"FORMULA_XLSX\"}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("PROCESS_PLAN_FORM_FORBIDDEN"));
+        } finally {
+            sessionProperties.setAuthRequired(authRequired);
+            sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);
+        }
+    }
+
+    @Test
     void deniesAnEngineerFormalWritesForAFormAssignedToAnotherEngineerButAllowsDirectorPolicyOverride() throws Exception {
         var authRequired = sessionProperties.isAuthRequired();
         var testBypass = sessionProperties.isTestBusinessApiAuthenticationBypass();

@@ -118,8 +118,9 @@ create table experiment_process_artifact (
     status varchar(30) not null,
     generated_at timestamp not null,
     generated_by varchar(100),
-    storage_key varchar(500) not null,
+    storage_key varchar(500),
     content_summary text,
+    failure_reason varchar(1000),
     constraint uk_process_artifact_version unique (process_revision_id, artifact_type, document_version),
     constraint fk_process_artifact_revision foreign key (process_revision_id)
         references experiment_process_revision(id) on delete cascade
@@ -168,6 +169,51 @@ where not exists (
       and path_pattern = '/api/v1/experiment-forms/*/process-plan/submission-check'
 )
 and exists (select 1 from role_permission where role_code = 'TESTER');
+
+-- Formal-revision artifacts are intentionally explicit: read-only testing roles can inspect/download,
+-- while only R&D editors can generate a fresh immutable file version.
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-DIR-PART-LIST-23', 'RND_DIRECTOR', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts', true, '查看工艺成果文件', 76, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_DIRECTOR' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts')
+and exists (select 1 from role_permission where role_code = 'RND_DIRECTOR');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-DIR-PART-DOWN-23', 'RND_DIRECTOR', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts/*/download', true, '下载工艺成果文件', 76, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_DIRECTOR' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts/*/download')
+and exists (select 1 from role_permission where role_code = 'RND_DIRECTOR');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-DIR-PART-GEN-23', 'RND_DIRECTOR', 'POST', '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts', true, '生成工艺成果文件', 77, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_DIRECTOR' and http_method = 'POST' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts')
+and exists (select 1 from role_permission where role_code = 'RND_DIRECTOR');
+
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-ENG-PART-LIST-23', 'RND_ENGINEER', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts', true, '查看工艺成果文件', 16, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_ENGINEER' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts')
+and exists (select 1 from role_permission where role_code = 'RND_ENGINEER');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-ENG-PART-DOWN-23', 'RND_ENGINEER', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts/*/download', true, '下载工艺成果文件', 16, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_ENGINEER' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts/*/download')
+and exists (select 1 from role_permission where role_code = 'RND_ENGINEER');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-ENG-PART-GEN-23', 'RND_ENGINEER', 'POST', '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts', true, '生成工艺成果文件', 17, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_ENGINEER' and http_method = 'POST' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts')
+and exists (select 1 from role_permission where role_code = 'RND_ENGINEER');
+
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-TEST-PART-LIST-23', 'TESTER', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts', true, '查看工艺成果文件', 11, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'TESTER' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts')
+and exists (select 1 from role_permission where role_code = 'TESTER');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-TEST-PART-DOWN-23', 'TESTER', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts/*/download', true, '下载工艺成果文件', 11, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'TESTER' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts/*/download')
+and exists (select 1 from role_permission where role_code = 'TESTER');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-QA-PART-LIST-23', 'QA_TESTER', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts', true, '查看工艺成果文件', 11, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'QA_TESTER' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts')
+and exists (select 1 from role_permission where role_code = 'QA_TESTER');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-QA-PART-DOWN-23', 'QA_TESTER', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts/*/download', true, '下载工艺成果文件', 11, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'QA_TESTER' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts/*/download')
+and exists (select 1 from role_permission where role_code = 'QA_TESTER');
 
 insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
 select 'PERM-RND-DIR-PREV-LIST-23', 'RND_DIRECTOR', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions', true, '查看工艺正式版本', 76, current_timestamp

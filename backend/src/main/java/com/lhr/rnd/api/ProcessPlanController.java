@@ -3,10 +3,12 @@ package com.lhr.rnd.api;
 import com.lhr.rnd.domain.ProcessSubmissionValidator;
 import com.lhr.rnd.model.ExperimentProcessStep;
 import com.lhr.rnd.model.ProcessPlan;
+import com.lhr.rnd.model.ProcessArtifact;
 import com.lhr.rnd.model.ProcessRevision;
 import com.lhr.rnd.model.ProcessSubmissionCheck;
 import com.lhr.rnd.service.ProcessPlanService;
 import com.lhr.rnd.service.ProcessRevisionService;
+import com.lhr.rnd.service.ProcessArtifactService;
 import com.lhr.rnd.service.SessionPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,7 +18,12 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -24,11 +31,13 @@ import java.util.List;
 public class ProcessPlanController {
     private final ProcessPlanService service;
     private final ProcessRevisionService revisionService;
+    private final ProcessArtifactService artifactService;
     private final ProcessSubmissionValidator submissionValidator = new ProcessSubmissionValidator();
 
-    public ProcessPlanController(ProcessPlanService service, ProcessRevisionService revisionService) {
+    public ProcessPlanController(ProcessPlanService service, ProcessRevisionService revisionService, ProcessArtifactService artifactService) {
         this.service = service;
         this.revisionService = revisionService;
+        this.artifactService = artifactService;
     }
 
     @GetMapping
@@ -86,6 +95,41 @@ public class ProcessPlanController {
         return ApiResponse.success(revisionService.createDraftFromRevision(formId, revisionId, request.changeReason(), requiredSessionPrincipal(servletRequest)));
     }
 
+    @GetMapping("/revisions/{revisionId}/artifacts")
+    public ApiResponse<List<ProcessArtifact>> artifacts(
+            @PathVariable String formId,
+            @PathVariable String revisionId,
+            HttpServletRequest servletRequest
+    ) {
+        return ApiResponse.success(artifactService.list(formId, revisionId, requiredSessionPrincipal(servletRequest)));
+    }
+
+    @PostMapping("/revisions/{revisionId}/artifacts")
+    public ApiResponse<ProcessArtifact> generateArtifact(
+            @PathVariable String formId,
+            @PathVariable String revisionId,
+            @RequestBody GenerateProcessArtifactRequest request,
+            HttpServletRequest servletRequest
+    ) {
+        return ApiResponse.success(artifactService.generate(formId, revisionId, request.artifactType(), requiredSessionPrincipal(servletRequest)));
+    }
+
+    @GetMapping("/revisions/{revisionId}/artifacts/{artifactId}/download")
+    public ResponseEntity<byte[]> downloadArtifact(
+            @PathVariable String formId,
+            @PathVariable String revisionId,
+            @PathVariable String artifactId,
+            HttpServletRequest servletRequest
+    ) {
+        var file = artifactService.download(formId, revisionId, artifactId, requiredSessionPrincipal(servletRequest));
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(file.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename(file.fileName(), StandardCharsets.UTF_8).build().toString())
+                .contentLength(file.content().length)
+                .body(file.content());
+    }
+
     private SessionPrincipal requiredSessionPrincipal(HttpServletRequest request) {
         var principal = sessionPrincipal(request);
         if (principal == null || principal.name() == null || principal.name().isBlank()) {
@@ -103,5 +147,8 @@ public class ProcessPlanController {
     }
 
     public record CreateDraftFromRevisionRequest(String changeReason) {
+    }
+
+    public record GenerateProcessArtifactRequest(String artifactType) {
     }
 }

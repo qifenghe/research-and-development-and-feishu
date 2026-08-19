@@ -127,6 +127,8 @@ class SchemaMigrationTest {
         assertColumnExists("experiment_process_plan", "balance_tolerance_kg");
         assertColumnExists("experiment_process_plan", "source_revision_id");
         assertColumnExists("experiment_process_plan", "change_reason");
+        assertColumnExists("experiment_process_artifact", "storage_key");
+        assertColumnExists("experiment_process_artifact", "failure_reason");
         assertColumnExists("pricing_packaging_item", "source");
         assertColumnExists("pricing_packaging_item", "material_code");
         assertColumnExists("pricing_packaging_item", "quantity");
