@@ -411,6 +411,63 @@ class SchemaMigrationTest {
         );
     }
 
+    @Test
+    void v23GrantsSubmissionCheckReadPermissionToExistingProcessPlanReadersWithoutAddingWritePermission() {
+        String databaseUrl = "jdbc:h2:mem:process-submission-check-permission-" + UUID.randomUUID()
+                + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
+        Flyway.configure()
+                .dataSource(databaseUrl, "sa", "")
+                .locations("classpath:db/migration")
+                .target("22")
+                .load()
+                .migrate();
+
+        var legacyJdbcTemplate = new JdbcTemplate(new DriverManagerDataSource(databaseUrl, "sa", ""));
+        for (var role : java.util.List.of("RND_DIRECTOR", "RND_ENGINEER", "TESTER")) {
+            legacyJdbcTemplate.update(
+                    """
+                            insert into role_permission (
+                                id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at
+                            ) values (?, ?, ?, ?, ?, ?, ?, current_timestamp)
+                            """,
+                    "PERM-LEGACY-" + role,
+                    role,
+                    "GET",
+                    "/api/v1/experiment-forms/*/process-plan",
+                    true,
+                    "旧版分层工艺读取权限",
+                    10
+            );
+        }
+
+        Flyway.configure()
+                .dataSource(databaseUrl, "sa", "")
+                .locations("classpath:db/migration")
+                .target("23")
+                .load()
+                .migrate();
+
+        for (var role : java.util.List.of("RND_DIRECTOR", "RND_ENGINEER", "TESTER")) {
+            assertThat(legacyJdbcTemplate.queryForObject(
+                    "select count(*) from role_permission where role_code = ? and http_method = ? and path_pattern = ?",
+                    Integer.class,
+                    role,
+                    "GET",
+                    "/api/v1/experiment-forms/*/process-plan/submission-check"
+            )).isEqualTo(1);
+        }
+        assertThat(legacyJdbcTemplate.queryForObject(
+                "select count(*) from role_permission where http_method = ? and path_pattern = ?",
+                Integer.class,
+                "PUT",
+                "/api/v1/experiment-forms/*/process-plan/submission-check"
+        )).isZero();
+        assertThat(legacyJdbcTemplate.queryForObject(
+                "select count(*) from \"flyway_schema_history\" where \"version\" is not null and \"success\" = true",
+                Integer.class
+        )).isEqualTo(23);
+    }
+
     private void insertLegacyPricingWorkflowRules(JdbcTemplate legacyJdbcTemplate) {
         legacyJdbcTemplate.update(
                 """

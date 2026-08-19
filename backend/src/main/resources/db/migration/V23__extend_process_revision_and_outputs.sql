@@ -113,3 +113,36 @@ create index idx_control_measurement_point on experiment_control_measurement(con
 create index idx_process_revision_plan on experiment_process_revision(process_plan_id);
 create index idx_process_artifact_revision on experiment_process_artifact(process_revision_id);
 create index idx_pricing_file_process_revision on pricing_file(process_revision_id);
+
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-DIR-SUBMIT-CHECK-23', 'RND_DIRECTOR', 'GET',
+       '/api/v1/experiment-forms/*/process-plan/submission-check', true, '查看工艺提交检查', 76, current_timestamp
+where not exists (
+    select 1 from role_permission
+    where role_code = 'RND_DIRECTOR'
+      and http_method = 'GET'
+      and path_pattern = '/api/v1/experiment-forms/*/process-plan/submission-check'
+)
+and exists (select 1 from role_permission where role_code = 'RND_DIRECTOR');
+
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-ENG-SUBMIT-CHECK-23', 'RND_ENGINEER', 'GET',
+       '/api/v1/experiment-forms/*/process-plan/submission-check', true, '查看工艺提交检查', 16, current_timestamp
+where not exists (
+    select 1 from role_permission
+    where role_code = 'RND_ENGINEER'
+      and http_method = 'GET'
+      and path_pattern = '/api/v1/experiment-forms/*/process-plan/submission-check'
+)
+and exists (select 1 from role_permission where role_code = 'RND_ENGINEER');
+
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-TEST-SUBMIT-CHECK-23', 'TESTER', 'GET',
+       '/api/v1/experiment-forms/*/process-plan/submission-check', true, '查看工艺提交检查', 11, current_timestamp
+where not exists (
+    select 1 from role_permission
+    where role_code = 'TESTER'
+      and http_method = 'GET'
+      and path_pattern = '/api/v1/experiment-forms/*/process-plan/submission-check'
+)
+and exists (select 1 from role_permission where role_code = 'TESTER');

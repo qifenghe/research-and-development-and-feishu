@@ -52,3 +52,26 @@
 
 - The real-session test expects the controller's existing missing-form `400` response rather than `403`, proving authentication and role authorization completed without the test bypass.
 - V24 inserts only GET submission-check capabilities, so it cannot expand process-plan PUT access.
+
+## Repair round 2 — migration ledger correction
+
+### RED
+
+- Added an isolated `SchemaMigrationTest` that migrates a V22 database with the existing director, engineer, and tester process-plan reader roles to V23. Before the seed SQL moved into V23, each role had zero submission-check GET permissions; the test failed as expected.
+
+### GREEN
+
+- Removed `V24__grant_process_submission_check_permissions.sql` so this feature remains within the planned V23 migration boundary.
+- Moved the three idempotent GET permission seeds into V23. Each seed inserts only when that role has no matching submission-check capability and the role already has at least one permission; no PUT capability is seeded.
+- Added the migration-history assertion that the V22-to-V23 upgrade has exactly 23 successful versioned migrations.
+- Kept the Java default permission directory unchanged; it remains the runtime fallback while V23 supplies deployed-database data.
+
+### Verification
+
+- `mvn -q clean -Dtest=SchemaMigrationTest test` — PASS (Flyway validates and applies exactly 23 migrations).
+- `mvn -q -Dtest=ProcessPlanServiceTest,ProcessPlanControllerTest,ProcessSubmissionValidatorTest,SessionAuthenticationInterceptorTest,RolePermissionServiceTest,SchemaMigrationTest test` — PASS.
+- `node frontend/scripts/check-api-contracts.mjs` — PASS.
+- `frontend/packages/shared/node_modules/.bin/tsc -p frontend/packages/shared/tsconfig.json --noEmit` — PASS.
+- `frontend/apps/pc/node_modules/.bin/vue-tsc -p frontend/apps/pc/tsconfig.json --noEmit` — PASS.
+- `frontend/apps/mobile/node_modules/.bin/vue-tsc -p frontend/apps/mobile/tsconfig.json --noEmit` — PASS.
+- `git diff --check` — PASS.
