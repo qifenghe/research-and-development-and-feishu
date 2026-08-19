@@ -75,6 +75,24 @@ class ProcessSubmissionValidatorTest {
     }
 
     @Test
+    void permitsConfirmedCriticalControlWhenAllMeasurementsPassWithoutDeviationResolution() {
+        var passing = control("CRITICAL", false, "研发", List.of(new ProcessPlan.ControlMeasurement("PASS", 1,
+                new BigDecimal("76"), "2026-08-19T20:00:00", "PASS", null, null, null)));
+
+        assertThat(validator.validate(validPlan(validSteps(), passing)).errors())
+                .extracting(ProcessSubmissionCheck.Issue::code).doesNotContain("CRITICAL_CONTROL_UNRESOLVED");
+    }
+
+    @Test
+    void blocksOutOfRangeMeasurementWhenTheControlPointIsNotResolved() {
+        var unresolvedDeviation = control("CRITICAL", false, "研发", List.of(new ProcessPlan.ControlMeasurement("FAIL", 1,
+                new BigDecimal("72"), "2026-08-19T20:00:00", "FAIL", "继续加热", "PASS", null)));
+
+        assertThat(validator.validate(validPlan(validSteps(), unresolvedDeviation)).errors())
+                .extracting(ProcessSubmissionCheck.Issue::code).contains("CRITICAL_CONTROL_UNRESOLVED");
+    }
+
+    @Test
     void permitsAnExplainedMaterialBalanceWarning() {
         var plan = validPlan(List.of(step(1,
                 material("PRIMARY", "EXTERNAL", null, "牛肉", "10"), output("OUT-1", "8", true, false))), null);

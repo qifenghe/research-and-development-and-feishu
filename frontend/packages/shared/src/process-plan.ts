@@ -485,7 +485,7 @@ function previewControls(major: MajorProcessDraft, errors: ProcessSubmissionIssu
       const outOfLimit = measurements.some((measurement) => measurement.result === "FAIL" || measurementOutside(point, measurement));
       const unhandledDeviation = measurements.some((measurement) => (measurement.result === "FAIL" || measurementOutside(point, measurement))
         && (!measurement.deviationAction?.trim() || !measurement.retestResult || measurement.retestResult === "PENDING" || measurement.retestResult === "FAIL"));
-      if (!hasMeasurement || !point.resolved || !point.confirmedBy?.trim() || (outOfLimit && unhandledDeviation)) {
+      if (!hasMeasurement || !point.confirmedBy?.trim() || (outOfLimit && (!point.resolved || unhandledDeviation))) {
         errors.push(issue("CRITICAL_CONTROL_UNRESOLVED", "极重要关键控制点未完成", major.sequence, step.sequence));
       }
     }

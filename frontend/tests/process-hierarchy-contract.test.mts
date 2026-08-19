@@ -120,6 +120,28 @@ test("rejects a primary output before input and unresolved individual critical m
   assert.ok(preview.errors.some((issue) => issue.code === "CRITICAL_CONTROL_UNRESOLVED"));
 });
 
+test("allows confirmed passing critical controls but blocks unresolved deviations in previews", () => {
+  const plan = createEmptyProcessPlan();
+  plan.majorProcesses.push(majorWithFlow("10", "8"));
+  const firstStep = plan.majorProcesses[0]!.steps[0]!;
+  firstStep.controlPoints = [{
+    key: "passing-critical", sequence: 1, controlType: "FOOD_SAFETY", importance: "CRITICAL", itemName: "中心温度",
+    lowerLimit: 75, resolved: false, confirmedBy: "研发", measurements: [
+      { key: "passing-measurement", sequence: 1, measuredValue: 76, result: "PASS" },
+    ],
+  }];
+
+  assert.ok(!previewProcessSubmission(plan).errors.some((issue) => issue.code === "CRITICAL_CONTROL_UNRESOLVED"));
+
+  firstStep.controlPoints = [{
+    key: "unresolved-critical", sequence: 1, controlType: "FOOD_SAFETY", importance: "CRITICAL", itemName: "中心温度",
+    lowerLimit: 75, resolved: false, confirmedBy: "研发", measurements: [
+      { key: "failed-measurement", sequence: 1, measuredValue: 72, result: "FAIL", deviationAction: "继续加热", retestResult: "PASS" },
+    ],
+  }];
+  assert.ok(previewProcessSubmission(plan).errors.some((issue) => issue.code === "CRITICAL_CONTROL_UNRESOLVED"));
+});
+
 function majorWithFlow(inputWeight: string, outputWeight: string) {
   return {
     key: `major-${inputWeight}-${outputWeight}`, sequence: 1, processCode: "HEAT", processName: "热加工", description: "",

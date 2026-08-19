@@ -140,7 +140,8 @@ public final class ProcessSubmissionValidator {
                 var hasUnresolvedDeviation = measurements.stream().anyMatch(item -> ("FAIL".equals(item.result()) || outside(point, item))
                         && (blank(item.deviationAction()) || blank(item.retestResult()) || "PENDING".equals(item.retestResult())
                         || "FAIL".equals(item.retestResult())));
-                if (!hasMeasurement || !point.resolved() || blank(point.confirmedBy()) || outOfLimit && hasUnresolvedDeviation) {
+                if (!hasMeasurement || blank(point.confirmedBy())
+                        || outOfLimit && (!point.resolved() || hasUnresolvedDeviation)) {
                     errors.add(error("CRITICAL_CONTROL_UNRESOLVED", "极重要关键控制点未完成", major.sequence(), step.sequence()));
                 }
             }
