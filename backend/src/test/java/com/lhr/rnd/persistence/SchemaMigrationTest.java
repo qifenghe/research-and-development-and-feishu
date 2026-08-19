@@ -157,6 +157,11 @@ class SchemaMigrationTest {
     void enforcesStepMaterialSourceConsistencyAndStepOutputIntegrity() {
         String prefix = "SOURCE-" + UUID.randomUUID().toString().substring(0, 8);
         var graph = insertProcessGraph(prefix);
+        String downstreamStepId = prefix + "-DOWNSTREAM-STEP";
+        jdbcTemplate.update("""
+                insert into experiment_minor_step (id, major_process_id, sequence, step_name)
+                values (?, ?, ?, ?)
+                """, downstreamStepId, graph.majorId(), 2, "Downstream minor step");
 
         insertStepOutput(graph.outputId(), graph.stepId(), 1);
         assertThatThrownBy(() -> insertStepOutput(prefix + "-OUTPUT-DUPLICATE", graph.stepId(), 1))
@@ -172,15 +177,26 @@ class SchemaMigrationTest {
                 prefix + "-EXTERNAL-WITH-OUTPUT", graph.stepId(), 3, "EXTERNAL", graph.outputId(), null, null
         )).isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> insertStepMaterial(
-                prefix + "-STEP-WITH-MASTER", graph.stepId(), 4, "STEP_OUTPUT", graph.outputId(), "RAW-001", null
+                prefix + "-STEP-WITH-MASTER", downstreamStepId, 4, "STEP_OUTPUT", graph.outputId(), "RAW-001", null
         )).isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> insertStepMaterial(
-                prefix + "-STEP-WITH-FORMULA", graph.stepId(), 5, "STEP_OUTPUT", graph.outputId(), null, "FORMULA-001"
+                prefix + "-STEP-WITH-FORMULA", downstreamStepId, 5, "STEP_OUTPUT", graph.outputId(), null, "FORMULA-001"
         )).isInstanceOf(DataIntegrityViolationException.class);
 
         insertStepMaterial(
-                prefix + "-VALID-STEP", graph.stepId(), 6, "STEP_OUTPUT", graph.outputId(), null, null
+                prefix + "-VALID-STEP", downstreamStepId, 6, "STEP_OUTPUT", graph.outputId(), null, null
         );
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "delete from experiment_step_output where id = ?", graph.outputId()
+        )).isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from experiment_step_material where id = ?", Integer.class, prefix + "-VALID-STEP"
+        )).isEqualTo(1);
+
+        jdbcTemplate.update("delete from experiment_minor_step where id = ?", downstreamStepId);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from experiment_step_material where id = ?", Integer.class, prefix + "-VALID-STEP"
+        )).isZero();
         jdbcTemplate.update("delete from experiment_minor_step where id = ?", graph.stepId());
         assertThat(jdbcTemplate.queryForObject(
                 "select count(*) from experiment_step_output where id = ?", Integer.class, graph.outputId()
@@ -560,7 +576,7 @@ class SchemaMigrationTest {
                 insert into experiment_minor_step (id, major_process_id, sequence, step_name)
                 values (?, ?, ?, ?)
                 """, stepId, majorId, 1, "Test minor step");
-        return new ProcessGraph(stepId, outputId);
+        return new ProcessGraph(majorId, stepId, outputId);
     }
 
     private TestForm insertExperimentForm(String prefix) {
@@ -623,7 +639,7 @@ class SchemaMigrationTest {
     private record TestForm(String formId, String versionId) {
     }
 
-    private record ProcessGraph(String stepId, String outputId) {
+    private record ProcessGraph(String majorId, String stepId, String outputId) {
     }
 
     private void insertLegacyExperimentMaterials(JdbcTemplate template) {
