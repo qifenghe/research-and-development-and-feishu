@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import { calculateBatchYield, calculateMajorProcessYield, calculateMinorStepYield, createEmptyProcessPlan, processPlanToLegacySteps } from "../packages/shared/src/process-plan.ts";
+import { calculateBatchYield, calculateMajorProcessYield, calculateMinorStepYield, createEmptyProcessPlan, normalizeProcessPlan, processPlanToLegacySteps } from "../packages/shared/src/process-plan.ts";
 
 test("calculates major process yield and legacy summary", () => {
   const plan = createEmptyProcessPlan();
@@ -41,6 +41,38 @@ test("skips an incomplete primary flow instead of treating it as zero yield", ()
 
   assert.equal(calculateMajorProcessYield(plan.majorProcesses[0]!).mainYieldPercent, null);
   assert.equal(calculateBatchYield(plan), 80);
+});
+
+test("keeps historical major summary yields when a layered step only contains auxiliary material", () => {
+  const plan = createEmptyProcessPlan();
+  plan.majorProcesses.push({
+    key: "major-historical", sequence: 1, processName: "煮制", yieldBasis: "PRIMARY_INPUT",
+    inputs: [{ key: "historical-in", sequence: 1, inputRole: "PRIMARY", materialName: "牛肉", weightKg: 10 }],
+    outputs: [{ key: "historical-out", sequence: 1, outputType: "QUALIFIED", weightKg: 8 }],
+    steps: [{ key: "historical-step", sequence: 1, stepName: "加盐", stepType: "NORMAL", materials: [{
+      key: "historical-salt", sequence: 1, materialRole: "AUXILIARY", materialName: "盐", materialState: "SOLID", weightKg: 0.2,
+    }] }],
+  });
+
+  assert.equal(calculateMajorProcessYield(plan.majorProcesses[0]!).mainYieldPercent, 80);
+});
+
+test("rejects multiple primary inputs or outputs in one step", () => {
+  const duplicateInput = majorWithFlow("10", "8").steps[0]!;
+  duplicateInput.materials.push({ ...duplicateInput.materials[0]!, key: "second-primary", materialName: "鸡肉" });
+  assert.throws(() => calculateMinorStepYield(duplicateInput), /at most one primary material/);
+
+  const duplicateOutput = majorWithFlow("10", "8").steps[0]!;
+  duplicateOutput.outputs!.push({ ...duplicateOutput.outputs![0]!, key: "second-primary-output", outputName: "另一个产出" });
+  assert.throws(() => calculateMinorStepYield(duplicateOutput), /at most one primary output/);
+});
+
+test("normalizes output IDs so STEP_OUTPUT references persist as stable IDs", () => {
+  const normalized = normalizeProcessPlan({ versionNo: 1, status: "DRAFT", majorProcesses: [majorWithFlow("10", "8")] });
+  const [first, second] = normalized.majorProcesses[0]!.steps;
+
+  assert.equal(first!.outputs![0]!.id, first!.outputs![0]!.key);
+  assert.equal(second!.materials[0]!.sourceStepOutputId, first!.outputs![0]!.id);
 });
 
 function majorWithFlow(inputWeight: string, outputWeight: string) {

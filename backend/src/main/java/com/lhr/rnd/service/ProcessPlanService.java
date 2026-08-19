@@ -68,6 +68,8 @@ public class ProcessPlanService {
             if (request.versionNo() != stored.versionNo()) throw conflict();
             planId = stored.id();
             nextVersion = stored.versionNo() + 1;
+            // Remove referencing materials before the cascaded step-output deletion so STEP_OUTPUT foreign keys stay valid.
+            jdbc.update("delete from experiment_step_material where minor_step_id in (select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id where major.process_plan_id = ?)", planId);
             jdbc.update("delete from experiment_major_process where process_plan_id = ?", planId);
             jdbc.update("update experiment_process_plan set version_no = ?, updated_at = ? where id = ?",
                     nextVersion, LocalDateTime.now(), planId);
@@ -120,6 +122,7 @@ public class ProcessPlanService {
     private void saveStep(String majorId, int sequence, ProcessPlan.MinorStep step) {
         if (step.stepName() == null || step.stepName().isBlank())
             throw new BusinessException("STEP_NAME_REQUIRED", "小步骤名称不能为空");
+        calculations.validateStep(step);
         var stepId = id("ST");
         jdbc.update("insert into experiment_minor_step(id, major_process_id, sequence, step_code, step_name, step_type, parameter_1_name, parameter_1_value, parameter_1_unit, parameter_2_name, parameter_2_value, parameter_2_unit, equipment, instruction) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 stepId, majorId, sequence, step.stepCode(), step.stepName(), valueOr(step.stepType(), "NORMAL"),

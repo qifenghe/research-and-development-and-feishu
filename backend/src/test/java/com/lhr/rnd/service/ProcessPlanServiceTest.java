@@ -54,10 +54,11 @@ class ProcessPlanServiceTest {
                 List.of(step), List.of(new ProcessPlan.ProcessInput(null, 1, "PRIMARY", "BEEF", "牛肉", new BigDecimal("10"), null)),
                 List.of(new ProcessPlan.ProcessOutput(null, 1, "QUALIFIED", new BigDecimal("8"), null)), null);
 
-        var saved = service.save("FORM-PROCESS", new ProcessPlan(null, "FORM-PROCESS", 0, "DRAFT", List.of(major), null, false));
+        var current = service.find("FORM-PROCESS");
+        var saved = service.save("FORM-PROCESS", new ProcessPlan(null, "FORM-PROCESS", current.versionNo(), "DRAFT", List.of(major), null, false));
         var loaded = service.find("FORM-PROCESS");
 
-        assertThat(saved.versionNo()).isEqualTo(1);
+        assertThat(saved.versionNo()).isPositive();
         assertThat(loaded.majorProcesses()).hasSize(1);
         assertThat(loaded.majorProcesses().get(0).steps()).hasSize(1);
         assertThat(loaded.majorProcesses().get(0).steps().get(0).materials()).hasSize(2);
@@ -70,6 +71,49 @@ class ProcessPlanServiceTest {
                     assertThat(point.measurements().get(0).measuredAt()).isEqualTo("2026-08-19T21:00");
                 });
         assertThat(loaded.majorProcesses().get(0).yield().mainYieldPercent()).isEqualByComparingTo("80.000000");
+    }
+
+    @Test
+    void savesReloadsAndReplacesAReferencedStepOutputWithoutBreakingTheFlowLink() {
+        var outputId = "FLOW-OUTPUT-1";
+        var first = new ProcessPlan.MinorStep(null, 1, "CUT", "修割", "NORMAL", null, null, null, null, null, null,
+                null, null, List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF", "鲜牛腩", "SOLID",
+                new BigDecimal("10"), null, null, "EXTERNAL", null)), List.of(new ProcessPlan.StepOutput(outputId, 1,
+                "INTERMEDIATE", "修割牛腩", "SOLID", new BigDecimal("10"), true, true, null)), List.of());
+        var second = new ProcessPlan.MinorStep(null, 2, "COOK", "熟制", "NORMAL", null, null, null, null, null, null,
+                null, null, List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", null, "修割牛腩", "SOLID",
+                new BigDecimal("10"), null, null, "STEP_OUTPUT", outputId)), List.of(new ProcessPlan.StepOutput("FLOW-OUTPUT-2", 1,
+                "FINISHED", "熟制牛腩", "SEMI_SOLID", new BigDecimal("8"), true, false, null)), List.of());
+        var major = new ProcessPlan.MajorProcess(null, 1, "HEAT", "热加工", null, "PRIMARY_INPUT", null,
+                List.of(first, second), List.of(), List.of(), null);
+
+        var current = service.find("FORM-PROCESS");
+        var saved = service.save("FORM-PROCESS", new ProcessPlan(null, "FORM-PROCESS", current.versionNo(), "DRAFT", List.of(major), null, false));
+        var reloaded = service.find("FORM-PROCESS");
+        var secondMaterial = reloaded.majorProcesses().get(0).steps().get(1).materials().get(0);
+
+        assertThat(secondMaterial.sourceType()).isEqualTo("STEP_OUTPUT");
+        assertThat(secondMaterial.sourceStepOutputId()).isEqualTo(outputId);
+        var replaced = service.save("FORM-PROCESS", new ProcessPlan(reloaded.id(), "FORM-PROCESS", saved.versionNo(), "DRAFT",
+                reloaded.majorProcesses(), null, false));
+        assertThat(replaced.majorProcesses().get(0).steps().get(1).materials().get(0).sourceStepOutputId()).isEqualTo(outputId);
+    }
+
+    @Test
+    void rejectsSavingMoreThanOnePrimaryMaterialInAStep() {
+        var invalidStep = new ProcessPlan.MinorStep(null, 1, "CUT", "修割", "NORMAL", null, null, null, null, null,
+                null, null, null, List.of(
+                new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF", "牛肉", "SOLID", new BigDecimal("10"), null, null,
+                        "EXTERNAL", null),
+                new ProcessPlan.StepMaterial(null, 2, "PRIMARY", "PORK", "猪肉", "SOLID", new BigDecimal("2"), null, null,
+                        "EXTERNAL", null)), List.of(), List.of());
+        var major = new ProcessPlan.MajorProcess(null, 1, "CUT", "修割", null, "PRIMARY_INPUT", null,
+                List.of(invalidStep), List.of(), List.of(), null);
+        var current = service.find("FORM-PROCESS");
+
+        assertThatThrownBy(() -> service.save("FORM-PROCESS", new ProcessPlan(null, "FORM-PROCESS", current.versionNo(), "DRAFT",
+                List.of(major), null, false))).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("at most one primary material");
     }
 
     @Test

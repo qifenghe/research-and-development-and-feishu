@@ -11,11 +11,13 @@ public final class ProcessPlanCalculationService {
     private static final int RATE_SCALE = 6;
 
     public ProcessPlan.ProcessYield calculate(ProcessPlan.MajorProcess process) {
+        if (process != null) values(process.steps()).forEach(this::validateStep);
         if (hasStepFlow(process)) return calculateFromStepFlow(process);
         return calculateFromLegacyProcessTotals(process);
     }
 
     public ProcessPlan.ProcessYield calculateStep(ProcessPlan.MinorStep step) {
+        validateStep(step);
         var materials = values(step == null ? null : step.materials());
         var outputs = values(step == null ? null : step.outputs());
         var primaryInput = materials.stream()
@@ -107,8 +109,19 @@ public final class ProcessPlanCalculationService {
 
     private boolean hasStepFlow(ProcessPlan.MajorProcess process) {
         return process != null && process.steps() != null && process.steps().stream()
-                .anyMatch(step -> (step.materials() != null && !step.materials().isEmpty())
-                        || (step.outputs() != null && !step.outputs().isEmpty()));
+                .flatMap(step -> values(step.materials()).stream())
+                .anyMatch(material -> "PRIMARY".equals(material.materialRole()) && material.weightKg() != null)
+                && process.steps().stream().flatMap(step -> values(step.outputs()).stream())
+                .anyMatch(output -> output.primaryOutput() && output.weightKg() != null);
+    }
+
+    public void validateStep(ProcessPlan.MinorStep step) {
+        if (step == null) return;
+        var primaryMaterials = values(step.materials()).stream()
+                .filter(material -> "PRIMARY".equals(material.materialRole())).count();
+        if (primaryMaterials > 1) throw new IllegalArgumentException("a step may have at most one primary material input");
+        var primaryOutputs = values(step.outputs()).stream().filter(ProcessPlan.StepOutput::primaryOutput).count();
+        if (primaryOutputs > 1) throw new IllegalArgumentException("a step may have at most one primary output");
     }
 
     private <T> List<T> values(List<T> values) {

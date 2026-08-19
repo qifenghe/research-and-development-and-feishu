@@ -148,7 +148,8 @@ export function createEmptyProcessPlan(): ProcessPlanDraft {
 }
 
 export function calculateMajorProcessYield(process: MajorProcessDraft): ProcessYieldResult {
-  if (process.steps.some((step) => step.materials.length > 0 || (step.outputs?.length || 0) > 0)) {
+  (process.steps || []).forEach(validateMinorStep);
+  if (hasCompleteStepFlow(process)) {
     return calculateProcessYieldFromStepFlow(process);
   }
   const sum = (items: Array<{ weightKg?: number }>) => items.reduce((total, item) => total + Number(item.weightKg || 0), 0);
@@ -162,6 +163,7 @@ export function calculateMajorProcessYield(process: MajorProcessDraft): ProcessY
 }
 
 export function calculateMinorStepYield(step: MinorProcessStepDraft): ProcessYieldResult {
+  validateMinorStep(step);
   const materials = step.materials || [];
   const outputs = step.outputs || [];
   const primaryInput = materials.find((item) => item.materialRole === "PRIMARY" && item.weightKg != null)?.weightKg || 0;
@@ -202,6 +204,19 @@ function calculateProcessYieldFromStepFlow(process: MajorProcessDraft): ProcessY
   );
 }
 
+function hasCompleteStepFlow(process: MajorProcessDraft) {
+  const steps = process.steps || [];
+  return steps.some((step) => step.materials.some((item) => item.materialRole === "PRIMARY" && item.weightKg != null))
+    && steps.some((step) => (step.outputs || []).some((item) => item.primaryOutput && item.weightKg != null));
+}
+
+function validateMinorStep(step: MinorProcessStepDraft) {
+  const primaryMaterials = (step.materials || []).filter((item) => item.materialRole === "PRIMARY");
+  if (primaryMaterials.length > 1) throw new Error("a step may have at most one primary material input");
+  const primaryOutputs = (step.outputs || []).filter((item) => item.primaryOutput);
+  if (primaryOutputs.length > 1) throw new Error("a step may have at most one primary output");
+}
+
 function processYield(primaryInputWeightKg: number, totalInputWeightKg: number, qualifiedOutputWeightKg: number,
                       reusableOutputWeightKg: number, totalOutputWeightKg: number, hasPrimaryOutput = true): ProcessYieldResult {
   return {
@@ -239,7 +254,7 @@ export function processPlanToLegacySteps(plan: ProcessPlanDraft): ExperimentProc
 }
 
 export function normalizeProcessPlan(plan: ProcessPlanDraft): ProcessPlanDraft {
-  return {
+  const normalized = {
     ...plan,
     majorProcesses: (plan.majorProcesses || []).map((major, majorIndex) => ({
       ...major,
@@ -253,9 +268,10 @@ export function normalizeProcessPlan(plan: ProcessPlanDraft): ProcessPlanDraft {
           ...material, key: material.key || material.id || nextProcessKey("material"), sequence: materialIndex + 1,
           sourceType: material.sourceType || "EXTERNAL",
         })),
-        outputs: (step.outputs || []).map((output, outputIndex) => ({
-          ...output, key: output.key || output.id || nextProcessKey("output"), sequence: outputIndex + 1,
-        })),
+        outputs: (step.outputs || []).map((output, outputIndex) => {
+          const key = output.key || output.id || nextProcessKey("output");
+          return { ...output, key, id: output.id || key, sequence: outputIndex + 1 };
+        }),
         controlPoints: (step.controlPoints || []).map((point, pointIndex) => ({
           ...point, key: point.key || point.id || nextProcessKey("control"), sequence: pointIndex + 1,
           measurements: (point.measurements || []).map((measurement, measurementIndex) => ({
@@ -271,4 +287,23 @@ export function normalizeProcessPlan(plan: ProcessPlanDraft): ProcessPlanDraft {
       })),
     })),
   };
+  validateFlowReferences(normalized);
+  return normalized;
+}
+
+function validateFlowReferences(plan: ProcessPlanDraft) {
+  const outputIds = new Set(plan.majorProcesses.flatMap((major) => major.steps)
+    .flatMap((step) => step.outputs || []).map((output) => output.id));
+  for (const step of plan.majorProcesses.flatMap((major) => major.steps)) {
+    validateMinorStep(step);
+    for (const material of step.materials || []) {
+      if (material.sourceType === "STEP_OUTPUT"
+        && (!material.sourceStepOutputId || !outputIds.has(material.sourceStepOutputId))) {
+        throw new Error("STEP_OUTPUT material must reference a normalized step output ID");
+      }
+      if (material.sourceType === "EXTERNAL" && material.sourceStepOutputId) {
+        throw new Error("EXTERNAL material must not reference a step output");
+      }
+    }
+  }
 }

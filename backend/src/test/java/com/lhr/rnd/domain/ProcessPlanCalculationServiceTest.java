@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ProcessPlanCalculationServiceTest {
     private final ProcessPlanCalculationService service = new ProcessPlanCalculationService();
@@ -78,6 +79,37 @@ class ProcessPlanCalculationServiceTest {
 
         assertThat(service.calculate(incomplete).mainYieldPercent()).isNull();
         assertThat(service.calculateBatch(plan)).isEqualByComparingTo("80.000000");
+    }
+
+    @Test
+    void fallsBackToLegacyMajorTotalsWhenAHistoricalStepOnlyContainsAuxiliaryMaterial() {
+        var historicalStep = new ProcessPlan.MinorStep(null, 1, "BOIL", "煮制", "NORMAL", null, null, null,
+                null, null, null, null, null, List.of(material("AUXILIARY", "EXTERNAL", null, "盐", "0.2")), List.of(), List.of());
+        var historicalMajor = new ProcessPlan.MajorProcess(null, 1, "HEAT", "热加工", null, "PRIMARY_INPUT", null,
+                List.of(historicalStep), List.of(new ProcessPlan.ProcessInput(null, 1, "PRIMARY", "BEEF", "牛肉",
+                new BigDecimal("10"), null)), List.of(new ProcessPlan.ProcessOutput(null, 1, "QUALIFIED", new BigDecimal("8"), null)), null);
+
+        assertThat(service.calculate(historicalMajor).mainYieldPercent()).isEqualByComparingTo("80.000000");
+    }
+
+    @Test
+    void rejectsMoreThanOnePrimaryMaterialInAResultBearingStep() {
+        var invalid = new ProcessPlan.MinorStep(null, 1, "CUT", "切分", "NORMAL", null, null, null, null, null,
+                null, null, null, List.of(material("PRIMARY", "EXTERNAL", null, "牛肉", "10"),
+                material("PRIMARY", "EXTERNAL", null, "鸡肉", "2")), List.of(primaryOutput("切分肉", "8")), List.of());
+
+        assertThatThrownBy(() -> service.calculateStep(invalid)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("at most one primary material");
+    }
+
+    @Test
+    void rejectsMoreThanOnePrimaryOutputInAResultBearingStep() {
+        var invalid = new ProcessPlan.MinorStep(null, 1, "CUT", "切分", "NORMAL", null, null, null, null, null,
+                null, null, null, List.of(material("PRIMARY", "EXTERNAL", null, "牛肉", "10")),
+                List.of(primaryOutput("切分肉", "8"), primaryOutput("另一个主料产出", "1")), List.of());
+
+        assertThatThrownBy(() -> service.calculateStep(invalid)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("at most one primary output");
     }
 
     private ProcessPlan.MajorProcess majorWithFlow(String inputWeight, String outputWeight) {
