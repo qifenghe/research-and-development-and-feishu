@@ -37,7 +37,10 @@ class ProcessPlanControllerTest {
         jdbc.update("delete from experiment_step_material where minor_step_id in (select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id join experiment_process_plan plan on major.process_plan_id = plan.id where plan.experiment_form_id = ?)", FORM_ID);
         jdbc.update("delete from experiment_major_process where process_plan_id in (select id from experiment_process_plan where experiment_form_id = ?)", FORM_ID);
         jdbc.update("delete from experiment_process_plan where experiment_form_id = ?", FORM_ID);
-        if (jdbc.queryForObject("select count(*) from experiment_form where id = ?", Integer.class, FORM_ID) > 0) return;
+        if (jdbc.queryForObject("select count(*) from experiment_form where id = ?", Integer.class, FORM_ID) > 0) {
+            jdbc.update("update rnd_task set assignee_name = ? where id = ?", "会话研发", "TASK-PROCESS-CONTROLLER");
+            return;
+        }
         var now = LocalDateTime.now();
         jdbc.update("insert into sample_request(id,sample_no,product_name,product_type,customer_name,specification,creator_name,status,created_at) values (?,?,?,?,?,?,?,?,?)",
                 "REQ-PROCESS-CONTROLLER", "S-PROCESS-CONTROLLER", "牛腩", "预制菜", "客户", "1kg", "研发", "APPROVED", now);
@@ -47,6 +50,7 @@ class ProcessPlanControllerTest {
                 "VER-PROCESS-CONTROLLER", "PRJ-PROCESS-CONTROLLER", "S-PROCESS-CONTROLLER", "牛腩", "预制菜", "1kg", "1", 1, "V1", now);
         jdbc.update("insert into rnd_task(id,project_id,version_id,sample_no,product_name,version_code,status,created_at) values (?,?,?,?,?,?,?,?)",
                 "TASK-PROCESS-CONTROLLER", "PRJ-PROCESS-CONTROLLER", "VER-PROCESS-CONTROLLER", "S-PROCESS-CONTROLLER", "牛腩", "V1", "IN_PROGRESS", now);
+        jdbc.update("update rnd_task set assignee_name = ? where id = ?", "会话研发", "TASK-PROCESS-CONTROLLER");
         jdbc.update("insert into experiment_form(id,task_id,project_id,version_id,sample_no,product_name,version_code,status,operator_name,saved_at) values (?,?,?,?,?,?,?,?,?,?)",
                 FORM_ID, "TASK-PROCESS-CONTROLLER", "PRJ-PROCESS-CONTROLLER", "VER-PROCESS-CONTROLLER", "S-PROCESS-CONTROLLER", "牛腩", "V1", "DRAFT", "研发", now);
     }
@@ -131,6 +135,7 @@ class ProcessPlanControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.snapshot.balanceToleranceKg").value(0.01));
         mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/new-draft", FORM_ID, revisionId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, principal)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"changeReason\":\"调整熟制时间\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))

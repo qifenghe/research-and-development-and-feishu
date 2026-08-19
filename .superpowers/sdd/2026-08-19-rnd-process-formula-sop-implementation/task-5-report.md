@@ -31,3 +31,29 @@
 ## Follow-up concern
 
 - The V23 migration is still unshipped in this task branch, so the new draft provenance columns and permission seeds are intentionally appended there. Once V23 has been released, any subsequent alteration must use a new migration rather than edit V23.
+
+## Review remediation — round 1
+
+### RED
+
+- Added regression tests for historical revision reopening, tampered `snapshot_json`, persisted-draft change-reason override, audit rows, same-version concurrent saves, save-vs-submit, cross-assignee authenticated POSTs, and TESTER reads after a reopen.
+- The initial targeted RED run failed in the expected places: historical reopening returned `PROCESS_PLAN_VERSION_CONFLICT`; a submit-time reason override was accepted; tampered JSON was returned; audit rows were absent; an out-of-assignment engineer received HTTP 200; and TESTER received the live `DRAFT`.
+
+### GREEN
+
+- `ProcessPlanService.save` now first CAS-updates `id + version_no + DRAFT` before deleting any child graph. Failed ownership acquisition returns `PROCESS_PLAN_VERSION_CONFLICT`, and the transaction rolls back before destructive child work.
+- Formal write routes pass the server-derived `SessionPrincipal` to the revision service. `RND_ENGINEER` must match `experiment_form.task_id -> rnd_task.assignee_name`; `RND_DIRECTOR` is explicitly permitted. The stable denial code is `PROCESS_PLAN_FORM_FORBIDDEN`.
+- Reopening uses the selected form-scoped revision as the content/provenance source, but CASes the current live `SUBMITTED` header and increments its version. A historical revision can therefore be reopened after later revisions exist.
+- TESTER base-plan reads resolve the latest formal snapshot and reject forms without a formal version using `PROCESS_FORMAL_REVISION_REQUIRED`; editor reads remain live-plan reads.
+- Every revision row now recomputes SHA-256 over raw UTF-8 `snapshot_json` and compares with `MessageDigest.isEqual`; mismatch returns `PROCESS_REVISION_SNAPSHOT_INTEGRITY_ERROR` before detail return or draft restore.
+- Submit resolves one canonical change reason: a persisted draft reason cannot be overridden (`PROCESS_CHANGE_REASON_CONFLICT`), and the resolved provenance is written consistently to the live plan, revision metadata, and hashed snapshot.
+- Submit and new-draft write `PROCESS_PLAN_SUBMITTED` / `PROCESS_PLAN_DRAFT_CREATED` audit records in their enclosing transactions, with form, revision/source revision, trusted operator, and reason. Rejected/tampered restore paths leave no audit row.
+
+### Fresh verification
+
+- `mvn -q -Dtest=ProcessRevisionServiceTest,ProcessPlanServiceTest,ProcessPlanControllerTest,ProcessSubmissionValidatorTest,SessionAuthenticationInterceptorTest,RolePermissionServiceTest,SchemaMigrationTest test` — PASS (includes concurrency, real-token ownership, tester-state, audit, and V22→V23 schema coverage).
+- `node scripts/check-api-contracts.mjs` — PASS.
+- `packages/shared/node_modules/.bin/tsc -p packages/shared/tsconfig.json --noEmit` — PASS.
+- `apps/pc/node_modules/.bin/vue-tsc -p apps/pc/tsconfig.json --noEmit` — PASS.
+- `apps/mobile/node_modules/.bin/vue-tsc -p apps/mobile/tsconfig.json --noEmit` — PASS.
+- `git diff --check` — PASS.

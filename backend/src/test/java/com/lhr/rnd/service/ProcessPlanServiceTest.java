@@ -12,6 +12,8 @@ import org.springframework.test.context.ActiveProfiles;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -20,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ActiveProfiles("test")
 class ProcessPlanServiceTest {
     @Autowired ProcessPlanService service;
+    @Autowired ProcessRevisionService revisionService;
     @Autowired JdbcTemplate jdbc;
 
     @BeforeEach
@@ -177,5 +180,35 @@ class ProcessPlanServiceTest {
                 new ProcessPlan(null, "FORM-PROCESS", current.versionNo() + 5, "DRAFT", List.of(), null, false)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("刷新");
+    }
+
+    @Test
+    void concurrentSavesOfTheSameDraftVersionHaveExactlyOneWinner() throws Exception {
+        var current = service.find("FORM-PROCESS");
+        var request = new ProcessPlan(null, "FORM-PROCESS", current.versionNo(), "DRAFT", List.of(), null, false);
+        var ready = new CountDownLatch(2);
+        var go = new CountDownLatch(1);
+        var first = CompletableFuture.supplyAsync(() -> saveTogether(request, ready, go));
+        var second = CompletableFuture.supplyAsync(() -> saveTogether(request, ready, go));
+
+        ready.await();
+        go.countDown();
+
+        assertThat(List.of(first.join(), second.join())).filteredOn(Boolean::booleanValue).hasSize(1);
+        assertThat(service.find("FORM-PROCESS").versionNo()).isEqualTo(current.versionNo() + 1);
+    }
+
+    private boolean saveTogether(ProcessPlan request, CountDownLatch ready, CountDownLatch go) {
+        ready.countDown();
+        try {
+            go.await();
+            service.save("FORM-PROCESS", request);
+            return true;
+        } catch (BusinessException exception) {
+            assertThat(exception.code()).isEqualTo("PROCESS_PLAN_VERSION_CONFLICT");
+            return false;
+        } catch (Exception exception) {
+            throw new RuntimeException(exception);
+        }
     }
 }

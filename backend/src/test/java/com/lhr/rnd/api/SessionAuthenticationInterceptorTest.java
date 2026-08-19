@@ -1,7 +1,10 @@
 package com.lhr.rnd.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lhr.rnd.model.ProcessPlan;
 import com.lhr.rnd.model.UserAccount;
+import com.lhr.rnd.service.ProcessPlanService;
+import com.lhr.rnd.service.ProcessRevisionService;
 import com.lhr.rnd.service.SessionProperties;
 import com.lhr.rnd.service.SessionTokenService;
 import org.junit.jupiter.api.Test;
@@ -10,11 +13,14 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -42,6 +48,15 @@ class SessionAuthenticationInterceptorTest {
 
     @Autowired
     private SessionTokenService sessionTokenService;
+
+    @Autowired
+    private JdbcTemplate jdbc;
+
+    @Autowired
+    private ProcessPlanService processPlanService;
+
+    @Autowired
+    private ProcessRevisionService processRevisionService;
 
     @Test
     void protectsBusinessApisAndAllowsAccessWithSessionToken() throws Exception {
@@ -99,6 +114,78 @@ class SessionAuthenticationInterceptorTest {
                             .contentType(MediaType.APPLICATION_JSON).content("{\"versionNo\":0,\"confirmed\":true}"))
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.code").value("SESSION_ROLE_FORBIDDEN"));
+        } finally {
+            sessionProperties.setAuthRequired(authRequired);
+            sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);
+        }
+    }
+
+    @Test
+    void deniesAnEngineerFormalWritesForAFormAssignedToAnotherEngineerButAllowsDirectorPolicyOverride() throws Exception {
+        var authRequired = sessionProperties.isAuthRequired();
+        var testBypass = sessionProperties.isTestBusinessApiAuthenticationBypass();
+        sessionProperties.setAuthRequired(true);
+        sessionProperties.setTestBusinessApiAuthenticationBypass(false);
+        try {
+            var formId = "FORM-AUTH-OWNERSHIP";
+            seedProcessForm(formId, "归属研发A");
+            var draft = processPlanService.save(formId, readyPlan(formId, processPlanService.find(formId).versionNo()));
+            var otherEngineer = tokenFor("越权研发B", "ou_process_owner_b", "RND_ENGINEER");
+
+            mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/submit", formId)
+                            .header("Authorization", "Bearer " + otherEngineer)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"versionNo\":%d,\"confirmed\":true}".formatted(draft.versionNo())))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("PROCESS_PLAN_FORM_FORBIDDEN"));
+
+            var revision = processRevisionService.submit(formId, new ProcessRevisionService.SubmitCommand(
+                    draft.versionNo(), true, "首次正式提交", "归属研发A"));
+            mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/new-draft", formId, revision.id())
+                            .header("Authorization", "Bearer " + otherEngineer)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"changeReason\":\"越权恢复\"}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("PROCESS_PLAN_FORM_FORBIDDEN"));
+
+            var director = tokenFor("工艺总监", "ou_process_director", "RND_DIRECTOR");
+            mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/new-draft", formId, revision.id())
+                            .header("Authorization", "Bearer " + director)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"changeReason\":\"总监复核\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.status").value("DRAFT"));
+        } finally {
+            sessionProperties.setAuthRequired(authRequired);
+            sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);
+        }
+    }
+
+    @Test
+    void servesLatestFormalSnapshotToTesterInsteadOfReopenedMutableDraft() throws Exception {
+        var authRequired = sessionProperties.isAuthRequired();
+        var testBypass = sessionProperties.isTestBusinessApiAuthenticationBypass();
+        sessionProperties.setAuthRequired(true);
+        sessionProperties.setTestBusinessApiAuthenticationBypass(false);
+        try {
+            var formId = "FORM-AUTH-TESTER-REVISION";
+            seedProcessForm(formId, "归属研发测试");
+            var draft = processPlanService.save(formId, readyPlan(formId, processPlanService.find(formId).versionNo()));
+            var tester = tokenFor("工艺测试员", "ou_process_tester", "TESTER");
+            mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan", formId)
+                            .header("Authorization", "Bearer " + tester))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("PROCESS_FORMAL_REVISION_REQUIRED"));
+
+            var revision = processRevisionService.submit(formId, new ProcessRevisionService.SubmitCommand(
+                    draft.versionNo(), true, "首次正式提交", "归属研发测试"));
+            processRevisionService.createDraftFromRevision(formId, revision.id(), "研发修改中");
+
+            mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan", formId)
+                            .header("Authorization", "Bearer " + tester))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.status").value("SUBMITTED"))
+                    .andExpect(jsonPath("$.data.versionNo").value(revision.snapshot().versionNo()));
         } finally {
             sessionProperties.setAuthRequired(authRequired);
             sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);
@@ -307,6 +394,36 @@ class SessionAuthenticationInterceptorTest {
     private String tokenFor(String name, String feishuUserId, String role) throws Exception {
         bindUser(name, feishuUserId, role);
         return oauthToken(feishuUserId);
+    }
+
+    private void seedProcessForm(String formId, String assigneeName) {
+        jdbc.update("delete from experiment_process_revision where experiment_form_id = ?", formId);
+        jdbc.update("delete from experiment_step_material where minor_step_id in (select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id join experiment_process_plan plan on major.process_plan_id = plan.id where plan.experiment_form_id = ?)", formId);
+        jdbc.update("delete from experiment_major_process where process_plan_id in (select id from experiment_process_plan where experiment_form_id = ?)", formId);
+        jdbc.update("delete from experiment_process_plan where experiment_form_id = ?", formId);
+        jdbc.update("delete from experiment_form where id = ?", formId);
+        var suffix = formId.substring("FORM-AUTH-".length());
+        var now = LocalDateTime.now();
+        jdbc.update("insert into sample_request(id,sample_no,product_name,product_type,customer_name,specification,creator_name,status,created_at) values (?,?,?,?,?,?,?,?,?)",
+                "REQ-" + suffix, "S-" + suffix, "牛腩", "预制菜", "客户", "1kg", "研发", "APPROVED", now);
+        jdbc.update("insert into sample_project(id,request_id,sample_no,product_name,product_type,customer_name,specification,status,created_at) values (?,?,?,?,?,?,?,?,?)",
+                "PRJ-" + suffix, "REQ-" + suffix, "S-" + suffix, "牛腩", "预制菜", "客户", "1kg", "ACTIVE", now);
+        jdbc.update("insert into sample_version(id,project_id,sample_no,product_name,product_type,specification,version_no,version_number,version_code,created_at) values (?,?,?,?,?,?,?,?,?,?)",
+                "VER-" + suffix, "PRJ-" + suffix, "S-" + suffix, "牛腩", "预制菜", "1kg", "1", 1, "V1", now);
+        jdbc.update("insert into rnd_task(id,project_id,version_id,sample_no,product_name,version_code,status,assignee_name,created_at) values (?,?,?,?,?,?,?,?,?)",
+                "TASK-" + suffix, "PRJ-" + suffix, "VER-" + suffix, "S-" + suffix, "牛腩", "V1", "IN_PROGRESS", assigneeName, now);
+        jdbc.update("insert into experiment_form(id,task_id,project_id,version_id,sample_no,product_name,version_code,status,operator_name,saved_at) values (?,?,?,?,?,?,?,?,?,?)",
+                formId, "TASK-" + suffix, "PRJ-" + suffix, "VER-" + suffix, "S-" + suffix, "牛腩", "V1", "DRAFT", assigneeName, now);
+    }
+
+    private ProcessPlan readyPlan(String formId, int versionNo) {
+        var step = new ProcessPlan.MinorStep(null, 1, "COOK", "熟制", "NORMAL", null, null, null, null, null, null,
+                null, null, List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF", "鲜牛腩", "SOLID",
+                new BigDecimal("10"), "MAT-BEEF", null, "EXTERNAL", null)), List.of(
+                new ProcessPlan.StepOutput(null, 1, "FINISHED", "熟制牛腩", "SEMI_SOLID", new BigDecimal("10"), true, false, null)), List.of());
+        var major = new ProcessPlan.MajorProcess(null, 1, "COOK", "熟制", null, "PRIMARY_INPUT", null,
+                List.of(step), List.of(), List.of(), null);
+        return new ProcessPlan(null, formId, versionNo, "DRAFT", List.of(major), null, new BigDecimal("0.01"), false);
     }
 
     private void bindUser() throws Exception {

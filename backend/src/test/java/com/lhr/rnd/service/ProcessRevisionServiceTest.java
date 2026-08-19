@@ -60,6 +60,26 @@ class ProcessRevisionServiceTest {
     }
 
     @Test
+    void keepsRevisionMetadataAndSnapshotProvenanceInSyncAndRejectsOverrideOfPersistedDraftReason() {
+        var firstDraft = saveReadyDraft();
+        var first = service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(
+                firstDraft.versionNo(), true, "首次正式提交", "可信研发"));
+        var restored = service.createDraftFromRevision(FORM_ID, first.id(), "已验证的变更原因");
+
+        assertThatThrownBy(() -> service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(
+                restored.versionNo(), true, "客户端覆盖原因", "可信研发")))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).code())
+                .isEqualTo("PROCESS_CHANGE_REASON_CONFLICT");
+
+        var second = service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(
+                restored.versionNo(), true, null, "可信研发"));
+        assertThat(second.changeReason()).isEqualTo("已验证的变更原因");
+        assertThat(second.snapshot().sourceRevisionId()).isEqualTo(second.sourceRevisionId());
+        assertThat(second.snapshot().changeReason()).isEqualTo(second.changeReason());
+    }
+
+    @Test
     void restoresOnlyItsOwnRevisionAsADraftAndCarriesPersistedChangeReasonIntoTheNextRevision() {
         var firstDraft = saveReadyDraft();
         var first = service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(
@@ -81,6 +101,67 @@ class ProcessRevisionServiceTest {
         assertThat(second.revisionNo()).isEqualTo(2);
         assertThat(second.sourceRevisionId()).isEqualTo(first.id());
         assertThat(second.changeReason()).isEqualTo("调整熟制时间");
+    }
+
+    @Test
+    void restoresAnyHistoricalRevisionAgainstTheCurrentSubmittedLiveVersion() {
+        var firstDraft = saveReadyDraft();
+        var first = service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(
+                firstDraft.versionNo(), true, "首次正式提交", "可信研发"));
+        var reopened = service.createDraftFromRevision(FORM_ID, first.id(), "用于第二版");
+        var second = service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(
+                reopened.versionNo(), true, null, "可信研发"));
+
+        var reopenedFromFirst = service.createDraftFromRevision(FORM_ID, first.id(), "回到第一版内容");
+
+        assertThat(second.revisionNo()).isEqualTo(2);
+        assertThat(reopenedFromFirst.status()).isEqualTo("DRAFT");
+        assertThat(reopenedFromFirst.versionNo()).isGreaterThan(second.snapshot().versionNo());
+        assertThat(reopenedFromFirst.sourceRevisionId()).isEqualTo(first.id());
+        assertThat(reopenedFromFirst.majorProcesses()).extracting(ProcessPlan.MajorProcess::processName)
+                .containsExactlyElementsOf(first.snapshot().majorProcesses().stream().map(ProcessPlan.MajorProcess::processName).toList());
+        assertThat(reopenedFromFirst.majorProcesses().get(0).steps().get(0).outputs().get(0).outputName())
+                .isEqualTo(first.snapshot().majorProcesses().get(0).steps().get(0).outputs().get(0).outputName());
+    }
+
+    @Test
+    void rejectsTamperedSnapshotBeforeReturningOrRestoringIt() {
+        var revision = service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(
+                saveReadyDraft().versionNo(), true, "首次正式提交", "可信研发"));
+        jdbc.update("update experiment_process_revision set snapshot_json = replace(snapshot_json, ?, ?) where id = ?",
+                "熟制牛腩", "篡改牛腩", revision.id());
+
+        assertThatThrownBy(() -> service.find(FORM_ID, revision.id()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).code())
+                .isEqualTo("PROCESS_REVISION_SNAPSHOT_INTEGRITY_ERROR");
+        jdbc.update("delete from audit_log where business_id = ?", FORM_ID);
+        assertThatThrownBy(() -> service.createDraftFromRevision(FORM_ID, revision.id(), "不得恢复损坏版本"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).code())
+                .isEqualTo("PROCESS_REVISION_SNAPSHOT_INTEGRITY_ERROR");
+        assertThat(jdbc.queryForObject("select count(*) from audit_log where business_id = ?", Integer.class, FORM_ID)).isZero();
+    }
+
+    @Test
+    void writesFormalSubmitAndDraftCreationAuditRowsButDoesNotAuditRejectedSubmissions() {
+        jdbc.update("delete from audit_log where business_id = ?", FORM_ID);
+        var saved = saveReadyDraft();
+        var revision = service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(
+                saved.versionNo(), true, "首次正式提交", "可信研发"));
+
+        assertThat(jdbc.queryForObject("select count(*) from audit_log where business_id = ? and action = ?", Integer.class,
+                FORM_ID, "PROCESS_PLAN_SUBMITTED")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from audit_log where business_id = ? and detail like ?", Integer.class,
+                FORM_ID, "%" + revision.id() + "%")).isEqualTo(1);
+
+        service.createDraftFromRevision(FORM_ID, revision.id(), "修改工艺");
+        assertThat(jdbc.queryForObject("select count(*) from audit_log where business_id = ? and action = ?", Integer.class,
+                FORM_ID, "PROCESS_PLAN_DRAFT_CREATED")).isEqualTo(1);
+
+        assertThatThrownBy(() -> service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(
+                saved.versionNo(), false, "拒绝提交", "可信研发"))).isInstanceOf(BusinessException.class);
+        assertThat(jdbc.queryForObject("select count(*) from audit_log where business_id = ?", Integer.class, FORM_ID)).isEqualTo(2);
     }
 
     @Test
@@ -122,11 +203,51 @@ class ProcessRevisionServiceTest {
         assertThat(jdbc.queryForObject("select count(*) from experiment_process_revision where experiment_form_id = ?", Integer.class, FORM_ID)).isEqualTo(1);
     }
 
+    @Test
+    void concurrentSaveAndSubmitNeverLeavesAChangedSubmittedLivePlan() throws Exception {
+        var saved = saveReadyDraft();
+        var request = new ProcessPlan(saved.id(), FORM_ID, saved.versionNo(), "DRAFT", saved.majorProcesses(), null,
+                saved.balanceToleranceKg(), false, saved.sourceRevisionId(), saved.changeReason());
+        var ready = new CountDownLatch(2);
+        var go = new CountDownLatch(1);
+        var save = CompletableFuture.supplyAsync(() -> saveOrConflict(request, ready, go));
+        var submit = CompletableFuture.supplyAsync(() -> submitTogether(saved.versionNo(), ready, go));
+
+        ready.await();
+        go.countDown();
+        save.join();
+        submit.join();
+
+        var revisionCount = jdbc.queryForObject("select count(*) from experiment_process_revision where experiment_form_id = ?", Integer.class, FORM_ID);
+        var live = planService.find(FORM_ID);
+        assertThat(revisionCount).isLessThanOrEqualTo(1);
+        if (revisionCount == 1) {
+            assertThat(live.status()).isEqualTo("SUBMITTED");
+            assertThat(live.versionNo()).isEqualTo(saved.versionNo());
+        } else {
+            assertThat(live.status()).isEqualTo("DRAFT");
+            assertThat(live.versionNo()).isEqualTo(saved.versionNo() + 1);
+        }
+    }
+
     private ProcessRevisionResult submitTogether(int versionNo, CountDownLatch ready, CountDownLatch go) {
         ready.countDown();
         try {
             go.await();
             service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(versionNo, true, "首次正式提交", "并发研发"));
+            return null;
+        } catch (Exception exception) {
+            if (exception instanceof BusinessException businessException
+                    && "PROCESS_PLAN_VERSION_CONFLICT".equals(businessException.code())) return new ProcessRevisionResult();
+            throw new RuntimeException(exception);
+        }
+    }
+
+    private ProcessRevisionResult saveOrConflict(ProcessPlan request, CountDownLatch ready, CountDownLatch go) {
+        ready.countDown();
+        try {
+            go.await();
+            planService.save(FORM_ID, request);
             return null;
         } catch (Exception exception) {
             if (exception instanceof BusinessException businessException

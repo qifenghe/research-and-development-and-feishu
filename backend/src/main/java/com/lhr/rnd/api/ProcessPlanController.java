@@ -32,7 +32,11 @@ public class ProcessPlanController {
     }
 
     @GetMapping
-    public ApiResponse<ProcessPlan> find(@PathVariable String formId) {
+    public ApiResponse<ProcessPlan> find(@PathVariable String formId, HttpServletRequest servletRequest) {
+        var principal = sessionPrincipal(servletRequest);
+        if (principal != null && "TESTER".equals(principal.role())) {
+            return ApiResponse.success(revisionService.latestSnapshot(formId));
+        }
         return ApiResponse.success(service.find(formId));
     }
 
@@ -59,7 +63,7 @@ public class ProcessPlanController {
     ) {
         var principal = requiredSessionPrincipal(servletRequest);
         return ApiResponse.success(revisionService.submit(formId, new ProcessRevisionService.SubmitCommand(
-                request.versionNo(), request.confirmed(), request.changeReason(), principal.name())));
+                request.versionNo(), request.confirmed(), request.changeReason(), principal.name()), principal));
     }
 
     @GetMapping("/revisions")
@@ -76,17 +80,23 @@ public class ProcessPlanController {
     public ApiResponse<ProcessPlan> newDraft(
             @PathVariable String formId,
             @PathVariable String revisionId,
-            @RequestBody CreateDraftFromRevisionRequest request
+            @RequestBody CreateDraftFromRevisionRequest request,
+            HttpServletRequest servletRequest
     ) {
-        return ApiResponse.success(revisionService.createDraftFromRevision(formId, revisionId, request.changeReason()));
+        return ApiResponse.success(revisionService.createDraftFromRevision(formId, revisionId, request.changeReason(), requiredSessionPrincipal(servletRequest)));
     }
 
     private SessionPrincipal requiredSessionPrincipal(HttpServletRequest request) {
-        var principal = request.getAttribute(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE);
-        if (!(principal instanceof SessionPrincipal sessionPrincipal) || sessionPrincipal.name() == null || sessionPrincipal.name().isBlank()) {
+        var principal = sessionPrincipal(request);
+        if (principal == null || principal.name() == null || principal.name().isBlank()) {
             throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "正式提交必须使用服务端会话身份");
         }
-        return sessionPrincipal;
+        return principal;
+    }
+
+    private SessionPrincipal sessionPrincipal(HttpServletRequest request) {
+        var principal = request.getAttribute(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE);
+        return principal instanceof SessionPrincipal sessionPrincipal ? sessionPrincipal : null;
     }
 
     public record SubmitProcessPlanRequest(int versionNo, boolean confirmed, String changeReason, String submittedBy) {

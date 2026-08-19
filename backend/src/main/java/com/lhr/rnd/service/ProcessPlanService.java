@@ -74,11 +74,14 @@ public class ProcessPlanService {
             if (!"DRAFT".equals(stored.status())) throw conflict();
             planId = stored.id();
             nextVersion = stored.versionNo() + 1;
+            // Take the draft write lock before deleting the graph. A stale save must never be able to
+            // replace children after another transaction has submitted or saved this plan.
+            var updated = jdbc.update("update experiment_process_plan set version_no = ?, balance_tolerance_kg = ?, updated_at = ? where id = ? and version_no = ? and status = ?",
+                    nextVersion, balanceTolerance, LocalDateTime.now(), planId, stored.versionNo(), "DRAFT");
+            if (updated != 1) throw conflict();
             // Remove referencing materials before the cascaded step-output deletion so STEP_OUTPUT foreign keys stay valid.
             jdbc.update("delete from experiment_step_material where minor_step_id in (select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id where major.process_plan_id = ?)", planId);
             jdbc.update("delete from experiment_major_process where process_plan_id = ?", planId);
-            jdbc.update("update experiment_process_plan set version_no = ?, balance_tolerance_kg = ?, updated_at = ? where id = ?",
-                    nextVersion, balanceTolerance, LocalDateTime.now(), planId);
         }
         var majors = request.majorProcesses() == null ? List.<ProcessPlan.MajorProcess>of() : request.majorProcesses();
         for (int index = 0; index < majors.size(); index++) saveMajor(planId, index + 1, majors.get(index));
@@ -96,7 +99,7 @@ public class ProcessPlanService {
                         rs.getBigDecimal("balance_tolerance_kg"), rs.getString("source_revision_id"), rs.getString("change_reason")), formId);
         if (current.isEmpty()) throw conflict();
         var stored = current.get(0);
-        if (!stored.id().equals(snapshot.id()) || stored.versionNo() != snapshot.versionNo() || !"SUBMITTED".equals(stored.status())) {
+        if (!"SUBMITTED".equals(stored.status())) {
             throw conflict();
         }
         var nextVersion = stored.versionNo() + 1;
@@ -112,10 +115,10 @@ public class ProcessPlanService {
     }
 
     @Transactional
-    public void markSubmitted(String formId, int versionNo) {
+    public void markSubmitted(String formId, int versionNo, String changeReason) {
         requireForm(formId);
-        var updated = jdbc.update("update experiment_process_plan set status = ?, updated_at = ? where experiment_form_id = ? and version_no = ? and status = ?",
-                "SUBMITTED", LocalDateTime.now(), formId, versionNo, "DRAFT");
+        var updated = jdbc.update("update experiment_process_plan set status = ?, change_reason = coalesce(change_reason, ?), updated_at = ? where experiment_form_id = ? and version_no = ? and status = ?",
+                "SUBMITTED", changeReason, LocalDateTime.now(), formId, versionNo, "DRAFT");
         if (updated != 1) throw conflict();
     }
 
