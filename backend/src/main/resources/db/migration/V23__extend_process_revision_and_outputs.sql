@@ -17,7 +17,19 @@ create table experiment_step_output (
 alter table experiment_step_material add column source_type varchar(30) not null default 'EXTERNAL';
 alter table experiment_step_material add column source_step_output_id varchar(64);
 alter table experiment_step_material add constraint fk_step_material_source_output
-    foreign key (source_step_output_id) references experiment_step_output(id);
+    foreign key (source_step_output_id) references experiment_step_output(id) on delete cascade;
+alter table experiment_step_material add constraint chk_step_material_source_type
+    check (source_type in ('EXTERNAL', 'STEP_OUTPUT'));
+alter table experiment_step_material add constraint chk_step_material_source_consistency
+    check (
+        (source_type = 'EXTERNAL' and source_step_output_id is null)
+        or (
+            source_type = 'STEP_OUTPUT'
+            and source_step_output_id is not null
+            and material_code is null
+            and formula_material_id is null
+        )
+    );
 
 create table experiment_control_point (
     id varchar(64) primary key,

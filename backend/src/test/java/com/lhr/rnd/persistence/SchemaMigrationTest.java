@@ -154,6 +154,60 @@ class SchemaMigrationTest {
     }
 
     @Test
+    void enforcesStepMaterialSourceConsistencyAndStepOutputIntegrity() {
+        String prefix = "SOURCE-" + UUID.randomUUID().toString().substring(0, 8);
+        var graph = insertProcessGraph(prefix);
+
+        insertStepOutput(graph.outputId(), graph.stepId(), 1);
+        assertThatThrownBy(() -> insertStepOutput(prefix + "-OUTPUT-DUPLICATE", graph.stepId(), 1))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        assertThatThrownBy(() -> insertStepMaterial(
+                prefix + "-INVALID-TYPE", graph.stepId(), 1, "UNKNOWN", null, null, null
+        )).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> insertStepMaterial(
+                prefix + "-MISSING-OUTPUT", graph.stepId(), 2, "STEP_OUTPUT", null, null, null
+        )).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> insertStepMaterial(
+                prefix + "-EXTERNAL-WITH-OUTPUT", graph.stepId(), 3, "EXTERNAL", graph.outputId(), null, null
+        )).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> insertStepMaterial(
+                prefix + "-STEP-WITH-MASTER", graph.stepId(), 4, "STEP_OUTPUT", graph.outputId(), "RAW-001", null
+        )).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> insertStepMaterial(
+                prefix + "-STEP-WITH-FORMULA", graph.stepId(), 5, "STEP_OUTPUT", graph.outputId(), null, "FORMULA-001"
+        )).isInstanceOf(DataIntegrityViolationException.class);
+
+        insertStepMaterial(
+                prefix + "-VALID-STEP", graph.stepId(), 6, "STEP_OUTPUT", graph.outputId(), null, null
+        );
+        jdbcTemplate.update("delete from experiment_minor_step where id = ?", graph.stepId());
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from experiment_step_output where id = ?", Integer.class, graph.outputId()
+        )).isZero();
+    }
+
+    @Test
+    void allowsPricingFilesWithoutProcessRevision() {
+        String prefix = "PRICING-" + UUID.randomUUID().toString().substring(0, 8);
+        var form = insertExperimentForm(prefix);
+
+        jdbcTemplate.update("""
+                insert into pricing_file (
+                    id, version_id, sample_no, product_name, version_code, pricing_version,
+                    file_name, status, content_length, generated_at
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)
+                """,
+                prefix + "-FILE", form.versionId(), prefix + "-SAMPLE", "Test product", "A0", "V1",
+                "pricing.xlsx", "DRAFT", 0
+        );
+
+        assertThat(jdbcTemplate.queryForObject(
+                "select process_revision_id from pricing_file where id = ?", String.class, prefix + "-FILE"
+        )).isNull();
+    }
+
+    @Test
     void backfillsMaterialCategoryFromLegacyStageValues() {
         String databaseUrl = "jdbc:h2:mem:material-backfill-" + UUID.randomUUID()
                 + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
@@ -486,6 +540,90 @@ class SchemaMigrationTest {
         assertThat(((Number) metadata.get("NUMERIC_SCALE")).intValue())
                 .as("column %s.%s scale", tableName, columnName)
                 .isEqualTo(scale);
+    }
+
+    private ProcessGraph insertProcessGraph(String prefix) {
+        var form = insertExperimentForm(prefix);
+        String planId = prefix + "-PLAN";
+        String majorId = prefix + "-MAJOR";
+        String stepId = prefix + "-STEP";
+        String outputId = prefix + "-OUTPUT";
+        jdbcTemplate.update("""
+                insert into experiment_process_plan (id, experiment_form_id, created_at, updated_at)
+                values (?, ?, current_timestamp, current_timestamp)
+                """, planId, form.formId());
+        jdbcTemplate.update("""
+                insert into experiment_major_process (id, process_plan_id, sequence, process_name)
+                values (?, ?, ?, ?)
+                """, majorId, planId, 1, "Test major process");
+        jdbcTemplate.update("""
+                insert into experiment_minor_step (id, major_process_id, sequence, step_name)
+                values (?, ?, ?, ?)
+                """, stepId, majorId, 1, "Test minor step");
+        return new ProcessGraph(stepId, outputId);
+    }
+
+    private TestForm insertExperimentForm(String prefix) {
+        String projectId = prefix + "-PROJECT";
+        String versionId = prefix + "-VERSION";
+        String taskId = prefix + "-TASK";
+        String formId = prefix + "-FORM";
+        String sampleNo = prefix + "-SAMPLE";
+        jdbcTemplate.update("""
+                insert into sample_project (
+                    id, sample_no, product_name, product_type, customer_name, specification, status, created_at
+                ) values (?, ?, ?, ?, ?, ?, ?, current_timestamp)
+                """, projectId, sampleNo, "Test product", "TEST", "Test customer", "Test spec", "SAMPLING");
+        jdbcTemplate.update("""
+                insert into sample_version (
+                    id, project_id, sample_no, product_name, product_type, specification, version_no,
+                    version_number, version_code, created_at
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)
+                """, versionId, projectId, sampleNo, "Test product", "TEST", "Test spec", "A0", 1, "A0");
+        jdbcTemplate.update("""
+                insert into rnd_task (
+                    id, project_id, version_id, sample_no, product_name, version_code, status, created_at
+                ) values (?, ?, ?, ?, ?, ?, ?, current_timestamp)
+                """, taskId, projectId, versionId, sampleNo, "Test product", "A0", "SAMPLING");
+        jdbcTemplate.update("""
+                insert into experiment_form (
+                    id, task_id, project_id, version_id, sample_no, product_name, version_code, status,
+                    operator_name, saved_at
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)
+                """, formId, taskId, projectId, versionId, sampleNo, "Test product", "A0", "DRAFT", "Test operator");
+        return new TestForm(formId, versionId);
+    }
+
+    private void insertStepOutput(String outputId, String stepId, int sequence) {
+        jdbcTemplate.update("""
+                insert into experiment_step_output (
+                    id, minor_step_id, sequence, output_type, output_name
+                ) values (?, ?, ?, ?, ?)
+                """, outputId, stepId, sequence, "INTERMEDIATE", "Intermediate output");
+    }
+
+    private void insertStepMaterial(
+            String materialId,
+            String stepId,
+            int sequence,
+            String sourceType,
+            String sourceStepOutputId,
+            String materialCode,
+            String formulaMaterialId
+    ) {
+        jdbcTemplate.update("""
+                insert into experiment_step_material (
+                    id, minor_step_id, sequence, material_role, material_name, source_type,
+                    source_step_output_id, material_code, formula_material_id
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, materialId, stepId, sequence, "PRIMARY", "Test material", sourceType,
+                sourceStepOutputId, materialCode, formulaMaterialId);
+    }
+
+    private record TestForm(String formId, String versionId) {
+    }
+
+    private record ProcessGraph(String stepId, String outputId) {
     }
 
     private void insertLegacyExperimentMaterials(JdbcTemplate template) {
