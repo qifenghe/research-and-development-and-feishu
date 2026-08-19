@@ -102,6 +102,56 @@ class ProcessPlanServiceTest {
     }
 
     @Test
+    void roundTripsStepOutputCriticalControlMeasurementsAndIntermediateMaterialSource() {
+        var outputId = "FLOW-OUTPUT-ROUND-TRIP";
+        var producingStep = new ProcessPlan.MinorStep(null, 1, "CUT", "修割", "NORMAL", null, null, null,
+                null, null, null, null, null, List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF",
+                "鲜牛腩", "SOLID", new BigDecimal("10"), null, null, "EXTERNAL", null)), List.of(
+                new ProcessPlan.StepOutput(outputId, 1, "INTERMEDIATE", "修割牛腩", "SOLID", new BigDecimal("10"),
+                        true, true, "转入熟制")), List.of());
+        var criticalControl = new ProcessPlan.ControlPoint("CP-ROUND-TRIP", 1, "FOOD_SAFETY", "CRITICAL", "中心温度",
+                new BigDecimal("75"), new BigDecimal("75"), new BigDecimal("85"), "℃", "探针测温", "每锅",
+                "继续加热", true, "研发", List.of(
+                new ProcessPlan.ControlMeasurement("MEASURE-1", 1, new BigDecimal("76"), "2026-08-19T21:00:00", "PASS", null, null, "首次"),
+                new ProcessPlan.ControlMeasurement("MEASURE-2", 2, new BigDecimal("77"), "2026-08-19T21:05:00", "PASS", null, null, "复测"),
+                new ProcessPlan.ControlMeasurement("MEASURE-3", 3, new BigDecimal("78"), "2026-08-19T21:10:00", "PASS", null, null, "确认")));
+        var consumingStep = new ProcessPlan.MinorStep(null, 2, "COOK", "熟制", "NORMAL", null, null, null,
+                null, null, null, null, null, List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", null,
+                "修割牛腩", "SOLID", new BigDecimal("10"), null, "来自修割", "STEP_OUTPUT", outputId)), List.of(
+                new ProcessPlan.StepOutput("FINISHED-ROUND-TRIP", 1, "FINISHED", "熟制牛腩", "SEMI_SOLID", new BigDecimal("8"),
+                        true, false, null)), List.of(criticalControl));
+        var current = service.find("FORM-PROCESS");
+
+        service.save("FORM-PROCESS", new ProcessPlan(null, "FORM-PROCESS", current.versionNo(), "DRAFT", List.of(
+                new ProcessPlan.MajorProcess(null, 1, "HEAT", "热加工", null, "PRIMARY_INPUT", null,
+                        List.of(producingStep, consumingStep), List.of(), List.of(), null)), null, new BigDecimal("0.0250"), false));
+
+        var loaded = service.find("FORM-PROCESS");
+        var persistedOutput = loaded.majorProcesses().get(0).steps().get(0).outputs().get(0);
+        var persistedMaterial = loaded.majorProcesses().get(0).steps().get(1).materials().get(0);
+        var persistedControl = loaded.majorProcesses().get(0).steps().get(1).controlPoints().get(0);
+
+        assertThat(persistedOutput).extracting(ProcessPlan.StepOutput::id, ProcessPlan.StepOutput::outputName,
+                ProcessPlan.StepOutput::continueFlow, ProcessPlan.StepOutput::remark)
+                .containsExactly(outputId, "修割牛腩", true, "转入熟制");
+        assertThat(persistedMaterial).extracting(ProcessPlan.StepMaterial::sourceType, ProcessPlan.StepMaterial::sourceStepOutputId,
+                ProcessPlan.StepMaterial::remark).containsExactly("STEP_OUTPUT", outputId, "来自修割");
+        assertThat(persistedControl).extracting(ProcessPlan.ControlPoint::importance, ProcessPlan.ControlPoint::confirmedBy)
+                .containsExactly("CRITICAL", "研发");
+        assertThat(persistedControl.measurements()).hasSize(3);
+        assertThat(persistedControl.measurements().get(0).measuredValue()).isEqualByComparingTo("76");
+        assertThat(persistedControl.measurements().get(0).measuredAt()).isEqualTo("2026-08-19T21:00");
+        assertThat(persistedControl.measurements().get(0).remark()).isEqualTo("首次");
+        assertThat(persistedControl.measurements().get(1).measuredValue()).isEqualByComparingTo("77");
+        assertThat(persistedControl.measurements().get(1).measuredAt()).isEqualTo("2026-08-19T21:05");
+        assertThat(persistedControl.measurements().get(1).remark()).isEqualTo("复测");
+        assertThat(persistedControl.measurements().get(2).measuredValue()).isEqualByComparingTo("78");
+        assertThat(persistedControl.measurements().get(2).measuredAt()).isEqualTo("2026-08-19T21:10");
+        assertThat(persistedControl.measurements().get(2).remark()).isEqualTo("确认");
+        assertThat(loaded.balanceToleranceKg()).isEqualByComparingTo("0.0250");
+    }
+
+    @Test
     void rejectsSavingMoreThanOnePrimaryMaterialInAStep() {
         var invalidStep = new ProcessPlan.MinorStep(null, 1, "CUT", "修割", "NORMAL", null, null, null, null, null,
                 null, null, null, List.of(
