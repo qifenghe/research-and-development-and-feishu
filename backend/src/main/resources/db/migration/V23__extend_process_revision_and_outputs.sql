@@ -15,6 +15,8 @@ create table experiment_step_output (
 );
 
 alter table experiment_process_plan add column balance_tolerance_kg numeric(14,4) not null default 0.0100;
+alter table experiment_process_plan add column source_revision_id varchar(64);
+alter table experiment_process_plan add column change_reason varchar(1000);
 
 alter table experiment_step_material add column source_type varchar(30) not null default 'EXTERNAL';
 alter table experiment_step_material add column source_step_output_id varchar(64);
@@ -145,4 +147,47 @@ where not exists (
       and http_method = 'GET'
       and path_pattern = '/api/v1/experiment-forms/*/process-plan/submission-check'
 )
+and exists (select 1 from role_permission where role_code = 'TESTER');
+
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-DIR-PREV-LIST-23', 'RND_DIRECTOR', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions', true, '查看工艺正式版本', 76, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_DIRECTOR' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions')
+and exists (select 1 from role_permission where role_code = 'RND_DIRECTOR');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-DIR-PREV-DETAIL-23', 'RND_DIRECTOR', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions/*', true, '查看工艺正式版本详情', 76, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_DIRECTOR' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*')
+and exists (select 1 from role_permission where role_code = 'RND_DIRECTOR');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-DIR-PREV-SUBMIT-23', 'RND_DIRECTOR', 'POST', '/api/v1/experiment-forms/*/process-plan/submit', true, '正式提交工艺', 77, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_DIRECTOR' and http_method = 'POST' and path_pattern = '/api/v1/experiment-forms/*/process-plan/submit')
+and exists (select 1 from role_permission where role_code = 'RND_DIRECTOR');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-DIR-PREV-DRAFT-23', 'RND_DIRECTOR', 'POST', '/api/v1/experiment-forms/*/process-plan/revisions/*/new-draft', true, '从正式版本创建工艺草稿', 77, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_DIRECTOR' and http_method = 'POST' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*/new-draft')
+and exists (select 1 from role_permission where role_code = 'RND_DIRECTOR');
+
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-ENG-PREV-LIST-23', 'RND_ENGINEER', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions', true, '查看工艺正式版本', 16, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_ENGINEER' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions')
+and exists (select 1 from role_permission where role_code = 'RND_ENGINEER');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-ENG-PREV-DETAIL-23', 'RND_ENGINEER', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions/*', true, '查看工艺正式版本详情', 16, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_ENGINEER' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*')
+and exists (select 1 from role_permission where role_code = 'RND_ENGINEER');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-ENG-PREV-SUBMIT-23', 'RND_ENGINEER', 'POST', '/api/v1/experiment-forms/*/process-plan/submit', true, '正式提交工艺', 17, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_ENGINEER' and http_method = 'POST' and path_pattern = '/api/v1/experiment-forms/*/process-plan/submit')
+and exists (select 1 from role_permission where role_code = 'RND_ENGINEER');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-RND-ENG-PREV-DRAFT-23', 'RND_ENGINEER', 'POST', '/api/v1/experiment-forms/*/process-plan/revisions/*/new-draft', true, '从正式版本创建工艺草稿', 17, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'RND_ENGINEER' and http_method = 'POST' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*/new-draft')
+and exists (select 1 from role_permission where role_code = 'RND_ENGINEER');
+
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-TEST-PREV-LIST-23', 'TESTER', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions', true, '查看工艺正式版本', 11, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'TESTER' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions')
+and exists (select 1 from role_permission where role_code = 'TESTER');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-TEST-PREV-DETAIL-23', 'TESTER', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions/*', true, '查看工艺正式版本详情', 11, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'TESTER' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*')
 and exists (select 1 from role_permission where role_code = 'TESTER');

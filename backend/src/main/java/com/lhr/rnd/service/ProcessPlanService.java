@@ -40,24 +40,26 @@ public class ProcessPlanService {
         requireForm(formId);
         var plans = jdbc.query("select * from experiment_process_plan where experiment_form_id = ?",
                 (rs, row) -> new PlanHeader(rs.getString("id"), rs.getInt("version_no"), rs.getString("status"),
-                        rs.getBigDecimal("balance_tolerance_kg")), formId);
+                        rs.getBigDecimal("balance_tolerance_kg"), rs.getString("source_revision_id"),
+                        rs.getString("change_reason")), formId);
         if (plans.isEmpty()) return legacyPlan(formId);
         var header = plans.get(0);
         var majors = jdbc.query("select * from experiment_major_process where process_plan_id = ? order by sequence",
                 (rs, row) -> mapMajor(rs), header.id());
         var calculated = majors.stream().map(this::withYield).toList();
         var plan = new ProcessPlan(header.id(), formId, header.versionNo(), header.status(), calculated, null,
-                header.balanceToleranceKg(), false);
+                header.balanceToleranceKg(), false, header.sourceRevisionId(), header.changeReason());
         return new ProcessPlan(plan.id(), plan.experimentFormId(), plan.versionNo(), plan.status(), plan.majorProcesses(),
-                calculations.calculateBatch(plan), plan.balanceToleranceKg(), false);
+                calculations.calculateBatch(plan), plan.balanceToleranceKg(), false, plan.sourceRevisionId(), plan.changeReason());
     }
 
     @Transactional
     public ProcessPlan save(String formId, ProcessPlan request) {
         requireForm(formId);
         var balanceTolerance = requireBalanceTolerance(request.balanceToleranceKg());
-        var current = jdbc.query("select id, version_no from experiment_process_plan where experiment_form_id = ?",
-                (rs, row) -> new PlanHeader(rs.getString("id"), rs.getInt("version_no"), "DRAFT", null), formId);
+        var current = jdbc.query("select id, version_no, status, balance_tolerance_kg, source_revision_id, change_reason from experiment_process_plan where experiment_form_id = ?",
+                (rs, row) -> new PlanHeader(rs.getString("id"), rs.getInt("version_no"), rs.getString("status"),
+                        rs.getBigDecimal("balance_tolerance_kg"), rs.getString("source_revision_id"), rs.getString("change_reason")), formId);
         String planId;
         int nextVersion;
         if (current.isEmpty()) {
@@ -69,6 +71,7 @@ public class ProcessPlanService {
         } else {
             var stored = current.get(0);
             if (request.versionNo() != stored.versionNo()) throw conflict();
+            if (!"DRAFT".equals(stored.status())) throw conflict();
             planId = stored.id();
             nextVersion = stored.versionNo() + 1;
             // Remove referencing materials before the cascaded step-output deletion so STEP_OUTPUT foreign keys stay valid.
@@ -80,6 +83,40 @@ public class ProcessPlanService {
         var majors = request.majorProcesses() == null ? List.<ProcessPlan.MajorProcess>of() : request.majorProcesses();
         for (int index = 0; index < majors.size(); index++) saveMajor(planId, index + 1, majors.get(index));
         return find(formId);
+    }
+
+    @Transactional
+    public ProcessPlan restoreAsNewDraft(String formId, ProcessPlan snapshot, String sourceRevisionId, String changeReason) {
+        requireForm(formId);
+        if (sourceRevisionId == null || sourceRevisionId.isBlank() || changeReason == null || changeReason.isBlank()) {
+            throw new BusinessException("PROCESS_CHANGE_REASON_REQUIRED", "从正式版本创建草稿必须填写变更原因");
+        }
+        var current = jdbc.query("select id, version_no, status, balance_tolerance_kg, source_revision_id, change_reason from experiment_process_plan where experiment_form_id = ?",
+                (rs, row) -> new PlanHeader(rs.getString("id"), rs.getInt("version_no"), rs.getString("status"),
+                        rs.getBigDecimal("balance_tolerance_kg"), rs.getString("source_revision_id"), rs.getString("change_reason")), formId);
+        if (current.isEmpty()) throw conflict();
+        var stored = current.get(0);
+        if (!stored.id().equals(snapshot.id()) || stored.versionNo() != snapshot.versionNo() || !"SUBMITTED".equals(stored.status())) {
+            throw conflict();
+        }
+        var nextVersion = stored.versionNo() + 1;
+        var updated = jdbc.update("update experiment_process_plan set version_no = ?, status = ?, balance_tolerance_kg = ?, source_revision_id = ?, change_reason = ?, updated_at = ? where id = ? and version_no = ? and status = ?",
+                nextVersion, "DRAFT", requireBalanceTolerance(snapshot.balanceToleranceKg()), sourceRevisionId, changeReason.trim(),
+                LocalDateTime.now(), stored.id(), stored.versionNo(), "SUBMITTED");
+        if (updated != 1) throw conflict();
+        jdbc.update("delete from experiment_step_material where minor_step_id in (select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id where major.process_plan_id = ?)", stored.id());
+        jdbc.update("delete from experiment_major_process where process_plan_id = ?", stored.id());
+        var majors = snapshot.majorProcesses() == null ? List.<ProcessPlan.MajorProcess>of() : snapshot.majorProcesses();
+        for (int index = 0; index < majors.size(); index++) saveMajor(stored.id(), index + 1, majors.get(index));
+        return find(formId);
+    }
+
+    @Transactional
+    public void markSubmitted(String formId, int versionNo) {
+        requireForm(formId);
+        var updated = jdbc.update("update experiment_process_plan set status = ?, updated_at = ? where experiment_form_id = ? and version_no = ? and status = ?",
+                "SUBMITTED", LocalDateTime.now(), formId, versionNo, "DRAFT");
+        if (updated != 1) throw conflict();
     }
 
     public List<com.lhr.rnd.model.ExperimentProcessStep> legacySummaries(ProcessPlan plan) {
@@ -276,6 +313,7 @@ public class ProcessPlanService {
         return value == null || value.isBlank() ? null : Timestamp.valueOf(LocalDateTime.parse(value));
     }
 
-    private record PlanHeader(String id, int versionNo, String status, BigDecimal balanceToleranceKg) {
+    private record PlanHeader(String id, int versionNo, String status, BigDecimal balanceToleranceKg,
+                              String sourceRevisionId, String changeReason) {
     }
 }

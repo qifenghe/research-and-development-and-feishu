@@ -125,6 +125,8 @@ class SchemaMigrationTest {
         assertColumnExists("experiment_step_material", "source_type");
         assertColumnExists("experiment_step_material", "source_step_output_id");
         assertColumnExists("experiment_process_plan", "balance_tolerance_kg");
+        assertColumnExists("experiment_process_plan", "source_revision_id");
+        assertColumnExists("experiment_process_plan", "change_reason");
         assertColumnExists("pricing_packaging_item", "source");
         assertColumnExists("pricing_packaging_item", "material_code");
         assertColumnExists("pricing_packaging_item", "quantity");
@@ -439,7 +441,6 @@ class SchemaMigrationTest {
                     10
             );
         }
-
         Flyway.configure()
                 .dataSource(databaseUrl, "sa", "")
                 .locations("classpath:db/migration")
@@ -455,7 +456,25 @@ class SchemaMigrationTest {
                     "GET",
                     "/api/v1/experiment-forms/*/process-plan/submission-check"
             )).isEqualTo(1);
+            assertThat(legacyJdbcTemplate.queryForObject(
+                    "select count(*) from role_permission where role_code = ? and http_method = ? and path_pattern = ?",
+                    Integer.class, role, "GET", "/api/v1/experiment-forms/*/process-plan/revisions"
+            )).isEqualTo(1);
+            assertThat(legacyJdbcTemplate.queryForObject(
+                    "select count(*) from role_permission where role_code = ? and http_method = ? and path_pattern = ?",
+                    Integer.class, role, "GET", "/api/v1/experiment-forms/*/process-plan/revisions/*"
+            )).isEqualTo(1);
         }
+        for (var role : java.util.List.of("RND_DIRECTOR", "RND_ENGINEER")) {
+            assertThat(legacyJdbcTemplate.queryForObject(
+                    "select count(*) from role_permission where role_code = ? and http_method = ? and path_pattern = ?",
+                    Integer.class, role, "POST", "/api/v1/experiment-forms/*/process-plan/submit"
+            )).isEqualTo(1);
+        }
+        assertThat(legacyJdbcTemplate.queryForObject(
+                "select count(*) from role_permission where role_code = ? and http_method = ? and path_pattern = ?",
+                Integer.class, "TESTER", "POST", "/api/v1/experiment-forms/*/process-plan/submit"
+        )).isZero();
         assertThat(legacyJdbcTemplate.queryForObject(
                 "select count(*) from role_permission where http_method = ? and path_pattern = ?",
                 Integer.class,

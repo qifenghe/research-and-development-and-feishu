@@ -77,6 +77,35 @@ class SessionAuthenticationInterceptorTest {
     }
 
     @Test
+    void grantsRevisionReadsToExistingProcessReadersButRestrictsRevisionWritesToProcessEditors() throws Exception {
+        var authRequired = sessionProperties.isAuthRequired();
+        var testBypass = sessionProperties.isTestBusinessApiAuthenticationBypass();
+        sessionProperties.setAuthRequired(true);
+        sessionProperties.setTestBusinessApiAuthenticationBypass(false);
+        try {
+            var engineerToken = tokenFor("正式版本研发", "ou_revision_engineer", "RND_ENGINEER");
+            var testerToken = tokenFor("正式版本测试", "ou_revision_tester", "TESTER");
+
+            mockMvc.perform(get("/api/v1/experiment-forms/FORM-AUTH-REVISION/process-plan/revisions")
+                            .header("Authorization", "Bearer " + engineerToken))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("EXPERIMENT_FORM_NOT_FOUND"));
+            mockMvc.perform(get("/api/v1/experiment-forms/FORM-AUTH-REVISION/process-plan/revisions/REV-1")
+                            .header("Authorization", "Bearer " + testerToken))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("EXPERIMENT_FORM_NOT_FOUND"));
+            mockMvc.perform(post("/api/v1/experiment-forms/FORM-AUTH-REVISION/process-plan/submit")
+                            .header("Authorization", "Bearer " + testerToken)
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"versionNo\":0,\"confirmed\":true}"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("SESSION_ROLE_FORBIDDEN"));
+        } finally {
+            sessionProperties.setAuthRequired(authRequired);
+            sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);
+        }
+    }
+
+    @Test
     void allowsFeishuIntegrationStatusWithoutSessionToken() throws Exception {
         mockMvc.perform(get("/api/v1/feishu/integration/status"))
                 .andExpect(status().isOk())

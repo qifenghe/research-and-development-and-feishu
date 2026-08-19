@@ -10,10 +10,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.lhr.rnd.service.SessionPrincipal;
+
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -29,6 +33,7 @@ class ProcessPlanControllerTest {
 
     @BeforeEach
     void seedForm() {
+        jdbc.update("delete from experiment_process_revision where experiment_form_id = ?", FORM_ID);
         jdbc.update("delete from experiment_step_material where minor_step_id in (select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id join experiment_process_plan plan on major.process_plan_id = plan.id where plan.experiment_form_id = ?)", FORM_ID);
         jdbc.update("delete from experiment_major_process where process_plan_id in (select id from experiment_process_plan where experiment_form_id = ?)", FORM_ID);
         jdbc.update("delete from experiment_process_plan where experiment_form_id = ?", FORM_ID);
@@ -102,5 +107,57 @@ class ProcessPlanControllerTest {
                 .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].measurementTool").value("数字探针"))
                 .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedAt").value("2026-08-19T21:15"))
                 .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].basisOrRemark").value("以产品中心温度为放行依据"));
+    }
+
+    @Test
+    void submitsWithTheTrustedSessionNameAndExposesRevisionHistoryEndpoints() throws Exception {
+        saveReadyDraft();
+        var principal = new SessionPrincipal("USER-PROCESS", "rnd_engineer", "会话研发", "ou-process", "RND_ENGINEER", Instant.now().plusSeconds(60));
+
+        var body = mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/submit", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, principal)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"versionNo\":1,\"confirmed\":true,\"changeReason\":\"首次正式提交\",\"submittedBy\":\"伪造用户\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.revisionNo").value(1))
+                .andExpect(jsonPath("$.data.submittedBy").value("会话研发"))
+                .andReturn().getResponse().getContentAsString();
+        var revisionId = body.split("\\\"id\\\":\\\"")[1].split("\\\"")[0];
+
+        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions", FORM_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(revisionId));
+        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}", FORM_ID, revisionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.snapshot.balanceToleranceKg").value(0.01));
+        mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/new-draft", FORM_ID, revisionId)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"changeReason\":\"调整熟制时间\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DRAFT"))
+                .andExpect(jsonPath("$.data.sourceRevisionId").value(revisionId));
+    }
+
+    @Test
+    void requiresTrustedSessionForFormalSubmission() throws Exception {
+        saveReadyDraft();
+
+        mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/submit", FORM_ID)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"versionNo\":1,\"confirmed\":true,\"submittedBy\":\"伪造用户\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SESSION_PRINCIPAL_REQUIRED"));
+    }
+
+    private void saveReadyDraft() throws Exception {
+        var readyDraft = """
+                {"versionNo":0,"status":"DRAFT","balanceToleranceKg":0.01,"majorProcesses":[{
+                  "sequence":1,"processCode":"COOK","processName":"熟制","yieldBasis":"PRIMARY_INPUT","steps":[{
+                    "sequence":1,"stepCode":"COOK","stepName":"熟制","stepType":"NORMAL",
+                    "materials":[{"sequence":1,"materialRole":"PRIMARY","materialCode":"BEEF","materialName":"鲜牛腩","materialState":"SOLID","weightKg":10,"formulaMaterialId":"MAT-BEEF","sourceType":"EXTERNAL"}],
+                    "outputs":[{"id":"OUT-CONTROLLER","sequence":1,"outputType":"FINISHED","outputName":"熟制牛腩","materialState":"SEMI_SOLID","weightKg":10,"primaryOutput":true,"continueFlow":false}],"controlPoints":[]
+                  }],"inputs":[],"outputs":[]
+                }]}""";
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .contentType(MediaType.APPLICATION_JSON).content(readyDraft))
+                .andExpect(status().isOk());
     }
 }

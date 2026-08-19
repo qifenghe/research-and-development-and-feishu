@@ -137,11 +137,35 @@ export interface ProcessPlanDraft {
   id?: string;
   experimentFormId?: string;
   versionNo: number;
-  status: "DRAFT" | "LOCKED";
+  status: "DRAFT" | "SUBMITTED" | "LOCKED";
   majorProcesses: MajorProcessDraft[];
   batchYieldPercent?: number | null;
   balanceToleranceKg?: number;
   legacy?: boolean;
+  sourceRevisionId?: string;
+  changeReason?: string;
+}
+
+export interface ProcessRevisionSummary {
+  id: string;
+  revisionNo: number;
+  sourceRevisionId?: string;
+  changeReason?: string;
+  submittedBy?: string;
+  submittedAt: string;
+  snapshotHash: string;
+}
+
+export interface ProcessRevision extends ProcessRevisionSummary {
+  processPlanId: string;
+  experimentFormId: string;
+  snapshot: ProcessPlanDraft;
+}
+
+export interface SubmitProcessPlanRequest {
+  versionNo: number;
+  confirmed: boolean;
+  changeReason?: string;
 }
 
 export interface ProcessRecipeSourcePreview {
