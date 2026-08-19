@@ -58,6 +58,25 @@ class SessionAuthenticationInterceptorTest {
     }
 
     @Test
+    void letsAnAuthenticatedEngineerReachSubmissionCheckWithoutTheTestBypass() throws Exception {
+        var authRequired = sessionProperties.isAuthRequired();
+        var testBypass = sessionProperties.isTestBusinessApiAuthenticationBypass();
+        sessionProperties.setAuthRequired(true);
+        sessionProperties.setTestBusinessApiAuthenticationBypass(false);
+        try {
+            var engineerToken = tokenFor("工艺检查研发", "ou_submission_check_engineer", "RND_ENGINEER");
+
+            mockMvc.perform(get("/api/v1/experiment-forms/FORM-AUTH-CHECK/process-plan/submission-check")
+                            .header("Authorization", "Bearer " + engineerToken))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("EXPERIMENT_FORM_NOT_FOUND"));
+        } finally {
+            sessionProperties.setAuthRequired(authRequired);
+            sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);
+        }
+    }
+
+    @Test
     void allowsFeishuIntegrationStatusWithoutSessionToken() throws Exception {
         mockMvc.perform(get("/api/v1/feishu/integration/status"))
                 .andExpect(status().isOk())

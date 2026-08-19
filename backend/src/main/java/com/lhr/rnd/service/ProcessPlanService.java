@@ -157,10 +157,11 @@ public class ProcessPlanService {
 
     private void saveControlPoint(String stepId, int sequence, ProcessPlan.ControlPoint point) {
         var pointId = valueOr(point.id(), id("CP"));
-        jdbc.update("insert into experiment_control_point(id, minor_step_id, sequence, control_type, importance, item_name, target_value, lower_limit, upper_limit, unit, method, frequency, deviation_action, resolved, confirmed_by) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        jdbc.update("insert into experiment_control_point(id, minor_step_id, sequence, control_type, importance, item_name, target_value, lower_limit, upper_limit, unit, method, measurement_tool, frequency, deviation_action, resolved, confirmed_by, confirmed_at, basis_or_remark) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 pointId, stepId, sequence, valueOr(point.controlType(), "QUALITY"), valueOr(point.importance(), "NORMAL"),
                 valueOr(point.itemName(), "未命名控制点"), point.targetValue(), point.lowerLimit(), point.upperLimit(), point.unit(),
-                point.method(), point.frequency(), point.deviationAction(), point.resolved(), point.confirmedBy());
+                point.method(), point.measurementTool(), point.frequency(), point.deviationAction(), point.resolved(), point.confirmedBy(),
+                timestamp(point.confirmedAt()), point.basisOrRemark());
         var measurements = point.measurements() == null ? List.<ProcessPlan.ControlMeasurement>of() : point.measurements();
         for (int index = 0; index < measurements.size(); index++) {
             var item = measurements.get(index);
@@ -211,8 +212,10 @@ public class ProcessPlanService {
                     return new ProcessPlan.ControlPoint(pointId, item.getInt("sequence"), item.getString("control_type"),
                             item.getString("importance"), item.getString("item_name"), item.getBigDecimal("target_value"),
                             item.getBigDecimal("lower_limit"), item.getBigDecimal("upper_limit"), item.getString("unit"),
-                            item.getString("method"), item.getString("frequency"), item.getString("deviation_action"),
-                            item.getBoolean("resolved"), item.getString("confirmed_by"), measurements);
+                            item.getString("method"), item.getString("measurement_tool"), item.getString("frequency"), item.getString("deviation_action"),
+                            item.getBoolean("resolved"), item.getString("confirmed_by"),
+                            item.getTimestamp("confirmed_at") == null ? null : item.getTimestamp("confirmed_at").toLocalDateTime().toString(),
+                            item.getString("basis_or_remark"), measurements);
                 }, stepId);
         return new ProcessPlan.MinorStep(stepId, rs.getInt("sequence"), rs.getString("step_code"), rs.getString("step_name"),
                 rs.getString("step_type"), rs.getString("parameter_1_name"), rs.getString("parameter_1_value"),

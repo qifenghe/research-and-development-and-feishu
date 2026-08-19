@@ -129,6 +129,7 @@ public class RolePermissionService {
                         rule("POST", "/api/v1/rnd-tasks/*/accept", "接受研发任务", 75),
                         rule("GET", "/api/v1/sample-versions/*/process-steps", "查看工序步骤", 76),
                         rule("GET", "/api/v1/experiment-forms/*/process-plan", "查看分层工艺", 76),
+                        rule("GET", "/api/v1/experiment-forms/*/process-plan/submission-check", "查看工艺提交检查", 76),
                         rule("PUT", "/api/v1/experiment-forms/*/process-plan", "编辑分层工艺", 77),
                         rule("POST", "/api/v1/rnd-tasks/*/experiment-form/draft", "保存实验单草稿", 77),
                         rule("POST", "/api/v1/experiment-forms/*/submit-test", "提交内部测试", 78),
@@ -157,6 +158,7 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 15),
                         rule("GET", "/api/v1/sample-versions/*/process-steps", "查看工序步骤", 16),
                         rule("GET", "/api/v1/experiment-forms/*/process-plan", "查看分层工艺", 16),
+                        rule("GET", "/api/v1/experiment-forms/*/process-plan/submission-check", "查看工艺提交检查", 16),
                         rule("PUT", "/api/v1/experiment-forms/*/process-plan", "编辑分层工艺", 17),
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 20),
                         rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 30),
@@ -182,6 +184,7 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 5),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 10),
                         rule("GET", "/api/v1/experiment-forms/*/process-plan", "查看分层工艺", 11),
+                        rule("GET", "/api/v1/experiment-forms/*/process-plan/submission-check", "查看工艺提交检查", 11),
                         rule("POST", "/api/v1/test-assignments/*/pass", "提交测试通过", 20),
                         rule("POST", "/api/v1/test-assignments/*/fail-resample", "提交测试不通过复打样", 30),
                         rule("GET", "/api/v1/reports/test-records/*/export", "导出测试单", 35),
@@ -412,7 +415,7 @@ public class RolePermissionService {
     }
 
     private boolean isProcessPlanRead(String method, String uri) {
-        return "GET".equals(method) && uri.matches("^/api/v1/experiment-forms/[^/]+/process-plan(?:/legacy-summary)?$");
+        return "GET".equals(method) && uri.matches("^/api/v1/experiment-forms/[^/]+/process-plan(?:/(?:legacy-summary|submission-check))?$");
     }
 
     private boolean isProcessPlanWrite(String method, String uri) {

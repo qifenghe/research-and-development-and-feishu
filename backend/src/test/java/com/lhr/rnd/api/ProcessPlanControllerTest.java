@@ -81,4 +81,26 @@ class ProcessPlanControllerTest {
                 .andExpect(jsonPath("$.data.ready").value(false))
                 .andExpect(jsonPath("$.data.errors[*].code").value(hasItem("MAJOR_PRIMARY_INPUT_REQUIRED")));
     }
+
+    @Test
+    void roundTripsControlPointTraceabilityFieldsAddedAfterTheOriginalDraftShape() throws Exception {
+        var draftWithTraceability = """
+                {"versionNo":0,"status":"DRAFT","majorProcesses":[{
+                  "sequence":1,"processCode":"HEAT","processName":"热加工","yieldBasis":"PRIMARY_INPUT","steps":[{
+                    "sequence":1,"stepCode":"COOK","stepName":"熟制","stepType":"NORMAL","materials":[],"outputs":[],"controlPoints":[{
+                      "id":"CP-TRACEABILITY","sequence":1,"controlType":"FOOD_SAFETY","importance":"NORMAL","itemName":"中心温度",
+                      "targetValue":75,"lowerLimit":72,"upperLimit":85,"unit":"℃","method":"探针测温","measurementTool":"数字探针",
+                      "frequency":"每锅","deviationAction":"继续加热","resolved":true,"confirmedBy":"研发","confirmedAt":"2026-08-19T21:15:00",
+                      "basisOrRemark":"以产品中心温度为放行依据","measurements":[]
+                    }]
+                  }],"inputs":[],"outputs":[]
+                }]}""";
+
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .contentType(MediaType.APPLICATION_JSON).content(draftWithTraceability))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].measurementTool").value("数字探针"))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedAt").value("2026-08-19T21:15"))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].basisOrRemark").value("以产品中心温度为放行依据"));
+    }
 }

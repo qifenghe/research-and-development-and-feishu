@@ -57,10 +57,13 @@ export interface ControlPointDraft {
   upperLimit?: number;
   unit?: string;
   method?: string;
+  measurementTool?: string;
   frequency?: string;
   deviationAction?: string;
   resolved: boolean;
   confirmedBy?: string;
+  confirmedAt?: string;
+  basisOrRemark?: string;
   measurements: ControlMeasurementDraft[];
 }
 

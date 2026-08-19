@@ -139,12 +139,35 @@ public record ProcessPlan(
             BigDecimal upperLimit,
             String unit,
             String method,
+            String measurementTool,
             String frequency,
             String deviationAction,
             boolean resolved,
             String confirmedBy,
+            String confirmedAt,
+            String basisOrRemark,
             List<ControlMeasurement> measurements
     ) {
+        public ControlPoint(
+                String id,
+                int sequence,
+                String controlType,
+                String importance,
+                String itemName,
+                BigDecimal targetValue,
+                BigDecimal lowerLimit,
+                BigDecimal upperLimit,
+                String unit,
+                String method,
+                String frequency,
+                String deviationAction,
+                boolean resolved,
+                String confirmedBy,
+                List<ControlMeasurement> measurements
+        ) {
+            this(id, sequence, controlType, importance, itemName, targetValue, lowerLimit, upperLimit, unit, method,
+                    null, frequency, deviationAction, resolved, confirmedBy, null, null, measurements);
+        }
     }
 
     public record ControlMeasurement(

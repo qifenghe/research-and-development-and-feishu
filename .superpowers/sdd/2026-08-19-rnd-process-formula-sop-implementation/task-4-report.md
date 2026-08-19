@@ -23,3 +23,32 @@
 - Confirmed controller tests use the real service, persistence layer, and validator; no validator mock can mask incorrect data flow.
 - The new service test preserves an explicit output ID before it is used by the consuming step, exercising the foreign-key insertion sequence and draft replacement behavior already established by Task 2.
 - Existing untracked `frontend/**/node_modules` symlinks were intentionally excluded from the task commit.
+
+## Repair round 1 — review findings I1, I2, M1
+
+### RED
+
+- `mvn -q -Dtest=RolePermissionServiceTest,SessionAuthenticationInterceptorTest,ProcessPlanControllerTest test` failed as intended before implementation:
+  - an authenticated `RND_ENGINEER`, with the test bypass explicitly disabled, received `403 SESSION_ROLE_FORBIDDEN` from `submission-check`;
+  - the role matrix had no submission-check permission;
+  - a control-point draft containing `measurementTool`, `confirmedAt`, and `basisOrRemark` reloaded without those fields.
+
+### GREEN
+
+- Added a dedicated read capability for `submission-check` to the existing process-plan reader roles (`RND_DIRECTOR`, `RND_ENGINEER`, `TESTER`) and a V24 migration so deployed databases receive it. The write capability remains limited to the pre-existing director/engineer PUT rules.
+- Added `measurementTool`, `confirmedAt`, and `basisOrRemark` to Java `ControlPoint`, preserving the old constructor for old JSON/call sites. `ProcessPlanService` now writes and maps `measurement_tool`, `confirmed_at`, and `basis_or_remark`.
+- Added the optional fields to shared `ControlPointDraft`; existing JSON remains valid because the fields are optional and normalization preserves omitted values.
+- Strengthened the real service round trip to recursively compare every supplied step-output, intermediate material-source, control point, and measurement value (normalising database numeric scale and timestamp formatting), plus balance tolerance.
+
+### Verification
+
+- `mvn -q -Dtest=RolePermissionServiceTest,SessionAuthenticationInterceptorTest,ProcessPlanControllerTest,ProcessPlanServiceTest,ProcessSubmissionValidatorTest,SchemaMigrationTest test` — PASS.
+- `node frontend/scripts/check-api-contracts.mjs` — PASS.
+- `frontend/packages/shared/node_modules/.bin/tsc -p frontend/packages/shared/tsconfig.json --noEmit` — PASS.
+- `frontend/apps/pc/node_modules/.bin/vue-tsc -p frontend/apps/pc/tsconfig.json --noEmit` — PASS.
+- `frontend/apps/mobile/node_modules/.bin/vue-tsc -p frontend/apps/mobile/tsconfig.json --noEmit` — PASS.
+
+### Review focus
+
+- The real-session test expects the controller's existing missing-form `400` response rather than `403`, proving authentication and role authorization completed without the test bypass.
+- V24 inserts only GET submission-check capabilities, so it cannot expand process-plan PUT access.

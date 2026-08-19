@@ -69,6 +69,10 @@ class RolePermissionServiceTest {
         assertThat(service.hasPermission("RND_DIRECTOR", "GET", "/api/v1/sample-requests/REQ-1")).isTrue();
         assertThat(service.hasPermission("RND_DIRECTOR", "POST", "/api/v1/rnd-tasks/TASK-0001/accept")).isTrue();
         assertThat(service.hasPermission("RND_DIRECTOR", "POST", "/api/v1/rnd-tasks/TASK-0001/experiment-form/draft")).isTrue();
+        assertThat(service.hasPermission("RND_DIRECTOR", "GET", "/api/v1/experiment-forms/FORM-1/process-plan/submission-check")).isTrue();
+        assertThat(service.hasPermission("RND_ENGINEER", "GET", "/api/v1/experiment-forms/FORM-1/process-plan/submission-check")).isTrue();
+        assertThat(service.hasPermission("TESTER", "GET", "/api/v1/experiment-forms/FORM-1/process-plan/submission-check")).isTrue();
+        assertThat(service.hasPermission("TESTER", "PUT", "/api/v1/experiment-forms/FORM-1/process-plan")).isFalse();
     }
 
     @Test
