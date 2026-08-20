@@ -39,27 +39,38 @@ test("server hydration survives Vue batching and cache restoration remains dirty
 
 test("real experiment parent autosaves a proxied plan and reloads cleanly from task A to B", async ({ page }) => {
   const pageErrors: string[] = [];
+  const detailLoads: string[] = [];
+  const planLoads: string[] = [];
   const draftSaves: Array<{ taskId: string; summary?: string }> = [];
   page.on("pageerror", error => pageErrors.push(error.message));
   await page.route("**/rnd-tasks/*/detail?*", route => {
-    const taskId = route.request().url().includes("task-b") ? "task-b" : "task-a";
-    return fulfillJson(route, taskDetail(taskId));
+    const taskId = pathSegment(route.request().url(), /\/rnd-tasks\/([^/]+)\/detail/);
+    detailLoads.push(taskId);
+    return ["task-a", "task-b"].includes(taskId)
+      ? fulfillJson(route, taskDetail(taskId))
+      : fulfillJson(route, null, 404);
   });
   await page.route("**/experiment-forms/*/process-plan/revisions", route => fulfillJson(route, []));
   await page.route("**/experiment-forms/*/process-plan", route => {
-    const formId = route.request().url().includes("form-b") ? "form-b" : "form-a";
-    return fulfillJson(route, parentPlan(formId));
+    const formId = pathSegment(route.request().url(), /\/experiment-forms\/([^/]+)\/process-plan/);
+    planLoads.push(formId);
+    return ["form-a", "form-b"].includes(formId)
+      ? fulfillJson(route, parentPlan(formId))
+      : fulfillJson(route, null, 404);
   });
   await page.route("**/rnd-tasks/*/experiment-form/draft", async route => {
-    const taskId = route.request().url().includes("task-b") ? "task-b" : "task-a";
+    const taskId = pathSegment(route.request().url(), /\/rnd-tasks\/([^/]+)\/experiment-form\/draft/);
     const payload = route.request().postDataJSON() as { summary?: string };
     draftSaves.push({ taskId, summary: payload.summary });
-    await fulfillJson(route, experimentForm(taskId, payload.summary || ""));
+    if (["task-a", "task-b"].includes(taskId)) await fulfillJson(route, experimentForm(taskId, payload.summary || ""));
+    else await fulfillJson(route, null, 404);
   });
 
   await page.goto(harness("experiment-parent"));
   await expect(page.getByText("产品 A V-A", { exact: true })).toBeVisible();
   await expect(page.getByText("服务端工序 A", { exact: true })).toBeVisible();
+  expect(detailLoads).toEqual(["task-a"]);
+  expect(planLoads).toEqual(["form-a"]);
   await page.getByPlaceholder("填写本次打样说明").fill("任务 A 本地修改");
   await expect.poll(() => draftSaves.filter(item => item.taskId === "task-a").length, { timeout: 5000 }).toBe(1);
   const cached = await page.evaluate(() => localStorage.getItem("rnd:experiment-draft:v1:engineer-1:task-a"));
@@ -70,6 +81,8 @@ test("real experiment parent autosaves a proxied plan and reloads cleanly from t
   await expect(page.getByText("产品 B V-B", { exact: true })).toBeVisible();
   await expect(page.getByText("服务端工序 B", { exact: true })).toBeVisible();
   await expect(page.getByPlaceholder("填写本次打样说明")).toHaveValue("服务端摘要 B");
+  expect(detailLoads).toEqual(["task-a", "task-b"]);
+  expect(planLoads).toEqual(["form-a", "form-b"]);
   expect(pageErrors).toEqual([]);
   await expect.poll(() => page.locator("body").getAttribute("data-harness-error")).toBeNull();
 });
@@ -186,6 +199,10 @@ function revision(formId: string, snapshot: unknown) {
 }
 
 type ProcessPlanPayload = { versionNo: number; majorProcesses: Array<{ processName: string }> };
+
+function pathSegment(url: string, pattern: RegExp) {
+  return decodeURIComponent(pattern.exec(url)?.[1] || "");
+}
 
 function parentPlan(formId: string) {
   const suffix = formId === "form-b" ? "B" : "A";

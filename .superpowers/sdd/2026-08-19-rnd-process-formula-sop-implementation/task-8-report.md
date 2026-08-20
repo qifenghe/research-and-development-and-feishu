@@ -89,3 +89,17 @@ No browser mock server was available in this worktree, so no Playwright screensh
 - Backend focused `ProcessPlanControllerTest,ProcessSubmissionValidatorTest` passed against all 23 migrations.
 - Playwright discovery passed and lists 7 PC workspace cases, including the real parent A→B/autosave case and ordinary-edit flow confirmation case. In accordance with the retained platform usage-limit restriction, Chrome was not launched and this report does **not** claim a fresh browser execution.
 - `git diff --check` passed. Direct installed binaries were used because the pnpm wrapper attempted a blocked online metadata/dependency refresh in this linked worktree.
+
+## Final integration-test closure
+
+- Replaced the harness-only wildcard route with a shared named `process-workspace-experiment` route at `/rnd/tasks/:id/experiment`, retaining a named fallback for non-parent harness scenarios. The real `ExperimentFormView` now receives `route.params.id === "task-a"` before mount and its existing ID watcher observes `task-b` on same-instance navigation.
+- Added an executable Node + Vue Router lifecycle probe that uses the exact router factory used by the browser harness. It proves the initial A load, A-specific draft-cache key and autosave binding, the A cache write before switching, then the B load, B-specific cache key and autosave binding.
+- Tightened the real-parent Playwright interception so missing or unknown task/form IDs return 404 instead of silently falling back to A; the case explicitly asserts request order `task-a → task-b` and `form-a → form-b`.
+
+### Final integration-test verification
+
+- Frontend Node suite: 80 passed, 0 failed.
+- PC direct type check and Vite production build passed; the build retained only the existing large-chunk warning.
+- Frontend API-contract and route checks passed (`30` PC routes, `16` mobile routes).
+- Playwright static discovery lists all 7 PC workspace cases. Chrome was not launched, in accordance with the retained usage-limit restriction.
+- `git diff --check` passed.

@@ -1,17 +1,14 @@
 import { createApp } from "vue";
 import Antd from "ant-design-vue";
 import { createPinia } from "pinia";
-import { createMemoryHistory, createRouter } from "vue-router";
 import "ant-design-vue/dist/reset.css";
 import ProcessWorkspaceHarness from "./ProcessWorkspaceHarness.vue";
+import { createProcessWorkspaceHarnessRouter } from "./processWorkspaceHarnessRouter";
 import { useAuthStore } from "./stores/auth";
 
 const scenario = new URLSearchParams(location.search).get("scenario") || "hydration";
 const pinia = createPinia();
-const router = createRouter({
-  history: createMemoryHistory("/admin/"),
-  routes: [{ path: "/:pathMatch(.*)*", component: { template: "<span />" } }],
-});
+const router = createProcessWorkspaceHarnessRouter();
 await router.push(scenario === "experiment-parent" ? "/rnd/tasks/task-a/experiment" : "/");
 await router.isReady();
 const auth = useAuthStore(pinia);
