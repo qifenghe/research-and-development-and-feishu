@@ -1,6 +1,12 @@
 <template>
   <main style="padding: 16px">
-    <template v-if="scenario === 'hydration'">
+    <template v-if="scenario === 'experiment-parent'">
+      <button data-testid="route-task-b" @click="router.push('/rnd/tasks/task-b/experiment')">切换任务 B</button>
+      <div data-testid="active-task-route">{{ route.params.id }}</div>
+      <ExperimentFormView />
+    </template>
+
+    <template v-else-if="scenario === 'hydration'">
       <button data-testid="accept-server" @click="acceptServer(false)">接受服务端方案</button>
       <button data-testid="accept-cache" @click="acceptServer(true)">接受服务端后恢复缓存</button>
       <div data-testid="parent-majors">{{ plan.majorProcesses.map(item => item.processName).join("|") }}</div>
@@ -25,6 +31,7 @@
     </template>
 
     <template v-else-if="scenario === 'flow'">
+      <button data-testid="inject-broken-flow" @click="injectBrokenFlow">制造待确认的失效流转</button>
       <div data-testid="consumer-count">{{ flowPlan.majorProcesses[1]?.steps[0]?.materials.length }}</div>
       <MinorStepWorkspace v-model="flowPlan" major-key="major-producer" />
     </template>
@@ -41,6 +48,7 @@
 
 <script setup lang="ts">
 import { nextTick, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import {
   createEmptyProcessPlan,
   type ProcessPlanDraft,
@@ -50,8 +58,12 @@ import MinorStepWorkspace from "./components/process/MinorStepWorkspace.vue";
 import ProcessPlanWorkspace from "./components/process/ProcessPlanWorkspace.vue";
 import ProcessSubmitDialog from "./components/process/ProcessSubmitDialog.vue";
 import RndOutputCenter from "./components/process/RndOutputCenter.vue";
+import ExperimentFormView from "./views/rnd/ExperimentFormView.vue";
+import { cloneVueValue } from "./components/process/cloneVueValue";
 
 const scenario = new URLSearchParams(location.search).get("scenario") || "hydration";
+const route = useRoute();
+const router = useRouter();
 const plan = ref(createEmptyProcessPlan());
 const serverHydrationToken = ref(0);
 const workspace = ref<{ restoreLocalDirty: (value: ProcessPlanDraft) => void }>();
@@ -94,6 +106,12 @@ function singleMajor(name: string): ProcessPlanDraft {
     versionNo: name === "服务端大工序" ? 4 : 5,
     majorProcesses: [{ key: name, sequence: 1, processName: name, yieldBasis: "NONE", inputs: [], outputs: [], steps: [] }],
   };
+}
+
+function injectBrokenFlow() {
+  const next = cloneVueValue(flowPlan.value);
+  next.majorProcesses[0]!.steps[0]!.outputs![0]!.continueFlow = false;
+  flowPlan.value = next;
 }
 
 async function acceptServer(withCache: boolean) {

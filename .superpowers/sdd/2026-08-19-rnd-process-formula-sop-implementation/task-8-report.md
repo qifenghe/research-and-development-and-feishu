@@ -72,3 +72,20 @@ No browser mock server was available in this worktree, so no Playwright screensh
 - Backend `ProcessPlanControllerTest` and `ProcessSubmissionValidatorTest` passed against all 23 migrations.
 - `git diff --check` passed.
 - A real Chrome/Playwright run executed the four initial harness cases and exposed the Vue-proxy `DataCloneError`, mock response-code mismatch, and Ant button accessible-name mismatch. Those causes were fixed and the suite was expanded to five cases. A fresh browser rerun was attempted, but the platform rejected the required Chrome escalation because the execution-usage limit had been reached; therefore this report does **not** claim a passing Playwright rerun. The exact retained command is `./node_modules/.bin/playwright test e2e/pc-process-workspace.spec.ts --project=pc-chromium --workers=1` from `frontend/`.
+
+## Exceptional remediation — parent integration closure
+
+- Replaced the remaining parent `structuredClone(processPlan.value)` call with the shared Vue-aware clone boundary. The boundary now recursively unwraps nested proxies before its single structured-clone operation; the process workspace, flow repair, autosave coordinator, current major/minor editors, and legacy hierarchy editor all use that boundary, leaving no direct structured clone of process state.
+- Added a real `ExperimentFormView` harness backed by Pinia and Vue Router. Its browser scenario loads task A from intercepted detail/process APIs, edits the real summary field, waits for the real local-cache timer and draft POST, asserts no Vue/harness `DataCloneError`, then navigates the same mounted parent to task B and verifies the B form and server process graph replace A.
+- Reworked `diffProcessPlans` around semantic anchors plus stable sequence fallback instead of transport IDs. Nested source references are resolved to semantic major/step/material/output locations before comparison, so completely regenerated major/step/material/output/KCP/measurement IDs produce no differences while a real nested measurement change produces one precise human-readable change.
+- Unified every major/minor mutation behind transactional flow repair. Any repair result, including one discovered by an ordinary text/control edit or stale external source cleanup, lists affected consumer names and requires confirmation; cancellation restores the prop-owned clone and emits nothing. The prior `disruptive` warning-and-commit bypass no longer exists.
+
+### Exceptional-remediation verification
+
+- Frontend Node suite: 79 passed, 0 failed.
+- Shared, PC, and mobile direct type checks passed.
+- PC and mobile Vite production builds passed; PC retained only the existing large-chunk warning.
+- Frontend API-contract and route checks passed (`30` PC routes, `16` mobile routes).
+- Backend focused `ProcessPlanControllerTest,ProcessSubmissionValidatorTest` passed against all 23 migrations.
+- Playwright discovery passed and lists 7 PC workspace cases, including the real parent A→B/autosave case and ordinary-edit flow confirmation case. In accordance with the retained platform usage-limit restriction, Chrome was not launched and this report does **not** claim a fresh browser execution.
+- `git diff --check` passed. Direct installed binaries were used because the pnpm wrapper attempted a blocked online metadata/dependency refresh in this linked worktree.

@@ -37,6 +37,43 @@ test("server hydration survives Vue batching and cache restoration remains dirty
   expect(saves[1]?.majorProcesses.map(item => item.processName)).toEqual(["缓存大工序"]);
 });
 
+test("real experiment parent autosaves a proxied plan and reloads cleanly from task A to B", async ({ page }) => {
+  const pageErrors: string[] = [];
+  const draftSaves: Array<{ taskId: string; summary?: string }> = [];
+  page.on("pageerror", error => pageErrors.push(error.message));
+  await page.route("**/rnd-tasks/*/detail?*", route => {
+    const taskId = route.request().url().includes("task-b") ? "task-b" : "task-a";
+    return fulfillJson(route, taskDetail(taskId));
+  });
+  await page.route("**/experiment-forms/*/process-plan/revisions", route => fulfillJson(route, []));
+  await page.route("**/experiment-forms/*/process-plan", route => {
+    const formId = route.request().url().includes("form-b") ? "form-b" : "form-a";
+    return fulfillJson(route, parentPlan(formId));
+  });
+  await page.route("**/rnd-tasks/*/experiment-form/draft", async route => {
+    const taskId = route.request().url().includes("task-b") ? "task-b" : "task-a";
+    const payload = route.request().postDataJSON() as { summary?: string };
+    draftSaves.push({ taskId, summary: payload.summary });
+    await fulfillJson(route, experimentForm(taskId, payload.summary || ""));
+  });
+
+  await page.goto(harness("experiment-parent"));
+  await expect(page.getByText("产品 A V-A", { exact: true })).toBeVisible();
+  await expect(page.getByText("服务端工序 A", { exact: true })).toBeVisible();
+  await page.getByPlaceholder("填写本次打样说明").fill("任务 A 本地修改");
+  await expect.poll(() => draftSaves.filter(item => item.taskId === "task-a").length, { timeout: 5000 }).toBe(1);
+  const cached = await page.evaluate(() => localStorage.getItem("rnd:experiment-draft:v1:engineer-1:task-a"));
+  expect(cached).toContain("任务 A 本地修改");
+
+  await page.getByTestId("route-task-b").click();
+  await expect(page.getByTestId("active-task-route")).toHaveText("task-b");
+  await expect(page.getByText("产品 B V-B", { exact: true })).toBeVisible();
+  await expect(page.getByText("服务端工序 B", { exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder("填写本次打样说明")).toHaveValue("服务端摘要 B");
+  expect(pageErrors).toEqual([]);
+  await expect.poll(() => page.locator("body").getAttribute("data-harness-error")).toBeNull();
+});
+
 test("reopening submit after a failed current check cannot reuse the earlier success", async ({ page }) => {
   let checks = 0;
   await page.route("**/experiment-forms/form-submit/process-plan/submission-check", async route => {
@@ -95,6 +132,23 @@ test("flow destructive toggle is transactional on modal cancel and commit", asyn
   await expect(page.getByTestId("consumer-count")).toHaveText("0");
 });
 
+test("ordinary flow edits also require transactional repair confirmation", async ({ page }) => {
+  await page.goto(harness("flow"));
+  await page.getByTestId("inject-broken-flow").click();
+  await page.getByRole("button", { name: "编辑" }).click();
+  const stepName = page.getByDisplayValue("产出");
+  await stepName.fill("产出已编辑");
+  await expect(page.getByText(/后段\/使用\/中间料/)).toBeVisible();
+  await page.getByRole("button", { name: "取消" }).click();
+  await expect(page.getByTestId("consumer-count")).toHaveText("1");
+  await expect(page.getByDisplayValue("产出")).toBeVisible();
+
+  await page.getByDisplayValue("产出").fill("产出已编辑");
+  await page.getByRole("button", { name: /继续并修复/ }).click();
+  await expect(page.getByTestId("consumer-count")).toHaveText("0");
+  await expect(page.getByDisplayValue("产出已编辑")).toBeVisible();
+});
+
 test("artifact list and generation interleavings converge on the authoritative list", async ({ page }) => {
   const lists: Route[] = [];
   let generateRoute: Route | undefined;
@@ -132,3 +186,74 @@ function revision(formId: string, snapshot: unknown) {
 }
 
 type ProcessPlanPayload = { versionNo: number; majorProcesses: Array<{ processName: string }> };
+
+function parentPlan(formId: string) {
+  const suffix = formId === "form-b" ? "B" : "A";
+  return {
+    versionNo: 3,
+    status: "DRAFT",
+    balanceToleranceKg: 0.01,
+    majorProcesses: [{
+      id: `major-${suffix.toLowerCase()}`,
+      key: `major-${suffix.toLowerCase()}`,
+      sequence: 1,
+      processName: `服务端工序 ${suffix}`,
+      yieldBasis: "NONE",
+      inputs: [], outputs: [], steps: [],
+    }],
+  };
+}
+
+function experimentForm(taskId: string, summary = taskId === "task-b" ? "服务端摘要 B" : "服务端摘要 A") {
+  const suffix = taskId === "task-b" ? "b" : "a";
+  return {
+    id: `form-${suffix}`,
+    taskId,
+    projectId: `project-${suffix}`,
+    versionId: `version-${suffix}`,
+    sampleNo: `S-${suffix}`,
+    productName: `产品 ${suffix.toUpperCase()}`,
+    versionCode: `V-${suffix.toUpperCase()}`,
+    status: "DRAFT",
+    operatorName: "研发工程师",
+    summary,
+    materials: [],
+    processSteps: [{ sequence: 1, processName: `旧版工序 ${suffix.toUpperCase()}` }],
+    yieldCalculationMode: "SELECTED_PRIMARY_MATERIALS",
+    savedAt: "2026-08-20T00:00:00Z",
+    submittedAt: "",
+  };
+}
+
+function taskDetail(taskId: string) {
+  const suffix = taskId === "task-b" ? "b" : "a";
+  return {
+    task: {
+      id: taskId,
+      projectId: `project-${suffix}`,
+      versionId: `version-${suffix}`,
+      sampleNo: `S-${suffix}`,
+      productName: `产品 ${suffix.toUpperCase()}`,
+      versionCode: `V-${suffix.toUpperCase()}`,
+      status: "SAMPLING",
+      assigneeName: "研发工程师",
+      productOwnerName: "产品经理",
+      dueDate: "2026-08-30",
+      createdAt: "2026-08-19T00:00:00Z",
+      assignedAt: "2026-08-19T00:00:00Z",
+    },
+    version: {
+      id: `version-${suffix}`,
+      projectId: `project-${suffix}`,
+      versionCode: `V-${suffix.toUpperCase()}`,
+      versionNo: suffix === "b" ? 2 : 1,
+      status: "SAMPLING",
+      specification: `规格 ${suffix.toUpperCase()}`,
+    },
+    project: null,
+    currentExperimentForm: experimentForm(taskId),
+    currentTestAssignment: null,
+    fieldGroups: [],
+    availableActions: [],
+  };
+}

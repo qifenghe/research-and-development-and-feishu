@@ -115,6 +115,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { calculateMajorProcessYield, nextProcessKey, normalizeProcessPlan, type MajorProcessDraft, type MinorProcessStepDraft, type ProcessPlanDraft } from "@rnd/shared";
+import { cloneVueValue } from "./process/cloneVueValue";
 
 const props = defineProps<{ modelValue: ProcessPlanDraft; readonly?: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft] }>();
@@ -135,14 +136,14 @@ const stepTypeOptions=[{label:"普通操作",value:"NORMAL"},{label:"称重点",
 const yieldBasisOptions=[{label:"合格产出 ÷ 主料投入",value:"PRIMARY_INPUT"},{label:"综合产出 ÷ 全部投入",value:"TOTAL_INPUT"},{label:"不计算得率",value:"NONE"}];
 function newMajor(name=""):MajorProcessDraft{return{key:nextProcessKey("major"),sequence:plan.value.majorProcesses.length+1,processCode:"",processName:name,description:majorTemplates.find(x=>x.name===name)?.description||"",yieldBasis:"PRIMARY_INPUT",remark:"",steps:[],inputs:[],outputs:[]}}
 function newStep(name=""):MinorProcessStepDraft{return{key:nextProcessKey("step"),sequence:1,stepCode:"",stepName:name,stepType:name==="称重"?"WEIGH":"NORMAL",parameter1Name:"",parameter1Value:"",parameter1Unit:"",parameter2Name:"",parameter2Value:"",parameter2Unit:"",equipment:"",instruction:"",materials:[]}}
-function clonePlan(){return normalizeProcessPlan(structuredClone(plan.value))} function commit(next:ProcessPlanDraft){emit("update:modelValue",normalizeProcessPlan(next))}
+function clonePlan(){return normalizeProcessPlan(cloneVueValue(plan.value))} function commit(next:ProcessPlanDraft){emit("update:modelValue",normalizeProcessPlan(next))}
 function addMajor(name:string){if(props.readonly)return;const next=clonePlan();next.majorProcesses.push(newMajor(name));selectedMajorIndex.value=next.majorProcesses.length-1;commit(next)}
 function addStep(name:string){if(props.readonly||selectedMajorIndex.value<0)return;const next=clonePlan();const major=next.majorProcesses[selectedMajorIndex.value];if(!major)return;major.steps.push({...newStep(name),sequence:major.steps.length+1});commit(next)}
 function openCreateMajor(){creating.value=true;drawerMode.value="major";editingMajorIndex.value=-1;editingMajor.value=newMajor();drawerOpen.value=true}
 function openCreateStep(){if(selectedMajorIndex.value<0)return;creating.value=true;drawerMode.value="step";editingMajorIndex.value=selectedMajorIndex.value;editingStepIndex.value=-1;editingStep.value=newStep();drawerOpen.value=true}
-function editMajor(index:number){creating.value=false;drawerMode.value="major";editingMajorIndex.value=index;editingMajor.value=structuredClone(plan.value.majorProcesses[index]!);drawerOpen.value=true}
-function editStep(mi:number,si:number){creating.value=false;drawerMode.value="step";editingMajorIndex.value=mi;editingStepIndex.value=si;editingStep.value=structuredClone(plan.value.majorProcesses[mi]!.steps[si]!);drawerOpen.value=true}
-function editYield(index:number){creating.value=false;drawerMode.value="yield";editingMajorIndex.value=index;editingMajor.value=structuredClone(plan.value.majorProcesses[index]!);drawerOpen.value=true}
+function editMajor(index:number){creating.value=false;drawerMode.value="major";editingMajorIndex.value=index;editingMajor.value=cloneVueValue(plan.value.majorProcesses[index]!);drawerOpen.value=true}
+function editStep(mi:number,si:number){creating.value=false;drawerMode.value="step";editingMajorIndex.value=mi;editingStepIndex.value=si;editingStep.value=cloneVueValue(plan.value.majorProcesses[mi]!.steps[si]!);drawerOpen.value=true}
+function editYield(index:number){creating.value=false;drawerMode.value="yield";editingMajorIndex.value=index;editingMajor.value=cloneVueValue(plan.value.majorProcesses[index]!);drawerOpen.value=true}
 function saveDrawer(){const next=clonePlan();if(drawerMode.value==="step"&&editingStep.value){const major=next.majorProcesses[editingMajorIndex.value];if(!major||!editingStep.value.stepName.trim())return;if(creating.value)major.steps.push(editingStep.value);else major.steps.splice(editingStepIndex.value,1,editingStep.value)}else if(editingMajor.value){if(!editingMajor.value.processName.trim())return;if(creating.value)next.majorProcesses.push(editingMajor.value);else next.majorProcesses.splice(editingMajorIndex.value,1,editingMajor.value)}commit(next);drawerOpen.value=false}
 function removeEditing(){const next=clonePlan();if(drawerMode.value==="step")next.majorProcesses[editingMajorIndex.value]?.steps.splice(editingStepIndex.value,1);else next.majorProcesses.splice(editingMajorIndex.value,1);commit(next);drawerOpen.value=false}
 function addStepMaterial(){editingStep.value?.materials.push({key:nextProcessKey("material"),sequence:(editingStep.value.materials.length||0)+1,materialRole:"AUXILIARY",materialCode:"",materialName:"",materialState:"SOLID"})}

@@ -74,7 +74,7 @@
           <a-select v-model:value="output.materialState" :disabled="readonly" :options="states" @update:value="publishLocal" />
           <a-input-number v-model:value="output.weightKg" :disabled="readonly" :min="0" addon-after="kg" @update:value="publishLocal" />
           <a-checkbox v-model:checked="output.primaryOutput" :disabled="readonly" @change="ensurePrimaryOutput(output)">主料产出</a-checkbox>
-          <a-checkbox v-model:checked="output.continueFlow" :disabled="readonly" @change="publishLocal(true)">继续流转</a-checkbox>
+          <a-checkbox v-model:checked="output.continueFlow" :disabled="readonly" @change="publishLocal">继续流转</a-checkbox>
           <a-input v-model:value="output.remark" :disabled="readonly" placeholder="备注" @update:value="publishLocal" />
           <a-button v-if="!readonly" type="text" danger @click="removeOutput(index)">删除</a-button>
         </div>
@@ -89,14 +89,14 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
-import { message, Modal } from "ant-design-vue";
+import { Modal } from "ant-design-vue";
 import {
   aggregateProcessRecipe, calculateBatchYield, calculateMajorProcessYield, calculateMinorStepYield,
   nextProcessKey, normalizeProcessPlan, type ControlPointDraft, type MinorProcessStepDraft,
   type ProcessPlanDraft, type ProcessStepMaterialDraft, type StepOutputDraft,
 } from "@rnd/shared";
 import ControlPointEditor from "./ControlPointEditor.vue";
-import { previousFlowOutputs, repairProcessPlanFlow, type RemovedFlowConsumer } from "./processPlanFlow";
+import { confirmProcessPlanRepair, previousFlowOutputs, type RemovedFlowConsumer } from "./processPlanFlow";
 import { cloneVueValue } from "./cloneVueValue";
 
 const props = defineProps<{ modelValue: ProcessPlanDraft; majorKey: string; readonly?: boolean }>();
@@ -149,20 +149,19 @@ function newStep(name = ""): MinorProcessStepDraft {
   };
 }
 
-async function publish(next: ProcessPlanDraft, disruptive = false) {
-  const repaired = repairProcessPlanFlow(next);
-  if (repaired.removedConsumers.length && disruptive && !await confirmFlowRepair(repaired.removedConsumers)) {
+async function publish(next: ProcessPlanDraft) {
+  const result = await confirmProcessPlanRepair(next, confirmFlowRepair);
+  if (!result.accepted) {
     localPlan.value = clonePlan(props.modelValue);
     return false;
   }
-  if (repaired.removedConsumers.length && !disruptive) message.warning(flowWarning(repaired.removedConsumers));
-  localPlan.value = normalizeProcessPlan(repaired.plan);
+  localPlan.value = normalizeProcessPlan(result.plan);
   emit("update:modelValue", clonePlan(localPlan.value));
   ensureSelection();
   return true;
 }
-function publishLocal(disruptive = false) {
-  if (!props.readonly) void publish(clonePlan(localPlan.value), disruptive);
+function publishLocal() {
+  if (!props.readonly) void publish(clonePlan(localPlan.value));
 }
 function flowWarning(consumers: RemovedFlowConsumer[]) {
   const names = consumers.map(item => `${item.majorName}/${item.stepName}/${item.materialName || "未命名投料"}`).join("、");
@@ -181,10 +180,10 @@ function confirmFlowRepair(consumers: RemovedFlowConsumer[]) {
   });
 }
 
-function mutate(mutator: (plan: ProcessPlanDraft) => void, disruptive = false) {
+function mutate(mutator: (plan: ProcessPlanDraft) => void) {
   const next = clonePlan(props.modelValue);
   mutator(next);
-  return publish(next, disruptive);
+  return publish(next);
 }
 
 function addStep(name = "") {
@@ -206,7 +205,7 @@ async function copyStep() {
     const target = plan.majorProcesses.find(item => item.key === props.majorKey);
     const index = target?.steps.findIndex(step => step.key === selectedStepKey.value) ?? -1;
     if (!target || index < 0) return;
-    const step = structuredClone(target.steps[index]!);
+    const step = cloneVueValue(target.steps[index]!);
     step.id = undefined;
     step.key = nextProcessKey("step");
     key = step.key;
@@ -229,7 +228,7 @@ async function copyStep() {
       });
     });
     target.steps.splice(index + 1, 0, step);
-  }, true);
+  });
   if (committed) selectedStepKey.value = key;
 }
 
@@ -238,7 +237,7 @@ function removeStep() {
   mutate(plan => {
     const target = plan.majorProcesses.find(item => item.key === props.majorKey);
     if (target) target.steps = target.steps.filter(step => step.key !== old);
-  }, true);
+  });
 }
 
 function moveStep(index: number, offset: number) {
@@ -247,19 +246,26 @@ function moveStep(index: number, offset: number) {
     if (!steps) return;
     const [step] = steps.splice(index, 1);
     if (step) steps.splice(index + offset, 0, step);
-  }, true);
+  });
 }
 
 function addMaterial() { selectedStep.value?.materials.push({ key: nextProcessKey("material"), sequence: selectedStep.value.materials.length + 1, materialRole: "AUXILIARY", materialName: "", materialState: "SOLID", sourceType: "EXTERNAL" }); publishLocal(); }
 function removeMaterial(index: number) { selectedStep.value?.materials.splice(index, 1); publishLocal(); }
 function addOutput() { if (!selectedStep.value) return; const id = nextProcessKey("output"); (selectedStep.value.outputs ||= []).push({ id, key: id, sequence: selectedStep.value.outputs.length + 1, outputType: "INTERMEDIATE", outputName: "", materialState: "SOLID", primaryOutput: false, continueFlow: true }); publishLocal(); }
-function removeOutput(index: number) { if (!selectedStep.value) return; selectedStep.value.outputs?.splice(index, 1); void publish(clonePlan(localPlan.value), true); }
-function replaceControls(value: ControlPointDraft[]) { if (!selectedStep.value) return; selectedStep.value.controlPoints = structuredClone(value); publishLocal(); }
-function onSourceChange(material: ProcessStepMaterialDraft) { if (material.sourceType === "EXTERNAL") { delete material.sourceStepOutputId; publishLocal(); } else { material.materialCode = undefined; material.formulaMaterialId = undefined; } }
+function removeOutput(index: number) { if (!selectedStep.value) return; selectedStep.value.outputs?.splice(index, 1); void publish(clonePlan(localPlan.value)); }
+function replaceControls(value: ControlPointDraft[]) { if (!selectedStep.value) return; selectedStep.value.controlPoints = cloneVueValue(value); publishLocal(); }
+function onSourceChange(material: ProcessStepMaterialDraft) {
+  if (material.sourceType === "EXTERNAL") publishLocal();
+  else {
+    material.materialCode = undefined;
+    material.formulaMaterialId = undefined;
+    delete material.sourceStepOutputId;
+  }
+}
 function previousOutputsFor(material: ProcessStepMaterialDraft) { return material.materialRole === "PRIMARY" ? previousOutputs.value.filter(item => item.output.primaryOutput) : previousOutputs.value; }
 function applyOutputSource(material: ProcessStepMaterialDraft) { const output = previousOutputs.value.find(item => item.value === material.sourceStepOutputId)?.output; if (output) { material.materialName = output.outputName; material.materialState = output.materialState; material.weightKg = output.weightKg; } publishLocal(); }
-function ensurePrimaryMaterial(material: ProcessStepMaterialDraft) { if (material.materialRole === "PRIMARY") selectedStep.value?.materials.forEach(item => { if (item.key !== material.key) item.materialRole = "AUXILIARY"; }); publishLocal(true); }
-function ensurePrimaryOutput(output: StepOutputDraft) { if (output.primaryOutput) selectedStep.value?.outputs?.forEach(item => { if (item.key !== output.key) item.primaryOutput = false; }); publishLocal(true); }
+function ensurePrimaryMaterial(material: ProcessStepMaterialDraft) { if (material.materialRole === "PRIMARY") selectedStep.value?.materials.forEach(item => { if (item.key !== material.key) item.materialRole = "AUXILIARY"; }); publishLocal(); }
+function ensurePrimaryOutput(output: StepOutputDraft) { if (output.primaryOutput) selectedStep.value?.outputs?.forEach(item => { if (item.key !== output.key) item.primaryOutput = false; }); publishLocal(); }
 
 function dragTemplate(event: DragEvent, name: string) { dragPayload.value = { kind: "template", name }; event.dataTransfer?.setData("application/rnd-step", JSON.stringify(dragPayload.value)); }
 function dragExisting(event: DragEvent, index: number) { dragPayload.value = { kind: "existing", index }; event.dataTransfer?.setData("application/rnd-step", JSON.stringify(dragPayload.value)); }

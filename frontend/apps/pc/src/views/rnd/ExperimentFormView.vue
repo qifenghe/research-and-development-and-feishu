@@ -174,6 +174,7 @@ import type {
 } from "@rnd/shared";
 import { aggregateProcessRecipe, calculatePricingPreview, canEditExperiment, canNotifyInternalTest, clearExperimentDraft, createEmptyProcessPlan, experimentDraftKey, formulaRatios, isCachedDraftNewer, nextProcessKey, normalizePositiveIntegerQuantity, normalizeProcessPlan, processPlanToLegacySteps, readExperimentDraft, writeExperimentDraft, yieldBasisWeightKg } from "@rnd/shared";
 import ProcessTabsEditor from "../../components/ProcessTabsEditor.vue";
+import { cloneVueValue } from "../../components/process/cloneVueValue";
 import ProcessPlanWorkspace from "../../components/process/ProcessPlanWorkspace.vue";
 import { RequestGeneration } from "../../components/process/requestGeneration";
 import { useAuthStore } from "../../stores/auth";
@@ -565,7 +566,7 @@ function draftSnapshot() {
     form: { ...form },
     materials: materials.value.map((item) => ({ ...item })),
     processSteps: processSteps.value.map((item) => ({ ...item })),
-    processPlan: structuredClone(processPlan.value),
+    processPlan: cloneVueValue(processPlan.value),
   };
 }
 

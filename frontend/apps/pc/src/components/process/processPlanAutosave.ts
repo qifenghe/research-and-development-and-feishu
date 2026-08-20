@@ -1,3 +1,5 @@
+import { cloneVueValue } from "./cloneVueValue.ts";
+
 export type ProcessPlanSaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
 export class ProcessPlanSaveCoordinator<T> {
@@ -39,7 +41,7 @@ export class ProcessPlanSaveCoordinator<T> {
 
   hydrateServer(value: T) {
     this.cancelTimer();
-    this.value = structuredClone(value);
+    this.value = cloneVueValue(value);
     this.persistedGeneration = this.generation;
     this.state = "idle";
     this.publish();
@@ -51,7 +53,7 @@ export class ProcessPlanSaveCoordinator<T> {
 
   restoreLocalDirty(value: T) {
     this.cancelTimer();
-    this.value = structuredClone(value);
+    this.value = cloneVueValue(value);
     this.generation++;
     this.state = this.options.isDraft(this.value) ? "dirty" : "idle";
     this.publish();
@@ -67,7 +69,7 @@ export class ProcessPlanSaveCoordinator<T> {
 
   edit(edit: (current: T) => T) {
     if (this.disposed || !this.options.isDraft(this.value)) return;
-    this.value = edit(structuredClone(this.value));
+    this.value = edit(cloneVueValue(this.value));
     this.generation++;
     this.state = "dirty";
     this.publish();
@@ -100,7 +102,7 @@ export class ProcessPlanSaveCoordinator<T> {
   private async saveUntilCurrent() {
     while (!this.disposed && this.options.isDraft(this.value) && this.generation !== this.persistedGeneration) {
       const saveGeneration = this.generation;
-      const snapshot = structuredClone(this.value);
+      const snapshot = cloneVueValue(this.value);
       const saveFormId = this.formId;
       const saveEpoch = this.epoch;
       this.state = "saving";
@@ -130,6 +132,6 @@ export class ProcessPlanSaveCoordinator<T> {
   }
 
   private publish() {
-    this.options.onChange?.(structuredClone(this.value), this.state);
+    this.options.onChange?.(cloneVueValue(this.value), this.state);
   }
 }

@@ -5,6 +5,7 @@ import type {
   ProcessStepMaterialDraft,
   StepOutputDraft,
 } from "../../../../../packages/shared/src/process-plan";
+import { cloneVueValue } from "./cloneVueValue.ts";
 
 let flowKey = 0;
 const nextFlowKey = (prefix: string) => `${prefix}-${Date.now()}-${++flowKey}`;
@@ -48,7 +49,7 @@ export function repairProcessPlanFlow(plan: ProcessPlanDraft): {
   plan: ProcessPlanDraft;
   removedConsumers: RemovedFlowConsumer[];
 } {
-  const next = structuredClone(plan);
+  const next = cloneVueValue(plan);
   resequence(next);
   const steps = orderedSteps(next);
   const outputCounts = new Map<string, number>();
@@ -96,10 +97,10 @@ export function repairProcessPlanFlow(plan: ProcessPlanDraft): {
 }
 
 export function copyMajorProcess(plan: ProcessPlanDraft, majorKey: string) {
-  const next = structuredClone(plan);
+  const next = cloneVueValue(plan);
   const index = next.majorProcesses.findIndex(major => major.key === majorKey);
   if (index < 0) return { plan: next, removedConsumers: [] as RemovedFlowConsumer[] };
-  const item = structuredClone(next.majorProcesses[index]!);
+  const item = cloneVueValue(next.majorProcesses[index]!);
   const internalOutputIds = new Map<string, string>();
   item.id = undefined;
   item.key = nextFlowKey("major");
@@ -142,6 +143,18 @@ export function copyMajorProcess(plan: ProcessPlanDraft, majorKey: string) {
   });
   next.majorProcesses.splice(index + 1, 0, item);
   return repairProcessPlanFlow(next);
+}
+
+export async function confirmProcessPlanRepair(
+  candidate: ProcessPlanDraft,
+  confirm: (consumers: RemovedFlowConsumer[]) => boolean | Promise<boolean>,
+): Promise<{ accepted: boolean; plan: ProcessPlanDraft; removedConsumers: RemovedFlowConsumer[] }> {
+  const original = cloneVueValue(candidate);
+  const repaired = repairProcessPlanFlow(candidate);
+  if (repaired.removedConsumers.length && !await confirm(repaired.removedConsumers)) {
+    return { accepted: false, plan: original, removedConsumers: repaired.removedConsumers };
+  }
+  return { accepted: true, ...repaired };
 }
 
 function orderedSteps(plan: ProcessPlanDraft): StepRef[] {

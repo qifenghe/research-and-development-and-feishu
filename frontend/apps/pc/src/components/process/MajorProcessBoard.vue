@@ -89,8 +89,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, toRaw } from "vue";
-import { message, Modal } from "ant-design-vue";
+import { computed, reactive, ref } from "vue";
+import { Modal } from "ant-design-vue";
 import {
   calculateMajorProcessYield,
   nextProcessKey,
@@ -98,7 +98,7 @@ import {
   type MajorProcessDraft,
   type ProcessPlanDraft,
 } from "@rnd/shared";
-import { copyMajorProcess, repairProcessPlanFlow, type RemovedFlowConsumer } from "./processPlanFlow";
+import { confirmProcessPlanRepair, copyMajorProcess, type RemovedFlowConsumer } from "./processPlanFlow";
 import { cloneVueValue } from "./cloneVueValue";
 
 const props = defineProps<{ modelValue: ProcessPlanDraft; readonly?: boolean; selectedKey?: string }>();
@@ -135,11 +135,10 @@ function blankMajor(name = ""): MajorProcessDraft {
   };
 }
 
-async function commitCandidate(next: ProcessPlanDraft, disruptive = false) {
-  const repaired = repairProcessPlanFlow(next);
-  if (repaired.removedConsumers.length && disruptive && !await confirmFlowRepair(repaired.removedConsumers)) return false;
-  if (repaired.removedConsumers.length && !disruptive) message.warning(flowWarning(repaired.removedConsumers));
-  emit("update:modelValue", normalizeProcessPlan(repaired.plan));
+async function commitCandidate(next: ProcessPlanDraft) {
+  const result = await confirmProcessPlanRepair(next, confirmFlowRepair);
+  if (!result.accepted) return false;
+  emit("update:modelValue", normalizeProcessPlan(result.plan));
   return true;
 }
 
@@ -171,15 +170,15 @@ async function addMajor(name: string) {
 
 function openEditor(index = -1) {
   editingIndex.value = index;
-  Object.assign(editing, index < 0 ? blankMajor() : structuredClone(toRaw(plan.value.majorProcesses[index]!)));
+  Object.assign(editing, index < 0 ? blankMajor() : cloneVueValue(plan.value.majorProcesses[index]!));
   editorOpen.value = true;
 }
 
 async function saveEditor() {
   if (props.readonly || !editing.processName.trim()) return;
   const next = clonePlan(plan.value);
-  if (editingIndex.value < 0) next.majorProcesses.push(structuredClone(toRaw(editing)));
-  else next.majorProcesses.splice(editingIndex.value, 1, structuredClone(toRaw(editing)));
+  if (editingIndex.value < 0) next.majorProcesses.push(cloneVueValue(editing));
+  else next.majorProcesses.splice(editingIndex.value, 1, cloneVueValue(editing));
   if (await commitCandidate(next)) editorOpen.value = false;
 }
 
@@ -187,7 +186,7 @@ async function removeMajor() {
   if (props.readonly || editingIndex.value < 0) return;
   const next = clonePlan(plan.value);
   next.majorProcesses.splice(editingIndex.value, 1);
-  if (await commitCandidate(next, true)) editorOpen.value = false;
+  if (await commitCandidate(next)) editorOpen.value = false;
 }
 
 async function copyMajor(key: string) {
@@ -203,7 +202,7 @@ async function moveMajor(index: number, offset: number) {
   const next = clonePlan(plan.value);
   const [major] = next.majorProcesses.splice(index, 1);
   if (major) next.majorProcesses.splice(target, 0, major);
-  await commitCandidate(next, true);
+  await commitCandidate(next);
 }
 
 function dragTemplate(event: DragEvent, name: string) {
@@ -232,7 +231,7 @@ async function dropAt(event: DragEvent, index: number) {
     const next = clonePlan(plan.value);
     const [major] = next.majorProcesses.splice(data.index, 1);
     if (major) next.majorProcesses.splice(index, 0, major);
-    await commitCandidate(next, true);
+    await commitCandidate(next);
   }
 }
 

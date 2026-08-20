@@ -93,3 +93,51 @@ test("ignores transport metadata while comparing immutable process content", () 
 
   assert.deepEqual(diffProcessPlans(source, current), []);
 });
+
+test("treats regenerated IDs at every nested level as the same semantic snapshot", () => {
+  const source = plan();
+  const step = source.majorProcesses[0]!.steps[0]!;
+  source.majorProcesses[0]!.id = "major-old";
+  step.id = "step-old";
+  step.materials[0]!.id = "material-old";
+  step.outputs![0]!.id = "output-old";
+  step.outputs![0]!.key = "output-old";
+  step.controlPoints = [{
+    id: "control-old", key: "control-old", sequence: 1, controlType: "TEMPERATURE",
+    importance: "CRITICAL", itemName: "中心温度", targetValue: "85", unit: "℃",
+    measurements: [{ id: "measure-old", key: "measure-old", sequence: 1, measuredValue: "86", result: "PASS" }],
+  }];
+  step.materials.push({
+    id: "consumer-old", key: "consumer-old", sequence: 2, materialRole: "AUXILIARY",
+    materialName: "回用料", materialState: "SOLID", sourceType: "STEP_OUTPUT",
+    sourceStepOutputId: "output-old", weightKg: 1,
+  });
+
+  const current = structuredClone(source);
+  current.majorProcesses[0]!.id = "major-new";
+  current.majorProcesses[0]!.key = "major-new";
+  const currentStep = current.majorProcesses[0]!.steps[0]!;
+  currentStep.id = "step-new";
+  currentStep.key = "step-new";
+  currentStep.materials[0]!.id = "material-new";
+  currentStep.materials[0]!.key = "material-new";
+  currentStep.outputs![0]!.id = "output-new";
+  currentStep.outputs![0]!.key = "output-new";
+  currentStep.materials[1]!.id = "consumer-new";
+  currentStep.materials[1]!.key = "consumer-new";
+  currentStep.materials[1]!.sourceStepOutputId = "output-new";
+  currentStep.controlPoints[0]!.id = "control-new";
+  currentStep.controlPoints[0]!.key = "control-new";
+  currentStep.controlPoints[0]!.measurements[0]!.id = "measure-new";
+  currentStep.controlPoints[0]!.measurements[0]!.key = "measure-new";
+
+  assert.deepEqual(diffProcessPlans(source, current), []);
+
+  currentStep.controlPoints[0]!.measurements[0]!.measuredValue = "84";
+  const changed = diffProcessPlans(source, current);
+  assert.equal(changed.length, 1);
+  assert.equal(changed[0]?.type, "CHANGED");
+  assert.match(changed[0]?.path || "", /关键控制点.*实测.*实测值/);
+  assert.equal(changed[0]?.before, "86");
+  assert.equal(changed[0]?.after, "84");
+});

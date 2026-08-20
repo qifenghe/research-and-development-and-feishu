@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { copyMajorProcess, previousFlowOutputs, repairProcessPlanFlow } from "../apps/pc/src/components/process/processPlanFlow.ts";
+import { confirmProcessPlanRepair, copyMajorProcess, previousFlowOutputs, repairProcessPlanFlow } from "../apps/pc/src/components/process/processPlanFlow.ts";
 import { createEmptyProcessPlan, type ProcessPlanDraft } from "../packages/shared/src/process-plan.ts";
 
 function chain(): ProcessPlanDraft {
@@ -102,4 +102,32 @@ test("copy remaps output IDs and preserves sources from earlier majors", () => {
   assert.equal(copy.steps[1]!.materials[0]!.sourceStepOutputId, copiedOutputId);
   const ids = copied.plan.majorProcesses.flatMap(major => major.steps.flatMap(step => step.outputs || []).map(output => output.id));
   assert.equal(new Set(ids).size, ids.length);
+});
+
+test("every mutation that discovers a flow repair is transactional", async () => {
+  const broken = chain();
+  broken.majorProcesses[0]!.steps[0]!.outputs![0]!.continueFlow = false;
+  let confirmations = 0;
+
+  const cancelled = await confirmProcessPlanRepair(broken, async consumers => {
+    confirmations++;
+    assert.deepEqual(consumers.map(item => item.materialName), ["中间料"]);
+    return false;
+  });
+  assert.equal(confirmations, 1);
+  assert.equal(cancelled.accepted, false);
+  assert.equal(cancelled.plan.majorProcesses[1]!.steps[0]!.materials.length, 1);
+  assert.equal(broken.majorProcesses[1]!.steps[0]!.materials.length, 1);
+
+  const accepted = await confirmProcessPlanRepair(broken, async () => true);
+  assert.equal(accepted.accepted, true);
+  assert.equal(accepted.plan.majorProcesses[1]!.steps[0]!.materials.length, 0);
+
+  let cleanConfirmations = 0;
+  const clean = await confirmProcessPlanRepair(chain(), async () => {
+    cleanConfirmations++;
+    return false;
+  });
+  assert.equal(clean.accepted, true);
+  assert.equal(cleanConfirmations, 0);
 });

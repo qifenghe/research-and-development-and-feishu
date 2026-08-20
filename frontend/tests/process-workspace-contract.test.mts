@@ -53,6 +53,13 @@ test("route loader and output center fence stale requests and reset controlled s
   assert.match(output, /mutationGeneration\.isCurrent/);
 });
 
+test("experiment parent snapshots Vue process state through the shared raw clone boundary", () => {
+  const form = source("views/rnd/ExperimentFormView.vue");
+  assert.match(form, /cloneVueValue/);
+  assert.match(form, /processPlan:\s*cloneVueValue\(processPlan\.value\)/);
+  assert.ok(!form.includes("structuredClone(processPlan.value)"));
+});
+
 test("submission requires explicit confirmation/reason and output center never offers pricing generation", () => {
   const submit = source("components/process/ProcessSubmitDialog.vue");
   const output = source("components/process/RndOutputCenter.vue");
