@@ -58,6 +58,7 @@ class SchemaMigrationTest {
         assertTableExists("experiment_process_revision");
         assertTableExists("experiment_process_artifact");
         assertTableExists("process_artifact_cleanup_ledger");
+        assertTableExists("pricing_archive_cleanup_ledger");
         assertTableExists("pricing_packaging_item");
         assertTableExists("packaging_template_item");
 
@@ -77,6 +78,8 @@ class SchemaMigrationTest {
         assertForeignKeyExists("experiment_process_revision", "fk_process_revision_plan");
         assertForeignKeyExists("experiment_process_artifact", "fk_process_artifact_revision");
         assertForeignKeyExists("pricing_file", "fk_pricing_file_process_revision");
+        assertForeignKeyExists("pricing_archive_cleanup_ledger", "fk_pricing_archive_cleanup_file");
+        assertIndexExists("pricing_archive_cleanup_ledger", "idx_pricing_archive_cleanup_eligible");
 
         assertColumnExists("archive_file", "category");
         assertColumnExists("archive_file", "uploaded_by");
@@ -133,6 +136,12 @@ class SchemaMigrationTest {
         assertColumnExists("process_artifact_cleanup_ledger", "state");
         assertColumnExists("process_artifact_cleanup_ledger", "lease_until");
         assertColumnExists("process_artifact_cleanup_ledger", "owner_token");
+        assertColumnExists("pricing_archive_cleanup_ledger", "pricing_file_id");
+        assertColumnExists("pricing_archive_cleanup_ledger", "state");
+        assertColumnExists("pricing_archive_cleanup_ledger", "lease_until");
+        assertColumnExists("pricing_archive_cleanup_ledger", "owner_token");
+        assertColumnExists("pricing_archive_cleanup_ledger", "last_attempt");
+        assertColumnExists("pricing_archive_cleanup_ledger", "error");
         assertColumnExists("experiment_step_material", "source_type");
         assertColumnExists("experiment_step_material", "source_step_output_id");
         assertColumnExists("experiment_process_plan", "balance_tolerance_kg");
@@ -480,6 +489,9 @@ class SchemaMigrationTest {
         assertForeignKeyExists(legacyJdbcTemplate, "test_record", "fk_test_record_form");
         assertForeignKeyExists(legacyJdbcTemplate, "experiment_process", "fk_experiment_process_form");
         assertForeignKeyExists(legacyJdbcTemplate, "experiment_process_plan", "fk_process_plan_form");
+        assertTableExists(legacyJdbcTemplate, "pricing_archive_cleanup_ledger");
+        assertForeignKeyExists(legacyJdbcTemplate, "pricing_archive_cleanup_ledger", "fk_pricing_archive_cleanup_file");
+        assertIndexExists(legacyJdbcTemplate, "pricing_archive_cleanup_ledger", "idx_pricing_archive_cleanup_eligible");
         assertThat(legacyJdbcTemplate.queryForObject("select count(*) from experiment_material where experiment_form_id = ?", Integer.class, "FORM-V22-CHILDREN")).isEqualTo(1);
         assertThat(legacyJdbcTemplate.queryForObject("select count(*) from test_assignment where experiment_form_id = ?", Integer.class, "FORM-V22-CHILDREN")).isEqualTo(1);
         assertThat(legacyJdbcTemplate.queryForObject("select count(*) from test_record where experiment_form_id = ?", Integer.class, "FORM-V22-CHILDREN")).isEqualTo(1);
@@ -580,7 +592,11 @@ class SchemaMigrationTest {
     }
 
     private void assertTableExists(String tableName) {
-        Integer count = jdbcTemplate.queryForObject(
+        assertTableExists(jdbcTemplate, tableName);
+    }
+
+    private void assertTableExists(JdbcTemplate template, String tableName) {
+        Integer count = template.queryForObject(
                 """
                         select count(*)
                         from information_schema.tables
@@ -591,6 +607,26 @@ class SchemaMigrationTest {
                 tableName.toUpperCase()
         );
         assertThat(count).as("table %s exists", tableName).isEqualTo(1);
+    }
+
+    private void assertIndexExists(String tableName, String indexName) {
+        assertIndexExists(jdbcTemplate, tableName, indexName);
+    }
+
+    private void assertIndexExists(JdbcTemplate template, String tableName, String indexName) {
+        Integer count = template.queryForObject(
+                """
+                        select count(*)
+                        from information_schema.indexes
+                        where table_schema = 'PUBLIC'
+                          and table_name = ?
+                          and index_name = ?
+                        """,
+                Integer.class,
+                tableName.toUpperCase(),
+                indexName.toUpperCase()
+        );
+        assertThat(count).as("index %s exists", indexName).isEqualTo(1);
     }
 
     private void assertUniqueConstraintExists(String tableName, String constraintName) {

@@ -1,8 +1,10 @@
 package com.lhr.rnd.api;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.RepeatedTest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -31,6 +33,10 @@ import java.security.MessageDigest;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -42,6 +48,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -71,6 +82,12 @@ class SampleWorkflowControllerTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    @SpyBean
+    private com.lhr.rnd.service.LocalArchiveStorageService archiveStorageService;
+
+    @SpyBean
+    private com.lhr.rnd.service.PricingArchiveCleanupLedgerService pricingArchiveCleanupLedger;
+
     @BeforeEach
     void clearWorkflowState() {
         clearBusinessTables();
@@ -80,6 +97,7 @@ class SampleWorkflowControllerTest {
 
     private void clearBusinessTables() {
         for (String table : new String[]{
+                "pricing_archive_cleanup_ledger",
                 "process_artifact_cleanup_ledger",
                 "audit_log",
                 "archive_file",
@@ -1454,7 +1472,8 @@ class SampleWorkflowControllerTest {
                 .isEqualTo(generatedFileName);
         var archivedSampleNo = valueById("pricing_file", pricingFileId, "sample_no");
         assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "file_path"))
-                .isEqualTo(archivedSampleNo + "/A0/核价/" + pricingFileId + "/" + generatedFileName);
+                .startsWith("pricing-archives/" + archivedSampleNo + "/A0/pricing/" + pricingFileId + "/attempt-")
+                .endsWith(".xlsx");
         assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "file_status")).isEqualTo("ARCHIVED");
         var archivedPath = Path.of("target/rnd-archive")
                 .resolve(valueByColumn("archive_file", "business_id", pricingFileId, "file_path"));
@@ -1611,6 +1630,7 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("pricing_file", pricingFileId, "process_revision_id")).isNull();
         assertThat(pricingPackagingRows(pricingFileId)).isEqualTo(packagingBefore);
         assertThat(countByColumn("archive_file", "business_id", pricingFileId)).isZero();
+        assertThat(countByColumn("pricing_archive_cleanup_ledger", "pricing_file_id", pricingFileId)).isZero();
         assertThat(pricingArchiveFiles(versionId)).isEqualTo(filesBefore);
         assertThat(cachedPricingFile(pricingFileId)).isEqualTo(cachedBefore);
     }
@@ -1637,8 +1657,159 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("pricing_file", pricingFileId, "process_revision_id")).isNull();
         assertThat(pricingPackagingRows(pricingFileId)).isEqualTo(packagingBefore);
         assertThat(countByColumn("archive_file", "business_id", pricingFileId)).isZero();
+        assertThat(countByColumn("pricing_archive_cleanup_ledger", "pricing_file_id", pricingFileId)).isZero();
         assertThat(pricingArchiveFiles(versionId)).isEqualTo(filesBefore);
         assertThat(cachedPricingFile(pricingFileId)).isEqualTo(cachedBefore);
+    }
+
+    @RepeatedTest(3)
+    void rolledBackAttemptCleanupCannotDeleteCommittedRetryBytes() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var formId = valueByColumn("experiment_form", "version_id", versionId, "id");
+        insertFormalPricingRevision(formId, "PREV-ATTEMPT-A", 1, "80");
+        var pricingFileId = createPricingDraft(versionId);
+        var items = workflowService.pricingPackagingItems(pricingFileId);
+        var firstStored = new CountDownLatch(1);
+        var releaseFirstStore = new CountDownLatch(1);
+        var secondStarted = new CountDownLatch(1);
+        var firstCleanupPaused = new CountDownLatch(1);
+        var releaseFirstCleanup = new CountDownLatch(1);
+        var stores = new AtomicInteger();
+        var firstDeletes = new AtomicInteger();
+        var firstKey = new AtomicReference<String>();
+        var secondKey = new AtomicReference<String>();
+        doAnswer(invocation -> {
+            var key = invocation.getArgument(0, String.class);
+            var result = invocation.callRealMethod();
+            if (stores.incrementAndGet() == 1) {
+                firstKey.set(key);
+                firstStored.countDown();
+                if (!releaseFirstStore.await(20, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("first archive store pause timed out");
+                }
+            } else {
+                secondKey.compareAndSet(null, key);
+            }
+            return result;
+        }).when(archiveStorageService).store(anyString(), any());
+        doAnswer(invocation -> {
+            if (invocation.getArgument(0, String.class).equals(firstKey.get())) {
+                firstCleanupPaused.countDown();
+                if (!releaseFirstCleanup.await(20, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("first archive cleanup pause timed out");
+                }
+                if (firstDeletes.incrementAndGet() == 1) {
+                    throw new BusinessException("ARCHIVE_FILE_DELETE_FAILED", "injected first-attempt delete failure");
+                }
+            }
+            return invocation.callRealMethod();
+        }).when(archiveStorageService).delete(anyString());
+
+        var first = CompletableFuture.runAsync(() -> new TransactionTemplate(transactionManager)
+                .executeWithoutResult(status -> {
+                    workflowService.confirmPricingPackaging(pricingFileId, items, "张研发", "RND_ENGINEER");
+                    status.setRollbackOnly();
+                }));
+        assertThat(firstStored.await(20, TimeUnit.SECONDS)).isTrue();
+        insertFormalPricingRevision(formId, "PREV-ATTEMPT-B", 2, "70");
+        var second = CompletableFuture.supplyAsync(() -> {
+            secondStarted.countDown();
+            return workflowService.confirmPricingPackaging(pricingFileId, items, "张研发", "RND_ENGINEER");
+        });
+        assertThat(secondStarted.await(20, TimeUnit.SECONDS)).isTrue();
+        assertThatThrownBy(() -> second.get(300, TimeUnit.MILLISECONDS))
+                .isInstanceOf(TimeoutException.class);
+        releaseFirstStore.countDown();
+        assertThat(firstCleanupPaused.await(20, TimeUnit.SECONDS)).isTrue();
+        try {
+            var committed = second.get(20, TimeUnit.SECONDS);
+            assertThat(committed.processRevisionId()).isEqualTo("PREV-ATTEMPT-B");
+            assertThat(secondKey.get()).isNotEqualTo(firstKey.get());
+            assertThat(secondKey.get()).startsWith("pricing-archives/").endsWith(".xlsx");
+            assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "file_path"))
+                    .isEqualTo(secondKey.get());
+            assertPricingPersistenceCoherent(pricingFileId, items, "PREV-ATTEMPT-B", "70");
+            assertThat(Files.exists(pricingArchivePath(secondKey.get()))).isTrue();
+        } finally {
+            releaseFirstCleanup.countDown();
+            first.get(20, TimeUnit.SECONDS);
+        }
+        assertThat(jdbcTemplate.queryForObject(
+                "select state from pricing_archive_cleanup_ledger where storage_key = ?",
+                String.class, firstKey.get())).isEqualTo("ORPHANED");
+        assertThat(jdbcTemplate.queryForObject(
+                "select error from pricing_archive_cleanup_ledger where storage_key = ?",
+                String.class, firstKey.get())).contains("injected first-attempt delete failure");
+        assertThat(Files.exists(pricingArchivePath(firstKey.get()))).isTrue();
+
+        pricingArchiveCleanupLedger.reconcileStale();
+
+        assertThat(countByColumn("pricing_archive_cleanup_ledger", "storage_key", firstKey.get())).isZero();
+        assertThat(Files.exists(pricingArchivePath(firstKey.get()))).isFalse();
+        assertThat(Files.exists(pricingArchivePath(secondKey.get()))).isTrue();
+        assertPricingPersistenceCoherent(pricingFileId, items, "PREV-ATTEMPT-B", "70");
+    }
+
+    @Test
+    void failedCommitCallbackLeavesReferencedAttemptForSafeReconciliation() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var formId = valueByColumn("experiment_form", "version_id", versionId, "id");
+        insertFormalPricingRevision(formId, "PREV-CALLBACK", 1, "80");
+        doThrow(new IllegalStateException("injected pricing ledger confirm failure"))
+                .doCallRealMethod()
+                .when(pricingArchiveCleanupLedger)
+                .confirm(any(com.lhr.rnd.service.PricingArchiveCleanupLedgerService.Reservation.class));
+
+        var pricingFileId = generatePricingFile(versionId);
+        var storageKey = valueByColumn("archive_file", "business_id", pricingFileId, "file_path");
+
+        assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("PENDING_PRICING_REVIEW");
+        assertThat(jdbcTemplate.queryForObject(
+                "select state from pricing_archive_cleanup_ledger where storage_key = ?",
+                String.class, storageKey)).isEqualTo("RESERVED");
+        assertThat(Files.exists(pricingArchivePath(storageKey))).isTrue();
+        jdbcTemplate.update("update pricing_archive_cleanup_ledger set lease_until = ? where storage_key = ?",
+                LocalDateTime.now().minusHours(2), storageKey);
+
+        pricingArchiveCleanupLedger.reconcileStale();
+
+        assertThat(countByColumn("pricing_archive_cleanup_ledger", "storage_key", storageKey)).isZero();
+        assertThat(Files.exists(pricingArchivePath(storageKey))).isTrue();
+        var archiveId = valueByColumn("archive_file", "business_id", pricingFileId, "id");
+        assertThat(workflowService.downloadArchiveFile(archiveId).content())
+                .isEqualTo(workflowService.downloadPricingFile(pricingFileId).content());
+        assertPricingWorkbookRevision(workflowService.downloadPricingFile(pricingFileId).content(),
+                "PREV-CALLBACK", "80");
+    }
+
+    @Test
+    void pricingArchiveReconcileHonorsLeaseOwnerAndSafePrefix() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var pricingFileId = createPricingDraft(versionId);
+        var reservation = pricingArchiveCleanupLedger.register(pricingFileId);
+        archiveStorageService.store(reservation.storageKey(), new byte[]{1, 2, 3});
+        var staleOwner = new com.lhr.rnd.service.PricingArchiveCleanupLedgerService.Reservation(
+                pricingFileId, reservation.storageKey(), "stale-owner-token", reservation.leaseUntil());
+
+        pricingArchiveCleanupLedger.confirm(staleOwner);
+        pricingArchiveCleanupLedger.orphanAndDelete(staleOwner);
+        pricingArchiveCleanupLedger.reconcileStale();
+
+        assertThat(jdbcTemplate.queryForObject(
+                "select state from pricing_archive_cleanup_ledger where storage_key = ?",
+                String.class, reservation.storageKey())).isEqualTo("RESERVED");
+        assertThat(Files.exists(pricingArchivePath(reservation.storageKey()))).isTrue();
+        assertThatThrownBy(() -> pricingArchiveCleanupLedger.register(
+                pricingFileId, "process-artifacts/not-a-pricing-attempt.xlsx"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unsafe pricing archive cleanup key");
+        jdbcTemplate.update("update pricing_archive_cleanup_ledger set lease_until = ? where storage_key = ?",
+                LocalDateTime.now().minusHours(2), reservation.storageKey());
+
+        pricingArchiveCleanupLedger.reconcileOnStartup();
+
+        assertThat(countByColumn("pricing_archive_cleanup_ledger", "storage_key", reservation.storageKey())).isZero();
+        assertThat(Files.exists(pricingArchivePath(reservation.storageKey()))).isFalse();
     }
 
     @Test
@@ -2896,7 +3067,7 @@ class SampleWorkflowControllerTest {
     private Map<String, String> pricingArchiveFiles(String versionId) throws Exception {
         var sampleNo = valueById("sample_version", versionId, "sample_no");
         var versionCode = valueById("sample_version", versionId, "version_code");
-        var directory = Path.of("target", "rnd-archive", sampleNo, versionCode, "核价");
+        var directory = Path.of("target", "rnd-archive", "pricing-archives", sampleNo, versionCode, "pricing");
         if (!Files.exists(directory)) return Map.of();
         var result = new java.util.TreeMap<String, String>();
         try (var paths = Files.walk(directory)) {
@@ -2905,6 +3076,10 @@ class SampleWorkflowControllerTest {
             }
         }
         return Map.copyOf(result);
+    }
+
+    private Path pricingArchivePath(String storageKey) {
+        return Path.of("target", "rnd-archive").resolve(storageKey);
     }
 
     @SuppressWarnings("unchecked")

@@ -46,6 +46,22 @@ create table process_artifact_cleanup_ledger (
     constraint chk_artifact_cleanup_state check (state in ('RESERVED', 'ORPHANED'))
 );
 
+create table pricing_archive_cleanup_ledger (
+    storage_key varchar(500) primary key,
+    pricing_file_id varchar(32) not null,
+    state varchar(20) not null default 'RESERVED',
+    lease_until timestamp not null,
+    owner_token varchar(64) not null,
+    created_at timestamp not null,
+    last_attempt timestamp,
+    error varchar(1000),
+    constraint fk_pricing_archive_cleanup_file foreign key (pricing_file_id) references pricing_file(id),
+    constraint chk_pricing_archive_cleanup_state check (state in ('RESERVED', 'ORPHANED'))
+);
+
+create index idx_pricing_archive_cleanup_eligible
+    on pricing_archive_cleanup_ledger(state, lease_until);
+
 alter table experiment_process_plan add column balance_tolerance_kg numeric(14,4) not null default 0.0100;
 alter table experiment_process_plan add column source_revision_id varchar(64);
 alter table experiment_process_plan add column change_reason varchar(1000);

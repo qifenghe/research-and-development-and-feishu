@@ -142,6 +142,7 @@ public class SampleWorkflowService {
     private final PackagingTemplateItemRepository packagingTemplateItemRepository;
     private final FinanceNotificationRepository financeNotificationRepository;
     private final ArchiveFileRepository archiveFileRepository;
+    private final PricingArchiveCleanupLedgerService pricingArchiveCleanupLedger;
     @Autowired(required = false) private UserAccountRepository userAccountRepository;
     @Autowired(required = false) private ProcessRevisionService processRevisionService;
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
@@ -167,11 +168,11 @@ public class SampleWorkflowService {
     private int financeNotificationSequence = 1;
 
     public SampleWorkflowService() {
-        this(Clock.systemDefaultZone(), new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(Clock.systemDefaultZone(), new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     SampleWorkflowService(Clock clock) {
-        this(clock, new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(clock, new LocalArchiveStorageService(), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -195,7 +196,8 @@ public class SampleWorkflowService {
             PricingPackagingItemRepository pricingPackagingItemRepository,
             PackagingTemplateItemRepository packagingTemplateItemRepository,
             FinanceNotificationRepository financeNotificationRepository,
-            ArchiveFileRepository archiveFileRepository
+            ArchiveFileRepository archiveFileRepository,
+            PricingArchiveCleanupLedgerService pricingArchiveCleanupLedger
     ) {
         this(
                 Clock.systemDefaultZone(),
@@ -218,7 +220,8 @@ public class SampleWorkflowService {
                 pricingPackagingItemRepository,
                 packagingTemplateItemRepository,
                 financeNotificationRepository,
-                archiveFileRepository
+                archiveFileRepository,
+                pricingArchiveCleanupLedger
         );
     }
 
@@ -243,7 +246,8 @@ public class SampleWorkflowService {
             PricingPackagingItemRepository pricingPackagingItemRepository,
             PackagingTemplateItemRepository packagingTemplateItemRepository,
             FinanceNotificationRepository financeNotificationRepository,
-            ArchiveFileRepository archiveFileRepository
+            ArchiveFileRepository archiveFileRepository,
+            PricingArchiveCleanupLedgerService pricingArchiveCleanupLedger
     ) {
         this.clock = clock;
         this.archiveStorageService = archiveStorageService;
@@ -266,6 +270,7 @@ public class SampleWorkflowService {
         this.packagingTemplateItemRepository = packagingTemplateItemRepository;
         this.financeNotificationRepository = financeNotificationRepository;
         this.archiveFileRepository = archiveFileRepository;
+        this.pricingArchiveCleanupLedger = pricingArchiveCleanupLedger;
     }
 
     @Transactional
@@ -1794,6 +1799,9 @@ public class SampleWorkflowService {
             String operatorName,
             String operatorRole
     ) {
+        var archiveReservation = reservePricingArchiveAttempt(pricingFileId);
+        var archiveMetadataReady = new boolean[]{false};
+        registerPricingArchiveCompletion(archiveReservation, archiveMetadataReady);
         var pricingFile = lockedPricingFile(pricingFileId);
         ensurePricingReviewer(pricingFile, operatorName, operatorRole);
         if (pricingFile.status() != PricingFileStatus.DRAFT_PACKAGING) {
@@ -1829,7 +1837,8 @@ public class SampleWorkflowService {
         if (revision != null) {
             generatedRecord = generatedRecord.withProcessRevision(revision.id());
         }
-        persistGeneratedPricingFile(generatedRecord, generated.content());
+        persistGeneratedPricingFile(generatedRecord, generated.content(), archiveReservation);
+        archiveMetadataReady[0] = true;
         if (auditLogService != null) {
             auditLogService.record("PRICING_FILE", pricingFileId, "PACKAGING_CONFIRMED", operatorName,
                     "items=" + confirmedItems.size());
@@ -2935,7 +2944,11 @@ public class SampleWorkflowService {
         ));
     }
 
-    private void persistGeneratedPricingFile(PricingFileRecord pricingFile, byte[] content) {
+    private void persistGeneratedPricingFile(
+            PricingFileRecord pricingFile,
+            byte[] content,
+            PricingArchiveCleanupLedgerService.Reservation archiveReservation
+    ) {
         if (pricingFileRepository == null) {
             return;
         }
@@ -2944,7 +2957,7 @@ public class SampleWorkflowService {
         entity.markGenerated(pricingFile.fileName(), pricingFile.contentLength());
         entity.setProcessRevisionId(pricingFile.processRevisionId());
         pricingFileRepository.save(entity);
-        persistPricingArchive(pricingFile, content);
+        persistPricingArchive(pricingFile, content, archiveReservation);
     }
 
     private void persistPricingPackagingItems(String pricingFileId, List<PricingPackagingItem> items) {
@@ -2961,18 +2974,24 @@ public class SampleWorkflowService {
                 .toList());
     }
 
-    private void persistPricingArchive(PricingFileRecord pricingFile, byte[] content) {
+    private void persistPricingArchive(
+            PricingFileRecord pricingFile,
+            byte[] content,
+            PricingArchiveCleanupLedgerService.Reservation archiveReservation
+    ) {
         if (archiveFileRepository == null) {
             return;
         }
-        var relativePath = "%s/%s/核价/%s/%s".formatted(
-                pricingFile.sampleNo(),
-                pricingFile.versionCode(),
-                pricingFile.id(),
-                pricingFile.fileName()
-        );
+        if (archiveReservation == null) {
+            throw new IllegalStateException("pricing archive cleanup ledger is required");
+        }
+        pricingArchiveCleanupLedger.renew(archiveReservation);
+        var relativePath = archiveReservation.storageKey();
         archiveStorageService.store(relativePath, content);
-        deleteArchiveAfterRollback(relativePath);
+        if (!pricingArchiveCleanupLedger.lockForCommit(archiveReservation)) {
+            archiveStorageService.delete(relativePath);
+            throw new BusinessException("PRICING_ARCHIVE_RESERVATION_LOST", "核价归档生成租约已失效，请重试");
+        }
         archiveFileRepository.save(new ArchiveFileEntity(
                 "ARCH-" + pricingFile.id(),
                 "PRICING_FILE",
@@ -2991,20 +3010,6 @@ public class SampleWorkflowService {
                 "ARCHIVED",
                 pricingFile.generatedAt()
         ));
-    }
-
-    private void deleteArchiveAfterRollback(String relativePath) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCompletion(int status) {
-                if (status != STATUS_COMMITTED) {
-                    archiveStorageService.delete(relativePath);
-                }
-            }
-        });
     }
 
     private void persistFinanceNotification(PricingFileRecord notifiedPricingFile, FinanceNotification notification) {
@@ -3258,6 +3263,37 @@ public class SampleWorkflowService {
         return pricingFileRepository.findByIdForUpdate(pricingFileId)
                 .map(this::toPricingFileRecord)
                 .orElseThrow(() -> new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在"));
+    }
+
+    private PricingArchiveCleanupLedgerService.Reservation reservePricingArchiveAttempt(String pricingFileId) {
+        if (pricingArchiveCleanupLedger == null) {
+            return null;
+        }
+        pricingArchiveCleanupLedger.reconcileStale();
+        return pricingArchiveCleanupLedger.register(pricingFileId);
+    }
+
+    private void registerPricingArchiveCompletion(
+            PricingArchiveCleanupLedgerService.Reservation reservation,
+            boolean[] archiveMetadataReady
+    ) {
+        if (reservation == null) {
+            return;
+        }
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            pricingArchiveCleanupLedger.orphanAndDelete(reservation);
+            throw new IllegalStateException("pricing archive attempt requires transaction synchronization");
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_COMMITTED && archiveMetadataReady[0]) {
+                    pricingArchiveCleanupLedger.confirm(reservation);
+                } else {
+                    pricingArchiveCleanupLedger.orphanAndDelete(reservation);
+                }
+            }
+        });
     }
 
     private ProcessRevision latestFormalPricingRevision(ExperimentForm lockedForm) {
