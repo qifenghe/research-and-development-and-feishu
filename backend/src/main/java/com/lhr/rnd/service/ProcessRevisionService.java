@@ -118,14 +118,21 @@ public class ProcessRevisionService {
     }
 
     @Transactional(readOnly = true)
-    public ProcessPlan latestSnapshot(String formId) {
+    public ProcessRevision latestOrNull(String formId) {
         planService.find(formId);
         var rows = jdbc.query("select * from experiment_process_revision where experiment_form_id = ? order by revision_no desc limit 1",
                 (rs, row) -> map(rs), formId);
-        if (rows.isEmpty()) {
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    @Transactional(readOnly = true)
+    public ProcessPlan latestSnapshot(String formId) {
+        planService.find(formId);
+        var revision = latestOrNull(formId);
+        if (revision == null) {
             throw new BusinessException("PROCESS_FORMAL_REVISION_REQUIRED", "当前没有可供查看的正式工艺版本");
         }
-        return rows.get(0).snapshot();
+        return revision.snapshot();
     }
 
     @Transactional

@@ -58,6 +58,9 @@ public class PricingFileEntity {
     @Column(name = "rejection_reason")
     private String rejectionReason;
 
+    @Column(name = "process_revision_id")
+    private String processRevisionId;
+
     protected PricingFileEntity() {
     }
 
@@ -89,6 +92,7 @@ public class PricingFileEntity {
                 null,
                 null,
                 null,
+                null,
                 null
         );
     }
@@ -111,6 +115,29 @@ public class PricingFileEntity {
             String reviewComment,
             String rejectionReason
     ) {
+        this(id, versionId, sampleNo, productName, versionCode, pricingVersion, fileName, status, contentLength,
+                generatedAt, receivedBy, receivedAt, reviewedBy, reviewedAt, reviewComment, rejectionReason, null);
+    }
+
+    public PricingFileEntity(
+            String id,
+            String versionId,
+            String sampleNo,
+            String productName,
+            String versionCode,
+            String pricingVersion,
+            String fileName,
+            String status,
+            Long contentLength,
+            LocalDateTime generatedAt,
+            String receivedBy,
+            LocalDateTime receivedAt,
+            String reviewedBy,
+            LocalDateTime reviewedAt,
+            String reviewComment,
+            String rejectionReason,
+            String processRevisionId
+    ) {
         this.id = id;
         this.versionId = versionId;
         this.sampleNo = sampleNo;
@@ -127,6 +154,7 @@ public class PricingFileEntity {
         this.reviewedAt = reviewedAt;
         this.reviewComment = reviewComment;
         this.rejectionReason = rejectionReason;
+        this.processRevisionId = processRevisionId;
     }
 
     public void markFinanceNotified() {
@@ -137,6 +165,10 @@ public class PricingFileEntity {
         this.fileName = fileName;
         this.contentLength = contentLength;
         this.status = "PENDING_PRICING_REVIEW";
+    }
+
+    public void setProcessRevisionId(String processRevisionId) {
+        this.processRevisionId = processRevisionId;
     }
 
     public void markFinanceReceived(String receivedBy, LocalDateTime receivedAt) {
@@ -172,4 +204,5 @@ public class PricingFileEntity {
     public LocalDateTime getReviewedAt() { return reviewedAt; }
     public String getReviewComment() { return reviewComment; }
     public String getRejectionReason() { return rejectionReason; }
+    public String getProcessRevisionId() { return processRevisionId; }
 }

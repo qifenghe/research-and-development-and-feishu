@@ -1,9 +1,12 @@
 package com.lhr.rnd.service;
 
+import com.lhr.rnd.api.BusinessException;
 import com.lhr.rnd.model.ExperimentMaterial;
 import com.lhr.rnd.model.PricingPackagingItem;
 import com.lhr.rnd.model.PricingPackagingSource;
 import com.lhr.rnd.model.PricingPackagingStatus;
+import com.lhr.rnd.model.ProcessPlan;
+import com.lhr.rnd.model.ProcessRevision;
 import com.lhr.rnd.model.SampleVersion;
 import com.lhr.rnd.model.YieldCalculationMode;
 import org.apache.poi.ss.usermodel.CellType;
@@ -27,6 +30,7 @@ import java.util.List;
 import java.util.zip.ZipInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PricingFileServiceTest {
     private static final String TEMPLATE_PATH = "/templates/pricing-material-list-template.xlsx";
@@ -108,6 +112,39 @@ class PricingFileServiceTest {
         var reviewDirectory = Path.of("target", "pricing-format-review");
         Files.createDirectories(reviewDirectory);
         Files.write(reviewDirectory.resolve("Y03006-1kg吮指五香味酱汁-A1-核价验证.xlsx"), result.content());
+    }
+
+    @Test
+    void usesFormalRevisionRecipeAndFinishedYieldInsteadOfLegacyInputs() throws Exception {
+        var legacyVersion = pricingVersionWithCustomMaterials(List.of(
+                new ExperimentMaterial("旧配方", 1, "RAW-001", "旧配方主料", new BigDecimal("10"),
+                        new BigDecimal("0.75"), null, "RAW", true, null, "kg")));
+        var revision = formalRevision("PREV-2", 2, "RAW-001", "正式配方主料", "100", "80");
+
+        var result = new PricingFileService().generate(legacyVersion, "V1", "LHYC", revision, List.of());
+
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getRow(8).getCell(6).getStringCellValue())
+                    .contains("source=FORMAL_PROCESS_REVISION", "revisionNo=2", "revisionId=PREV-2", "finishedYield=80.000000%");
+            assertThat(sheet.getRow(12).getCell(3).getStringCellValue()).isEqualTo("RAW-001");
+            assertThat(sheet.getRow(12).getCell(4).getStringCellValue()).isEqualTo("正式配方主料");
+            assertThat(sheet.getRow(12).getCell(6).getNumericCellValue()).isEqualTo(100D);
+            assertThat(sheet.getRow(12).getCell(7).getNumericCellValue()).isEqualTo(0.75D);
+            assertThat(sheet.getRow(15).getCell(6).getNumericCellValue()).isEqualTo(0.8D);
+        }
+    }
+
+    @Test
+    void rejectsFormalExternalMaterialWithoutStableCostIdentity() {
+        var revision = formalRevision("PREV-NO-COST", 1, null, "随时可改名的物料", "100", "80");
+
+        assertThatThrownBy(() -> new PricingFileService().generate(
+                pricingVersionWithCustomMaterials(List.of(material("旧物料", "RAW", true, "10"))),
+                "V1", "LHYC", revision, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).code())
+                .isEqualTo("PROCESS_REVISION_PRICING_MATERIAL_UNPRICED");
     }
 
     @Test
@@ -318,6 +355,34 @@ class PricingFileServiceTest {
     private ExperimentMaterial material(String name, String category, boolean primary, String weight) {
         return new ExperimentMaterial(category, 1, null, name, new BigDecimal(weight), BigDecimal.ONE,
                 null, category, primary, null, "kg");
+    }
+
+    private ProcessRevision formalRevision(
+            String revisionId,
+            int revisionNo,
+            String materialCode,
+            String materialName,
+            String materialWeight,
+            String finishedOutputWeight
+    ) {
+        var step = new ProcessPlan.MinorStep(
+                "STEP-" + revisionId, 1, "COOK", "熟制", "NORMAL", null, null, null,
+                null, null, null, null, null,
+                List.of(new ProcessPlan.StepMaterial(
+                        "STEP-MATERIAL-" + revisionId, 1, "PRIMARY", materialCode, materialName, "SOLID",
+                        new BigDecimal(materialWeight), materialCode, null, "EXTERNAL", null)),
+                List.of(new ProcessPlan.StepOutput(
+                        "STEP-OUTPUT-" + revisionId, 1, "FINISHED", "正式成品", "SOLID",
+                        new BigDecimal(finishedOutputWeight), true, false, null)),
+                List.of());
+        var plan = new ProcessPlan(
+                "PLAN-" + revisionId, "FORM-1", 1, "SUBMITTED",
+                List.of(new ProcessPlan.MajorProcess(
+                        "MAJOR-" + revisionId, 1, "COOK", "熟制", null, "PRIMARY_INPUT", null,
+                        List.of(step), List.of(), List.of(), null)),
+                null, false);
+        return new ProcessRevision(revisionId, plan.id(), plan.experimentFormId(), revisionNo,
+                null, null, "研发", "2026-08-20T00:00:00", "0".repeat(64), plan);
     }
 
     private PricingPackagingItem packaging(

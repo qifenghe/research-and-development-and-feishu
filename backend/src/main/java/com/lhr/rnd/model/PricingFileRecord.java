@@ -16,7 +16,8 @@ public record PricingFileRecord(
         String reviewedBy,
         LocalDateTime reviewedAt,
         String reviewComment,
-        String rejectionReason
+        String rejectionReason,
+        String processRevisionId
 ) {
     public PricingFileRecord(
             String id,
@@ -31,7 +32,7 @@ public record PricingFileRecord(
             LocalDateTime generatedAt
     ) {
         this(id, versionId, sampleNo, productName, versionCode, pricingVersion, fileName, status, contentLength,
-                generatedAt, null, null, null, null);
+                generatedAt, null, null, null, null, null);
     }
 
     public PricingFileRecord withStatus(PricingFileStatus nextStatus) {
@@ -49,7 +50,8 @@ public record PricingFileRecord(
                 reviewedBy,
                 reviewedAt,
                 reviewComment,
-                rejectionReason
+                rejectionReason,
+                processRevisionId
         );
     }
 
@@ -57,7 +59,7 @@ public record PricingFileRecord(
         return new PricingFileRecord(
                 id, versionId, sampleNo, productName, versionCode, pricingVersion, nextFileName,
                 PricingFileStatus.PENDING_PRICING_REVIEW, nextContentLength, generatedAt,
-                reviewedBy, reviewedAt, reviewComment, rejectionReason
+                reviewedBy, reviewedAt, reviewComment, rejectionReason, processRevisionId
         );
     }
 
@@ -70,7 +72,19 @@ public record PricingFileRecord(
     ) {
         return new PricingFileRecord(
                 id, versionId, sampleNo, productName, versionCode, pricingVersion, fileName, nextStatus,
-                contentLength, generatedAt, reviewerName, reviewedAt, comment, rejectionReason
+                contentLength, generatedAt, reviewerName, reviewedAt, comment, rejectionReason, processRevisionId
         );
+    }
+
+    public PricingFileRecord withProcessRevision(String nextProcessRevisionId) {
+        return new PricingFileRecord(
+                id, versionId, sampleNo, productName, versionCode, pricingVersion, fileName, status,
+                contentLength, generatedAt, reviewedBy, reviewedAt, reviewComment, rejectionReason,
+                nextProcessRevisionId
+        );
+    }
+
+    public String getSource() {
+        return processRevisionId == null ? "LEGACY" : "FORMAL_PROCESS_REVISION";
     }
 }

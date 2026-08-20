@@ -1,9 +1,13 @@
 package com.lhr.rnd.service;
 
+import com.lhr.rnd.api.BusinessException;
 import com.lhr.rnd.model.ExperimentMaterial;
 import com.lhr.rnd.model.PricingPackagingItem;
+import com.lhr.rnd.model.ProcessRevision;
 import com.lhr.rnd.model.SampleVersion;
 import com.lhr.rnd.model.YieldCalculationMode;
+import com.lhr.rnd.domain.ProcessPlanCalculationService;
+import com.lhr.rnd.domain.ProcessRecipeService;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Comment;
@@ -68,6 +72,66 @@ public class PricingFileService {
             YieldCalculationMode yieldCalculationMode,
             List<PricingPackagingItem> packagingItems
     ) {
+        return generateWorkbook(version, pricingVersionNo, customerName, yieldCalculationMode, packagingItems,
+                version.materials() == null ? List.of() : version.materials(), null, null);
+    }
+
+    public PricingFileResult generate(
+            SampleVersion version,
+            String pricingVersionNo,
+            String customerName,
+            ProcessRevision revision,
+            List<PricingPackagingItem> packagingItems
+    ) {
+        if (revision == null) {
+            return generate(version, pricingVersionNo, customerName,
+                    YieldCalculationMode.SELECTED_PRIMARY_MATERIALS, packagingItems);
+        }
+        var recipe = new ProcessRecipeService().aggregate(revision.snapshot());
+        var materials = new ArrayList<ExperimentMaterial>();
+        for (int index = 0; index < recipe.size(); index++) {
+            var line = recipe.get(index);
+            var firstSource = line.sources().isEmpty() ? null : line.sources().get(0);
+            var materialCode = blankToDefault(line.materialCode(), line.formulaMaterialId());
+            if (materialCode == null || materialCode.isBlank()) {
+                throw new BusinessException(
+                        "PROCESS_REVISION_PRICING_MATERIAL_UNPRICED",
+                        "正式工艺配方存在无法按物料标识核价的外部物料"
+                );
+            }
+            var costSource = costSourceFor(version.materials(), line);
+            materials.add(new ExperimentMaterial(
+                    costSource.stage(),
+                    index + 1,
+                    materialCode,
+                    line.materialName(),
+                    line.weightKg(),
+                    costSource.utilizationRate() == null ? BigDecimal.ONE : costSource.utilizationRate(),
+                    "正式工艺版本 " + revision.revisionNo(),
+                    costSource.materialCategory() == null
+                            ? ("PRIMARY".equals(firstSource == null ? null : firstSource.materialRole()) ? "RAW" : "AUXILIARY")
+                            : costSource.materialCategory(),
+                    "PRIMARY".equals(firstSource == null ? null : firstSource.materialRole()),
+                    line.ratioPercent(),
+                    costSource.inputUnit() == null ? "kg" : costSource.inputUnit()
+            ));
+        }
+        var finishedYieldPercent = new ProcessPlanCalculationService().calculateBatch(revision.snapshot());
+        return generateWorkbook(version, pricingVersionNo, customerName,
+                YieldCalculationMode.SELECTED_PRIMARY_MATERIALS, packagingItems, materials,
+                finishedYieldPercent, revisionSource(revision, finishedYieldPercent));
+    }
+
+    private PricingFileResult generateWorkbook(
+            SampleVersion version,
+            String pricingVersionNo,
+            String customerName,
+            YieldCalculationMode yieldCalculationMode,
+            List<PricingPackagingItem> packagingItems,
+            List<ExperimentMaterial> materials,
+            BigDecimal finishedYieldPercent,
+            String sourceDescription
+    ) {
         try (InputStream template = requireTemplate();
              Workbook workbook = WorkbookFactory.create(template);
              var output = new ByteArrayOutputStream()) {
@@ -75,14 +139,13 @@ public class PricingFileService {
             var sheet = workbook.getSheetAt(0);
             var customer = blankToDefault(customerName, "LHYC");
             var effectiveDate = version.effectiveDate() == null ? LocalDate.now() : version.effectiveDate();
-            var materials = version.materials() == null ? List.<ExperimentMaterial>of() : version.materials();
             var confirmedPackaging = packagingItems == null ? List.<PricingPackagingItem>of() : packagingItems;
             var layout = layoutRows(materials.size(), confirmedPackaging.size());
 
             relocateTemplateStructure(sheet, layout);
-            fillHeader(sheet, version, customer, effectiveDate);
+            fillHeader(sheet, version, customer, effectiveDate, sourceDescription);
             fillMaterials(sheet, materials, layout);
-            fillSummary(sheet, materials, version, layout, yieldCalculationMode);
+            fillSummary(sheet, materials, version, layout, yieldCalculationMode, finishedYieldPercent);
             if (confirmedPackaging.isEmpty()) {
                 fillPackagingQuantities(sheet, version, layout);
             } else {
@@ -264,7 +327,13 @@ public class PricingFileService {
         }
     }
 
-    private void fillHeader(Sheet sheet, SampleVersion version, String customer, LocalDate effectiveDate) {
+    private void fillHeader(
+            Sheet sheet,
+            SampleVersion version,
+            String customer,
+            LocalDate effectiveDate,
+            String sourceDescription
+    ) {
         setText(sheet, 2, 3, formatProductTitle(version.productName(), customer));
         setText(sheet, 4, 3, "产品负责人:" + blankToDefault(version.ownerName(), ""));
         setText(sheet, 4, 9, "规格：" + blankToDefault(version.specification(), ""));
@@ -273,7 +342,7 @@ public class PricingFileService {
         setText(sheet, 7, 3, "LHRZP-03-YF-");
         setText(sheet, 7, 6, effectiveDate.format(HEADER_DATE));
         setText(sheet, 8, 3, blankToDefault(version.authorName(), ""));
-        setText(sheet, 8, 6, "——");
+        setText(sheet, 8, 6, sourceDescription == null ? "——" : sourceDescription);
     }
 
     private void fillMaterials(Sheet sheet, List<ExperimentMaterial> materials, LayoutRows layout) {
@@ -338,7 +407,8 @@ public class PricingFileService {
             List<ExperimentMaterial> materials,
             SampleVersion version,
             LayoutRows layout,
-            YieldCalculationMode yieldCalculationMode
+            YieldCalculationMode yieldCalculationMode,
+            BigDecimal finishedYieldPercent
     ) {
         var firstExcelRow = MATERIAL_START_ROW + 1;
         var lastExcelRow = layout.lastMaterialRow() + 1;
@@ -353,8 +423,12 @@ public class PricingFileService {
             setNumeric(sheet, layout.referenceOutputRow(), 6, decimalValue(version.referenceOutputKg()));
         }
         setText(sheet, layout.yieldRateRow(), 3, "研发部参考得率(%)");
-        var yieldRows = yieldFormulaRows(materials, yieldCalculationMode);
-        if (!yieldRows.isEmpty() && version.referenceOutputKg() != null) {
+        if (finishedYieldPercent != null) {
+            setNumeric(sheet, layout.yieldRateRow(), 6,
+                    decimalValue(finishedYieldPercent.divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP)));
+        } else {
+            var yieldRows = yieldFormulaRows(materials, yieldCalculationMode);
+            if (!yieldRows.isEmpty() && version.referenceOutputKg() != null) {
             var denominatorCells = yieldRows.stream()
                     .map(index -> "I" + (MATERIAL_START_ROW + index + 1))
                     .toList();
@@ -363,6 +437,7 @@ public class PricingFileService {
                     : "SUM(%s)".formatted(String.join(",", denominatorCells));
             setFormula(sheet, layout.yieldRateRow(), 6,
                     "G%s/%s".formatted(layout.referenceOutputRow() + 1, denominator));
+            }
         }
         setText(sheet, layout.packageCountRow(), 3, "研发部参考包数");
         if (version.referenceOutputKg() != null && version.unitWeightKg() != null) {
@@ -583,6 +658,46 @@ public class PricingFileService {
 
     private String blankToDefault(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    private String revisionSource(ProcessRevision revision, BigDecimal finishedYieldPercent) {
+        return "source=FORMAL_PROCESS_REVISION;revisionNo=%d;revisionId=%s;finishedYield=%s%%".formatted(
+                revision.revisionNo(), revision.id(),
+                (finishedYieldPercent == null ? BigDecimal.ZERO : finishedYieldPercent).setScale(6, RoundingMode.HALF_UP));
+    }
+
+    private ExperimentMaterial costSourceFor(
+            List<ExperimentMaterial> legacyMaterials,
+            ProcessRecipeService.RecipeLine recipeLine
+    ) {
+        var matches = new ArrayList<ExperimentMaterial>();
+        for (var material : legacyMaterials == null ? List.<ExperimentMaterial>of() : legacyMaterials) {
+            if (sameStableMaterialKey(material.materialCode(), recipeLine.formulaMaterialId())
+                    || sameStableMaterialKey(material.materialCode(), recipeLine.materialCode())) {
+                matches.add(material);
+            }
+        }
+        if (matches.isEmpty()) {
+            throw new BusinessException(
+                    "PROCESS_REVISION_PRICING_MATERIAL_UNPRICED",
+                    "正式工艺配方物料未关联现有核价物料编码"
+            );
+        }
+        var first = matches.get(0);
+        for (var match : matches) {
+            if (!sameStableMaterialKey(first.materialCode(), match.materialCode())) {
+                throw new BusinessException(
+                        "PROCESS_REVISION_PRICING_MATERIAL_MAPPING_AMBIGUOUS",
+                        "正式工艺配方物料匹配到多个核价物料编码"
+                );
+            }
+        }
+        return first;
+    }
+
+    private boolean sameStableMaterialKey(String first, String second) {
+        return first != null && !first.isBlank() && second != null && !second.isBlank()
+                && first.trim().equals(second.trim());
     }
 
     private double decimalValue(BigDecimal value) {

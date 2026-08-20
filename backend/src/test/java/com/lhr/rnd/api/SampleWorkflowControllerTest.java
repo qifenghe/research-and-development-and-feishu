@@ -17,8 +17,13 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.lhr.rnd.service.SessionPrincipal;
+import com.lhr.rnd.model.ProcessPlan;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
@@ -1517,6 +1522,44 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void packagingConfirmationPinsLatestFormalRevisionAndExposesItsPricingSource() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var formId = valueByColumn("experiment_form", "version_id", versionId, "id");
+        insertFormalPricingRevision(formId, "PREV-PRICING-1", 1, "80");
+
+        var pricingFileId = generatePricingFile(versionId);
+
+        assertThat(valueById("pricing_file", pricingFileId, "process_revision_id")).isEqualTo("PREV-PRICING-1");
+        mockMvc.perform(get("/api/v1/pricing-files/{id}/detail", pricingFileId)
+                        .requestAttr("sessionPrincipal", principal("研发内勤", "RND_ASSISTANT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pricingFile.processRevisionId").value("PREV-PRICING-1"))
+                .andExpect(jsonPath("$.data.source.source").value("FORMAL_PROCESS_REVISION"))
+                .andExpect(jsonPath("$.data.source.revisionNo").value(1))
+                .andExpect(jsonPath("$.data.source.finishedYieldPercent").value(80));
+    }
+
+    @Test
+    void newPricingUsesLatestFormalRevisionWithoutChangingEarlierPricingLink() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var formId = valueByColumn("experiment_form", "version_id", versionId, "id");
+        insertFormalPricingRevision(formId, "PREV-PRICING-1", 1, "80");
+        var firstPricingId = generatePricingFile(versionId);
+
+        insertFormalPricingRevision(formId, "PREV-PRICING-2", 2, "70");
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/review", firstPricingId)
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"REJECT\",\"comment\":\"重新核价\",\"rejectionReason\":\"工艺版本更新\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PRICING_REJECTED"));
+
+        var secondPricingId = generatePricingFile(versionId);
+        assertThat(valueById("pricing_file", firstPricingId, "process_revision_id")).isEqualTo("PREV-PRICING-1");
+        assertThat(valueById("pricing_file", secondPricingId, "process_revision_id")).isEqualTo("PREV-PRICING-2");
+    }
+
+    @Test
     void listsLockedVersionsReadyForPricingWithoutShipment() throws Exception {
         var versionId = createLockedSampleVersion();
 
@@ -2270,6 +2313,8 @@ class SampleWorkflowControllerTest {
                         .requestAttr("sessionPrincipal", principal("研发内勤", "RND_ASSISTANT")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pricingFile.id").value(pricingFileId))
+                .andExpect(jsonPath("$.data.pricingFile.source").value("LEGACY"))
+                .andExpect(jsonPath("$.data.source.source").value("LEGACY"))
                 .andExpect(jsonPath("$.data.version.versionCode").value("A0"))
                 .andExpect(jsonPath("$.data.fieldGroups[0].title").value("核价文件"))
                 .andExpect(jsonPath("$.data.availableActions", hasSize(1)))
@@ -2664,5 +2709,44 @@ class SampleWorkflowControllerTest {
                 .split("\\\"experimentForm\\\":\\{")[1]
                 .split("\\\"versionId\\\":\\\"")[1]
                 .split("\"")[0];
+    }
+
+    private void insertFormalPricingRevision(String formId, String revisionId, int revisionNo, String outputWeightKg) throws Exception {
+        var planId = "PLAN-" + revisionId;
+        var snapshot = new ProcessPlan(
+                planId, formId, 1, "SUBMITTED",
+                java.util.List.of(new ProcessPlan.MajorProcess(
+                        "MAJOR-" + revisionId, 1, "COOK", "熟制", null, "PRIMARY_INPUT", null,
+                        java.util.List.of(new ProcessPlan.MinorStep(
+                                "STEP-" + revisionId, 1, "COOK", "熟制", "NORMAL", null, null, null,
+                                null, null, null, null, null,
+                                java.util.List.of(new ProcessPlan.StepMaterial(
+                                        "MATERIAL-" + revisionId, 1, "PRIMARY", "YRP00033", "正式主料名称", "SOLID",
+                                        new BigDecimal("100"), "YRP00033", null, "EXTERNAL", null)),
+                                java.util.List.of(new ProcessPlan.StepOutput(
+                                        "OUTPUT-" + revisionId, 1, "FINISHED", "正式成品", "SOLID",
+                                        new BigDecimal(outputWeightKg), true, false, null)),
+                                java.util.List.of())),
+                        java.util.List.of(), java.util.List.of(), null)),
+                null, false);
+        var snapshotJson = objectMapper.writeValueAsString(snapshot);
+        if (jdbcTemplate.queryForObject("select count(*) from experiment_process_plan where experiment_form_id = ?", Integer.class, formId) == 0) {
+            jdbcTemplate.update("insert into experiment_process_plan(id,experiment_form_id,version_no,status,calculation_mode,balance_tolerance_kg,created_at,updated_at) values (?,?,?,?,?,?,?,?)",
+                    planId, formId, 1, "SUBMITTED", "PRIMARY_INPUT", new BigDecimal("0.0100"), LocalDateTime.now(), LocalDateTime.now());
+        } else {
+            planId = jdbcTemplate.queryForObject("select id from experiment_process_plan where experiment_form_id = ?", String.class, formId);
+            snapshot = new ProcessPlan(planId, snapshot.experimentFormId(), snapshot.versionNo(), snapshot.status(), snapshot.majorProcesses(),
+                    snapshot.batchYieldPercent(), snapshot.balanceToleranceKg(), snapshot.legacy(), snapshot.sourceRevisionId(), snapshot.changeReason());
+            snapshotJson = objectMapper.writeValueAsString(snapshot);
+        }
+        jdbcTemplate.update("insert into experiment_process_revision(id,process_plan_id,experiment_form_id,revision_no,submitted_by,submitted_at,snapshot_json,snapshot_hash) values (?,?,?,?,?,?,?,?)",
+                revisionId, planId, formId, revisionNo, "张研发", LocalDateTime.now(), snapshotJson, sha256(snapshotJson));
+    }
+
+    private String sha256(String value) throws Exception {
+        var bytes = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+        var result = new StringBuilder(bytes.length * 2);
+        for (var item : bytes) result.append(String.format("%02x", item));
+        return result.toString();
     }
 }

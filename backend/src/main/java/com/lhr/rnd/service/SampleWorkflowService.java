@@ -29,6 +29,8 @@ import com.lhr.rnd.model.PricingFileRecord;
 import com.lhr.rnd.model.PricingReadyVersion;
 import com.lhr.rnd.model.PricingFileDetailView;
 import com.lhr.rnd.model.PricingFileStatus;
+import com.lhr.rnd.model.PricingProcessSource;
+import com.lhr.rnd.model.ProcessRevision;
 import com.lhr.rnd.model.PricingPackagingItem;
 import com.lhr.rnd.model.PricingPackagingSource;
 import com.lhr.rnd.model.PricingPackagingStatus;
@@ -141,6 +143,7 @@ public class SampleWorkflowService {
     private final FinanceNotificationRepository financeNotificationRepository;
     private final ArchiveFileRepository archiveFileRepository;
     @Autowired(required = false) private UserAccountRepository userAccountRepository;
+    @Autowired(required = false) private ProcessRevisionService processRevisionService;
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
     private final Map<String, SampleProject> projects = new LinkedHashMap<>();
     private final Map<String, SampleVersion> versions = new LinkedHashMap<>();
@@ -895,6 +898,7 @@ public class SampleWorkflowService {
         return new PricingFileDetailView(
                 pricingFile,
                 version,
+                pricingProcessSource(pricingFile, version),
                 financeNotification,
                 pricingPackagingItems(pricingFile.id()),
                 pricingFileFieldGroups(financeNotification),
@@ -1807,21 +1811,32 @@ public class SampleWorkflowService {
         var customerName = projects.containsKey(version.projectId())
                 ? projects.get(version.projectId()).customerName()
                 : "LHYC";
-        var generated = pricingFileService.generate(
-                versionWithMaterials,
-                pricingFile.pricingVersion().replace(version.versionNo() + "-核价", ""),
-                customerName,
-                lockedForm.yieldCalculationMode(),
-                confirmedItems
-        );
+        var revision = latestFormalPricingRevision(lockedForm);
+        var generated = revision == null
+                ? pricingFileService.generate(
+                        versionWithMaterials,
+                        pricingFile.pricingVersion().replace(version.versionNo() + "-核价", ""),
+                        customerName,
+                        lockedForm.yieldCalculationMode(),
+                        confirmedItems)
+                : pricingFileService.generate(
+                        versionWithMaterials,
+                        pricingFile.pricingVersion().replace(version.versionNo() + "-核价", ""),
+                        customerName,
+                        revision,
+                        confirmedItems);
         var generatedRecord = pricingFile.generated(generated.fileName(), generated.content().length);
+        if (revision != null) {
+            generatedRecord = generatedRecord.withProcessRevision(revision.id());
+        }
         persistGeneratedPricingFile(generatedRecord, generated.content());
         if (auditLogService != null) {
             auditLogService.record("PRICING_FILE", pricingFileId, "PACKAGING_CONFIRMED", operatorName,
                     "items=" + confirmedItems.size());
         }
-        cacheAfterCommit(() -> pricingFiles.put(generatedRecord.id(), generatedRecord));
-        return generatedRecord;
+        var completedRecord = generatedRecord;
+        cacheAfterCommit(() -> pricingFiles.put(completedRecord.id(), completedRecord));
+        return completedRecord;
     }
 
     public synchronized List<PricingPackagingItem> pricingPackagingItems(String pricingFileId) {
@@ -2927,6 +2942,7 @@ public class SampleWorkflowService {
         var entity = pricingFileRepository.findById(pricingFile.id())
                 .orElseThrow(() -> new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在"));
         entity.markGenerated(pricingFile.fileName(), pricingFile.contentLength());
+        entity.setProcessRevisionId(pricingFile.processRevisionId());
         pricingFileRepository.save(entity);
         persistPricingArchive(pricingFile, content);
     }
@@ -3207,8 +3223,33 @@ public class SampleWorkflowService {
                 entity.getId(), entity.getVersionId(), entity.getSampleNo(), entity.getProductName(),
                 entity.getVersionCode(), entity.getPricingVersion(), entity.getFileName(),
                 PricingFileStatus.valueOf(entity.getStatus()), entity.getContentLength(), entity.getGeneratedAt(),
-                entity.getReviewedBy(), entity.getReviewedAt(), entity.getReviewComment(), entity.getRejectionReason()
+                entity.getReviewedBy(), entity.getReviewedAt(), entity.getReviewComment(), entity.getRejectionReason(),
+                entity.getProcessRevisionId()
         );
+    }
+
+    private ProcessRevision latestFormalPricingRevision(ExperimentForm lockedForm) {
+        if (processRevisionService == null) {
+            return null;
+        }
+        var revision = processRevisionService.latestOrNull(lockedForm.id());
+        if (revision != null && !lockedForm.id().equals(revision.experimentFormId())) {
+            throw new BusinessException("PROCESS_REVISION_PRICING_FORM_MISMATCH", "正式工艺版本不属于当前样品实验单");
+        }
+        return revision;
+    }
+
+    private PricingProcessSource pricingProcessSource(PricingFileRecord pricingFile, SampleVersion version) {
+        if (pricingFile.processRevisionId() == null) {
+            return new PricingProcessSource("LEGACY", null, null, null);
+        }
+        if (processRevisionService == null) {
+            return new PricingProcessSource("FORMAL_PROCESS_REVISION", pricingFile.processRevisionId(), null, null);
+        }
+        var form = lockedExperimentForm(version.id());
+        var revision = processRevisionService.find(form.id(), pricingFile.processRevisionId());
+        return new PricingProcessSource("FORMAL_PROCESS_REVISION", revision.id(), revision.revisionNo(),
+                new com.lhr.rnd.domain.ProcessPlanCalculationService().calculateBatch(revision.snapshot()));
     }
 
     private PricingPackagingItem toPricingPackagingItem(PricingPackagingItemEntity entity) {
