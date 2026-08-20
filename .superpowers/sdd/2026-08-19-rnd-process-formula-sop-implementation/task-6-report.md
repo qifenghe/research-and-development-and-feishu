@@ -41,3 +41,10 @@
 - V23 now records content SHA-256, byte size, generated user ID and immutable task assignee ID. Downloads fail closed with `PROCESS_ARTIFACT_INTEGRITY_ERROR` for altered or truncated bytes.
 - Formal submission preview/validator and artifact generation all reject non-positive external material total with `EXTERNAL_MATERIAL_WEIGHT_REQUIRED`.
 - Verification rerun: affected backend validator/artifact/controller/revision/auth/schema tests and offline shared/PC/mobile typechecks plus API/route contracts.
+
+## Fix round 2
+
+- Preserved immutable assignee IDs when internal-test or customer-feedback resampling creates the next task; assignment resolves duplicate active names before mutating the in-memory task pool.
+- Restored dependent-first cleanup in `SampleWorkflowControllerTest` while retaining the V23 assignee FK.
+- Formula display values now use deterministic largest-remainder allocation at 0.0001 precision, so displayed ratio and 100 kg columns remain non-negative and total exactly `100.0000`.
+- Generation now requires a session user ID and records it on failed artifact metadata too. The obsolete implementation note `task-6-review.md` was removed; independent review remains untouched.

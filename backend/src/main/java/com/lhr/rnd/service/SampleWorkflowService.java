@@ -389,6 +389,7 @@ public class SampleWorkflowService {
         if (task.status() != RndTaskStatus.PENDING_ASSIGNMENT) {
             throw new BusinessException("RND_TASK_STATUS_ILLEGAL", "当前任务状态不可分发");
         }
+        resolveAssigneeUserId(assigneeName);
         var nextStatus = taskStatusAfter(SampleStatus.PENDING_ASSIGNMENT, SampleAction.ASSIGN_TASK);
         var assigned = task.assign(assigneeName, normalizeProductOwnerName(productOwnerName, assigneeName), dueDate, now())
                 .withStatus(nextStatus);
@@ -1689,6 +1690,7 @@ public class SampleWorkflowService {
                 now()
         );
         customerFeedbacks.put(feedback.id(), feedback);
+        var resamplePreviousTask = taskByVersionId(shipment.versionId());
         var resampleTask = command.result() == CustomerFeedbackResult.FAILED_RESAMPLE
                 ? createCustomerResampleTask(shipment.versionId())
                 : null;
@@ -1697,7 +1699,7 @@ public class SampleWorkflowService {
                 : null;
         persistCustomerFeedback(updatedShipment, feedback);
         if (resampleTask != null) {
-            persistCustomerResampleTask(resampleTask.nextVersion(), resampleTask.nextTask());
+            persistCustomerResampleTask(resampleTask.nextVersion(), resamplePreviousTask, resampleTask.nextTask());
         }
         if (stoppedProject != null) {
             persistSampleProjectStatus(stoppedProject);
@@ -2410,12 +2412,15 @@ public class SampleWorkflowService {
         var taskEntity = rndTaskRepository.findById(task.id())
                 .orElseThrow(() -> new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在"));
         taskEntity.assign(task.assigneeName(), task.productOwnerName(), task.dueDate(), task.assignedAt());
-        if (userAccountRepository != null) {
-            var assignees = userAccountRepository.findAllByNameAndStatus(task.assigneeName(), "ACTIVE");
-            if (assignees.size() != 1) throw new BusinessException("RND_TASK_ASSIGNEE_AMBIGUOUS", "研发负责人姓名无法唯一解析，请由总监重新分配");
-            taskEntity.setAssigneeUserId(assignees.get(0).getId());
-        }
+        taskEntity.setAssigneeUserId(resolveAssigneeUserId(task.assigneeName()));
         rndTaskRepository.save(taskEntity);
+    }
+
+    private String resolveAssigneeUserId(String assigneeName) {
+        if (userAccountRepository == null) return null;
+        var assignees = userAccountRepository.findAllByNameAndStatus(assigneeName, "ACTIVE");
+        if (assignees.size() > 1) throw new BusinessException("RND_TASK_ASSIGNEE_AMBIGUOUS", "研发负责人姓名无法唯一解析，请由总监重新分配");
+        return assignees.isEmpty() ? null : assignees.get(0).getId();
     }
 
     private void notifyTaskAssigned(RndTask task) {
@@ -2754,14 +2759,16 @@ public class SampleWorkflowService {
                 nextVersion.createdAt()
         ));
 
+        String inheritedAssigneeUserId = null;
         if (previousTask != null) {
             var previousTaskEntity = rndTaskRepository.findById(previousTask.id())
                     .orElseThrow(() -> new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在"));
+            inheritedAssigneeUserId = previousTaskEntity.getAssigneeUserId();
             previousTaskEntity.complete();
             rndTaskRepository.save(previousTaskEntity);
         }
 
-        rndTaskRepository.save(new RndTaskEntity(
+        var nextEntity = new RndTaskEntity(
                 nextTask.id(),
                 nextTask.projectId(),
                 nextTask.versionId(),
@@ -2775,7 +2782,9 @@ public class SampleWorkflowService {
                 nextTask.createdAt(),
                 nextTask.assignedAt(),
                 null
-        ));
+        );
+        nextEntity.setAssigneeUserId(inheritedAssigneeUserId);
+        rndTaskRepository.save(nextEntity);
     }
 
     private void persistShipment(ShipmentRecord shipment) {
@@ -2816,7 +2825,7 @@ public class SampleWorkflowService {
         ));
     }
 
-    private void persistCustomerResampleTask(SampleVersion nextVersion, RndTask nextTask) {
+    private void persistCustomerResampleTask(SampleVersion nextVersion, RndTask previousTask, RndTask nextTask) {
         if (sampleVersionRepository == null || rndTaskRepository == null) {
             return;
         }
@@ -2840,7 +2849,7 @@ public class SampleWorkflowService {
                 nextVersion.createdAt()
         ));
 
-        rndTaskRepository.save(new RndTaskEntity(
+        var nextEntity = new RndTaskEntity(
                 nextTask.id(),
                 nextTask.projectId(),
                 nextTask.versionId(),
@@ -2854,7 +2863,11 @@ public class SampleWorkflowService {
                 nextTask.createdAt(),
                 nextTask.assignedAt(),
                 null
-        ));
+        );
+        if (previousTask != null) {
+            rndTaskRepository.findById(previousTask.id()).ifPresent(previous -> nextEntity.setAssigneeUserId(previous.getAssigneeUserId()));
+        }
+        rndTaskRepository.save(nextEntity);
     }
 
     private void persistSampleProjectStatus(SampleProject project) {

@@ -96,6 +96,7 @@ public class RndTaskEntity {
     }
 
     public void setAssigneeUserId(String assigneeUserId) { this.assigneeUserId = assigneeUserId; }
+    public String getAssigneeUserId() { return assigneeUserId; }
 
     public void accept(LocalDateTime acceptedAt) {
         this.status = "SAMPLING";

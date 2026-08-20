@@ -114,10 +114,10 @@ public class ProcessArtifactService {
             }
         } catch (BusinessException exception) {
             if (bytes != null) cleanup(storageKey);
-            return recordFailure(formId, id, revisionId, artifactType, documentVersion, generatedAt, principal.name(), exception.getMessage());
+            return recordFailure(formId, id, revisionId, artifactType, documentVersion, generatedAt, principal, exception.getMessage());
         } catch (Exception exception) {
             if (bytes != null) cleanup(storageKey);
-            return recordFailure(formId, id, revisionId, artifactType, documentVersion, generatedAt, principal.name(), "文件生成失败");
+            return recordFailure(formId, id, revisionId, artifactType, documentVersion, generatedAt, principal, "文件生成失败");
         }
     }
 
@@ -147,11 +147,11 @@ public class ProcessArtifactService {
         }
     }
 
-    private ProcessArtifact recordFailure(String formId, String id, String revisionId, String type, String version, LocalDateTime at, String operator, String reason) {
-        var artifact = new ProcessArtifact(id, revisionId, type, version, ProcessArtifact.FAILED, at.toString(), operator.trim(),
-                null, "generation failed", truncate(reason), null, null, null);
+    private ProcessArtifact recordFailure(String formId, String id, String revisionId, String type, String version, LocalDateTime at, SessionPrincipal operator, String reason) {
+        var artifact = new ProcessArtifact(id, revisionId, type, version, ProcessArtifact.FAILED, at.toString(), operator.name().trim(),
+                null, "generation failed", truncate(reason), operator.userId(), null, null);
         insert(artifact);
-        auditLogService.record("PROCESS_ARTIFACT", formId, "PROCESS_ARTIFACT_GENERATION_FAILED", operator.trim(),
+        auditLogService.record("PROCESS_ARTIFACT", formId, "PROCESS_ARTIFACT_GENERATION_FAILED", operator.name().trim(),
                 "artifactId=%s;type=%s;documentVersion=%s;reason=%s".formatted(id, type, version, truncate(reason)));
         return artifact;
     }
@@ -190,6 +190,7 @@ public class ProcessArtifactService {
             var totalWeight = lines.stream().map(ProcessRecipeService.RecipeLine::weightKg).map(this::safe)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             if (totalWeight.signum() <= 0) throw new BusinessException("EXTERNAL_MATERIAL_WEIGHT_REQUIRED", "外部物料总重量必须大于0");
+            var displayedPercentages = allocatePercent(lines.stream().map(ProcessRecipeService.RecipeLine::weightKg).map(this::safe).toList(), totalWeight);
             var rowIndex = 5;
             BigDecimal displayedHundredKg = BigDecimal.ZERO;
             for (int index = 0; index < lines.size(); index++) {
@@ -200,10 +201,8 @@ public class ProcessArtifactService {
                 set(row, 2, value(line.materialName()));
                 set(row, 3, line.sources().stream().map(ProcessRecipeService.RecipeSource::materialRole).filter(role -> !blank(role)).distinct().collect(Collectors.joining("、")));
                 setNumber(row, 4, line.weightKg(), number);
-                setNumber(row, 5, line.ratioPercent(), number);
-                var hundredKg = index == lines.size() - 1
-                        ? BigDecimal.valueOf(100).subtract(displayedHundredKg).max(BigDecimal.ZERO).setScale(DISPLAY_SCALE, RoundingMode.HALF_UP)
-                        : safe(line.weightKg()).max(BigDecimal.ZERO).multiply(BigDecimal.valueOf(100)).divide(totalWeight, DISPLAY_SCALE, RoundingMode.HALF_UP);
+                var hundredKg = displayedPercentages.get(index);
+                setNumber(row, 5, hundredKg, number);
                 displayedHundredKg = displayedHundredKg.add(hundredKg);
                 setNumber(row, 6, hundredKg, number);
                 set(row, 7, joinSteps(revision.snapshot(), line.sources()));
@@ -299,7 +298,7 @@ public class ProcessArtifactService {
     }
 
     private void requirePrincipal(SessionPrincipal principal) {
-        if (principal == null || blank(principal.name()) || blank(principal.role())) {
+        if (principal == null || blank(principal.userId()) || blank(principal.name()) || blank(principal.role())) {
             throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "工艺成果文件必须使用服务端会话身份");
         }
     }
@@ -455,6 +454,19 @@ public class ProcessArtifactService {
     }
 
     private BigDecimal safe(BigDecimal value) { return value == null ? BigDecimal.ZERO : value; }
+    private List<BigDecimal> allocatePercent(List<BigDecimal> weights, BigDecimal total) {
+        var units = BigDecimal.valueOf(1_000_000L); // 100.0000 expressed in ten-thousandth units.
+        var floors = new ArrayList<Long>(); var remainders = new ArrayList<BigDecimal>(); long allocated = 0;
+        for (var weight : weights) {
+            var exact = safe(weight).max(BigDecimal.ZERO).multiply(units).divide(total, 12, RoundingMode.DOWN);
+            var floor = exact.setScale(0, RoundingMode.DOWN).longValue(); floors.add(floor); allocated += floor;
+            remainders.add(exact.subtract(BigDecimal.valueOf(floor)));
+        }
+        var order = java.util.stream.IntStream.range(0, weights.size()).boxed()
+                .sorted(Comparator.<Integer, BigDecimal>comparing(remainders::get).reversed().thenComparingInt(Integer::intValue)).toList();
+        for (int item = 0; item < units.longValue() - allocated; item++) floors.set(order.get(item % order.size()), floors.get(order.get(item % order.size())) + 1);
+        return floors.stream().map(value -> BigDecimal.valueOf(value, DISPLAY_SCALE)).toList();
+    }
     private String sha256(byte[] value) {
         try {
             var digest = MessageDigest.getInstance("SHA-256").digest(value);
