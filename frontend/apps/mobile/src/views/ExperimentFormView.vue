@@ -116,6 +116,14 @@ type EditableMaterial = {
   remark: string;
 };
 type FinishedOutputUnit = "袋" | "盒" | "份" | "个" | "盘";
+type ActionContext = {
+  taskId: string;
+  generation: number;
+  formId: string | null;
+  localDraftKey: string;
+  operatorName: string;
+};
+type DraftPayload = Parameters<typeof api.task.saveExperimentDraft>[1];
 
 const route=useRoute();
 const router=useRouter();
@@ -313,6 +321,17 @@ function validateFinishedOutputQuantity(){
   return quantity;
 }
 
+function captureActionContext():ActionContext{
+  return {taskId:activeTaskId.value,generation:routeRequestGeneration,formId:detail.value?.currentExperimentForm?.id||null,localDraftKey:localDraftKey.value,operatorName:auth.displayName};
+}
+function isActionContextCurrent(context:ActionContext,expectedFormId=context.formId){
+  if(context.generation!==routeRequestGeneration||context.taskId!==activeTaskId.value||context.localDraftKey!==localDraftKey.value)return false;
+  return expectedFormId===null||detail.value?.currentExperimentForm?.id===expectedFormId;
+}
+function buildDraftPayload(finishedOutputQuantity:number|undefined,operatorName=auth.displayName):DraftPayload{
+  return {operatorName,summary:form.summary,materials:buildMaterials(),processSteps:toProcessSteps(processSteps.value),finishedOutputWeightKg:Number(form.finishedOutputWeightKg||0)||undefined,finishedOutputQuantity,finishedOutputUnit:form.finishedOutputUnit,yieldCalculationMode:yieldCalculationMode.value};
+}
+
 function draftSnapshot(){return {phase:phase.value,yieldCalculationMode:yieldCalculationMode.value,currentStepIndex:currentStepIndex.value,form:{...form},materials:materials.value.map(item=>({...item})),processSteps:processSteps.value.map(item=>({...item}))}}
 function persistLocalDraft(){
   if(!hydrated.value||readOnly.value)return;
@@ -344,24 +363,33 @@ async function autoSave(){
 
 watch([form,materials,processSteps,yieldCalculationMode,phase],scheduleAutoSave,{deep:true});
 
-async function saveDraft(options:{silent?:boolean}={}){
+async function saveDraft(options:{silent?:boolean;context?:ActionContext;payload?:DraftPayload}={}){
   const finishedOutputQuantity=validateFinishedOutputQuantity();
   if(form.finishedOutputQuantity!==""&&finishedOutputQuantity===undefined)return;
+  const context=options.context??captureActionContext();
+  const payload=options.payload??buildDraftPayload(finishedOutputQuantity);
   saving.value=true;
   draftSyncState.value="syncing";
-  const taskId=activeTaskId.value;const generation=routeRequestGeneration;
-  try{const saved=await api.task.saveExperimentDraft(taskId,{operatorName:auth.displayName,summary:form.summary,materials:buildMaterials(),processSteps:toProcessSteps(processSteps.value),finishedOutputWeightKg:Number(form.finishedOutputWeightKg||0)||undefined,finishedOutputQuantity,finishedOutputUnit:form.finishedOutputUnit,yieldCalculationMode:yieldCalculationMode.value});if(generation!==routeRequestGeneration)return false;detail.value={...detail.value!,currentExperimentForm:saved};draftSaved.value=true;draftSyncState.value="saved";writeExperimentDraft(localStorage,localDraftKey.value,draftSnapshot(),saved.savedAt);if(!options.silent)showSuccessToast("草稿已保存");return true}
-  catch(error){if(generation!==routeRequestGeneration)return false;draftSyncState.value="error";persistLocalDraft();if(!options.silent)showFailToast(error instanceof Error?error.message:"保存失败");return false}
-  finally{if(generation===routeRequestGeneration)saving.value=false}
+  try{const saved=await api.task.saveExperimentDraft(context.taskId,payload);if(!isActionContextCurrent(context))return false;detail.value={...detail.value!,currentExperimentForm:saved};draftSaved.value=true;draftSyncState.value="saved";writeExperimentDraft(localStorage,context.localDraftKey,draftSnapshot(),saved.savedAt);if(!options.silent)showSuccessToast("草稿已保存");return saved}
+  catch(error){if(!isActionContextCurrent(context))return false;draftSyncState.value="error";persistLocalDraft();if(!options.silent)showFailToast(error instanceof Error?error.message:"保存失败");return false}
+  finally{if(isActionContextCurrent(context,context.formId===null?null:context.formId))saving.value=false}
 }
 
 async function afterRead(item:{file?:File}|Array<{file?:File}>){
   const entry=Array.isArray(item)?item[0]:item;
-  if(!detail.value?.currentExperimentForm?.id)await saveDraft();
-  const experimentId=detail.value?.currentExperimentForm?.id;
-  if(!experimentId||!entry?.file)return;
-  try{await api.task.uploadAttachment(experimentId,entry.file,{uploadedBy:auth.displayName,category:"PHOTO"});showSuccessToast("照片已上传")}
-  catch(error){showFailToast(error instanceof Error?error.message:"上传失败")}
+  if(!entry?.file)return;
+  const context=captureActionContext();
+  const finishedOutputQuantity=normalizePositiveIntegerQuantity(form.finishedOutputQuantity);
+  const payload=buildDraftPayload(finishedOutputQuantity,context.operatorName);
+  let experimentId=context.formId;
+  if(!experimentId){
+    const saved=await saveDraft({silent:true,context,payload});
+    if(!isActionContextCurrent(context)||!saved)return;
+    experimentId=saved.id;
+  }
+  if(!isActionContextCurrent(context,experimentId))return;
+  try{await api.task.uploadAttachment(experimentId,entry.file,{uploadedBy:context.operatorName,category:"PHOTO"});if(!isActionContextCurrent(context,experimentId))return;showSuccessToast("照片已上传")}
+  catch(error){if(!isActionContextCurrent(context,experimentId))return;showFailToast(error instanceof Error?error.message:"上传失败")}
 }
 
 async function notifyTest(){
@@ -369,15 +397,19 @@ async function notifyTest(){
   if(!processSteps.value.some(step=>step.processName.trim()&&Number(step.beforeWeightKg)>0)){showFailToast("通知测试前请至少完成一道有效工序");return}
   if(Number(form.finishedOutputWeightKg)<=0){showFailToast("通知测试前请填写成品重量");return}
   if(form.finishedOutputQuantity===""){showFailToast("通知测试前请填写成品数量");return}
-  if(validateFinishedOutputQuantity()===undefined)return;
-  if(!detail.value?.currentExperimentForm?.id&&canSaveDraft.value)await saveDraft();
-  const experimentId=detail.value?.currentExperimentForm?.id;
+  const finishedOutputQuantity=validateFinishedOutputQuantity();if(finishedOutputQuantity===undefined)return;
+  const context=captureActionContext();
+  const payload=buildDraftPayload(finishedOutputQuantity,context.operatorName);
+  let experimentId=context.formId;
+  if(!experimentId&&canSaveDraft.value){const saved=await saveDraft({silent:true,context,payload});if(!isActionContextCurrent(context)||!saved)return;experimentId=saved.id}
   if(!experimentId){showFailToast("请先保存草稿");return}
+  if(!isActionContextCurrent(context,experimentId))return;
   submitting.value=true;
-  try{await api.task.submitExperimentForTest(experimentId,auth.displayName);hydrated.value=false;clearExperimentDraft(localStorage,localDraftKey.value);showSuccessToast("已通知内部测试");router.push("/todo")}
-  catch(error){showFailToast(error instanceof Error?error.message:"提交失败")}
-  finally{submitting.value=false}
+  try{await api.task.submitExperimentForTest(experimentId,context.operatorName);if(!isActionContextCurrent(context,experimentId))return;hydrated.value=false;clearExperimentDraft(localStorage,context.localDraftKey);showSuccessToast("已通知内部测试");void router.push("/todo")}
+  catch(error){if(!isActionContextCurrent(context,experimentId))return;showFailToast(error instanceof Error?error.message:"提交失败")}
+  finally{if(isActionContextCurrent(context,experimentId))submitting.value=false}
 }
+
 </script>
 
 <style scoped>

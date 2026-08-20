@@ -42,3 +42,19 @@
 - Mobile production build: 458 modules transformed, PASS.
 - API contract and route checks: PASS (`30` PC routes, `16` mobile routes).
 - `git diff --check`: PASS.
+
+## Review fix round 2
+
+- Attachment upload and notify-test now capture an immutable action context before their first await: task ID, route generation, source form ID, local-draft key and operator identity. The draft payload used by an action is also snapshotted before asynchronous work begins.
+- Draft creation returns its captured A form directly to the caller. Upload and notify targets are therefore never re-derived from a reactive task B detail after route reuse.
+- Every save, upload and submit continuation verifies the same action context before mutation or presentation. A stale continuation silently stops without uploading/submitting another form, publishing a toast, clearing cache, changing hydration/loading flags or navigating.
+- A real mounted `ExperimentFormView` test uses Vue's memory router and deferred API promises. It covers A draft-save → route B → late A completion and A submit-test → route B → late A completion, asserting no cross-form call, unchanged B cache/route/hydration and no stale toast publication.
+
+### Round-2 verification
+
+- Mounted action-race suite: 2 passed, 0 failed.
+- Full frontend Node suite: 83 passed, 0 failed.
+- Shared, PC and mobile TypeScript checks: PASS.
+- Mobile production build: 458 modules transformed, PASS.
+- API contract and route checks: PASS (`30` PC routes, `16` mobile routes).
+- `git diff --check`: PASS.
