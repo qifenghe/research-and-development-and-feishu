@@ -122,6 +122,10 @@ class SchemaMigrationTest {
         assertColumnExists("pricing_file", "review_comment");
         assertColumnExists("pricing_file", "rejection_reason");
         assertColumnExists("pricing_file", "process_revision_id");
+        assertColumnExists("experiment_process_artifact", "content_sha256");
+        assertColumnExists("experiment_process_artifact", "byte_size");
+        assertColumnExists("experiment_process_artifact", "generated_by_user_id");
+        assertColumnExists("rnd_task", "assignee_user_id");
         assertColumnExists("experiment_step_material", "source_type");
         assertColumnExists("experiment_step_material", "source_step_output_id");
         assertColumnExists("experiment_process_plan", "balance_tolerance_kg");

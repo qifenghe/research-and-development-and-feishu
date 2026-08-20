@@ -118,13 +118,19 @@ create table experiment_process_artifact (
     status varchar(30) not null,
     generated_at timestamp not null,
     generated_by varchar(100),
+    generated_by_user_id varchar(64),
     storage_key varchar(500),
+    content_sha256 varchar(64),
+    byte_size bigint,
     content_summary text,
     failure_reason varchar(1000),
     constraint uk_process_artifact_version unique (process_revision_id, artifact_type, document_version),
     constraint fk_process_artifact_revision foreign key (process_revision_id)
         references experiment_process_revision(id) on delete cascade
 );
+
+alter table rnd_task add column assignee_user_id varchar(64);
+alter table rnd_task add constraint fk_rnd_task_assignee_user foreign key (assignee_user_id) references user_account(id);
 
 alter table pricing_file add column process_revision_id varchar(64);
 alter table pricing_file add constraint fk_pricing_file_process_revision

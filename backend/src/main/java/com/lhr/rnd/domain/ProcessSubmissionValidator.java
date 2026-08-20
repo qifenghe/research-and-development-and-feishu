@@ -40,6 +40,13 @@ public final class ProcessSubmissionValidator {
             if (validBalanceTolerance) validateMaterialBalance(major, balanceTolerance, errors, warnings);
         }
         if (!hasExternalPrimary) errors.add(error("EXTERNAL_PRIMARY_REQUIRED", "配方至少需要一项外部主料", null, null));
+        var externalWeight = steps.stream().flatMap(step -> values(step.step.materials()).stream())
+                .filter(material -> "EXTERNAL".equals(material.sourceType()))
+                .map(material -> material.weightKg() == null ? BigDecimal.ZERO : material.weightKg())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (externalWeight.signum() <= 0) {
+            errors.add(error("EXTERNAL_MATERIAL_WEIGHT_REQUIRED", "外部物料总重量必须大于0", null, null));
+        }
         return new ProcessSubmissionCheck(errors.isEmpty(), errors, warnings);
     }
 

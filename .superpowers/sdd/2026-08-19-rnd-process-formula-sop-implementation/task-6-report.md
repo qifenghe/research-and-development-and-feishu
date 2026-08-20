@@ -34,3 +34,10 @@
 
 - The V23 migration is intentionally amended (not a new migration) because this feature series has not been released; it makes `storage_key` nullable for failed records and adds `failure_reason` plus exact artifact permissions.
 - File generation has not been coupled to pricing; pricing remains a later task and formal revisions remain immutable after artifact failure.
+
+## Fix round 1
+
+- RED/GREEN details and review evidence are in `task-6-review.md`.
+- V23 now records content SHA-256, byte size, generated user ID and immutable task assignee ID. Downloads fail closed with `PROCESS_ARTIFACT_INTEGRITY_ERROR` for altered or truncated bytes.
+- Formal submission preview/validator and artifact generation all reject non-positive external material total with `EXTERNAL_MATERIAL_WEIGHT_REQUIRED`.
+- Verification rerun: affected backend validator/artifact/controller/revision/auth/schema tests and offline shared/PC/mobile typechecks plus API/route contracts.

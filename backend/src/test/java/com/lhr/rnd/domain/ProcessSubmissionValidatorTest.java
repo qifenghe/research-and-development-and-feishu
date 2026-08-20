@@ -13,6 +13,15 @@ class ProcessSubmissionValidatorTest {
     private final ProcessSubmissionValidator validator = new ProcessSubmissionValidator();
 
     @Test
+    void requiresPositiveTotalExternalMaterialWeight() {
+        var zeroWeight = validPlan(List.of(step(1,
+                material("PRIMARY", "EXTERNAL", null, "牛肉", "0"), output("OUT-1", "0", true, false))), null);
+
+        assertThat(validator.validate(zeroWeight).errors()).extracting(ProcessSubmissionCheck.Issue::code)
+                .contains("EXTERNAL_MATERIAL_WEIGHT_REQUIRED");
+    }
+
+    @Test
     void blocksStepOutputReferencesOutsideTheCurrentPlanAndReferencesToCurrentOrLaterSteps() {
         var foreign = validPlan(List.of(step(1,
                 material("PRIMARY", "EXTERNAL", null, "牛肉", "10"), output("OUT-1", "9", true, true)),

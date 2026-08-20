@@ -11,7 +11,10 @@ public record ProcessArtifact(
         String generatedBy,
         String storageKey,
         String contentSummary,
-        String failureReason
+        String failureReason,
+        String generatedByUserId,
+        String contentSha256,
+        Long byteSize
 ) {
     public static final String FORMULA_XLSX = "FORMULA_XLSX";
     public static final String SOP_DOCX = "SOP_DOCX";

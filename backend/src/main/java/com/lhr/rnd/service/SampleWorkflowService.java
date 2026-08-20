@@ -71,6 +71,7 @@ import com.lhr.rnd.persistence.repository.PricingFileRepository;
 import com.lhr.rnd.persistence.repository.PricingPackagingItemRepository;
 import com.lhr.rnd.persistence.repository.PackagingTemplateItemRepository;
 import com.lhr.rnd.persistence.repository.RndTaskRepository;
+import com.lhr.rnd.persistence.repository.UserAccountRepository;
 import com.lhr.rnd.persistence.repository.SampleProjectRepository;
 import com.lhr.rnd.persistence.repository.SampleRequestRepository;
 import com.lhr.rnd.persistence.repository.SampleVersionRepository;
@@ -139,6 +140,7 @@ public class SampleWorkflowService {
     private final PackagingTemplateItemRepository packagingTemplateItemRepository;
     private final FinanceNotificationRepository financeNotificationRepository;
     private final ArchiveFileRepository archiveFileRepository;
+    @Autowired(required = false) private UserAccountRepository userAccountRepository;
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
     private final Map<String, SampleProject> projects = new LinkedHashMap<>();
     private final Map<String, SampleVersion> versions = new LinkedHashMap<>();
@@ -2408,6 +2410,11 @@ public class SampleWorkflowService {
         var taskEntity = rndTaskRepository.findById(task.id())
                 .orElseThrow(() -> new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在"));
         taskEntity.assign(task.assigneeName(), task.productOwnerName(), task.dueDate(), task.assignedAt());
+        if (userAccountRepository != null) {
+            var assignees = userAccountRepository.findAllByNameAndStatus(task.assigneeName(), "ACTIVE");
+            if (assignees.size() != 1) throw new BusinessException("RND_TASK_ASSIGNEE_AMBIGUOUS", "研发负责人姓名无法唯一解析，请由总监重新分配");
+            taskEntity.setAssigneeUserId(assignees.get(0).getId());
+        }
         rndTaskRepository.save(taskEntity);
     }
 

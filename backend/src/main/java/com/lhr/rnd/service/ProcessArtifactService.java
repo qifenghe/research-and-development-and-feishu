@@ -17,11 +17,14 @@ import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -70,6 +73,10 @@ public class ProcessArtifactService {
         requireWriteAccess(formId, principal);
         var revision = revisionService.find(formId, revisionId);
         validateType(artifactType);
+        if (recipeService.aggregate(revision.snapshot()).stream().map(ProcessRecipeService.RecipeLine::weightKg)
+                .reduce(BigDecimal.ZERO, BigDecimal::add).signum() <= 0) {
+            throw new BusinessException("EXTERNAL_MATERIAL_WEIGHT_REQUIRED", "外部物料总重量必须大于0");
+        }
         // Serialize versions per immutable revision in the database, including across web requests.
         jdbc.queryForObject("select id from experiment_process_revision where id = ? for update", String.class, revisionId);
         var documentVersion = Integer.toString(jdbc.queryForObject(
@@ -85,8 +92,17 @@ public class ProcessArtifactService {
                     ? formulaBytes(productName, revision, documentVersion, generatedAt, principal.name())
                     : sopBytes(productName, revision, documentVersion, generatedAt, principal.name());
             storage.store(storageKey, bytes);
+            // File bytes must not survive a transaction that rolls back after the atomic write.
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override public void afterCompletion(int status) {
+                        if (status != STATUS_COMMITTED) cleanup(storageKey);
+                    }
+                });
+            }
             var artifact = new ProcessArtifact(id, revisionId, artifactType, documentVersion, ProcessArtifact.READY,
-                    generatedAt.toString(), principal.name().trim(), storageKey, summary(revision, artifactType), null);
+                    generatedAt.toString(), principal.name().trim(), storageKey, summary(revision, artifactType), null,
+                    principal.userId(), sha256(bytes), (long) bytes.length);
             try {
                 insert(artifact);
                 auditLogService.record("PROCESS_ARTIFACT", formId, "PROCESS_ARTIFACT_GENERATED", principal.name().trim(),
@@ -117,7 +133,12 @@ public class ProcessArtifactService {
             throw new BusinessException("PROCESS_ARTIFACT_NOT_READY", "成果文件尚未生成成功，请重新生成");
         }
         try {
-            return new ArtifactDownload(fileName(productName(formId), revision.revisionNo(), artifact), contentType(artifact.artifactType()), storage.read(artifact.storageKey()));
+            var bytes = storage.read(artifact.storageKey());
+            if (artifact.byteSize() == null || artifact.contentSha256() == null || artifact.byteSize() != bytes.length
+                    || !MessageDigest.isEqual(artifact.contentSha256().getBytes(StandardCharsets.US_ASCII), sha256(bytes).getBytes(StandardCharsets.US_ASCII))) {
+                throw new BusinessException("PROCESS_ARTIFACT_INTEGRITY_ERROR", "成果文件完整性校验失败，请重新生成");
+            }
+            return new ArtifactDownload(fileName(productName(formId), revision.revisionNo(), artifact), contentType(artifact.artifactType()), bytes);
         } catch (BusinessException exception) {
             if ("ARCHIVE_FILE_NOT_FOUND".equals(exception.code()) || "ARCHIVE_FILE_READ_FAILED".equals(exception.code())) {
                 throw new BusinessException("PROCESS_ARTIFACT_FILE_NOT_FOUND", "成果文件内容不存在或已损坏，请重新生成");
@@ -128,7 +149,7 @@ public class ProcessArtifactService {
 
     private ProcessArtifact recordFailure(String formId, String id, String revisionId, String type, String version, LocalDateTime at, String operator, String reason) {
         var artifact = new ProcessArtifact(id, revisionId, type, version, ProcessArtifact.FAILED, at.toString(), operator.trim(),
-                null, "generation failed", truncate(reason));
+                null, "generation failed", truncate(reason), null, null, null);
         insert(artifact);
         auditLogService.record("PROCESS_ARTIFACT", formId, "PROCESS_ARTIFACT_GENERATION_FAILED", operator.trim(),
                 "artifactId=%s;type=%s;documentVersion=%s;reason=%s".formatted(id, type, version, truncate(reason)));
@@ -136,15 +157,16 @@ public class ProcessArtifactService {
     }
 
     private void insert(ProcessArtifact artifact) {
-        jdbc.update("insert into experiment_process_artifact(id, process_revision_id, artifact_type, document_version, status, generated_at, generated_by, storage_key, content_summary, failure_reason) values (?,?,?,?,?,?,?,?,?,?)",
+        jdbc.update("insert into experiment_process_artifact(id, process_revision_id, artifact_type, document_version, status, generated_at, generated_by, storage_key, content_summary, failure_reason, generated_by_user_id, content_sha256, byte_size) values (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 artifact.id(), artifact.processRevisionId(), artifact.artifactType(), artifact.documentVersion(), artifact.status(),
-                LocalDateTime.parse(artifact.generatedAt()), artifact.generatedBy(), artifact.storageKey(), artifact.contentSummary(), artifact.failureReason());
+                LocalDateTime.parse(artifact.generatedAt()), artifact.generatedBy(), artifact.storageKey(), artifact.contentSummary(), artifact.failureReason(), artifact.generatedByUserId(), artifact.contentSha256(), artifact.byteSize());
     }
 
     private ProcessArtifact map(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new ProcessArtifact(rs.getString("id"), rs.getString("process_revision_id"), rs.getString("artifact_type"),
                 rs.getString("document_version"), rs.getString("status"), rs.getTimestamp("generated_at").toLocalDateTime().toString(),
-                rs.getString("generated_by"), rs.getString("storage_key"), rs.getString("content_summary"), rs.getString("failure_reason"));
+                rs.getString("generated_by"), rs.getString("storage_key"), rs.getString("content_summary"), rs.getString("failure_reason"),
+                rs.getString("generated_by_user_id"), rs.getString("content_sha256"), (Long) rs.getObject("byte_size"));
     }
 
     private byte[] formulaBytes(String productName, ProcessRevision revision, String documentVersion, LocalDateTime generatedAt, String generatedBy) throws Exception {
@@ -165,6 +187,9 @@ public class ProcessArtifactService {
                 cell.setCellStyle(header);
             }
             var lines = recipeService.aggregate(revision.snapshot());
+            var totalWeight = lines.stream().map(ProcessRecipeService.RecipeLine::weightKg).map(this::safe)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (totalWeight.signum() <= 0) throw new BusinessException("EXTERNAL_MATERIAL_WEIGHT_REQUIRED", "外部物料总重量必须大于0");
             var rowIndex = 5;
             BigDecimal displayedHundredKg = BigDecimal.ZERO;
             for (int index = 0; index < lines.size(); index++) {
@@ -177,8 +202,8 @@ public class ProcessArtifactService {
                 setNumber(row, 4, line.weightKg(), number);
                 setNumber(row, 5, line.ratioPercent(), number);
                 var hundredKg = index == lines.size() - 1
-                        ? BigDecimal.valueOf(100).subtract(displayedHundredKg).setScale(DISPLAY_SCALE, RoundingMode.HALF_UP)
-                        : safe(line.ratioPercent()).setScale(DISPLAY_SCALE, RoundingMode.HALF_UP);
+                        ? BigDecimal.valueOf(100).subtract(displayedHundredKg).max(BigDecimal.ZERO).setScale(DISPLAY_SCALE, RoundingMode.HALF_UP)
+                        : safe(line.weightKg()).max(BigDecimal.ZERO).multiply(BigDecimal.valueOf(100)).divide(totalWeight, DISPLAY_SCALE, RoundingMode.HALF_UP);
                 displayedHundredKg = displayedHundredKg.add(hundredKg);
                 setNumber(row, 6, hundredKg, number);
                 set(row, 7, joinSteps(revision.snapshot(), line.sources()));
@@ -198,10 +223,14 @@ public class ProcessArtifactService {
         try (var document = new XWPFDocument(); var output = new ByteArrayOutputStream()) {
             heading(document, "研发版生产 SOP：" + productName);
             paragraph(document, "来源工艺版本：V" + revision.revisionNo() + "；文件版本：V" + documentVersion);
+            paragraph(document, "来源版本标识：" + value(revision.sourceRevisionId()) + "；版本变更：" + value(revision.changeReason()));
             paragraph(document, "变更原因：" + value(revision.changeReason()) + "；生成信息：" + generatedBy + " / " + TIME.format(generatedAt));
             paragraph(document, "成品得率：" + percent(calculationService.calculateBatch(revision.snapshot())));
+            var externalTotal = recipeService.aggregate(revision.snapshot()).stream().map(ProcessRecipeService.RecipeLine::weightKg).map(this::safe).reduce(BigDecimal.ZERO, BigDecimal::add);
+            paragraph(document, "适用批量：打样外部投入 " + kg(externalTotal) + "；100kg 标准配方（无独立批量字段，不推定实际生产批量）");
             for (var major : sorted(revision.snapshot().majorProcesses(), ProcessPlan.MajorProcess::sequence)) {
                 heading(document, "大工序 " + major.sequence() + "：" + value(major.processName()));
+                paragraph(document, "工序说明：" + value(major.description()) + "；备注：" + value(major.remark()));
                 var yield = calculationService.calculate(major);
                 paragraph(document, "大工序得率：" + percent(yield.mainYieldPercent()) + "；主料首端投入：" + kg(yield.primaryInputWeightKg()) + "；末端产出：" + kg(yield.qualifiedOutputWeightKg()));
                 var table = table(document, "步骤", "外部投料", "中间流转", "操作参数/设备工具", "操作要求", "产出状态/重量", "步骤得率");
@@ -209,7 +238,7 @@ public class ProcessArtifactService {
                     var row = table.createRow();
                     cell(row, 0, step.sequence() + " / " + value(step.stepName()));
                     cell(row, 1, materials(step, "EXTERNAL"));
-                    cell(row, 2, intermediateFlow(step));
+                    cell(row, 2, intermediateFlow(revision.snapshot(), step));
                     cell(row, 3, parameters(step));
                     cell(row, 4, value(step.instruction()));
                     cell(row, 5, outputs(step));
@@ -219,20 +248,20 @@ public class ProcessArtifactService {
                         .flatMap(step -> values(step.controlPoints()).stream()).toList();
                 if (!controls.isEmpty()) {
                     paragraph(document, "关键控制标准与偏差处理");
-                    var controlTable = table(document, "控制项目", "标准/允许范围", "检测方法/工具/频次", "偏差处理", "确认", "依据或备注");
-                    for (var control : controls) {
+                    var controlTable = table(document, "大工序/步骤", "类型/重要性", "控制项目", "目标", "下限", "上限", "单位", "方法", "工具", "频次", "偏差处理", "依据或备注");
+                    for (var step : sorted(major.steps(), ProcessPlan.MinorStep::sequence)) for (var control : values(step.controlPoints())) {
                         var row = controlTable.createRow();
-                        cell(row, 0, value(control.itemName()));
-                        cell(row, 1, limits(control));
-                        cell(row, 2, join(" / ", control.method(), control.measurementTool(), control.frequency()));
-                        cell(row, 3, value(control.deviationAction()));
-                        cell(row, 4, join(" / ", control.confirmedBy(), control.confirmedAt()));
-                        cell(row, 5, value(control.basisOrRemark()));
+                        cell(row, 0, major.sequence() + "." + step.sequence() + " " + value(step.stepName()));
+                        cell(row, 1, join(" / ", control.controlType(), control.importance()));
+                        cell(row, 2, value(control.itemName())); cell(row, 3, value(control.targetValue()));
+                        cell(row, 4, value(control.lowerLimit())); cell(row, 5, value(control.upperLimit())); cell(row, 6, value(control.unit()));
+                        cell(row, 7, value(control.method())); cell(row, 8, value(control.measurementTool())); cell(row, 9, value(control.frequency()));
+                        cell(row, 10, value(control.deviationAction())); cell(row, 11, value(control.basisOrRemark()));
                     }
                 }
             }
             heading(document, "测量记录追溯附录（不作为生产指令标准）");
-            var appendix = table(document, "大工序/步骤", "控制项目", "实测值", "测量时间", "结果", "复测/偏差处理", "确认信息");
+            var appendix = table(document, "大工序/步骤", "控制项目", "确认人/时间", "实测值", "测量时间", "结果", "复测/偏差处理", "工具/依据/备注");
             for (var major : sorted(revision.snapshot().majorProcesses(), ProcessPlan.MajorProcess::sequence)) {
                 for (var step : sorted(major.steps(), ProcessPlan.MinorStep::sequence)) {
                     for (var control : values(step.controlPoints())) {
@@ -240,11 +269,10 @@ public class ProcessArtifactService {
                             var row = appendix.createRow();
                             cell(row, 0, major.sequence() + "." + step.sequence() + " " + value(step.stepName()));
                             cell(row, 1, value(control.itemName()));
-                            cell(row, 2, value(measurement.measuredValue()));
-                            cell(row, 3, value(measurement.measuredAt()));
-                            cell(row, 4, value(measurement.result()));
-                            cell(row, 5, join(" / ", measurement.retestResult(), measurement.deviationAction(), measurement.remark()));
-                            cell(row, 6, join(" / ", control.measurementTool(), control.basisOrRemark(), control.confirmedAt()));
+                            cell(row, 2, join(" / ", control.confirmedBy(), control.confirmedAt()));
+                            cell(row, 3, value(measurement.measuredValue())); cell(row, 4, value(measurement.measuredAt()));
+                            cell(row, 5, value(measurement.result())); cell(row, 6, join(" / ", measurement.retestResult(), measurement.deviationAction()));
+                            cell(row, 7, join(" / ", control.measurementTool(), control.basisOrRemark(), measurement.remark()));
                         }
                     }
                 }
@@ -257,7 +285,7 @@ public class ProcessArtifactService {
     private void requireWriteAccess(String formId, SessionPrincipal principal) {
         requirePrincipal(principal);
         if ("RND_DIRECTOR".equals(principal.role())) return;
-        if (!"RND_ENGINEER".equals(principal.role()) || !isOwner(formId, principal.name())) {
+        if (!"RND_ENGINEER".equals(principal.role()) || !isOwner(formId, principal)) {
             throw new BusinessException("PROCESS_PLAN_FORM_FORBIDDEN", "当前用户无权生成该工艺成果文件");
         }
     }
@@ -265,7 +293,7 @@ public class ProcessArtifactService {
     private void requireReadAccess(String formId, SessionPrincipal principal) {
         requirePrincipal(principal);
         if ("RND_DIRECTOR".equals(principal.role()) || "TESTER".equals(principal.role()) || "QA_TESTER".equals(principal.role())) return;
-        if (!"RND_ENGINEER".equals(principal.role()) || !isOwner(formId, principal.name())) {
+        if (!"RND_ENGINEER".equals(principal.role()) || !isOwner(formId, principal)) {
             throw new BusinessException("PROCESS_PLAN_FORM_FORBIDDEN", "当前用户无权查看该工艺成果文件");
         }
     }
@@ -276,9 +304,15 @@ public class ProcessArtifactService {
         }
     }
 
-    private boolean isOwner(String formId, String name) {
-        return jdbc.query("select task.assignee_name from experiment_form form join rnd_task task on form.task_id = task.id where form.id = ?",
-                (rs, row) -> rs.getString(1), formId).stream().anyMatch(owner -> name.trim().equals(owner));
+    private boolean isOwner(String formId, SessionPrincipal principal) {
+        var owners = jdbc.query("select task.assignee_user_id, task.assignee_name from experiment_form form join rnd_task task on form.task_id = task.id where form.id = ?",
+                (rs, row) -> new String[]{rs.getString(1), rs.getString(2)}, formId);
+        if (owners.isEmpty()) return false;
+        var owner = owners.get(0);
+        if (!blank(owner[0])) return owner[0].equals(principal.userId());
+        if (blank(owner[1])) return false;
+        var ids = jdbc.query("select id from user_account where name = ? and status = 'ACTIVE'", (rs, row) -> rs.getString(1), owner[1]);
+        return ids.size() == 1 && ids.get(0).equals(principal.userId());
     }
 
     private void validateType(String type) {
@@ -365,18 +399,29 @@ public class ProcessArtifactService {
 
     private String materials(ProcessPlan.MinorStep step, String sourceType) {
         return values(step.materials()).stream().filter(material -> sourceType.equals(material.sourceType()))
-                .map(material -> value(material.materialName()) + " " + kg(material.weightKg()) + "（" + value(material.materialRole()) + "）")
+                .map(material -> value(material.materialName()) + " " + kg(material.weightKg()) + "（" + value(material.materialRole()) + "）" + (blank(material.remark()) ? "" : " 备注：" + material.remark()))
                 .collect(Collectors.joining("；"));
     }
 
-    private String intermediateFlow(ProcessPlan.MinorStep step) {
+    private String intermediateFlow(ProcessPlan plan, ProcessPlan.MinorStep step) {
         var values = new ArrayList<String>();
         var inputs = materials(step, "STEP_OUTPUT");
-        if (!inputs.isBlank()) values.add("接收：" + inputs);
+        if (!inputs.isBlank()) {
+            var source = values(step.materials()).stream().filter(material -> "STEP_OUTPUT".equals(material.sourceType()))
+                    .map(material -> findOutputProducer(plan, material.sourceStepOutputId())).filter(value -> !blank(value)).collect(Collectors.joining("；"));
+            values.add("接收：" + inputs + (blank(source) ? "" : "；来源：" + source));
+        }
         var outputs = values(step.outputs()).stream().filter(output -> "INTERMEDIATE".equals(output.outputType()) || output.continueFlow())
                 .map(output -> "产出：" + value(output.outputName()) + " " + kg(output.weightKg())).collect(Collectors.joining("；"));
         if (!outputs.isBlank()) values.add(outputs);
         return String.join("；", values);
+    }
+
+    private String findOutputProducer(ProcessPlan plan, String outputId) {
+        for (var major : values(plan.majorProcesses())) for (var step : values(major.steps()))
+            for (var output : values(step.outputs())) if (outputId != null && outputId.equals(output.id()))
+                return major.sequence() + "." + step.sequence() + " " + value(step.stepName()) + " / " + value(output.outputName());
+        return "";
     }
 
     private String parameters(ProcessPlan.MinorStep step) {
@@ -386,7 +431,7 @@ public class ProcessArtifactService {
     }
 
     private String outputs(ProcessPlan.MinorStep step) {
-        return values(step.outputs()).stream().map(output -> value(output.outputName()) + " / " + value(output.outputType()) + " / " + kg(output.weightKg()))
+        return values(step.outputs()).stream().map(output -> value(output.outputName()) + " / " + value(output.outputType()) + " / " + kg(output.weightKg()) + (blank(output.remark()) ? "" : " 备注：" + output.remark()))
                 .collect(Collectors.joining("；"));
     }
 
@@ -410,6 +455,14 @@ public class ProcessArtifactService {
     }
 
     private BigDecimal safe(BigDecimal value) { return value == null ? BigDecimal.ZERO : value; }
+    private String sha256(byte[] value) {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256").digest(value);
+            var hex = new StringBuilder(64);
+            for (byte item : digest) hex.append(String.format("%02x", item));
+            return hex.toString();
+        } catch (Exception exception) { throw new IllegalStateException("成果文件摘要失败", exception); }
+    }
     private String truncate(String value) { return value == null ? "生成失败" : value.substring(0, Math.min(value.length(), 900)); }
     private String value(Object value) { return value == null ? "" : String.valueOf(value); }
     private boolean blank(String value) { return value == null || value.isBlank(); }

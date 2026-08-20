@@ -204,15 +204,23 @@ public class ProcessRevisionService {
         if (!"RND_ENGINEER".equals(principal.role())) {
             throw new BusinessException("PROCESS_PLAN_FORM_FORBIDDEN", "当前用户无权操作该工艺单");
         }
-        var owners = jdbc.query("select task.assignee_name from experiment_form form join rnd_task task on form.task_id = task.id where form.id = ?",
-                (rs, row) -> rs.getString(1), formId);
+        var owners = jdbc.query("select task.assignee_user_id, task.assignee_name from experiment_form form join rnd_task task on form.task_id = task.id where form.id = ?",
+                (rs, row) -> new String[]{rs.getString(1), rs.getString(2)}, formId);
         if (owners.isEmpty()) {
             planService.find(formId);
             throw new BusinessException("PROCESS_PLAN_FORM_FORBIDDEN", "当前用户无权操作该工艺单");
         }
-        if (!principal.name().trim().equals(owners.get(0))) {
+        var owner = owners.get(0);
+        var allowed = !blank(owner[0]) ? owner[0].equals(principal.userId()) : legacyOwnerMatches(owner[1], principal.userId());
+        if (!allowed) {
             throw new BusinessException("PROCESS_PLAN_FORM_FORBIDDEN", "当前用户无权操作该工艺单");
         }
+    }
+
+    private boolean legacyOwnerMatches(String name, String userId) {
+        if (blank(name) || blank(userId)) return false;
+        var ids = jdbc.query("select id from user_account where name = ? and status = 'ACTIVE'", (rs, row) -> rs.getString(1), name);
+        return ids.size() == 1 && userId.equals(ids.get(0));
     }
 
     private boolean constantTimeEquals(String expected, String actual) {

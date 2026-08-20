@@ -14,6 +14,8 @@ import org.springframework.test.context.ActiveProfiles;
 
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -35,6 +37,8 @@ class ProcessArtifactServiceTest {
 
     @BeforeEach
     void seedForm() {
+        jdbc.update("insert into user_account(id,username,password_hash,name,role,status,created_at,updated_at) select ?,?,?,?,?,?,?,? where not exists (select 1 from user_account where id = ?)",
+                ENGINEER.userId(), "artifact", "x", ENGINEER.name(), "RND_ENGINEER", "ACTIVE", LocalDateTime.now(), LocalDateTime.now(), ENGINEER.userId());
         jdbc.update("delete from audit_log where business_id in (?, ?) ", FORM_ID, "FORM-PROCESS-ARTIFACT");
         jdbc.update("delete from experiment_process_artifact where process_revision_id in (select id from experiment_process_revision where experiment_form_id = ?)", FORM_ID);
         jdbc.update("delete from experiment_process_revision where experiment_form_id = ?", FORM_ID);
@@ -130,6 +134,18 @@ class ProcessArtifactServiceTest {
                 .isEqualTo("PROCESS_ARTIFACT_FILE_NOT_FOUND");
         assertThat(jdbc.queryForObject("select count(*) from audit_log where business_id = ? and action = ?", Integer.class,
                 FORM_ID, "PROCESS_ARTIFACT_GENERATED")).isEqualTo(2);
+    }
+
+    @Test
+    void rejectsTamperedOrTruncatedReadyBytesByDigestAndSize() throws Exception {
+        var revision = formalRevision();
+        var artifact = service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
+        Files.write(Path.of("target", "rnd-archive").resolve(artifact.storageKey()), new byte[]{1, 2, 3});
+
+        assertThatThrownBy(() -> service.download(FORM_ID, revision.id(), artifact.id(), ENGINEER))
+                .isInstanceOf(com.lhr.rnd.api.BusinessException.class)
+                .extracting(error -> ((com.lhr.rnd.api.BusinessException) error).code())
+                .isEqualTo("PROCESS_ARTIFACT_INTEGRITY_ERROR");
     }
 
     private com.lhr.rnd.model.ProcessRevision formalRevision() {

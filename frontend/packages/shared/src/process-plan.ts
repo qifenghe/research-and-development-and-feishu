@@ -173,7 +173,10 @@ export interface ProcessArtifact {
   status: ProcessArtifactStatus;
   generatedAt: string;
   generatedBy?: string;
+  generatedByUserId?: string;
   storageKey?: string;
+  contentSha256?: string;
+  byteSize?: number;
   contentSummary?: string;
   failureReason?: string;
 }
@@ -449,6 +452,10 @@ export function previewProcessSubmission(plan: ProcessPlanDraft): ProcessSubmiss
     if (validBalanceTolerance) previewBalance(major, balanceTolerance, errors, warnings);
   }
   if (!externalPrimary) errors.push(issue("EXTERNAL_PRIMARY_REQUIRED", "配方至少需要一项外部主料", null, null));
+  const externalWeight = steps.flatMap(({ step }) => step.materials || [])
+    .filter((material) => material.sourceType === "EXTERNAL")
+    .reduce((sum, material) => sum + Number(material.weightKg || 0), 0);
+  if (!(externalWeight > 0)) errors.push(issue("EXTERNAL_MATERIAL_WEIGHT_REQUIRED", "外部物料总重量必须大于0", null, null));
   return { ready: errors.length === 0, errors, warnings };
 }
 

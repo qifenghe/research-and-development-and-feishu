@@ -35,6 +35,9 @@ public class RndTaskEntity {
     @Column(name = "assignee_name")
     private String assigneeName;
 
+    @Column(name = "assignee_user_id")
+    private String assigneeUserId;
+
     @Column(name = "product_owner_name")
     private String productOwnerName;
 
@@ -91,6 +94,8 @@ public class RndTaskEntity {
         this.assignedAt = assignedAt;
         this.acceptedAt = null;
     }
+
+    public void setAssigneeUserId(String assigneeUserId) { this.assigneeUserId = assigneeUserId; }
 
     public void accept(LocalDateTime acceptedAt) {
         this.status = "SAMPLING";
