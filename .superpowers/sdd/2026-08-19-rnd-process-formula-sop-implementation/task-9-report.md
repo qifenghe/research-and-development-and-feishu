@@ -26,3 +26,19 @@
 
 - The mobile view intentionally lists only READY artifacts; failed generation records stay in the PC R&D output center where regeneration is authorized.
 - Formal revision history is read-only by role at the endpoint layer. Draft ownership is additionally enforced in the process service; tester formal access is not coupled to mutable draft ownership.
+
+## Review fix round 1
+
+- `rnd-tasks/{id}/detail` now derives role and operator only from the authenticated session. TESTER/QA receives no experiment form before a formal revision exists; after submission it receives a formal-revision-bound shell with draft summary, formula, legacy steps and output measurements removed by the server.
+- Submission check and revision list/detail now require a trusted principal. Submission check is owner/director draft access only; revision history is owner/director for R&D and immutable formal read for TESTER/QA. Revision IDs remain constrained by their form ID.
+- TESTER/QA artifact lists now use a READY-only public projection containing only ID, revision ID, type, document version, status and generation time. Failure reasons, storage keys, hashes, byte size and generator identity remain internal to the R&D output center.
+- Mobile experiment routes now watch task ID immediately, reset A before loading B, bind local drafts to the active task, and fence every asynchronous detail/revision/artifact/template/download/save continuation by request generation. A deferred-response regression proves that a late A response cannot replace B.
+
+### Review-fix verification
+
+- Backend fresh suites: `SchemaMigrationTest` 9/9, `RolePermissionServiceTest` 3/3, `SessionAuthenticationInterceptorTest` 15/15, `ProcessPlanControllerTest` 8/8.
+- Frontend Node suite: 81 passed, 0 failed, including the A→B late-response regression.
+- Shared, PC and mobile TypeScript checks: PASS.
+- Mobile production build: 458 modules transformed, PASS.
+- API contract and route checks: PASS (`30` PC routes, `16` mobile routes).
+- `git diff --check`: PASS.

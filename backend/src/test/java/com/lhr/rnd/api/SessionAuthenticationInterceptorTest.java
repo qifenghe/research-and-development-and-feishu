@@ -84,7 +84,7 @@ class SessionAuthenticationInterceptorTest {
             mockMvc.perform(get("/api/v1/experiment-forms/FORM-AUTH-CHECK/process-plan/submission-check")
                             .header("Authorization", "Bearer " + engineerToken))
                     .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("EXPERIMENT_FORM_NOT_FOUND"));
+                    .andExpect(jsonPath("$.code").value("PROCESS_PLAN_FORM_FORBIDDEN"));
         } finally {
             sessionProperties.setAuthRequired(authRequired);
             sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);
@@ -258,6 +258,85 @@ class SessionAuthenticationInterceptorTest {
                             .header("Authorization", "Bearer " + director))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.status").value("DRAFT"));
+        } finally {
+            sessionProperties.setAuthRequired(authRequired);
+            sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);
+        }
+    }
+
+    @Test
+    void projectsTaskDetailToFormalOnlyForTesterAndQa() throws Exception {
+        var authRequired = sessionProperties.isAuthRequired();
+        var testBypass = sessionProperties.isTestBusinessApiAuthenticationBypass();
+        sessionProperties.setAuthRequired(true);
+        sessionProperties.setTestBusinessApiAuthenticationBypass(false);
+        try {
+            var formId = "FORM-AUTH-FORMAL-DETAIL";
+            seedProcessForm(formId, "归属研发正式详情");
+            jdbc.update("update rnd_task set status = 'SAMPLING' where id = 'TASK-FORMAL-DETAIL'");
+            var draft = processPlanService.save(formId, readyPlan(formId, processPlanService.find(formId).versionNo()));
+            jdbc.update("update experiment_form set summary = ? where id = ?", "DRAFT-SENSITIVE-SUMMARY", formId);
+            var taskId = "TASK-FORMAL-DETAIL";
+
+            for (var role : List.of("TESTER", "QA_TESTER")) {
+                var token = tokenFor("正式详情" + role, "ou_formal_detail_" + role.toLowerCase(), role);
+                mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                                .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.currentExperimentForm").doesNotExist())
+                        .andExpect(jsonPath("$.data.fieldGroups..value", org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("DRAFT-SENSITIVE-SUMMARY"))));
+            }
+
+            var revision = processRevisionService.submit(formId, new ProcessRevisionService.SubmitCommand(
+                    draft.versionNo(), true, "首次正式提交", "归属研发正式详情"));
+            processRevisionService.createDraftFromRevision(formId, revision.id(), "DRAFT-REOPENED");
+            jdbc.update("update experiment_form set summary = ? where id = ?", "DRAFT-REOPENED-SENSITIVE", formId);
+
+            var tester = tokenFor("已提交测试查看", "ou_formal_detail_submitted", "TESTER");
+            mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                            .header("Authorization", "Bearer " + tester))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.currentExperimentForm.id").value(formId))
+                    .andExpect(jsonPath("$.data.currentExperimentForm.summary").doesNotExist())
+                    .andExpect(jsonPath("$.data.currentExperimentForm.materials").isEmpty())
+                    .andExpect(jsonPath("$.data.currentExperimentForm.processSteps").isEmpty())
+                    .andExpect(jsonPath("$.data.currentExperimentForm.finishedOutputWeightKg").doesNotExist());
+        } finally {
+            sessionProperties.setAuthRequired(authRequired);
+            sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);
+        }
+    }
+
+    @Test
+    void fencesSubmissionCheckAndRevisionReadsByOwnerButAllowsFormalTesterRead() throws Exception {
+        var authRequired = sessionProperties.isAuthRequired();
+        var testBypass = sessionProperties.isTestBusinessApiAuthenticationBypass();
+        sessionProperties.setAuthRequired(true);
+        sessionProperties.setTestBusinessApiAuthenticationBypass(false);
+        try {
+            var formId = "FORM-AUTH-REVISION-OWNER";
+            seedProcessForm(formId, "归属研发版本");
+            var draft = processPlanService.save(formId, readyPlan(formId, processPlanService.find(formId).versionNo()));
+            var revision = processRevisionService.submit(formId, new ProcessRevisionService.SubmitCommand(
+                    draft.versionNo(), true, "首次正式提交", "归属研发版本"));
+            var intruder = tokenFor("越权研发版本", "ou_revision_owner_intruder", "RND_ENGINEER");
+            var tester = tokenFor("只读正式版本", "ou_revision_owner_tester", "TESTER");
+
+            for (var path : List.of(
+                    "/api/v1/experiment-forms/" + formId + "/process-plan/submission-check",
+                    "/api/v1/experiment-forms/" + formId + "/process-plan/revisions",
+                    "/api/v1/experiment-forms/" + formId + "/process-plan/revisions/" + revision.id())) {
+                mockMvc.perform(get(path).header("Authorization", "Bearer " + intruder))
+                        .andExpect(status().isBadRequest())
+                        .andExpect(jsonPath("$.code").value("PROCESS_PLAN_FORM_FORBIDDEN"));
+            }
+            mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/submission-check", formId)
+                            .header("Authorization", "Bearer " + tester))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}", formId, revision.id())
+                            .header("Authorization", "Bearer " + tester))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.id").value(revision.id()));
         } finally {
             sessionProperties.setAuthRequired(authRequired);
             sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);

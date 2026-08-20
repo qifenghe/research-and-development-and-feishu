@@ -136,8 +136,13 @@ public class SampleWorkflowController {
     public ApiResponse<RndTaskDetailView> rndTaskDetail(
             @PathVariable String id,
             @RequestParam(required = false) String role,
-            @RequestParam(required = false) String operatorName
+            @RequestParam(required = false) String operatorName,
+            HttpServletRequest request
     ) {
+        var principal = sessionPrincipal(request);
+        if (principal != null) {
+            return ApiResponse.success(workflowService.rndTaskDetail(id, principal));
+        }
         return ApiResponse.success(workflowService.rndTaskDetail(id, role, operatorName));
     }
 

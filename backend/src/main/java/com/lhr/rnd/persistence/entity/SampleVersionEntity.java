@@ -128,6 +128,10 @@ public class SampleVersionEntity {
         return specification;
     }
 
+    public String getApplicationScenario() { return applicationScenario; }
+
+    public String getFlavorRequirement() { return flavorRequirement; }
+
     public String getVersionNo() {
         return versionNo;
     }
@@ -139,6 +143,16 @@ public class SampleVersionEntity {
     public String getVersionCode() {
         return versionCode;
     }
+
+    public String getOwnerName() { return ownerName; }
+
+    public String getAuthorName() { return authorName; }
+
+    public LocalDate getEffectiveDate() { return effectiveDate; }
+
+    public BigDecimal getReferenceOutputKg() { return referenceOutputKg; }
+
+    public BigDecimal getUnitWeightKg() { return unitWeightKg; }
 
     public LocalDateTime getCreatedAt() {
         return createdAt;

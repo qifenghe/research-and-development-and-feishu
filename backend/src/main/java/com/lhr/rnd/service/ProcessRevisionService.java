@@ -110,11 +110,23 @@ public class ProcessRevisionService {
     }
 
     @Transactional(readOnly = true)
+    public List<ProcessRevision.ProcessRevisionSummary> list(String formId, SessionPrincipal principal) {
+        requireFormalReadAccess(formId, principal);
+        return list(formId);
+    }
+
+    @Transactional(readOnly = true)
     public ProcessRevision find(String formId, String revisionId) {
         planService.find(formId);
         var rows = jdbc.query("select * from experiment_process_revision where id = ? and experiment_form_id = ?", (rs, row) -> map(rs), revisionId, formId);
         if (rows.isEmpty()) throw new BusinessException("PROCESS_REVISION_NOT_FOUND", "正式工艺版本不存在");
         return rows.get(0);
+    }
+
+    @Transactional(readOnly = true)
+    public ProcessRevision find(String formId, String revisionId, SessionPrincipal principal) {
+        requireFormalReadAccess(formId, principal);
+        return find(formId, revisionId);
     }
 
     @Transactional(readOnly = true)
@@ -227,6 +239,14 @@ public class ProcessRevisionService {
         if (!allowed) {
             throw new BusinessException("PROCESS_PLAN_FORM_FORBIDDEN", "当前用户无权操作该工艺单");
         }
+    }
+
+    private void requireFormalReadAccess(String formId, SessionPrincipal principal) {
+        if (principal == null || blank(principal.userId()) || blank(principal.name()) || blank(principal.role())) {
+            throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "正式工艺查看必须使用服务端会话身份");
+        }
+        if ("RND_DIRECTOR".equals(principal.role()) || "TESTER".equals(principal.role()) || "QA_TESTER".equals(principal.role())) return;
+        requireFormalWriteAccess(formId, principal);
     }
 
     private boolean legacyOwnerMatches(String name, String userId) {

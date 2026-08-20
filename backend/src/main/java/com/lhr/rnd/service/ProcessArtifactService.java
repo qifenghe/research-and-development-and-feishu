@@ -4,6 +4,7 @@ import com.lhr.rnd.api.BusinessException;
 import com.lhr.rnd.domain.ProcessPlanCalculationService;
 import com.lhr.rnd.domain.ProcessRecipeService;
 import com.lhr.rnd.model.ProcessArtifact;
+import com.lhr.rnd.model.ProcessArtifactPublic;
 import com.lhr.rnd.model.ProcessPlan;
 import com.lhr.rnd.model.ProcessRevision;
 import org.apache.poi.ss.usermodel.Cell;
@@ -69,6 +70,16 @@ public class ProcessArtifactService {
         revisionService.find(formId, revisionId);
         return jdbc.query("select * from experiment_process_artifact where process_revision_id = ? order by generated_at desc, id desc",
                 (rs, row) -> map(rs), revisionId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProcessArtifactPublic> listReadyPublic(String formId, String revisionId, SessionPrincipal principal) {
+        requireReadAccess(formId, principal);
+        revisionService.find(formId, revisionId);
+        return jdbc.query("select id, process_revision_id, artifact_type, document_version, status, generated_at from experiment_process_artifact where process_revision_id = ? and status = 'READY' order by generated_at desc, id desc",
+                (rs, row) -> new ProcessArtifactPublic(rs.getString("id"), rs.getString("process_revision_id"),
+                        rs.getString("artifact_type"), rs.getString("document_version"), rs.getString("status"),
+                        rs.getTimestamp("generated_at").toLocalDateTime().toString()), revisionId);
     }
 
     @Transactional

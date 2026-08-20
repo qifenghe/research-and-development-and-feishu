@@ -16,4 +16,5 @@ test("mobile experiment form chooses draft for R&D and formal revision outputs f
   assert.ok(source.includes("ProcessHierarchyReadonly"));
   assert.ok(source.includes('v-model="yieldCalculationMode" :disabled="readOnly"'),"read-only viewers must not change yield mode locally");
   for(const forbidden of ["generateProcessArtifact","submitProcessPlan","saveProcessPlan","createDraftFromRevision"]){assert.ok(!source.includes(forbidden),`mobile must not expose ${forbidden}`)}
+  for(const marker of ['watch(()=>String(route.params.id)', 'immediate:true', 'routeRequestGeneration', 'if(generation!==routeRequestGeneration)']){assert.ok(source.includes(marker),`missing stale-safe route marker ${marker}`)}
 });

@@ -91,7 +91,8 @@ class ProcessPlanControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content(invalidDraft))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/submission-check", FORM_ID))
+        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/submission-check", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("0"))
                 .andExpect(jsonPath("$.data.ready").value(false))
@@ -136,10 +137,12 @@ class ProcessPlanControllerTest {
                 .andReturn().getResponse().getContentAsString();
         var revisionId = body.split("\\\"id\\\":\\\"")[1].split("\\\"")[0];
 
-        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions", FORM_ID))
+        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, principal))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].id").value(revisionId));
-        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}", FORM_ID, revisionId))
+        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}", FORM_ID, revisionId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, principal))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.snapshot.balanceToleranceKg").value(0.01));
         mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/new-draft", FORM_ID, revisionId)
@@ -199,6 +202,37 @@ class ProcessPlanControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("attachment")));
+    }
+
+    @Test
+    void testerArtifactListContainsOnlyReadyPublicMetadata() throws Exception {
+        saveReadyDraft();
+        var owner = ownerPrincipal();
+        var revisionBody = mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/submit", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, owner)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"versionNo\":1,\"confirmed\":true}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var revisionId = revisionBody.split("\\\"id\\\":\\\"")[1].split("\\\"")[0];
+        var readyBody = mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/artifacts", FORM_ID, revisionId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, owner)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"artifactType\":\"FORMULA_XLSX\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var readyId = readyBody.split("\\\"id\\\":\\\"")[1].split("\\\"")[0];
+        jdbc.update("insert into experiment_process_artifact(id,process_revision_id,artifact_type,document_version,status,generated_at,generated_by,generated_by_user_id,storage_key,content_sha256,byte_size,content_summary,failure_reason) values (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "PART-FAILED-PUBLIC", revisionId, "SOP_DOCX", "1", "FAILED", LocalDateTime.now(), "内部生成人", "SECRET-USER", "secret/storage/key", "secret-hash", 99L, "internal summary", "SECRET FAILURE");
+        var tester = new SessionPrincipal("USER-TESTER-PUBLIC", "tester_public", "测试只读", null, "TESTER", Instant.now().plusSeconds(60));
+
+        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/artifacts", FORM_ID, revisionId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, tester))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(readyId))
+                .andExpect(jsonPath("$.data[0].status").value("READY"))
+                .andExpect(jsonPath("$.data[0].storageKey").doesNotExist())
+                .andExpect(jsonPath("$.data[0].contentSha256").doesNotExist())
+                .andExpect(jsonPath("$.data[0].generatedByUserId").doesNotExist())
+                .andExpect(jsonPath("$.data[0].failureReason").doesNotExist())
+                .andExpect(jsonPath("$..failureReason", org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("SECRET FAILURE"))));
     }
 
     private void saveReadyDraft() throws Exception {

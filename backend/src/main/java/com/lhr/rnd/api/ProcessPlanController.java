@@ -54,7 +54,8 @@ public class ProcessPlanController {
     }
 
     @GetMapping("/submission-check")
-    public ApiResponse<ProcessSubmissionCheck> submissionCheck(@PathVariable String formId) {
+    public ApiResponse<ProcessSubmissionCheck> submissionCheck(@PathVariable String formId, HttpServletRequest servletRequest) {
+        service.requireDraftReadAccess(formId, requiredSessionPrincipal(servletRequest));
         return ApiResponse.success(submissionValidator.validate(service.find(formId)));
     }
 
@@ -75,13 +76,13 @@ public class ProcessPlanController {
     }
 
     @GetMapping("/revisions")
-    public ApiResponse<List<ProcessRevision.ProcessRevisionSummary>> revisions(@PathVariable String formId) {
-        return ApiResponse.success(revisionService.list(formId));
+    public ApiResponse<List<ProcessRevision.ProcessRevisionSummary>> revisions(@PathVariable String formId, HttpServletRequest servletRequest) {
+        return ApiResponse.success(revisionService.list(formId, requiredSessionPrincipal(servletRequest)));
     }
 
     @GetMapping("/revisions/{revisionId}")
-    public ApiResponse<ProcessRevision> revision(@PathVariable String formId, @PathVariable String revisionId) {
-        return ApiResponse.success(revisionService.find(formId, revisionId));
+    public ApiResponse<ProcessRevision> revision(@PathVariable String formId, @PathVariable String revisionId, HttpServletRequest servletRequest) {
+        return ApiResponse.success(revisionService.find(formId, revisionId, requiredSessionPrincipal(servletRequest)));
     }
 
     @PostMapping("/revisions/{revisionId}/new-draft")
@@ -95,12 +96,16 @@ public class ProcessPlanController {
     }
 
     @GetMapping("/revisions/{revisionId}/artifacts")
-    public ApiResponse<List<ProcessArtifact>> artifacts(
+    public ApiResponse<?> artifacts(
             @PathVariable String formId,
             @PathVariable String revisionId,
             HttpServletRequest servletRequest
     ) {
-        return ApiResponse.success(artifactService.list(formId, revisionId, requiredSessionPrincipal(servletRequest)));
+        var principal = requiredSessionPrincipal(servletRequest);
+        if ("TESTER".equals(principal.role()) || "QA_TESTER".equals(principal.role())) {
+            return ApiResponse.success(artifactService.listReadyPublic(formId, revisionId, principal));
+        }
+        return ApiResponse.success(artifactService.list(formId, revisionId, principal));
     }
 
     @PostMapping("/revisions/{revisionId}/artifacts")
@@ -132,7 +137,7 @@ public class ProcessPlanController {
     private SessionPrincipal requiredSessionPrincipal(HttpServletRequest request) {
         var principal = sessionPrincipal(request);
         if (principal == null || principal.name() == null || principal.name().isBlank()) {
-            throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "正式提交必须使用服务端会话身份");
+            throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "工艺操作必须使用服务端会话身份");
         }
         return principal;
     }

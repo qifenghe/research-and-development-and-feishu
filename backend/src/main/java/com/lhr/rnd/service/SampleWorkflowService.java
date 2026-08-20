@@ -702,10 +702,23 @@ public class SampleWorkflowService {
     }
 
     public synchronized RndTaskDetailView rndTaskDetail(String taskId, String role, String operatorName) {
+        return rndTaskDetailInternal(taskId, role, operatorName, false);
+    }
+
+    public synchronized RndTaskDetailView rndTaskDetail(String taskId, SessionPrincipal principal) {
+        if (principal == null || principal.role() == null || principal.role().isBlank()) {
+            throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "任务详情必须使用服务端会话身份");
+        }
+        return rndTaskDetailInternal(taskId, principal.role(), principal.name(),
+                "TESTER".equals(principal.role()) || "QA_TESTER".equals(principal.role()));
+    }
+
+    private RndTaskDetailView rndTaskDetailInternal(String taskId, String role, String operatorName, boolean formalOnly) {
         var task = requiredTask(taskId);
         var version = requiredVersion(task.versionId());
         var project = SampleProjectSummary.from(projects.get(task.projectId()));
         var currentExperimentForm = currentExperimentForm(taskId);
+        if (formalOnly) currentExperimentForm = formalExperimentFormOrNull(currentExperimentForm);
         var currentTestAssignment = currentTestAssignment(taskId);
         return new RndTaskDetailView(
                 task,
@@ -716,6 +729,16 @@ public class SampleWorkflowService {
                 detailFieldGroups(task, version, currentExperimentForm, currentTestAssignment),
                 detailActions(task, currentExperimentForm, currentTestAssignment, role, operatorName)
         );
+    }
+
+    private ExperimentForm formalExperimentFormOrNull(ExperimentForm draft) {
+        if (draft == null || processRevisionService == null) return null;
+        var revision = processRevisionService.latestOrNull(draft.id());
+        if (revision == null) return null;
+        return new ExperimentForm(draft.id(), draft.taskId(), draft.projectId(), draft.versionId(), draft.sampleNo(),
+                draft.productName(), draft.versionCode(), ExperimentFormStatus.SUBMITTED_FOR_TEST, revision.submittedBy(),
+                null, List.of(), List.of(), null, null, null, null, null, null,
+                java.time.LocalDateTime.parse(revision.submittedAt()));
     }
 
     public synchronized List<TestRecord> testRecordsForTask(String taskId) {
@@ -3063,10 +3086,18 @@ public class SampleWorkflowService {
 
     private SampleVersion requiredVersion(String versionId) {
         var version = versions.get(versionId);
-        if (version == null) {
-            throw new BusinessException("SAMPLE_VERSION_NOT_FOUND", "样品版本不存在");
-        }
-        return version;
+        if (version != null) return version;
+        if (sampleVersionRepository == null) throw new BusinessException("SAMPLE_VERSION_NOT_FOUND", "样品版本不存在");
+        return sampleVersionRepository.findById(versionId).map(entity -> SampleVersion.builder()
+                        .id(entity.getId()).projectId(entity.getProjectId()).sampleNo(entity.getSampleNo())
+                        .productName(entity.getProductName()).productType(entity.getProductType()).specification(entity.getSpecification())
+                        .applicationScenario(entity.getApplicationScenario()).flavorRequirement(entity.getFlavorRequirement())
+                        .versionNo(entity.getVersionNo()).versionNumber(entity.getVersionNumber()).versionCode(entity.getVersionCode())
+                        .ownerName(entity.getOwnerName()).authorName(entity.getAuthorName()).effectiveDate(entity.getEffectiveDate())
+                        .referenceOutputKg(entity.getReferenceOutputKg()).unitWeightKg(entity.getUnitWeightKg())
+                        .createdAt(entity.getCreatedAt()).build())
+                .map(hydrated -> { versions.put(hydrated.id(), hydrated); return hydrated; })
+                .orElseThrow(() -> new BusinessException("SAMPLE_VERSION_NOT_FOUND", "样品版本不存在"));
     }
 
     private ExperimentForm lockedExperimentForm(String versionId) {

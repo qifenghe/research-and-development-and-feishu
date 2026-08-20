@@ -2,7 +2,7 @@
   <div class="page-with-footer experiment-page">
     <van-skeleton title :row="8" :loading="loading">
       <van-empty v-if="loadError" image="error" :description="loadError">
-        <van-button round type="primary" @click="loadDetail">重试</van-button>
+        <van-button round type="primary" @click="reloadCurrentRoute">重试</van-button>
       </van-empty>
 
       <template v-else>
@@ -103,6 +103,7 @@ import ProcessHierarchyReadonly from "../components/ProcessHierarchyReadonly.vue
 import { blankProcessStep, fromProcessSteps, toProcessSteps, type EditableProcessStep } from "../components/ProcessStepEditor.helpers";
 import { useAuthStore } from "../stores/auth";
 import { api } from "../services/api";
+import { commitLatestRouteRequest } from "./latestRouteRequest";
 
 type Phase = "arrange" | "execute" | "readonly";
 type EditableMaterial = {
@@ -130,6 +131,8 @@ const phase=ref<Phase>("arrange");
 const yieldCalculationMode=ref<YieldCalculationMode>("SELECTED_PRIMARY_MATERIALS");
 const hydrated=ref(false);
 let autoSaveTimer:number|undefined;
+let routeRequestGeneration=0;
+const activeTaskId=ref("");
 const currentStepIndex=ref(0);
 const fileList=ref<Array<{url?:string;file?:File}>>([]);
 const headerTitle=ref("实验单录入");
@@ -162,7 +165,7 @@ const formulaRatiosValue=computed(()=>formulaRatios(formulaWeights.value));
 const totalFormulaWeight=computed(()=>formulaWeights.value.reduce((sum,weight)=>sum+weight,0));
 const yieldBasisWeight=computed(()=>yieldBasisWeightKg(materials.value.map(item=>({weightKg:Number(item.weightKg||0),utilizationRatePercent:Number(item.utilizationRate||100),materialCategory:item.materialCategory,primaryMaterial:item.primaryMaterial})),yieldCalculationMode.value));
 const pricingPreview=computed(()=>calculatePricingPreview({totalInputWeightKg:totalFormulaWeight.value,yieldBasisWeightKg:yieldBasisWeight.value,finishedOutputWeightKg:Number(form.finishedOutputWeightKg||0),finishedOutputQuantity:Number(form.finishedOutputQuantity||0)}));
-const localDraftKey=computed(()=>experimentDraftKey(auth.principal?.userId||auth.user?.id||auth.displayName,String(route.params.id)));
+const localDraftKey=computed(()=>experimentDraftKey(auth.principal?.userId||auth.user?.id||auth.displayName,activeTaskId.value));
 
 async function ensureAuthReady(){if(!auth.principal)await auth.fetchMe().catch(()=>undefined)}
 
@@ -195,47 +198,84 @@ function applyDetail(data:RndTaskDetailView){
   if(existing?.processSteps?.length)processSteps.value=fromProcessSteps(existing.processSteps);
 }
 
-async function loadProcessTemplate(versionId:string){
-  try{const steps=await api.sample.processSteps(versionId);if(steps.length)processSteps.value=fromProcessSteps(steps)}catch{ /* 不阻断打样 */ }
+async function loadProcessTemplate(versionId:string,generation:number){
+  try{const steps=await api.sample.processSteps(versionId);if(generation!==routeRequestGeneration)return;if(steps.length)processSteps.value=fromProcessSteps(steps)}catch{ /* 不阻断打样 */ }
 }
 
-async function loadDetail(){
+function resetRouteState(taskId:string){
+  if(autoSaveTimer)window.clearTimeout(autoSaveTimer);
+  autoSaveTimer=undefined;activeTaskId.value=taskId;hydrated.value=false;loading.value=true;loadError.value="";
+  detail.value=null;formalRevision.value=null;processArtifacts.value=[];downloadingArtifactId.value="";
+  processPlan.value=createEmptyProcessPlan();processSteps.value=[blankProcessStep()];materials.value=[blankMaterial(false)];
+  Object.assign(form,{summary:"",finishedOutputWeightKg:"",finishedOutputQuantity:"",finishedOutputUnit:"袋"});
+  yieldCalculationMode.value="SELECTED_PRIMARY_MATERIALS";phase.value="arrange";currentStepIndex.value=0;headerTitle.value="实验单录入";
+  saving.value=false;submitting.value=false;draftSaved.value=false;draftSyncState.value="idle";fileList.value=[];
+}
+
+async function loadDetail(taskId:string,generation:number){
   loading.value=true;loadError.value="";
-  try{await ensureAuthReady();const data=await api.task.detail(String(route.params.id),auth.role,auth.displayName);applyDetail(data);if(!data.currentExperimentForm?.processSteps?.length&&!readOnly.value)await loadProcessTemplate(data.task.versionId);if(data.currentExperimentForm?.id)await loadProcessPlanForRole(data.currentExperimentForm.id);restoreLocalDraft(data.currentExperimentForm?.savedAt)}
-  catch(error){loadError.value=error instanceof Error?error.message:"无法打开实验单"}
-  finally{loading.value=false}
+  try{
+    await ensureAuthReady();if(generation!==routeRequestGeneration)return;
+    const loaded:{value?:RndTaskDetailView}={};
+    const committed=await commitLatestRouteRequest(generation,()=>routeRequestGeneration,
+      ()=>api.task.detail(taskId,auth.role,auth.displayName),value=>{loaded.value=value});
+    if(!committed||!loaded.value)return;
+    const data=loaded.value;
+    applyDetail(data);
+    if(!data.currentExperimentForm?.processSteps?.length&&!readOnly.value)await loadProcessTemplate(data.task.versionId,generation);
+    if(generation!==routeRequestGeneration)return;
+    if(data.currentExperimentForm?.id)await loadProcessPlanForRole(data.currentExperimentForm.id,generation);
+    if(generation!==routeRequestGeneration)return;
+    restoreLocalDraft(data.currentExperimentForm?.savedAt);
+  }
+  catch(error){if(generation===routeRequestGeneration)loadError.value=error instanceof Error?error.message:"无法打开实验单"}
+  finally{if(generation===routeRequestGeneration){loading.value=false;hydrated.value=true}}
 }
 
-async function loadProcessPlanForRole(formId:string){
+async function loadProcessPlanForRole(formId:string,generation:number){
   formalRevision.value=null;processArtifacts.value=[];
   try{
     if(formalRevisionReader.value){
       const revisions=await api.task.getProcessRevisions(formId);
+      if(generation!==routeRequestGeneration)return;
       const latest=revisions[0];
       if(!latest){processPlan.value=createEmptyProcessPlan();return}
-      formalRevision.value=await api.task.getProcessRevision(formId,latest.id);
-      processPlan.value=normalizeProcessPlan(formalRevision.value.snapshot);
-      processArtifacts.value=await api.task.getProcessArtifacts(formId,latest.id);
+      const revision=await api.task.getProcessRevision(formId,latest.id);if(generation!==routeRequestGeneration)return;
+      formalRevision.value=revision;processPlan.value=normalizeProcessPlan(revision.snapshot);
+      const artifacts=await api.task.getProcessArtifacts(formId,latest.id);if(generation!==routeRequestGeneration)return;
+      processArtifacts.value=artifacts;
       return;
     }
-    processPlan.value=normalizeProcessPlan(await api.task.getProcessPlan(formId));
-  }catch{processPlan.value=createEmptyProcessPlan();throw new Error("无法加载当前角色可查看的工艺版本")}
+    const plan=await api.task.getProcessPlan(formId);if(generation!==routeRequestGeneration)return;processPlan.value=normalizeProcessPlan(plan);
+  }catch{if(generation!==routeRequestGeneration)return;processPlan.value=createEmptyProcessPlan();throw new Error("无法加载当前角色可查看的工艺版本")}
 }
 
 async function downloadArtifact(artifact:ProcessArtifact){
   const formId=detail.value?.currentExperimentForm?.id;
   if(!formId||!formalRevision.value)return;
+  const generation=routeRequestGeneration;
+  const revision=formalRevision.value;
+  const productName=detail.value?.task.productName||'产品';
   downloadingArtifactId.value=artifact.id;
   try{
-    const blob=await api.report.downloadProcessArtifact(formId,formalRevision.value.id,artifact.id);
-    downloadBlob(blob,`${detail.value?.task.productName||'产品'}-工艺V${formalRevision.value.revisionNo}-${artifact.artifactType==='FORMULA_XLSX'?'标准配方.xlsx':'研发版SOP.docx'}`);
-  }catch(error){showFailToast(error instanceof Error?error.message:"下载失败")}
-  finally{downloadingArtifactId.value=""}
+    const blob=await api.report.downloadProcessArtifact(formId,revision.id,artifact.id);
+    if(generation!==routeRequestGeneration)return;
+    downloadBlob(blob,`${productName}-工艺V${revision.revisionNo}-${artifact.artifactType==='FORMULA_XLSX'?'标准配方.xlsx':'研发版SOP.docx'}`);
+  }catch(error){if(generation===routeRequestGeneration)showFailToast(error instanceof Error?error.message:"下载失败")}
+  finally{if(generation===routeRequestGeneration)downloadingArtifactId.value=""}
 }
 
 function downloadBlob(blob:Blob,filename:string){const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=filename;link.rel="noopener";document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url)}
 
-onMounted(()=>{window.addEventListener("pagehide",persistLocalDraft);void loadDetail().finally(()=>{hydrated.value=true})});
+function reloadCurrentRoute(){
+  const taskId=String(route.params.id||"");const generation=++routeRequestGeneration;resetRouteState(taskId);void loadDetail(taskId,generation);
+}
+
+watch(()=>String(route.params.id),(taskId)=>{
+  const generation=++routeRequestGeneration;resetRouteState(taskId);void loadDetail(taskId,generation);
+},{immediate:true});
+
+onMounted(()=>{window.addEventListener("pagehide",persistLocalDraft)});
 onBeforeUnmount(()=>{persistLocalDraft();window.removeEventListener("pagehide",persistLocalDraft);if(autoSaveTimer)window.clearTimeout(autoSaveTimer)});
 
 function startArrangeMode(){phase.value="arrange"}
@@ -309,9 +349,10 @@ async function saveDraft(options:{silent?:boolean}={}){
   if(form.finishedOutputQuantity!==""&&finishedOutputQuantity===undefined)return;
   saving.value=true;
   draftSyncState.value="syncing";
-  try{const saved=await api.task.saveExperimentDraft(String(route.params.id),{operatorName:auth.displayName,summary:form.summary,materials:buildMaterials(),processSteps:toProcessSteps(processSteps.value),finishedOutputWeightKg:Number(form.finishedOutputWeightKg||0)||undefined,finishedOutputQuantity,finishedOutputUnit:form.finishedOutputUnit,yieldCalculationMode:yieldCalculationMode.value});detail.value={...detail.value!,currentExperimentForm:saved};draftSaved.value=true;draftSyncState.value="saved";writeExperimentDraft(localStorage,localDraftKey.value,draftSnapshot(),saved.savedAt);if(!options.silent)showSuccessToast("草稿已保存");return true}
-  catch(error){draftSyncState.value="error";persistLocalDraft();if(!options.silent)showFailToast(error instanceof Error?error.message:"保存失败");return false}
-  finally{saving.value=false}
+  const taskId=activeTaskId.value;const generation=routeRequestGeneration;
+  try{const saved=await api.task.saveExperimentDraft(taskId,{operatorName:auth.displayName,summary:form.summary,materials:buildMaterials(),processSteps:toProcessSteps(processSteps.value),finishedOutputWeightKg:Number(form.finishedOutputWeightKg||0)||undefined,finishedOutputQuantity,finishedOutputUnit:form.finishedOutputUnit,yieldCalculationMode:yieldCalculationMode.value});if(generation!==routeRequestGeneration)return false;detail.value={...detail.value!,currentExperimentForm:saved};draftSaved.value=true;draftSyncState.value="saved";writeExperimentDraft(localStorage,localDraftKey.value,draftSnapshot(),saved.savedAt);if(!options.silent)showSuccessToast("草稿已保存");return true}
+  catch(error){if(generation!==routeRequestGeneration)return false;draftSyncState.value="error";persistLocalDraft();if(!options.silent)showFailToast(error instanceof Error?error.message:"保存失败");return false}
+  finally{if(generation===routeRequestGeneration)saving.value=false}
 }
 
 async function afterRead(item:{file?:File}|Array<{file?:File}>){
