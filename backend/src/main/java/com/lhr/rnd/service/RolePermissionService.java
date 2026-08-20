@@ -197,8 +197,6 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 8),
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 5),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 10),
-                        rule("GET", "/api/v1/experiment-forms/*/process-plan", "查看分层工艺", 11),
-                        rule("GET", "/api/v1/experiment-forms/*/process-plan/submission-check", "查看工艺提交检查", 11),
                         rule("GET", "/api/v1/experiment-forms/*/process-plan/revisions", "查看工艺正式版本", 11),
                         rule("GET", "/api/v1/experiment-forms/*/process-plan/revisions/*", "查看工艺正式版本详情", 11),
                         rule("GET", "/api/v1/experiment-forms/*/process-plan/revisions/*/artifacts", "查看工艺成果文件", 11),

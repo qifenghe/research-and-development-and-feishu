@@ -193,17 +193,6 @@ where not exists (
 )
 and exists (select 1 from role_permission where role_code = 'RND_ENGINEER');
 
-insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
-select 'PERM-TEST-SUBMIT-CHECK-23', 'TESTER', 'GET',
-       '/api/v1/experiment-forms/*/process-plan/submission-check', true, '查看工艺提交检查', 11, current_timestamp
-where not exists (
-    select 1 from role_permission
-    where role_code = 'TESTER'
-      and http_method = 'GET'
-      and path_pattern = '/api/v1/experiment-forms/*/process-plan/submission-check'
-)
-and exists (select 1 from role_permission where role_code = 'TESTER');
-
 -- Formal-revision artifacts are intentionally explicit: read-only testing roles can inspect/download,
 -- while only R&D editors can generate a fresh immutable file version.
 insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
@@ -291,3 +280,21 @@ insert into role_permission (id, role_code, http_method, path_pattern, enabled, 
 select 'PERM-TEST-PREV-DETAIL-23', 'TESTER', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions/*', true, '查看工艺正式版本详情', 11, current_timestamp
 where not exists (select 1 from role_permission where role_code = 'TESTER' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*')
 and exists (select 1 from role_permission where role_code = 'TESTER');
+
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-QA-PREV-LIST-23', 'QA_TESTER', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions', true, '查看工艺正式版本', 11, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'QA_TESTER' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions')
+and exists (select 1 from role_permission where role_code = 'QA_TESTER');
+insert into role_permission (id, role_code, http_method, path_pattern, enabled, description, sort_order, updated_at)
+select 'PERM-QA-PREV-DETAIL-23', 'QA_TESTER', 'GET', '/api/v1/experiment-forms/*/process-plan/revisions/*', true, '查看工艺正式版本详情', 11, current_timestamp
+where not exists (select 1 from role_permission where role_code = 'QA_TESTER' and http_method = 'GET' and path_pattern = '/api/v1/experiment-forms/*/process-plan/revisions/*')
+and exists (select 1 from role_permission where role_code = 'QA_TESTER');
+
+-- Testing roles consume immutable revisions only; remove legacy draft/control reads during upgrade.
+delete from role_permission
+where role_code in ('TESTER', 'QA_TESTER')
+  and http_method = 'GET'
+  and path_pattern in (
+      '/api/v1/experiment-forms/*/process-plan',
+      '/api/v1/experiment-forms/*/process-plan/submission-check'
+  );

@@ -446,7 +446,7 @@ class SchemaMigrationTest {
     }
 
     @Test
-    void v23GrantsSubmissionCheckReadPermissionToExistingProcessPlanReadersWithoutAddingWritePermission() {
+    void v23SeparatesDraftEditorsFromFormalRevisionReaders() {
         String databaseUrl = "jdbc:h2:mem:process-submission-check-permission-" + UUID.randomUUID()
                 + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
         Flyway.configure()
@@ -511,7 +511,7 @@ class SchemaMigrationTest {
                 "RECORD-NO-FORM", "ASSIGN-V23-LONG", "FORM-DOES-NOT-EXIST", "测试", "PASS"))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
-        for (var role : java.util.List.of("RND_DIRECTOR", "RND_ENGINEER", "TESTER")) {
+        for (var role : java.util.List.of("RND_DIRECTOR", "RND_ENGINEER")) {
             assertThat(legacyJdbcTemplate.queryForObject(
                     "select count(*) from role_permission where role_code = ? and http_method = ? and path_pattern = ?",
                     Integer.class,
@@ -519,6 +519,8 @@ class SchemaMigrationTest {
                     "GET",
                     "/api/v1/experiment-forms/*/process-plan/submission-check"
             )).isEqualTo(1);
+        }
+        for (var role : java.util.List.of("RND_DIRECTOR", "RND_ENGINEER", "TESTER")) {
             assertThat(legacyJdbcTemplate.queryForObject(
                     "select count(*) from role_permission where role_code = ? and http_method = ? and path_pattern = ?",
                     Integer.class, role, "GET", "/api/v1/experiment-forms/*/process-plan/revisions"
@@ -528,6 +530,12 @@ class SchemaMigrationTest {
                     Integer.class, role, "GET", "/api/v1/experiment-forms/*/process-plan/revisions/*"
             )).isEqualTo(1);
         }
+        assertThat(legacyJdbcTemplate.queryForObject(
+                "select count(*) from role_permission where role_code = 'TESTER' and http_method = 'GET' and path_pattern in (?, ?)",
+                Integer.class,
+                "/api/v1/experiment-forms/*/process-plan",
+                "/api/v1/experiment-forms/*/process-plan/submission-check"
+        )).isZero();
         for (var role : java.util.List.of("RND_DIRECTOR", "RND_ENGINEER")) {
             assertThat(legacyJdbcTemplate.queryForObject(
                     "select count(*) from role_permission where role_code = ? and http_method = ? and path_pattern = ?",

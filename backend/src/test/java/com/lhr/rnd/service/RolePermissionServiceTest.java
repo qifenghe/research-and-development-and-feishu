@@ -24,6 +24,56 @@ class RolePermissionServiceTest {
     private RolePermissionService service;
 
     @Test
+    void exposesOnlyRevisionAwareProcessEndpointsForEachBusinessRole() {
+        var draft = "/api/v1/experiment-forms/FORM-1/process-plan";
+        var submissionCheck = draft + "/submission-check";
+        var submit = draft + "/submit";
+        var revisions = draft + "/revisions";
+        var revision = revisions + "/REV-1";
+        var newDraft = revision + "/new-draft";
+        var artifacts = revision + "/artifacts";
+        var download = artifacts + "/ART-1/download";
+
+        for (var role : new String[]{"RND_ENGINEER", "RND_DIRECTOR"}) {
+            assertThat(service.hasPermission(role, "GET", draft)).isTrue();
+            assertThat(service.hasPermission(role, "GET", submissionCheck)).isTrue();
+            assertThat(service.hasPermission(role, "PUT", draft)).isTrue();
+            assertThat(service.hasPermission(role, "POST", submit)).isTrue();
+            assertThat(service.hasPermission(role, "GET", revisions)).isTrue();
+            assertThat(service.hasPermission(role, "GET", revision)).isTrue();
+            assertThat(service.hasPermission(role, "POST", newDraft)).isTrue();
+            assertThat(service.hasPermission(role, "GET", artifacts)).isTrue();
+            assertThat(service.hasPermission(role, "POST", artifacts)).isTrue();
+            assertThat(service.hasPermission(role, "GET", download)).isTrue();
+        }
+
+        for (var role : new String[]{"TESTER", "QA_TESTER"}) {
+            assertThat(service.hasPermission(role, "GET", draft)).isFalse();
+            assertThat(service.hasPermission(role, "GET", submissionCheck)).isFalse();
+            assertThat(service.hasPermission(role, "PUT", draft)).isFalse();
+            assertThat(service.hasPermission(role, "POST", submit)).isFalse();
+            assertThat(service.hasPermission(role, "GET", revisions)).isTrue();
+            assertThat(service.hasPermission(role, "GET", revision)).isTrue();
+            assertThat(service.hasPermission(role, "POST", newDraft)).isFalse();
+            assertThat(service.hasPermission(role, "GET", artifacts)).isTrue();
+            assertThat(service.hasPermission(role, "POST", artifacts)).isFalse();
+            assertThat(service.hasPermission(role, "GET", download)).isTrue();
+        }
+
+        assertThat(service.hasPermission("FINANCE", "GET", "/api/v1/pricing-files/PRICE-1/detail")).isTrue();
+        assertThat(service.hasPermission("FINANCE", "GET", draft)).isFalse();
+        assertThat(service.hasPermission("FINANCE", "GET", revision)).isFalse();
+        assertThat(service.hasPermission("FINANCE", "PUT", draft)).isFalse();
+        assertThat(service.hasPermission("FINANCE", "POST", submit)).isFalse();
+        assertThat(service.hasPermission("FINANCE", "POST", artifacts)).isFalse();
+
+        for (var role : new String[]{"RND_ENGINEER", "RND_DIRECTOR", "TESTER", "QA_TESTER", "FINANCE"}) {
+            assertThat(service.rolePermissions(role).permissions())
+                    .noneMatch(rule -> rule.pathPattern().equals("/api/v1/experiment-forms/*/process-plan/**"));
+        }
+    }
+
+    @Test
     void fallsBackToDefaultPermissionMatrixWhenRoleHasNoConfiguredRules() {
         assertThat(service.hasPermission("RND_ASSISTANT", "POST", "/api/v1/sample-requests")).isTrue();
         assertThat(service.hasPermission("RND_ENGINEER", "POST", "/api/v1/sample-requests")).isFalse();
@@ -71,7 +121,7 @@ class RolePermissionServiceTest {
         assertThat(service.hasPermission("RND_DIRECTOR", "POST", "/api/v1/rnd-tasks/TASK-0001/experiment-form/draft")).isTrue();
         assertThat(service.hasPermission("RND_DIRECTOR", "GET", "/api/v1/experiment-forms/FORM-1/process-plan/submission-check")).isTrue();
         assertThat(service.hasPermission("RND_ENGINEER", "GET", "/api/v1/experiment-forms/FORM-1/process-plan/submission-check")).isTrue();
-        assertThat(service.hasPermission("TESTER", "GET", "/api/v1/experiment-forms/FORM-1/process-plan/submission-check")).isTrue();
+        assertThat(service.hasPermission("TESTER", "GET", "/api/v1/experiment-forms/FORM-1/process-plan/submission-check")).isFalse();
         assertThat(service.hasPermission("TESTER", "PUT", "/api/v1/experiment-forms/FORM-1/process-plan")).isFalse();
         assertThat(service.hasPermission("RND_ENGINEER", "POST", "/api/v1/experiment-forms/FORM-1/process-plan/revisions/PREV-1/artifacts")).isTrue();
         assertThat(service.hasPermission("RND_ENGINEER", "GET", "/api/v1/experiment-forms/FORM-1/process-plan/revisions/PREV-1/artifacts/PART-1/download")).isTrue();

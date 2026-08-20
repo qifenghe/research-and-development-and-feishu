@@ -34,7 +34,7 @@
           </section>
           <section class="form-section">
             <div class="section-title"><div><h2>配方投入</h2><p>利用率默认 100%，主料可多选，也可按全部物料计算。</p></div></div>
-            <van-field label="得率计算"><template #input><van-radio-group v-model="yieldCalculationMode"><van-radio name="SELECTED_PRIMARY_MATERIALS">按所选主料</van-radio><van-radio name="TOTAL_PICKING_WEIGHT" style="margin-top:8px">按全部非包材物料</van-radio></van-radio-group></template></van-field>
+            <van-field label="得率计算"><template #input><van-radio-group v-model="yieldCalculationMode" :disabled="readOnly"><van-radio name="SELECTED_PRIMARY_MATERIALS">按所选主料</van-radio><van-radio name="TOTAL_PICKING_WEIGHT" style="margin-top:8px">按全部非包材物料</van-radio></van-radio-group></template></van-field>
             <div class="formula-summary"><span>总投入 {{ totalFormulaWeight.toFixed(3) }}kg</span><span>得率基准 {{ yieldBasisWeight.toFixed(3) }}kg</span></div>
             <div v-for="(material,index) in materials" :key="index" class="material-row">
               <van-field label="类别"><template #input><van-radio-group v-model="material.materialCategory" direction="horizontal" :disabled="readOnly"><van-radio name="RAW">原料</van-radio><van-radio name="AUXILIARY">辅料</van-radio><van-radio name="PACKAGING">包材</van-radio></van-radio-group></template></van-field>
@@ -50,8 +50,20 @@
           </section>
           <section class="form-section">
             <div class="execution-heading"><div><h2>分层工艺</h2><span>{{ processPlan.majorProcesses.length ? '手机端只读查看' : '兼容旧版工序记录' }}</span></div><van-button v-if="!processPlan.majorProcesses.length && !readOnly" size="small" plain @click="startArrangeMode">调整工序</van-button></div>
+            <div v-if="formalRevision" class="formal-revision">
+              <span><b>正式工艺 V{{ formalRevision.revisionNo }}</b><small>{{ formalRevision.submittedAt }} · {{ formalRevision.submittedBy || '未记录提交人' }}</small></span>
+              <StatusBadge label="已提交" variant="success" />
+            </div>
             <ProcessHierarchyReadonly v-if="processPlan.majorProcesses.length" :plan="processPlan" />
             <ProcessStepEditor v-else v-model="processSteps" :mode="readOnly ? 'readonly' : 'execute'" :readonly="readOnly" :current-index="currentStepIndex" @previous="previousStep" @next="nextStep" />
+          </section>
+          <section v-if="formalRevision" class="form-section output-center">
+            <div class="section-title"><div><h2>成果文件</h2><p>仅下载当前正式工艺版本已生成的文件。</p></div></div>
+            <van-empty v-if="!readyArtifacts.length" image="search" description="当前版本暂无配方或 SOP 文件" />
+            <button v-for="artifact in readyArtifacts" :key="artifact.id" class="artifact-row" type="button" :disabled="downloadingArtifactId===artifact.id" @click="downloadArtifact(artifact)">
+              <span><b>{{ artifact.artifactType==='FORMULA_XLSX' ? '标准配方' : '研发版 SOP' }}</b><small>文件 V{{ artifact.documentVersion }} · {{ artifact.generatedAt }}</small></span>
+              <span>{{ downloadingArtifactId===artifact.id ? '下载中' : '下载' }}</span>
+            </button>
           </section>
           <section class="form-section">
             <h2>成品产出</h2>
@@ -81,7 +93,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { showFailToast, showSuccessToast } from "vant";
-import type { ExperimentMaterial, MaterialCategory, ProcessPlanDraft, RndTaskDetailView, YieldCalculationMode } from "@rnd/shared";
+import type { ExperimentMaterial, MaterialCategory, ProcessArtifact, ProcessPlanDraft, ProcessRevision, RndTaskDetailView, YieldCalculationMode } from "@rnd/shared";
 import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, clearExperimentDraft, createEmptyProcessPlan, experimentDraftKey, formulaRatios, isCachedDraftNewer, normalizePositiveIntegerQuantity, normalizeProcessPlan, readExperimentDraft, writeExperimentDraft, yieldBasisWeightKg } from "@rnd/shared";
 import PageHeader from "../components/PageHeader.vue";
 import StatusBadge from "../components/StatusBadge.vue";
@@ -121,6 +133,9 @@ let autoSaveTimer:number|undefined;
 const currentStepIndex=ref(0);
 const fileList=ref<Array<{url?:string;file?:File}>>([]);
 const headerTitle=ref("实验单录入");
+const formalRevision=ref<ProcessRevision|null>(null);
+const processArtifacts=ref<ProcessArtifact[]>([]);
+const downloadingArtifactId=ref("");
 
 const blankMaterial=(primaryMaterial=false):EditableMaterial=>({
   materialCategory:primaryMaterial?"RAW":"AUXILIARY",
@@ -139,6 +154,8 @@ const form=reactive<{summary:string;finishedOutputWeightKg:string;finishedOutput
 const canSaveDraft=computed(()=>detail.value?canEditExperiment(detail.value,auth.displayName,auth.role):false);
 const canNotify=computed(()=>detail.value?canNotifyInternalTest(detail.value,auth.displayName,auth.role):false);
 const readOnly=computed(()=>!canSaveDraft.value);
+const formalRevisionReader=computed(()=>["TESTER","QA_TESTER"].includes(auth.role));
+const readyArtifacts=computed(()=>processArtifacts.value.filter(item=>item.status==="READY"));
 const draftStatusLabel=computed(()=>({idle:"",local:"已本地保存",syncing:"正在自动保存",saved:"已自动保存",error:"网络异常，已本地保存"}[draftSyncState.value]));
 const formulaWeights=computed(()=>materials.value.map((item)=>Number(item.weightKg||0)));
 const formulaRatiosValue=computed(()=>formulaRatios(formulaWeights.value));
@@ -184,10 +201,39 @@ async function loadProcessTemplate(versionId:string){
 
 async function loadDetail(){
   loading.value=true;loadError.value="";
-  try{await ensureAuthReady();const data=await api.task.detail(String(route.params.id),auth.role,auth.displayName);applyDetail(data);if(!data.currentExperimentForm?.processSteps?.length&&!readOnly.value)await loadProcessTemplate(data.task.versionId);if(data.currentExperimentForm?.id){try{processPlan.value=normalizeProcessPlan(await api.task.getProcessPlan(data.currentExperimentForm.id))}catch{processPlan.value=createEmptyProcessPlan()}}restoreLocalDraft(data.currentExperimentForm?.savedAt)}
+  try{await ensureAuthReady();const data=await api.task.detail(String(route.params.id),auth.role,auth.displayName);applyDetail(data);if(!data.currentExperimentForm?.processSteps?.length&&!readOnly.value)await loadProcessTemplate(data.task.versionId);if(data.currentExperimentForm?.id)await loadProcessPlanForRole(data.currentExperimentForm.id);restoreLocalDraft(data.currentExperimentForm?.savedAt)}
   catch(error){loadError.value=error instanceof Error?error.message:"无法打开实验单"}
   finally{loading.value=false}
 }
+
+async function loadProcessPlanForRole(formId:string){
+  formalRevision.value=null;processArtifacts.value=[];
+  try{
+    if(formalRevisionReader.value){
+      const revisions=await api.task.getProcessRevisions(formId);
+      const latest=revisions[0];
+      if(!latest){processPlan.value=createEmptyProcessPlan();return}
+      formalRevision.value=await api.task.getProcessRevision(formId,latest.id);
+      processPlan.value=normalizeProcessPlan(formalRevision.value.snapshot);
+      processArtifacts.value=await api.task.getProcessArtifacts(formId,latest.id);
+      return;
+    }
+    processPlan.value=normalizeProcessPlan(await api.task.getProcessPlan(formId));
+  }catch{processPlan.value=createEmptyProcessPlan();throw new Error("无法加载当前角色可查看的工艺版本")}
+}
+
+async function downloadArtifact(artifact:ProcessArtifact){
+  const formId=detail.value?.currentExperimentForm?.id;
+  if(!formId||!formalRevision.value)return;
+  downloadingArtifactId.value=artifact.id;
+  try{
+    const blob=await api.report.downloadProcessArtifact(formId,formalRevision.value.id,artifact.id);
+    downloadBlob(blob,`${detail.value?.task.productName||'产品'}-工艺V${formalRevision.value.revisionNo}-${artifact.artifactType==='FORMULA_XLSX'?'标准配方.xlsx':'研发版SOP.docx'}`);
+  }catch(error){showFailToast(error instanceof Error?error.message:"下载失败")}
+  finally{downloadingArtifactId.value=""}
+}
+
+function downloadBlob(blob:Blob,filename:string){const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=filename;link.rel="noopener";document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url)}
 
 onMounted(()=>{window.addEventListener("pagehide",persistLocalDraft);void loadDetail().finally(()=>{hydrated.value=true})});
 onBeforeUnmount(()=>{persistLocalDraft();window.removeEventListener("pagehide",persistLocalDraft);if(autoSaveTimer)window.clearTimeout(autoSaveTimer)});
@@ -294,5 +340,5 @@ async function notifyTest(){
 </script>
 
 <style scoped>
-.experiment-page{background:#f6f8fb}.mode-section,.content-section{padding:18px 14px}.mode-section h1{margin:8px 0;font-size:24px}.mode-section>p{margin:0 0 20px;color:#64748b}.mode-card{display:block;width:100%;margin-bottom:12px;padding:20px;text-align:left;background:#fff;border:1px solid #e2e8f0;border-radius:8px}.mode-card--recommended{border:2px solid #246bfe;background:#f7faff}.mode-card__tag{display:block;margin-bottom:12px;color:#246bfe;font-size:12px;font-weight:700}.mode-card strong{display:block;margin-bottom:7px;font-size:20px}.mode-card small{display:block;color:#64748b;line-height:1.6}.form-section{margin-top:14px;padding:14px 0;background:#fff;border:1px solid #e7ebf2;border-radius:8px}.form-section>h2,.form-section>.section-title,.form-section>.execution-heading{padding:0 14px}.form-section h2{margin:0 0 10px;font-size:17px}.section-title{display:flex;justify-content:space-between;margin-bottom:14px}.section-title h2{margin:0 0 4px}.section-title p{margin:0;color:#64748b;font-size:12px}.execution-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.execution-heading h2{margin-bottom:3px}.execution-heading span{display:block;color:#64748b;font-size:12px}.formula-summary{display:flex;justify-content:space-between;padding:0 16px 10px;color:#64748b;font-size:12px}.material-row{margin:0 8px 10px;padding:8px;background:#fff;border:1px solid #e7ebf2;border-radius:8px}.material-row .van-button{margin:6px 16px}.pricing-preview__material{display:flex;justify-content:space-between;gap:12px;padding:9px 16px;border-bottom:1px solid #edf0f5;color:#475569;font-size:13px}.pricing-preview__material strong{color:#172033;font-weight:600;text-align:right}.pricing-preview__grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#e7ebf2}.pricing-preview__grid span{display:flex;flex-direction:column;gap:5px;padding:12px 16px;background:#fff;color:#64748b;font-size:12px}.pricing-preview__grid strong{color:#172033;font-size:14px}
+.experiment-page{background:#f6f8fb}.mode-section,.content-section{padding:18px 14px}.mode-section h1{margin:8px 0;font-size:24px}.mode-section>p{margin:0 0 20px;color:#64748b}.mode-card{display:block;width:100%;margin-bottom:12px;padding:20px;text-align:left;background:#fff;border:1px solid #e2e8f0;border-radius:8px}.mode-card--recommended{border:2px solid #246bfe;background:#f7faff}.mode-card__tag{display:block;margin-bottom:12px;color:#246bfe;font-size:12px;font-weight:700}.mode-card strong{display:block;margin-bottom:7px;font-size:20px}.mode-card small{display:block;color:#64748b;line-height:1.6}.form-section{margin-top:14px;padding:14px 0;background:#fff;border:1px solid #e7ebf2;border-radius:8px}.form-section>h2,.form-section>.section-title,.form-section>.execution-heading{padding:0 14px}.form-section h2{margin:0 0 10px;font-size:17px}.section-title{display:flex;justify-content:space-between;margin-bottom:14px}.section-title h2{margin:0 0 4px}.section-title p{margin:0;color:#64748b;font-size:12px}.execution-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.execution-heading h2{margin-bottom:3px}.execution-heading span{display:block;color:#64748b;font-size:12px}.formula-summary{display:flex;justify-content:space-between;padding:0 16px 10px;color:#64748b;font-size:12px}.material-row{margin:0 8px 10px;padding:8px;background:#fff;border:1px solid #e7ebf2;border-radius:8px}.material-row .van-button{margin:6px 16px}.pricing-preview__material{display:flex;justify-content:space-between;gap:12px;padding:9px 16px;border-bottom:1px solid #edf0f5;color:#475569;font-size:13px}.pricing-preview__material strong{color:#172033;font-weight:600;text-align:right}.pricing-preview__grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#e7ebf2}.pricing-preview__grid span{display:flex;flex-direction:column;gap:5px;padding:12px 16px;background:#fff;color:#64748b;font-size:12px}.pricing-preview__grid strong{color:#172033;font-size:14px}.formal-revision{display:flex;justify-content:space-between;align-items:center;margin:0 12px 12px;padding:10px 12px;border-radius:8px;background:#eef7f2}.formal-revision b,.formal-revision small{display:block}.formal-revision small{margin-top:3px;color:#64748b;font-size:11px}.artifact-row{display:flex;width:calc(100% - 24px);justify-content:space-between;align-items:center;margin:0 12px 8px;padding:12px;border:1px solid #e7ebf2;border-radius:8px;background:#fff;color:#246bfe;text-align:left}.artifact-row b,.artifact-row small{display:block;color:#172033}.artifact-row small{margin-top:4px;color:#64748b;font-size:11px}.artifact-row:disabled{opacity:.6}
 </style>

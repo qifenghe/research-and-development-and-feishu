@@ -213,10 +213,10 @@ class SessionAuthenticationInterceptorTest {
             seedProcessForm(formId, "归属研发测试");
             var draft = processPlanService.save(formId, readyPlan(formId, processPlanService.find(formId).versionNo()));
             var tester = tokenFor("工艺测试员", "ou_process_tester", "TESTER");
-            mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan", formId)
+            mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions", formId)
                             .header("Authorization", "Bearer " + tester))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("PROCESS_FORMAL_REVISION_REQUIRED"));
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data").isEmpty());
 
             var revision = processRevisionService.submit(formId, new ProcessRevisionService.SubmitCommand(
                     draft.versionNo(), true, "首次正式提交", "归属研发测试"));
@@ -224,9 +224,40 @@ class SessionAuthenticationInterceptorTest {
 
             mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan", formId)
                             .header("Authorization", "Bearer " + tester))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("SESSION_ROLE_FORBIDDEN"));
+            mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}", formId, revision.id())
+                            .header("Authorization", "Bearer " + tester))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.status").value("SUBMITTED"))
-                    .andExpect(jsonPath("$.data.versionNo").value(revision.snapshot().versionNo()));
+                    .andExpect(jsonPath("$.data.snapshot.status").value("SUBMITTED"))
+                    .andExpect(jsonPath("$.data.revisionNo").value(1));
+        } finally {
+            sessionProperties.setAuthRequired(authRequired);
+            sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);
+        }
+    }
+
+    @Test
+    void preventsAnUnassignedEngineerFromReadingAnotherEngineersDraft() throws Exception {
+        var authRequired = sessionProperties.isAuthRequired();
+        var testBypass = sessionProperties.isTestBusinessApiAuthenticationBypass();
+        sessionProperties.setAuthRequired(true);
+        sessionProperties.setTestBusinessApiAuthenticationBypass(false);
+        try {
+            var formId = "FORM-AUTH-DRAFT-READ";
+            seedProcessForm(formId, "归属研发读");
+            processPlanService.save(formId, readyPlan(formId, processPlanService.find(formId).versionNo()));
+            var intruder = tokenFor("越权研发读", "ou_process_read_intruder", "RND_ENGINEER");
+            var director = tokenFor("工艺负责人读", "ou_process_read_director", "RND_DIRECTOR");
+
+            mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan", formId)
+                            .header("Authorization", "Bearer " + intruder))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("PROCESS_PLAN_FORM_FORBIDDEN"));
+            mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan", formId)
+                            .header("Authorization", "Bearer " + director))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.status").value("DRAFT"));
         } finally {
             sessionProperties.setAuthRequired(authRequired);
             sessionProperties.setTestBusinessApiAuthenticationBypass(testBypass);

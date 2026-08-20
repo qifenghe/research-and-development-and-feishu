@@ -43,9 +43,7 @@ public class ProcessPlanController {
     @GetMapping
     public ApiResponse<ProcessPlan> find(@PathVariable String formId, HttpServletRequest servletRequest) {
         var principal = sessionPrincipal(servletRequest);
-        if (principal != null && "TESTER".equals(principal.role())) {
-            return ApiResponse.success(revisionService.latestSnapshot(formId));
-        }
+        if (principal != null) service.requireDraftReadAccess(formId, principal);
         return ApiResponse.success(service.find(formId));
     }
 

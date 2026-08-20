@@ -96,8 +96,17 @@ public class ProcessPlanService {
 
     @Transactional(readOnly = true)
     public void requireDraftWriteAccess(String formId, SessionPrincipal principal) {
+        requireDraftAccess(formId, principal);
+    }
+
+    @Transactional(readOnly = true)
+    public void requireDraftReadAccess(String formId, SessionPrincipal principal) {
+        requireDraftAccess(formId, principal);
+    }
+
+    private void requireDraftAccess(String formId, SessionPrincipal principal) {
         if (principal == null || blank(principal.userId()) || blank(principal.role())) {
-            throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "保存工艺草稿必须使用服务端会话身份");
+            throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "访问工艺草稿必须使用服务端会话身份");
         }
         if ("RND_DIRECTOR".equals(principal.role())) return;
         if (!"RND_ENGINEER".equals(principal.role())) {
