@@ -50,7 +50,8 @@
             </a-form>
           </a-card>
 
-          <a-card title="配方" class="page-card">
+          <a-collapse v-if="showLegacyProcessEditor" ghost class="page-card">
+            <a-collapse-panel key="legacy-materials" header="历史兼容数据（旧版配方）">
             <a-alert type="info" show-icon style="margin-bottom:12px" message="利用率默认 100%。肉制品可勾选一项或多项主料；酱汁可按全部非包材物料计算得率。" />
             <a-radio-group v-model:value="yieldCalculationMode" :disabled="readOnly" style="margin-bottom:12px">
               <a-radio-button value="SELECTED_PRIMARY_MATERIALS">按所选主料</a-radio-button>
@@ -70,12 +71,13 @@
               </template>
             </a-table>
             <a-button v-if="!readOnly" type="dashed" block style="margin-top:12px" @click="addMaterial">+ 添加物料</a-button>
-          </a-card>
+            </a-collapse-panel>
+          </a-collapse>
 
-          <a-card title="工艺编排与得率" class="page-card process-plan-card">
-            <ProcessHierarchyEditor v-model="processPlan" :readonly="readOnly" />
+          <a-card title="工艺工作台" class="page-card process-plan-card">
+            <ProcessPlanWorkspace v-model="processPlan" :form-id="detail?.currentExperimentForm?.id" :readonly="readOnly" :hydrating="loading" @request-save="saveDraft" />
             <a-collapse v-if="showLegacyProcessEditor" ghost style="margin-top:12px">
-              <a-collapse-panel key="legacy" header="兼容模式：旧版工序编辑器">
+              <a-collapse-panel key="legacy" header="历史兼容数据（旧版工序编辑器）">
                 <ProcessTabsEditor v-model="processSteps" :readonly="readOnly" :create-row="blankProcess" />
               </a-collapse-panel>
             </a-collapse>
@@ -165,7 +167,7 @@ import type {
 } from "@rnd/shared";
 import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, clearExperimentDraft, createEmptyProcessPlan, experimentDraftKey, formulaRatios, isCachedDraftNewer, nextProcessKey, normalizePositiveIntegerQuantity, normalizeProcessPlan, processPlanToLegacySteps, readExperimentDraft, writeExperimentDraft, yieldBasisWeightKg } from "@rnd/shared";
 import ProcessTabsEditor from "../../components/ProcessTabsEditor.vue";
-import ProcessHierarchyEditor from "../../components/ProcessHierarchyEditor.vue";
+import ProcessPlanWorkspace from "../../components/process/ProcessPlanWorkspace.vue";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
 
@@ -201,7 +203,7 @@ const exporting = ref(false);
 const draftSaved = ref(false);
 const draftSyncState = ref<"idle" | "local" | "syncing" | "saved" | "error">("idle");
 const uploadHint = ref("");
-const experimentPhase = ref<"arrange" | "form">("arrange");
+const experimentPhase = ref<"arrange" | "form">("form");
 const yieldCalculationMode = ref<YieldCalculationMode>("SELECTED_PRIMARY_MATERIALS");
 const hydrated = ref(false);
 let autoSaveTimer: number | undefined;
