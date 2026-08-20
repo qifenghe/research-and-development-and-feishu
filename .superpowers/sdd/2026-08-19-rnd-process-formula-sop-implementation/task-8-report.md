@@ -37,3 +37,18 @@ No browser mock server was available in this worktree, so no Playwright screensh
 - Added explicit coordinator server/local adoption APIs, detached in-flight saves on form rebind, and made background pre-ID saves inert while preserving manual failure propagation.
 - Parent cache restoration now explicitly marks the restored process draft dirty; formal-version new-draft responses are adopted as trusted DRAFT state before further edits.
 - Added tested plan-wide preceding-output and broken-reference repair helpers; the minor workspace now uses the whole-plan context for earlier-major output choices and shows final yield plus aggregate external-recipe weight in its live summary.
+
+## Review round 4
+
+- Fenced stale coordinator failures and every route/form/revision/artifact request with explicit generations. Same-record route navigation now resets and reloads all form, plan, cache, save, version, and output state.
+- Moved major and minor editing onto immutable whole-plan replacements. Backend-equivalent flow repair now enforces unique output IDs, precedence, continuing-flow and primary compatibility, removes invalid intermediate consumers without externalizing them, lists affected consumers, and safely remaps copied-major internal chains.
+- Added full immutable revision snapshot rendering, revision-to-draft restoration, controlled output revision selection, and request-fenced artifact state. Manual historical output selection persists until the next formal submit.
+- Added always-focusable read-only major/step navigation, labelled keyboard reorder controls, stable key-based selection, and visible focus rings.
+- Expanded pure and source-integration tests for stale deferred failures, route generations, every destructive flow path, earlier-major/internal-copy chains, controlled output state, immutable boundaries, and accessibility markers.
+
+### Round-4 verification
+
+- Frontend Node suite: 71 passed, 0 failed.
+- PC `vue-tsc`, Vite production build, API-contract check, and route check passed; build retained only the existing large-chunk warning.
+- Backend `ProcessPlanControllerTest` passed against all 23 migrations.
+- `git diff --check` passed.

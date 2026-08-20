@@ -67,3 +67,32 @@ test("rebind fences a late acknowledgement and restores a local draft as dirty",
   assert.equal(calls[0]![0], "FORM-A");
   assert.equal(calls[1]![0], "FORM-B");
 });
+
+test("rebind fences a late failure without publishing or reporting it", async () => {
+  let rejectA!: (error: Error) => void;
+  const errors: string[] = [];
+  const published: Array<[string, string]> = [];
+  const coordinator = new ProcessPlanSaveCoordinator<Draft>({
+    formId: "FORM-A",
+    debounceMs: 0,
+    isDraft: value => value.status === "DRAFT",
+    mergeAck: (local, ack) => ({ ...local, versionNo: ack.versionNo }),
+    save: (formId, plan) => formId === "FORM-A"
+      ? new Promise((_resolve, reject) => { rejectA = reject; })
+      : Promise.resolve({ ...plan, versionNo: 8 }),
+    onChange: (value, state) => published.push([value.graph, state]),
+    onError: error => errors.push(error instanceof Error ? error.message : String(error)),
+  });
+  coordinator.hydrateServer({ versionNo: 0, status: "DRAFT", graph: "A" });
+  coordinator.edit(value => ({ ...value, graph: "A-edit" }));
+  const staleFlush = coordinator.flush();
+  coordinator.rebind("FORM-B", { versionNo: 7, status: "DRAFT", graph: "B" });
+  coordinator.restoreLocalDirty({ versionNo: 7, status: "DRAFT", graph: "B-cache" });
+  await coordinator.flush();
+  rejectA(new Error("A failed late"));
+  await assert.doesNotReject(staleFlush);
+  assert.deepEqual(coordinator.value, { versionNo: 8, status: "DRAFT", graph: "B-cache" });
+  assert.equal(coordinator.state, "saved");
+  assert.deepEqual(errors, []);
+  assert.deepEqual(published.at(-1), ["B-cache", "saved"]);
+});

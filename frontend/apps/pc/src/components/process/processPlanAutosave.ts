@@ -113,6 +113,7 @@ export class ProcessPlanSaveCoordinator<T> {
         this.state = this.generation === saveGeneration ? "saved" : "dirty";
         this.publish();
       } catch (error) {
+        if (this.disposed || saveEpoch !== this.epoch || saveFormId !== this.formId) return;
         if (!this.disposed) {
           this.state = "error";
           this.publish();

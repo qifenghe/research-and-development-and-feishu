@@ -168,6 +168,7 @@ import type {
 import { aggregateProcessRecipe, calculatePricingPreview, canEditExperiment, canNotifyInternalTest, clearExperimentDraft, createEmptyProcessPlan, experimentDraftKey, formulaRatios, isCachedDraftNewer, nextProcessKey, normalizePositiveIntegerQuantity, normalizeProcessPlan, processPlanToLegacySteps, readExperimentDraft, writeExperimentDraft, yieldBasisWeightKg } from "@rnd/shared";
 import ProcessTabsEditor from "../../components/ProcessTabsEditor.vue";
 import ProcessPlanWorkspace from "../../components/process/ProcessPlanWorkspace.vue";
+import { RequestGeneration } from "../../components/process/requestGeneration";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
 
@@ -208,6 +209,8 @@ const yieldCalculationMode = ref<YieldCalculationMode>("SELECTED_PRIMARY_MATERIA
 const hydrated = ref(false);
 let autoSaveTimer: number | undefined;
 let suppressAutoSave = false;
+const requestGeneration = new RequestGeneration();
+const activeTaskId = ref("");
 const detail = ref<RndTaskDetailView | null>(null);
 const headerTitle = ref("打样实验单");
 let rowKey = 1;
@@ -257,7 +260,7 @@ const pricingPreview = computed(() => calculatePricingPreview({
   finishedOutputQuantity: form.finishedOutputQuantity,
 }));
 const draftStatusLabel = computed(() => ({ idle: "", local: "已本地保存", syncing: "正在自动保存", saved: "已自动保存", error: "网络异常，已本地保存" }[draftSyncState.value]));
-const localDraftKey = computed(() => experimentDraftKey(auth.principal?.userId || auth.user?.id || auth.displayName, String(route.params.id)));
+const localDraftKey = computed(() => experimentDraftKey(auth.principal?.userId || auth.user?.id || auth.displayName, activeTaskId.value));
 const pricingPreviewMaterials = computed(() => effectiveMaterials.value.map((item, index) => ({
   key: item.key,
   role: `${categoryLabel(item.materialCategory)}${item.primaryMaterial ? " · 主料" : ""}`,
@@ -446,87 +449,91 @@ function buildSummary() {
     .join("\n");
 }
 
-onMounted(async () => {
-  window.addEventListener("pagehide", persistLocalDraft);
+onMounted(() => window.addEventListener("pagehide", persistLocalDraft));
+
+watch(() => route.params.id, taskId => {
+  if (hydrated.value) persistLocalDraft();
+  const generation = requestGeneration.next();
+  void resetAndLoad(String(taskId), generation);
+}, { immediate: true });
+
+async function resetAndLoad(taskId: string, generation: number) {
+  if (autoSaveTimer) window.clearTimeout(autoSaveTimer);
+  autoSaveTimer = undefined;
+  suppressAutoSave = true;
+  hydrated.value = false;
   loading.value = true;
+  saving.value = false;
+  submitting.value = false;
+  exporting.value = false;
+  draftSaved.value = false;
+  draftSyncState.value = "idle";
+  uploadHint.value = "";
+  experimentPhase.value = "form";
+  yieldCalculationMode.value = "SELECTED_PRIMARY_MATERIALS";
+  activeTaskId.value = taskId;
+  detail.value = null;
+  headerTitle.value = "打样实验单";
+  rowKey = 1;
+  Object.assign(form, { productName: "", specification: "", summary: "", finishedOutputWeightKg: null, finishedOutputQuantity: null, finishedOutputUnit: "袋", remark: "" });
+  materials.value = [blankMaterial(false)];
+  processSteps.value = [blankProcess()];
+  processPlan.value = createEmptyProcessPlan();
   try {
-    detail.value = await api.task.detail(String(route.params.id), auth.role, auth.displayName);
-    form.productName = detail.value.task.productName;
-    form.specification = detail.value.version.specification ?? detail.value.project?.specification ?? "";
-    headerTitle.value = `${detail.value.task.productName} ${detail.value.task.versionCode}`;
-    if (detail.value.currentExperimentForm?.summary) {
-      form.summary = detail.value.currentExperimentForm.summary;
-      draftSaved.value = true;
-    }
-  if (detail.value.currentExperimentForm?.finishedOutputWeightKg != null) {
-    form.finishedOutputWeightKg = detail.value.currentExperimentForm.finishedOutputWeightKg;
-  }
-    if (detail.value.currentExperimentForm?.finishedOutputQuantity != null) {
-      form.finishedOutputQuantity = detail.value.currentExperimentForm.finishedOutputQuantity;
-    }
-    form.finishedOutputUnit = (detail.value.currentExperimentForm?.finishedOutputUnit as typeof form.finishedOutputUnit) || "袋";
-    yieldCalculationMode.value = detail.value.currentExperimentForm?.yieldCalculationMode
-      || (/酱汁|复合调味/.test(detail.value.project?.productType || "")
-        ? "TOTAL_PICKING_WEIGHT"
-        : "SELECTED_PRIMARY_MATERIALS");
-    if (detail.value.currentExperimentForm || readOnly.value) {
-      experimentPhase.value = "form";
-    }
-    if (detail.value.currentExperimentForm?.materials?.length) {
-      const savedMaterials = detail.value.currentExperimentForm.materials.map((item) => ({
-        key: rowKey++,
-        materialCategory: item.materialCategory ?? categoryFromStage(item.stage),
-        primaryMaterial: item.primaryMaterial ?? false,
-        materialCode: item.materialCode || "",
-        materialName: item.materialName,
-        weightKg: item.weightKg ?? null,
-        inputUnit: item.inputUnit || "kg",
-        utilizationRate: item.utilizationRate != null ? item.utilizationRate * 100 : 100,
-        remark: item.remark || "",
-        }));
-      materials.value = savedMaterials.length
-        ? savedMaterials
-        : [blankMaterial(false)];
-    }
-    if (detail.value.currentExperimentForm?.processSteps?.length) {
-      processSteps.value = detail.value.currentExperimentForm.processSteps.map((step) => ({
-        key: rowKey++,
-        processName: step.processName,
-        beforeWeightKg: step.beforeWeightKg ?? null,
-        afterWeightKg: step.afterWeightKg ?? null,
-        remainingWeightKg: step.remainingWeightKg ?? null,
-        remainingDisposition: step.remainingDisposition ?? "REUSE",
-        remark: step.remark || "",
+    const loadedDetail = await api.task.detail(taskId, auth.role, auth.displayName);
+    if (!requestGeneration.isCurrent(generation)) return;
+    detail.value = loadedDetail;
+    form.productName = loadedDetail.task.productName;
+    form.specification = loadedDetail.version.specification ?? loadedDetail.project?.specification ?? "";
+    headerTitle.value = `${loadedDetail.task.productName} ${loadedDetail.task.versionCode}`;
+    form.summary = loadedDetail.currentExperimentForm?.summary || "";
+    form.finishedOutputWeightKg = loadedDetail.currentExperimentForm?.finishedOutputWeightKg ?? null;
+    form.finishedOutputQuantity = loadedDetail.currentExperimentForm?.finishedOutputQuantity ?? null;
+    form.finishedOutputUnit = (loadedDetail.currentExperimentForm?.finishedOutputUnit as typeof form.finishedOutputUnit) || "袋";
+    draftSaved.value = Boolean(loadedDetail.currentExperimentForm?.summary);
+    yieldCalculationMode.value = loadedDetail.currentExperimentForm?.yieldCalculationMode
+      || (/酱汁|复合调味/.test(loadedDetail.project?.productType || "") ? "TOTAL_PICKING_WEIGHT" : "SELECTED_PRIMARY_MATERIALS");
+    if (loadedDetail.currentExperimentForm?.materials?.length) {
+      materials.value = loadedDetail.currentExperimentForm.materials.map(item => ({
+        key: rowKey++, materialCategory: item.materialCategory ?? categoryFromStage(item.stage),
+        primaryMaterial: item.primaryMaterial ?? false, materialCode: item.materialCode || "",
+        materialName: item.materialName, weightKg: item.weightKg ?? null, inputUnit: item.inputUnit || "kg",
+        utilizationRate: item.utilizationRate != null ? item.utilizationRate * 100 : 100, remark: item.remark || "",
       }));
-    } else if (canEditExperiment(detail.value, auth.displayName, auth.role)) {
-      const steps = await api.sample.processSteps(detail.value.task.versionId);
-      if (steps.length) {
-        processSteps.value = steps.map((step) => ({
-          key: rowKey++,
-          processName: step.processName,
-          beforeWeightKg: step.beforeWeightKg ?? null,
-          afterWeightKg: step.afterWeightKg ?? null,
-          remainingWeightKg: step.remainingWeightKg ?? null,
-          remainingDisposition: step.remainingDisposition ?? "REUSE",
-          remark: step.remark || "",
-        }));
-      }
     }
-    if (detail.value.currentExperimentForm?.id) {
+    if (loadedDetail.currentExperimentForm?.processSteps?.length) {
+      processSteps.value = loadedDetail.currentExperimentForm.processSteps.map(step => ({ key: rowKey++, processName: step.processName, beforeWeightKg: step.beforeWeightKg ?? null, afterWeightKg: step.afterWeightKg ?? null, remainingWeightKg: step.remainingWeightKg ?? null, remainingDisposition: step.remainingDisposition ?? "REUSE", remark: step.remark || "" }));
+    } else if (canEditExperiment(loadedDetail, auth.displayName, auth.role)) {
+      const steps = await api.sample.processSteps(loadedDetail.task.versionId);
+      if (!requestGeneration.isCurrent(generation)) return;
+      if (steps.length) processSteps.value = steps.map(step => ({ key: rowKey++, processName: step.processName, beforeWeightKg: step.beforeWeightKg ?? null, afterWeightKg: step.afterWeightKg ?? null, remainingWeightKg: step.remainingWeightKg ?? null, remainingDisposition: step.remainingDisposition ?? "REUSE", remark: step.remark || "" }));
+    }
+    const formId = loadedDetail.currentExperimentForm?.id;
+    if (formId) {
       try {
-        processPlan.value = normalizeProcessPlan(await api.task.getProcessPlan(detail.value.currentExperimentForm.id));
-      } catch {
+        const loadedPlan = await api.task.getProcessPlan(formId);
+        if (!requestGeneration.isCurrent(generation)) return;
+        processPlan.value = normalizeProcessPlan(loadedPlan);
+      } catch (error) {
+        if (!requestGeneration.isCurrent(generation)) return;
         processPlan.value = createEmptyProcessPlan();
       }
     }
-    restoreLocalDraft(detail.value.currentExperimentForm?.savedAt);
+    if (!requestGeneration.isCurrent(generation)) return;
+    restoreLocalDraft(loadedDetail.currentExperimentForm?.savedAt);
+  } catch (error) {
+    if (requestGeneration.isCurrent(generation)) message.error(error instanceof Error ? error.message : "无法加载打样实验单");
   } finally {
-    loading.value = false;
-    hydrated.value = true;
+    if (requestGeneration.isCurrent(generation)) {
+      loading.value = false;
+      hydrated.value = true;
+      suppressAutoSave = false;
+    }
   }
-});
+}
 
 onBeforeUnmount(() => {
+  requestGeneration.invalidate();
   persistLocalDraft();
   window.removeEventListener("pagehide", persistLocalDraft);
   if (autoSaveTimer) window.clearTimeout(autoSaveTimer);
@@ -592,12 +599,14 @@ async function autoSave() {
 watch([form, materials, processSteps, yieldCalculationMode, experimentPhase], scheduleAutoSave, { deep: true });
 
 async function saveDraft(options: { silent?: boolean } = {}) {
+  const generation = requestGeneration.capture();
+  const taskId = activeTaskId.value;
   const finishedOutputQuantity = validateFinishedOutputQuantity();
   if (form.finishedOutputQuantity !== null && finishedOutputQuantity === undefined) return;
   saving.value = true;
   draftSyncState.value = "syncing";
   try {
-    const saved = await api.task.saveExperimentDraft(String(route.params.id), {
+    const saved = await api.task.saveExperimentDraft(taskId, {
       operatorName: auth.displayName,
       summary: buildSummary(),
       materials: buildMaterials(),
@@ -607,10 +616,13 @@ async function saveDraft(options: { silent?: boolean } = {}) {
       finishedOutputUnit: form.finishedOutputUnit,
       yieldCalculationMode: yieldCalculationMode.value,
     });
+    if (!requestGeneration.isCurrent(generation) || taskId !== activeTaskId.value) return false;
     detail.value = { ...detail.value!, currentExperimentForm: saved };
     if (processPlan.value.majorProcesses.length) {
       await nextTick();
+      if (!requestGeneration.isCurrent(generation)) return false;
       await processWorkspace.value?.flushSave(true);
+      if (!requestGeneration.isCurrent(generation)) return false;
     }
     draftSaved.value = true;
     draftSyncState.value = "saved";
@@ -618,16 +630,18 @@ async function saveDraft(options: { silent?: boolean } = {}) {
     if (!options.silent) message.success("草稿已保存");
     return true;
   } catch (error) {
+    if (!requestGeneration.isCurrent(generation)) return false;
     draftSyncState.value = "error";
     persistLocalDraft();
     if (!options.silent) message.error(error instanceof Error ? error.message : "保存失败");
     return false;
   } finally {
-    saving.value = false;
+    if (requestGeneration.isCurrent(generation)) saving.value = false;
   }
 }
 
 async function onFileChange(event: Event) {
+  const generation = requestGeneration.capture();
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
@@ -644,14 +658,17 @@ async function onFileChange(event: Event) {
       uploadedBy: auth.displayName,
       category: "PHOTO",
     });
+    if (!requestGeneration.isCurrent(generation)) return;
     uploadHint.value = `已上传：${file.name}`;
     message.success("照片已上传");
   } catch (error) {
+    if (!requestGeneration.isCurrent(generation)) return;
     message.error(error instanceof Error ? error.message : "上传失败");
   }
 }
 
 async function submitSamplingRecord() {
+  const generation = requestGeneration.capture();
   if (yieldBasisWeight.value <= 0) {
     message.warning(yieldCalculationMode.value === "SELECTED_PRIMARY_MATERIALS" ? "请至少选择一项有重量的主料" : "请填写非包材物料重量");
     return;
@@ -671,6 +688,7 @@ async function submitSamplingRecord() {
   if (validateFinishedOutputQuantity() === undefined) return;
   if (canSaveDraft.value && !detail.value?.currentExperimentForm?.id) {
     await saveDraft();
+    if (!requestGeneration.isCurrent(generation)) return;
   }
   const experimentId = detail.value?.currentExperimentForm?.id;
   if (!experimentId) {
@@ -680,18 +698,21 @@ async function submitSamplingRecord() {
   submitting.value = true;
   try {
     await api.task.submitExperimentForTest(experimentId, auth.displayName);
+    if (!requestGeneration.isCurrent(generation)) return;
     hydrated.value = false;
     clearExperimentDraft(localStorage, localDraftKey.value);
     message.success("打样记录已提交，已通知内部测试");
     router.push(`/rnd/tasks/${route.params.id}/test`);
   } catch (error) {
+    if (!requestGeneration.isCurrent(generation)) return;
     message.error(error instanceof Error ? error.message : "提交失败");
   } finally {
-    submitting.value = false;
+    if (requestGeneration.isCurrent(generation)) submitting.value = false;
   }
 }
 
 async function exportExperimentForm() {
+  const generation = requestGeneration.capture();
   const experimentId = detail.value?.currentExperimentForm?.id;
   if (!experimentId) {
     message.warning("请先保存实验单草稿");
@@ -700,12 +721,14 @@ async function exportExperimentForm() {
   exporting.value = true;
   try {
     const blob = await api.report.exportExperimentForm(experimentId);
+    if (!requestGeneration.isCurrent(generation)) return;
     download(blob, `${detail.value?.task.productName ?? "实验单"}-${detail.value?.task.versionCode ?? ""}-打样实验单.xlsx`);
     message.success("实验单已导出");
   } catch (error) {
+    if (!requestGeneration.isCurrent(generation)) return;
     message.error(error instanceof Error ? error.message : "导出失败");
   } finally {
-    exporting.value = false;
+    if (requestGeneration.isCurrent(generation)) exporting.value = false;
   }
 }
 

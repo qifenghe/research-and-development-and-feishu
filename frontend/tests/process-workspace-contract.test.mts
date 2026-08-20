@@ -18,6 +18,9 @@ test("workspace composes the major board, minor editor, draft controls, versions
     "MajorProcessBoard", "MinorStepWorkspace", "ProcessSubmitDialog", "RndOutputCenter",
     "保存草稿", "正式提交", "版本历史", "calculateBatchYield", "saveProcessPlan",
   ]) assert.ok(workspace.includes(marker), `missing ${marker}`);
+  assert.match(workspace, /v-model:selected-revision-id/);
+  assert.match(workspace, /selectedRevision\.snapshot/);
+  assert.match(workspace, /aggregateProcessRecipe/);
 });
 
 test("major and minor workspaces expose native drag, clone, prior-output flow and KCP editing", () => {
@@ -27,6 +30,26 @@ test("major and minor workspaces expose native drag, clone, prior-output flow an
   for (const marker of ["draggable", "dragstart", "drop", "复制", "nextProcessKey"]) assert.ok(board.includes(marker), `major ${marker}`);
   for (const marker of ["STEP_OUTPUT", "previousOutputs", "不进入物料库", "primaryOutput", "draggable", "复制"]) assert.ok(minor.includes(marker), `minor ${marker}`);
   for (const marker of ["measurements", "CRITICAL", "confirmedBy", "deviationAction", "resolved"]) assert.ok(controls.includes(marker), `control ${marker}`);
+  for (const component of [board, minor]) {
+    assert.match(component, /aria-label/);
+    assert.match(component, /focus-visible/);
+    assert.match(component, /上移/);
+    assert.match(component, /下移/);
+  }
+  assert.match(minor, /modelValue:\s*ProcessPlanDraft/);
+  assert.match(minor, /majorKey:\s*string/);
+  assert.match(controls, /structuredClone/);
+});
+
+test("route loader and output center fence stale requests and reset controlled selection", () => {
+  const form = source("views/rnd/ExperimentFormView.vue");
+  const output = source("components/process/RndOutputCenter.vue");
+  assert.match(form, /watch\(\(\) => route\.params\.id/);
+  assert.match(form, /resetAndLoad/);
+  assert.match(form, /requestGeneration\.isCurrent/);
+  assert.match(output, /selectedRevisionId\?:\s*string/);
+  assert.match(output, /update:selectedRevisionId/);
+  assert.match(output, /requestGeneration\.isCurrent/);
 });
 
 test("submission requires explicit confirmation/reason and output center never offers pricing generation", () => {
