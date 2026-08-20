@@ -233,7 +233,7 @@ const form = reactive({
 const materials = ref<MaterialRow[]>([blankMaterial(false)]);
 const processSteps = ref<ProcessRow[]>([blankProcess()]);
 const processPlan = ref<ProcessPlanDraft>(createEmptyProcessPlan());
-const processWorkspace = ref<{ flushSave: (silent?: boolean) => Promise<void> }>();
+const processWorkspace = ref<{ flushSave: (silent?: boolean) => Promise<void>; restoreLocalDirty: (plan: ProcessPlanDraft) => void }>();
 const showLegacyProcessEditor = computed(() => processPlan.value.legacy && !processPlan.value.majorProcesses.some((item) => item.steps.length));
 const processRecipe = computed(() => aggregateProcessRecipe(processPlan.value));
 const hasProcessPlanData = computed(() => !processPlan.value.legacy && processRecipe.value.length > 0);
@@ -570,7 +570,10 @@ function restoreLocalDraft(serverSavedAt?: string) {
   Object.assign(form, cached.value.form);
   materials.value = cached.value.materials;
   processSteps.value = cached.value.processSteps;
-  if (cached.value.processPlan) processPlan.value = normalizeProcessPlan(cached.value.processPlan);
+  if (cached.value.processPlan) {
+    processPlan.value = normalizeProcessPlan(cached.value.processPlan);
+    processWorkspace.value?.restoreLocalDirty(processPlan.value);
+  }
   draftSyncState.value = "local";
 }
 

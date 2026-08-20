@@ -45,6 +45,10 @@ export class ProcessPlanSaveCoordinator<T> {
     this.publish();
   }
 
+  adoptServerDraft(value: T) {
+    this.hydrateServer(value);
+  }
+
   restoreLocalDirty(value: T) {
     this.cancelTimer();
     this.value = structuredClone(value);
@@ -56,6 +60,7 @@ export class ProcessPlanSaveCoordinator<T> {
   rebind(formId: string | undefined, serverValue: T) {
     this.epoch++;
     this.cancelTimer();
+    this.inFlight = undefined;
     this.formId = formId;
     this.hydrateServer(serverValue);
   }
@@ -67,7 +72,7 @@ export class ProcessPlanSaveCoordinator<T> {
     this.state = "dirty";
     this.publish();
     this.cancelTimer();
-    this.timer = setTimeout(() => void this.flush(), this.options.debounceMs);
+    if (this.formId) this.timer = setTimeout(() => void this.flush().catch(() => undefined), this.options.debounceMs);
   }
 
   async flush(): Promise<void> {
@@ -77,11 +82,12 @@ export class ProcessPlanSaveCoordinator<T> {
       return;
     }
     if (this.inFlight) return this.inFlight;
-    this.inFlight = this.saveUntilCurrent();
+    const task = this.saveUntilCurrent();
+    this.inFlight = task;
     try {
-      await this.inFlight;
+      await task;
     } finally {
-      this.inFlight = undefined;
+      if (this.inFlight === task) this.inFlight = undefined;
     }
   }
 

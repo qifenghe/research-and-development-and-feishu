@@ -31,3 +31,9 @@ No browser mock server was available in this worktree, so no Playwright screensh
 - New experiment-form IDs rebind then persist the existing local graph; local cache restoration remains dirty. Flush failures now reject so the parent cannot report the composite save as successful.
 - Compatibility materials now remain on true historical/virtual legacy plans and layered compatibility rows split a material's PRIMARY/AUXILIARY sources so yield basis weights remain correct.
 - Formal snapshots propagate read-only state to both major/minor editors.
+
+## Review round 3
+
+- Added explicit coordinator server/local adoption APIs, detached in-flight saves on form rebind, and made background pre-ID saves inert while preserving manual failure propagation.
+- Parent cache restoration now explicitly marks the restored process draft dirty; formal-version new-draft responses are adopted as trusted DRAFT state before further edits.
+- Added tested plan-wide preceding-output and broken-reference repair helpers; the minor workspace now uses the whole-plan context for earlier-major output choices and shows final yield plus aggregate external-recipe weight in its live summary.

@@ -60,10 +60,10 @@ test("rebind fences a late acknowledgement and restores a local draft as dirty",
   void coordinator.flush();
   coordinator.rebind("FORM-B", { versionNo: 7, status: "DRAFT", graph: "B" });
   coordinator.restoreLocalDirty({ versionNo: 7, status: "DRAFT", graph: "B-cache" });
+  const flushB = coordinator.flush();
   resolveA({ versionNo: 1, status: "DRAFT", graph: "A-edit" });
-  await new Promise(resolve => setTimeout(resolve, 0));
-  assert.deepEqual(coordinator.value, { versionNo: 7, status: "DRAFT", graph: "B-cache" });
-  await assert.doesNotReject(() => coordinator.flush());
+  await flushB;
+  assert.deepEqual(coordinator.value, { versionNo: 8, status: "DRAFT", graph: "B-cache" });
   assert.equal(calls[0]![0], "FORM-A");
   assert.equal(calls[1]![0], "FORM-B");
 });
