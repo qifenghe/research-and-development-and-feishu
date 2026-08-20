@@ -75,7 +75,14 @@
           </a-collapse>
 
           <a-card title="工艺工作台" class="page-card process-plan-card">
-            <ProcessPlanWorkspace ref="processWorkspace" v-model="processPlan" :form-id="detail?.currentExperimentForm?.id" :readonly="readOnly" :hydrating="loading" @request-save="saveDraft" />
+            <ProcessPlanWorkspace
+              ref="processWorkspace"
+              v-model="processPlan"
+              :form-id="detail?.currentExperimentForm?.id"
+              :readonly="readOnly"
+              :server-hydration-token="serverProcessHydrationToken"
+              @request-save="saveDraft"
+            />
             <a-collapse v-if="showLegacyProcessEditor" ghost style="margin-top:12px">
               <a-collapse-panel key="legacy" header="历史兼容数据（旧版工序编辑器）">
                 <ProcessTabsEditor v-model="processSteps" :readonly="readOnly" :create-row="blankProcess" />
@@ -236,6 +243,7 @@ const form = reactive({
 const materials = ref<MaterialRow[]>([blankMaterial(false)]);
 const processSteps = ref<ProcessRow[]>([blankProcess()]);
 const processPlan = ref<ProcessPlanDraft>(createEmptyProcessPlan());
+const serverProcessHydrationToken = ref(0);
 const processWorkspace = ref<{ flushSave: (silent?: boolean) => Promise<void>; restoreLocalDirty: (plan: ProcessPlanDraft) => void }>();
 const showLegacyProcessEditor = computed(() => processPlan.value.legacy && !processPlan.value.majorProcesses.some((item) => item.steps.length));
 const processRecipe = computed(() => aggregateProcessRecipe(processPlan.value));
@@ -518,6 +526,8 @@ async function resetAndLoad(taskId: string, generation: number) {
         if (!requestGeneration.isCurrent(generation)) return;
         processPlan.value = createEmptyProcessPlan();
       }
+      serverProcessHydrationToken.value++;
+      await nextTick();
     }
     if (!requestGeneration.isCurrent(generation)) return;
     restoreLocalDraft(loadedDetail.currentExperimentForm?.savedAt);

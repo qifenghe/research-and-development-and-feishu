@@ -54,23 +54,16 @@
           <a-descriptions-item label="配方总重">{{ revisionRecipeWeight.toFixed(3) }} kg</a-descriptions-item>
           <a-descriptions-item label="成品得率">{{ percent(revisionFinalYield) }}</a-descriptions-item>
         </a-descriptions>
-        <section v-for="major in selectedRevision.snapshot.majorProcesses" :key="major.key" class="snapshot-major">
-          <h3>{{ major.sequence }}. {{ major.processName }} <small>大工序得率 {{ percent(yieldOf(major).mainYieldPercent) }}</small></h3>
-          <div v-for="step in major.steps" :key="step.key" class="snapshot-step">
-            <b>{{ step.sequence }}. {{ step.stepName }}</b>
-            <span>参数：{{ parameterSummary(step) }} · 设备：{{ step.equipment || "-" }}</span>
-            <span>投料：{{ step.materials.map(item => `${item.materialName} ${item.weightKg || 0}kg`).join("、") || "-" }}</span>
-            <span>产出：{{ (step.outputs || []).map(item => `${item.outputName} ${item.weightKg || 0}kg${item.primaryOutput ? '(主)' : ''}`).join("、") || "-" }}</span>
-            <span>关键点：{{ (step.controlPoints || []).map(item => `${item.itemName} [${item.importance}]`).join("、") || "-" }}</span>
+        <section class="revision-diff">
+          <h3>版本差异</h3>
+          <p v-if="!selectedRevisionSource">首次正式版本，无来源版本可比较。</p>
+          <a-empty v-else-if="!revisionDifferences.length" :image="false" description="与来源版本无工艺内容差异" />
+          <div v-for="item in revisionDifferences" :key="`${item.type}-${item.path}-${item.before}-${item.after}`" class="revision-diff-line">
+            <a-tag :color="item.type === 'ADDED' ? 'green' : item.type === 'REMOVED' ? 'red' : 'blue'">{{ item.type === "ADDED" ? "新增" : item.type === "REMOVED" ? "删除" : "修改" }}</a-tag>
+            <span><b>{{ item.path }}</b><small>{{ item.type === "CHANGED" ? `${item.before} → ${item.after}` : item.before || item.after }}</small></span>
           </div>
         </section>
-        <section class="snapshot-major">
-          <h3>汇总配方</h3>
-          <div v-for="line in revisionRecipe" :key="`${line.formulaMaterialId}-${line.materialCode}-${line.materialName}`" class="recipe-line">
-            <span>{{ line.materialName }}</span>
-            <b>{{ line.weightKg.toFixed(3) }} kg · {{ line.ratioPercent?.toFixed(2) || "0.00" }}%</b>
-          </div>
-        </section>
+        <ProcessPlanSnapshot :plan="selectedRevision.snapshot" />
         <a-button v-if="!readonly" block type="primary" @click="openNewDraft">从该版本新建草稿</a-button>
       </template>
     </a-drawer>
@@ -93,22 +86,32 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { message } from "ant-design-vue";
-import { aggregateProcessRecipe, calculateBatchYield, calculateMajorProcessYield, normalizeProcessPlan, type MajorProcessDraft, type MinorProcessStepDraft, type ProcessPlanDraft, type ProcessRevision, type ProcessRevisionSummary } from "@rnd/shared";
+import { aggregateProcessRecipe, calculateBatchYield, normalizeProcessPlan, type ProcessPlanDraft, type ProcessRevision, type ProcessRevisionSummary } from "@rnd/shared";
 import { api } from "../../services/api";
 import MajorProcessBoard from "./MajorProcessBoard.vue";
 import MinorStepWorkspace from "./MinorStepWorkspace.vue";
 import ProcessSubmitDialog from "./ProcessSubmitDialog.vue";
+import ProcessPlanSnapshot from "./ProcessPlanSnapshot.vue";
 import RndOutputCenter from "./RndOutputCenter.vue";
+import { diffProcessPlans } from "./processPlanDiff";
 import { ProcessPlanSaveCoordinator, type ProcessPlanSaveState } from "./processPlanAutosave";
 import { RequestGeneration } from "./requestGeneration";
+import { cloneVueValue } from "./cloneVueValue";
 
-const props = defineProps<{ modelValue: ProcessPlanDraft; formId?: string; readonly?: boolean; hydrating?: boolean }>();
+const props = defineProps<{
+  modelValue: ProcessPlanDraft;
+  formId?: string;
+  readonly?: boolean;
+  serverHydrationToken?: number;
+}>();
 const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft]; "request-save": []; saved: [value: ProcessPlanDraft] }>();
-const plan = ref(normalizeProcessPlan(structuredClone(props.modelValue)));
+const clonePlan = (value: ProcessPlanDraft) => cloneVueValue(value);
+const plan = ref(normalizeProcessPlan(clonePlan(props.modelValue)));
 const activeMajorKey = ref<string>();
 const saveState = ref<ProcessPlanSaveState>("idle");
 const revisions = ref<ProcessRevisionSummary[]>([]);
 const selectedRevision = ref<ProcessRevision>();
+const selectedRevisionSource = ref<ProcessRevision>();
 const selectedOutputRevisionId = ref<string>();
 const revisionDrawerOpen = ref(false);
 const showSubmit = ref(false);
@@ -128,13 +131,13 @@ const coordinator = new ProcessPlanSaveCoordinator<ProcessPlanDraft>({
     saveState.value = state;
     if (state === "saved") {
       plan.value = normalizeProcessPlan(value);
-      emit("update:modelValue", structuredClone(plan.value));
-      emit("saved", structuredClone(plan.value));
+      emit("update:modelValue", clonePlan(plan.value));
+      emit("saved", clonePlan(plan.value));
     }
   },
   onError: error => message.error(error instanceof Error ? error.message : "工艺草稿保存失败，请刷新后比较差异"),
 });
-coordinator.hydrateServer(plan.value);
+coordinator.hydrateServer(clonePlan(plan.value));
 
 const activeMajor = computed(() => plan.value.majorProcesses.find(major => major.key === activeMajorKey.value));
 const stepCount = computed(() => plan.value.majorProcesses.reduce((count, major) => count + major.steps.length, 0));
@@ -143,22 +146,24 @@ const saveLabel = computed(() => ({ idle: "", dirty: "待保存", saving: "正�
 const revisionRecipe = computed(() => selectedRevision.value ? aggregateProcessRecipe(selectedRevision.value.snapshot) : []);
 const revisionRecipeWeight = computed(() => revisionRecipe.value.reduce((sum, line) => sum + line.weightKg, 0));
 const revisionFinalYield = computed(() => selectedRevision.value ? calculateBatchYield(selectedRevision.value.snapshot) : null);
+const revisionDifferences = computed(() => selectedRevision.value && selectedRevisionSource.value
+  ? diffProcessPlans(selectedRevisionSource.value.snapshot, selectedRevision.value.snapshot)
+  : []);
 
 watch(() => props.formId, (formId, previous) => {
-  listRequests.invalidate(); detailRequests.invalidate(); revisions.value = []; selectedRevision.value = undefined; selectedOutputRevisionId.value = undefined; revisionDrawerOpen.value = false; activeMajorKey.value = undefined; showSubmit.value = false; newDraftOpen.value = false;
-  const incoming = normalizeProcessPlan(structuredClone(props.modelValue));
-  const preservePreIdDraft = !previous && !!formId && plan.value.majorProcesses.length > 0 && !props.hydrating;
+  listRequests.invalidate(); detailRequests.invalidate(); revisions.value = []; selectedRevision.value = undefined; selectedRevisionSource.value = undefined; selectedOutputRevisionId.value = undefined; revisionDrawerOpen.value = false; activeMajorKey.value = undefined; showSubmit.value = false; newDraftOpen.value = false;
+  const incoming = normalizeProcessPlan(clonePlan(props.modelValue));
+  const preservePreIdDraft = !previous && !!formId && plan.value.majorProcesses.length > 0;
   plan.value = incoming;
   coordinator.rebind(formId, incoming);
-  if (preservePreIdDraft) coordinator.restoreLocalDirty(plan.value);
+  if (preservePreIdDraft) coordinator.restoreLocalDirty(clonePlan(plan.value));
   if (formId) void loadRevisions();
 }, { immediate: true });
 
-watch([() => props.modelValue, () => props.hydrating], ([value, hydrating]) => {
-  if (!hydrating) return;
-  plan.value = normalizeProcessPlan(structuredClone(value));
-  coordinator.hydrateServer(plan.value);
-}, { deep: false });
+watch(() => props.serverHydrationToken, (token, previous) => {
+  if (token == null || token === previous) return;
+  hydrateServer(props.modelValue);
+});
 
 onBeforeUnmount(() => {
   listRequests.invalidate();
@@ -168,9 +173,9 @@ onBeforeUnmount(() => {
 
 function replacePlan(value: ProcessPlanDraft) {
   if (props.readonly) return;
-  plan.value = normalizeProcessPlan(structuredClone(value));
-  emit("update:modelValue", structuredClone(plan.value));
-  coordinator.edit(() => structuredClone(plan.value));
+  plan.value = normalizeProcessPlan(clonePlan(value));
+  emit("update:modelValue", clonePlan(plan.value));
+  coordinator.edit(() => clonePlan(plan.value));
 }
 
 function openMajor(key: string) {
@@ -198,10 +203,14 @@ async function openSubmit() {
 }
 
 function restoreLocalDirty(value: ProcessPlanDraft) {
-  plan.value = normalizeProcessPlan(structuredClone(value));
-  coordinator.restoreLocalDirty(plan.value);
+  plan.value = normalizeProcessPlan(clonePlan(value));
+  coordinator.restoreLocalDirty(clonePlan(plan.value));
 }
-defineExpose({ flushSave: saveNow, restoreLocalDirty });
+function hydrateServer(value: ProcessPlanDraft) {
+  plan.value = normalizeProcessPlan(clonePlan(value));
+  coordinator.hydrateServer(clonePlan(plan.value));
+}
+defineExpose({ flushSave: saveNow, restoreLocalDirty, hydrateServer });
 
 async function loadRevisions() {
   const formId = props.formId;
@@ -224,7 +233,12 @@ async function loadRevision(id: string) {
   try {
     const revision = await api.task.getProcessRevision(formId, id);
     if (!detailRequests.isCurrent(generation) || formId !== props.formId) return;
+    const sourceId = revision.sourceRevisionId
+      || revisions.value.find(item => item.revisionNo === revision.revisionNo - 1)?.id;
+    const source = sourceId ? await api.task.getProcessRevision(formId, sourceId) : undefined;
+    if (!detailRequests.isCurrent(generation) || formId !== props.formId) return;
     selectedRevision.value = revision;
+    selectedRevisionSource.value = source;
     revisionDrawerOpen.value = true;
   } catch (error) {
     if (detailRequests.isCurrent(generation)) message.error(error instanceof Error ? error.message : "无法读取版本详情");
@@ -247,7 +261,7 @@ async function createDraft() {
     if (!detailRequests.isCurrent(generation) || formId !== props.formId) return;
     plan.value = draft;
     coordinator.adoptServerDraft(draft);
-    emit("update:modelValue", structuredClone(draft));
+    emit("update:modelValue", clonePlan(draft));
     activeMajorKey.value = undefined;
     newDraftOpen.value = false;
     revisionDrawerOpen.value = false;
@@ -263,14 +277,12 @@ async function onSubmitted(revision: ProcessRevision) {
   selectedRevision.value = revision;
   selectedOutputRevisionId.value = revision.id;
   plan.value = normalizeProcessPlan(revision.snapshot);
-  coordinator.hydrateServer(plan.value);
-  emit("update:modelValue", structuredClone(plan.value));
+  coordinator.hydrateServer(clonePlan(plan.value));
+  emit("update:modelValue", clonePlan(plan.value));
   saveState.value = "saved";
   await nextTick();
   await loadRevisions();
 }
-function yieldOf(major: MajorProcessDraft) { return calculateMajorProcessYield(major); }
-function parameterSummary(step: MinorProcessStepDraft) { return [[step.parameter1Name, step.parameter1Value, step.parameter1Unit].filter(Boolean).join(" "), [step.parameter2Name, step.parameter2Value, step.parameter2Unit].filter(Boolean).join(" ")].filter(Boolean).join(" · ") || "-"; }
 function percent(value: number | null | undefined) { return value == null ? "待补充" : `${value.toFixed(2)}%`; }
 function formatDate(value: string) { return value ? new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; }
 </script>
@@ -278,6 +290,7 @@ function formatDate(value: string) { return value ? new Date(value).toLocaleStri
 <style scoped>
 .workspace { display: grid; gap: 12px; padding: 14px; border-radius: 12px; background: #f5f6f8; } .workspace-top { display: flex; align-items: center; gap: 20px; padding: 14px 16px; border: 1px solid #e5e6eb; border-radius: 12px; background: #fff; } .title { min-width: 200px; } .eyebrow { color: #1677ff; font-size: 12px; font-weight: 600; } .title h2 { margin: 2px 0 5px; font-size: 20px; } .tags { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #86909c; } .save-saving { color: #1677ff; } .save-error { color: #cf1322; } .save-saved { color: #389e0d; }
 .top-summary { display: flex; gap: 16px; flex: 1; color: #595959; font-size: 13px; } .top-summary b { display: block; color: #262626; font-size: 17px; } .workspace-main { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 12px; } .view, .side-card { padding: 12px; border: 1px solid #e5e6eb; border-radius: 12px; background: #fff; } .view-bar { display: flex; justify-content: space-between; margin-bottom: 10px; } .view-bar small { display: block; color: #86909c; font-size: 12px; margin-top: 3px; } .breadcrumb { display: flex; align-items: center; gap: 6px; margin-bottom: 9px; color: #86909c; font-size: 12px; } .side { display: grid; align-content: start; gap: 12px; } .side-title { display: flex; justify-content: space-between; align-items: center; }
-.revision { display: grid; width: 100%; grid-template-columns: 36px 1fr; text-align: left; padding: 9px 0; border: 0; border-top: 1px solid #f0f0f0; background: #fff; cursor: pointer; } .revision span, .revision small { font-size: 12px; color: #86909c; } .revision small { grid-column: 2; } .snapshot-major { margin-top: 14px; padding: 12px; border: 1px solid #e5e6eb; border-radius: 8px; } .snapshot-major h3 { margin: 0 0 8px; } .snapshot-major h3 small { color: #1677ff; font-weight: 400; } .snapshot-step { display: grid; gap: 3px; margin-top: 8px; padding: 8px; background: #fafafa; } .snapshot-step span, .recipe-line { color: #595959; font-size: 12px; } .recipe-line { display: flex; justify-content: space-between; padding: 4px 0; }
+.revision { display: grid; width: 100%; grid-template-columns: 36px 1fr; text-align: left; padding: 9px 0; border: 0; border-top: 1px solid #f0f0f0; background: #fff; cursor: pointer; } .revision span, .revision small { font-size: 12px; color: #86909c; } .revision small { grid-column: 2; }
+.revision-diff { margin: 12px 0; padding: 12px; border: 1px solid #e5e6eb; border-radius: 8px; background: #fafafa; } .revision-diff h3 { margin: 0 0 8px; } .revision-diff-line { display: flex; align-items: start; gap: 6px; margin-top: 6px; } .revision-diff-line span, .revision-diff-line small { display: block; } .revision-diff-line small { color: #595959; font-weight: 400; }
 @media (max-width: 1120px) { .workspace-main { grid-template-columns: 1fr; } .side { grid-template-columns: 1fr 1fr; } .workspace-top { flex-wrap: wrap; } .top-summary { order: 3; flex-basis: 100%; } } @media (max-width: 760px) { .side { grid-template-columns: 1fr; } }
 </style>

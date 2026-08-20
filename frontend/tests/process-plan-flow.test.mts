@@ -58,6 +58,20 @@ test("repairs precedence, continue-flow, primary compatibility and duplicate IDs
   }
 });
 
+test("clears and reports a stale source output id on an external material", () => {
+  const plan = chain();
+  const material = plan.majorProcesses[1]!.steps[0]!.materials[0]!;
+  material.sourceType = "EXTERNAL";
+
+  const repaired = repairProcessPlanFlow(plan);
+
+  assert.equal(repaired.removedConsumers.length, 1);
+  assert.equal(repaired.removedConsumers[0]?.reason, "EXTERNAL_SOURCE");
+  assert.equal(repaired.removedConsumers[0]?.action, "CLEARED_SOURCE");
+  assert.equal(repaired.plan.majorProcesses[1]!.steps[0]!.materials.length, 1);
+  assert.equal(repaired.plan.majorProcesses[1]!.steps[0]!.materials[0]!.sourceStepOutputId, undefined);
+});
+
 test("step reorder within a major invalidates a now-later producer", () => {
   const plan = chain();
   plan.majorProcesses[1]!.steps[0]!.outputs![0]!.continueFlow = true;

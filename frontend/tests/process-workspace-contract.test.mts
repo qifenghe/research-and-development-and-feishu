@@ -38,7 +38,7 @@ test("major and minor workspaces expose native drag, clone, prior-output flow an
   }
   assert.match(minor, /modelValue:\s*ProcessPlanDraft/);
   assert.match(minor, /majorKey:\s*string/);
-  assert.match(controls, /structuredClone/);
+  assert.match(controls, /cloneVueValue/);
 });
 
 test("route loader and output center fence stale requests and reset controlled selection", () => {
@@ -49,7 +49,8 @@ test("route loader and output center fence stale requests and reset controlled s
   assert.match(form, /requestGeneration\.isCurrent/);
   assert.match(output, /selectedRevisionId\?:\s*string/);
   assert.match(output, /update:selectedRevisionId/);
-  assert.match(output, /requestGeneration\.isCurrent/);
+  assert.match(output, /listGeneration\.isCurrent/);
+  assert.match(output, /mutationGeneration\.isCurrent/);
 });
 
 test("submission requires explicit confirmation/reason and output center never offers pricing generation", () => {

@@ -52,3 +52,23 @@ No browser mock server was available in this worktree, so no Playwright screensh
 - PC `vue-tsc`, Vite production build, API-contract check, and route check passed; build retained only the existing large-chunk warning.
 - Backend `ProcessPlanControllerTest` passed against all 23 migrations.
 - `git diff --check` passed.
+
+## Review round 5
+
+- Replaced the lossy `[modelValue, hydrating]` level watcher with an explicit `serverProcessHydrationToken`. The parent accepts the server graph, advances the token, waits for the workspace/coordinator to adopt that exact graph as the authoritative baseline, and only then restores a newer local cache as dirty.
+- Fixed a real mounted-runtime defect found by the browser harness: Vue reactive proxies are now converted to raw values before structured cloning at workspace/editor boundaries, so immutable local ownership no longer throws `DataCloneError` during component setup or edits.
+- Completed flow-repair parity with the backend by clearing and reporting stale `sourceStepOutputId` values on external materials. Continue-flow, primary-output, primary-material, major-copy, and step-copy repairs now show affected consumer names in `Modal.confirm`, commit only after approval, and restore the local clone without emitting on cancellation.
+- Added stable pure `diffProcessPlans(source, current)` output for human-readable added/removed/changed process content. Revision detail now loads the source/previous immutable revision with request fencing and uses a dedicated full snapshot view covering step instructions/remarks, material provenance/IDs/codes/roles/weights/states, output flags/remarks, legacy inputs/outputs, all KCP/measurement/deviation/retest/confirmation fields, recipe totals, and step/major/final yields.
+- Formal revision submission now loads the source snapshot, displays the version differences, requires an independent difference acknowledgement and change reason for revisions, and binds an accepted submission check to the current `{formId, versionNo}`. Open/form/version changes and failures invalidate prior checks and confirmations; cross-form reasons are cleared.
+- Split artifact list and mutation request generations. Formula/SOP generation is globally mutually exclusive, route/revision changes invalidate both lanes, and every current generation success or failure awaits a fresh authoritative artifact list before releasing the UI.
+- Added a Vite-only real-component harness and Playwright routes with deferred responses for batched server hydration, dirty cache precedence, stale submit reopen/version/form binding, flow confirmation cancel/commit, list-vs-generate, generate mutual exclusion, and failed-generation refresh.
+
+### Round-5 verification
+
+- Frontend Node suite: 75 passed, 0 failed.
+- Shared, PC, and mobile type checks passed.
+- PC and mobile Vite production builds passed; PC retained only the existing large-chunk warning.
+- Frontend API-contract check and route check passed (`30` PC routes, `16` mobile routes).
+- Backend `ProcessPlanControllerTest` and `ProcessSubmissionValidatorTest` passed against all 23 migrations.
+- `git diff --check` passed.
+- A real Chrome/Playwright run executed the four initial harness cases and exposed the Vue-proxy `DataCloneError`, mock response-code mismatch, and Ant button accessible-name mismatch. Those causes were fixed and the suite was expanded to five cases. A fresh browser rerun was attempted, but the platform rejected the required Chrome escalation because the execution-usage limit had been reached; therefore this report does **not** claim a passing Playwright rerun. The exact retained command is `./node_modules/.bin/playwright test e2e/pc-process-workspace.spec.ts --project=pc-chromium --workers=1` from `frontend/`.

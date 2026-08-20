@@ -89,8 +89,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
-import { message } from "ant-design-vue";
+import { computed, reactive, ref, toRaw } from "vue";
+import { message, Modal } from "ant-design-vue";
 import {
   calculateMajorProcessYield,
   nextProcessKey,
@@ -99,6 +99,7 @@ import {
   type ProcessPlanDraft,
 } from "@rnd/shared";
 import { copyMajorProcess, repairProcessPlanFlow, type RemovedFlowConsumer } from "./processPlanFlow";
+import { cloneVueValue } from "./cloneVueValue";
 
 const props = defineProps<{ modelValue: ProcessPlanDraft; readonly?: boolean; selectedKey?: string }>();
 const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft]; select: [key: string] }>();
@@ -124,6 +125,7 @@ const yieldOptions = [
   { label: "不计算得率", value: "NONE" },
 ];
 const filteredTemplates = computed(() => templates.filter(item => item.name.includes(keyword.value)));
+const clonePlan = (value: ProcessPlanDraft) => cloneVueValue(value);
 
 function blankMajor(name = ""): MajorProcessDraft {
   return {
@@ -133,9 +135,9 @@ function blankMajor(name = ""): MajorProcessDraft {
   };
 }
 
-function commitCandidate(next: ProcessPlanDraft, disruptive = false) {
+async function commitCandidate(next: ProcessPlanDraft, disruptive = false) {
   const repaired = repairProcessPlanFlow(next);
-  if (repaired.removedConsumers.length && disruptive && !window.confirm(flowWarning(repaired.removedConsumers))) return false;
+  if (repaired.removedConsumers.length && disruptive && !await confirmFlowRepair(repaired.removedConsumers)) return false;
   if (repaired.removedConsumers.length && !disruptive) message.warning(flowWarning(repaired.removedConsumers));
   emit("update:modelValue", normalizeProcessPlan(repaired.plan));
   return true;
@@ -143,53 +145,65 @@ function commitCandidate(next: ProcessPlanDraft, disruptive = false) {
 
 function flowWarning(consumers: RemovedFlowConsumer[]) {
   const names = consumers.map(item => `${item.majorName}/${item.stepName}/${item.materialName || "未命名投料"}`).join("、");
-  return `该操作会使 ${consumers.length} 项中间产物投料失效：${names}。系统将移除这些投料（不会转为外部物料）。是否继续？`;
+  return `该操作会修复 ${consumers.length} 项失效流转：${names}。无效中间投料将移除，外部物料残留来源 ID 将清除。`;
 }
 
-function addMajor(name: string) {
+function confirmFlowRepair(consumers: RemovedFlowConsumer[]) {
+  return new Promise<boolean>(resolve => {
+    Modal.confirm({
+      title: "确认修复受影响的下游投料",
+      content: flowWarning(consumers),
+      okText: "继续并修复",
+      cancelText: "取消",
+      onOk: () => resolve(true),
+      onCancel: () => resolve(false),
+    });
+  });
+}
+
+async function addMajor(name: string) {
   if (props.readonly) return;
-  const next = structuredClone(plan.value);
+  const next = clonePlan(plan.value);
   const major = blankMajor(name);
   next.majorProcesses.push(major);
-  if (commitCandidate(next)) emit("select", major.key);
+  if (await commitCandidate(next)) emit("select", major.key);
 }
 
 function openEditor(index = -1) {
   editingIndex.value = index;
-  Object.assign(editing, index < 0 ? blankMajor() : structuredClone(plan.value.majorProcesses[index]!));
+  Object.assign(editing, index < 0 ? blankMajor() : structuredClone(toRaw(plan.value.majorProcesses[index]!)));
   editorOpen.value = true;
 }
 
-function saveEditor() {
+async function saveEditor() {
   if (props.readonly || !editing.processName.trim()) return;
-  const next = structuredClone(plan.value);
-  if (editingIndex.value < 0) next.majorProcesses.push(structuredClone(editing));
-  else next.majorProcesses.splice(editingIndex.value, 1, structuredClone(editing));
-  commitCandidate(next);
-  editorOpen.value = false;
+  const next = clonePlan(plan.value);
+  if (editingIndex.value < 0) next.majorProcesses.push(structuredClone(toRaw(editing)));
+  else next.majorProcesses.splice(editingIndex.value, 1, structuredClone(toRaw(editing)));
+  if (await commitCandidate(next)) editorOpen.value = false;
 }
 
-function removeMajor() {
+async function removeMajor() {
   if (props.readonly || editingIndex.value < 0) return;
-  const next = structuredClone(plan.value);
+  const next = clonePlan(plan.value);
   next.majorProcesses.splice(editingIndex.value, 1);
-  if (commitCandidate(next, true)) editorOpen.value = false;
+  if (await commitCandidate(next, true)) editorOpen.value = false;
 }
 
-function copyMajor(key: string) {
+async function copyMajor(key: string) {
   if (props.readonly) return;
-  const copied = copyMajorProcess(plan.value, key);
-  if (copied.removedConsumers.length) message.warning(flowWarning(copied.removedConsumers));
+  const copied = copyMajorProcess(clonePlan(plan.value), key);
+  if (copied.removedConsumers.length && !await confirmFlowRepair(copied.removedConsumers)) return;
   emit("update:modelValue", normalizeProcessPlan(copied.plan));
 }
 
-function moveMajor(index: number, offset: number) {
+async function moveMajor(index: number, offset: number) {
   const target = index + offset;
   if (props.readonly || target < 0 || target >= plan.value.majorProcesses.length) return;
-  const next = structuredClone(plan.value);
+  const next = clonePlan(plan.value);
   const [major] = next.majorProcesses.splice(index, 1);
   if (major) next.majorProcesses.splice(target, 0, major);
-  commitCandidate(next, true);
+  await commitCandidate(next, true);
 }
 
 function dragTemplate(event: DragEvent, name: string) {
@@ -207,26 +221,26 @@ function payload(event: DragEvent) {
   catch { return dragPayload.value; }
 }
 
-function dropAt(event: DragEvent, index: number) {
+async function dropAt(event: DragEvent, index: number) {
   if (props.readonly) return;
   const data = payload(event);
   if (data?.kind === "template") {
-    const next = structuredClone(plan.value);
+    const next = clonePlan(plan.value);
     next.majorProcesses.splice(index, 0, blankMajor(data.name));
-    commitCandidate(next);
+    await commitCandidate(next);
   } else if (data?.kind === "existing" && data.index !== index) {
-    const next = structuredClone(plan.value);
+    const next = clonePlan(plan.value);
     const [major] = next.majorProcesses.splice(data.index, 1);
     if (major) next.majorProcesses.splice(index, 0, major);
-    commitCandidate(next, true);
+    await commitCandidate(next, true);
   }
 }
 
-function dropAtEnd(event: DragEvent) {
+async function dropAtEnd(event: DragEvent) {
   if (props.readonly) return;
   const data = payload(event);
-  if (data?.kind === "template") addMajor(data.name);
-  else if (data?.kind === "existing") moveMajor(data.index, plan.value.majorProcesses.length - 1 - data.index);
+  if (data?.kind === "template") await addMajor(data.name);
+  else if (data?.kind === "existing") await moveMajor(data.index, plan.value.majorProcesses.length - 1 - data.index);
 }
 
 function yieldOf(major: MajorProcessDraft) { return calculateMajorProcessYield(major); }

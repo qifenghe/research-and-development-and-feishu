@@ -50,17 +50,19 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { nextProcessKey, type ControlMeasurementDraft, type ControlPointDraft } from "@rnd/shared";
+import { cloneVueValue } from "./cloneVueValue";
 
 const props = defineProps<{ modelValue: ControlPointDraft[]; readonly?: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [value: ControlPointDraft[]] }>();
-const points = ref<ControlPointDraft[]>(structuredClone(props.modelValue || []));
-watch(() => props.modelValue, value => { points.value = structuredClone(value || []); });
+const clonePoints = (value: ControlPointDraft[]) => cloneVueValue(value);
+const points = ref<ControlPointDraft[]>(clonePoints(props.modelValue || []));
+watch(() => props.modelValue, value => { points.value = clonePoints(value || []); });
 
 const controlTypes = [{ label: "食品安全关键点", value: "FOOD_SAFETY" }, { label: "研发品质关键点", value: "QUALITY" }, { label: "普通工艺参数", value: "PROCESS" }];
 const importanceOptions = [{ label: "极重要", value: "CRITICAL" }, { label: "重要", value: "IMPORTANT" }, { label: "一般", value: "NORMAL" }];
 const results = [{ label: "待判定", value: "PENDING" }, { label: "合格", value: "PASS" }, { label: "不合格", value: "FAIL" }];
 
-function publish() { emit("update:modelValue", structuredClone(points.value)); }
+function publish() { emit("update:modelValue", clonePoints(points.value)); }
 function addPoint() { points.value.push({ key: nextProcessKey("control"), sequence: points.value.length + 1, controlType: "PROCESS", importance: "NORMAL", itemName: "", resolved: false, measurements: [] }); publish(); }
 function removePoint(index: number) { points.value.splice(index, 1); publish(); }
 function addMeasurement(pointIndex: number) { const point = points.value[pointIndex]; if (!point) return; point.measurements.push({ key: nextProcessKey("measurement"), sequence: point.measurements.length + 1, result: "PENDING", retestResult: "PENDING" } as ControlMeasurementDraft); publish(); }

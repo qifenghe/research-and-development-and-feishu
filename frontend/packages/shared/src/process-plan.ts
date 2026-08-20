@@ -82,6 +82,7 @@ export interface MinorProcessStepDraft {
   parameter2Unit?: string;
   equipment?: string;
   instruction?: string;
+  remark?: string;
   materials: ProcessStepMaterialDraft[];
   outputs?: StepOutputDraft[];
   controlPoints?: ControlPointDraft[];

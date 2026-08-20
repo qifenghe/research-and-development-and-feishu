@@ -20,7 +20,8 @@ export interface RemovedFlowConsumer {
   materialKey: string;
   materialName: string;
   sourceOutputId?: string;
-  reason: "MISSING" | "DUPLICATE" | "PRECEDENCE" | "FLOW_DISABLED" | "PRIMARY_INCOMPATIBLE";
+  reason: "MISSING" | "DUPLICATE" | "PRECEDENCE" | "FLOW_DISABLED" | "PRIMARY_INCOMPATIBLE" | "EXTERNAL_SOURCE";
+  action: "REMOVED" | "CLEARED_SOURCE";
 }
 
 export function previousFlowOutputs(
@@ -72,6 +73,11 @@ export function repairProcessPlanFlow(plan: ProcessPlanDraft): {
   const removedConsumers: RemovedFlowConsumer[] = [];
   for (const ref of steps) {
     ref.step.materials = ref.step.materials.filter(material => {
+      if (material.sourceType === "EXTERNAL" && material.sourceStepOutputId) {
+        removedConsumers.push(consumer(ref, material, "EXTERNAL_SOURCE", "CLEARED_SOURCE"));
+        delete material.sourceStepOutputId;
+        return true;
+      }
       if (material.sourceType !== "STEP_OUTPUT") return true;
       const id = material.sourceStepOutputId;
       const producer = id ? outputs.get(id) : undefined;
@@ -82,7 +88,7 @@ export function repairProcessPlanFlow(plan: ProcessPlanDraft): {
       else if (!producer.output.continueFlow) reason = "FLOW_DISABLED";
       else if (material.materialRole === "PRIMARY" && !producer.output.primaryOutput) reason = "PRIMARY_INCOMPATIBLE";
       if (!reason) return true;
-      removedConsumers.push(consumer(ref, material, reason));
+      removedConsumers.push(consumer(ref, material, reason, "REMOVED"));
       return false;
     });
   }
@@ -167,6 +173,7 @@ function consumer(
   ref: StepRef,
   material: ProcessStepMaterialDraft,
   reason: RemovedFlowConsumer["reason"],
+  action: RemovedFlowConsumer["action"],
 ): RemovedFlowConsumer {
   return {
     majorKey: ref.major.key,
@@ -177,6 +184,7 @@ function consumer(
     materialName: material.materialName,
     sourceOutputId: material.sourceStepOutputId,
     reason,
+    action,
   };
 }
 

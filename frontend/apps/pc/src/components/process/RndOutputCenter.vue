@@ -14,7 +14,7 @@
           <small v-if="artifactFor(type.value)?.status === 'FAILED'" class="failure">{{ artifactFor(type.value)?.failureReason || "生成失败，请重试" }}</small>
         </div>
         <a-space>
-          <a-button v-if="!readonly" size="small" :loading="generating === type.value" @click="generate(type.value)">{{ artifactFor(type.value) ? "重新生成" : "生成" }}</a-button>
+          <a-button v-if="!readonly" size="small" :loading="generating === type.value" :disabled="Boolean(generating)" @click="generate(type.value)">{{ artifactFor(type.value) ? "重新生成" : "生成" }}</a-button>
           <a-button v-if="artifactFor(type.value)?.status === 'READY'" size="small" type="link" @click="download(artifactFor(type.value)!.id, type.value)">下载</a-button>
         </a-space>
       </div>
@@ -35,19 +35,22 @@ const emit = defineEmits<{ "update:selectedRevisionId": [value: string | undefin
 const artifacts = ref<ProcessArtifact[]>([]);
 const generating = ref<ProcessArtifactType>();
 const loadError = ref("");
-const requestGeneration = new RequestGeneration();
+const listGeneration = new RequestGeneration();
+const mutationGeneration = new RequestGeneration();
 const artifactTypes = [{ label: "标准配方 Formula", value: "FORMULA_XLSX" as const }, { label: "生产 SOP", value: "SOP_DOCX" as const }];
 const revisionOptions = computed(() => props.revisions.map(item => ({ label: `正式版本 R${item.revisionNo}`, value: item.id })));
 
 watch(() => props.formId, () => {
-  requestGeneration.invalidate();
+  listGeneration.invalidate();
+  mutationGeneration.invalidate();
   artifacts.value = [];
   loadError.value = "";
   generating.value = undefined;
   emit("update:selectedRevisionId", undefined);
 });
 watch(() => props.selectedRevisionId, () => {
-  requestGeneration.invalidate();
+  listGeneration.invalidate();
+  mutationGeneration.invalidate();
   artifacts.value = [];
   loadError.value = "";
   generating.value = undefined;
@@ -62,13 +65,14 @@ async function loadArtifacts() {
   const formId = props.formId;
   const revisionId = props.selectedRevisionId;
   if (!formId || !revisionId) return;
-  const generation = requestGeneration.next();
+  const generation = listGeneration.next();
+  loadError.value = "";
   try {
     const value = await api.task.getProcessArtifacts(formId, revisionId);
-    if (!requestGeneration.isCurrent(generation) || formId !== props.formId || revisionId !== props.selectedRevisionId) return;
+    if (!listGeneration.isCurrent(generation) || formId !== props.formId || revisionId !== props.selectedRevisionId) return;
     artifacts.value = value;
   } catch (error) {
-    if (!requestGeneration.isCurrent(generation)) return;
+    if (!listGeneration.isCurrent(generation) || formId !== props.formId || revisionId !== props.selectedRevisionId) return;
     artifacts.value = [];
     loadError.value = error instanceof Error ? error.message : "无法加载成果文件";
   }
@@ -85,19 +89,25 @@ function statusLabel(status?: string) {
 async function generate(type: ProcessArtifactType) {
   const formId = props.formId;
   const revisionId = props.selectedRevisionId;
-  if (!formId || !revisionId) return;
-  const generation = requestGeneration.next();
+  if (!formId || !revisionId || generating.value) return;
+  const generation = mutationGeneration.next();
   generating.value = type;
   try {
     const result = await api.task.generateProcessArtifact(formId, revisionId, type);
-    if (!requestGeneration.isCurrent(generation) || formId !== props.formId || revisionId !== props.selectedRevisionId) return;
-    artifacts.value = [...artifacts.value.filter(item => item.artifactType !== type), result];
+    if (!mutationGeneration.isCurrent(generation) || formId !== props.formId || revisionId !== props.selectedRevisionId) return;
     if (result.status === "READY") message.success("文件已生成");
     else message.error(result.failureReason || "文件生成失败");
   } catch (error) {
-    if (requestGeneration.isCurrent(generation)) message.error(error instanceof Error ? error.message : "生成失败");
+    if (mutationGeneration.isCurrent(generation) && formId === props.formId && revisionId === props.selectedRevisionId) {
+      message.error(error instanceof Error ? error.message : "生成失败");
+    }
   } finally {
-    if (requestGeneration.isCurrent(generation)) generating.value = undefined;
+    if (mutationGeneration.isCurrent(generation) && formId === props.formId && revisionId === props.selectedRevisionId) {
+      await loadArtifacts();
+      if (mutationGeneration.isCurrent(generation) && formId === props.formId && revisionId === props.selectedRevisionId) {
+        generating.value = undefined;
+      }
+    }
   }
 }
 
