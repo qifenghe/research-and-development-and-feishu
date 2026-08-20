@@ -22,16 +22,21 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -46,14 +51,14 @@ class ProcessArtifactServiceTest {
     @Autowired ProcessPlanService planService;
     @Autowired ProcessRevisionService revisionService;
     @Autowired ProcessArtifactService service;
-    @Autowired ProcessArtifactCleanupLedgerService cleanupLedger;
+    @SpyBean ProcessArtifactCleanupLedgerService cleanupLedger;
     @Autowired PlatformTransactionManager transactionManager;
     @Autowired JdbcTemplate jdbc;
     @SpyBean LocalArchiveStorageService storage;
 
     @BeforeEach
     void seedForm() {
-        clearInvocations(storage);
+        clearInvocations(storage, cleanupLedger);
         jdbc.update("delete from process_artifact_cleanup_ledger");
         jdbc.update("insert into user_account(id,username,password_hash,name,role,status,created_at,updated_at) select ?,?,?,?,?,?,?,? where not exists (select 1 from user_account where id = ?)",
                 ENGINEER.userId(), "artifact", "x", ENGINEER.name(), "RND_ENGINEER", "ACTIVE", LocalDateTime.now(), LocalDateTime.now(), ENGINEER.userId());
@@ -173,36 +178,174 @@ class ProcessArtifactServiceTest {
     }
 
     @Test
-    void durableLedgerRetriesDeleteFailureReconcilesCrashOrphanAndPreservesReadyOrFreshKeys() throws Exception {
+    void startupCannotDeleteARegisteredReservationBeforeStorageAndRollbackStillConverges() throws Exception {
+        var revision = formalRevision();
+        var registered = new CountDownLatch(1);
+        var resume = new CountDownLatch(1);
+        var reservation = new AtomicReference<ProcessArtifactCleanupLedgerService.Reservation>();
+        doAnswer(invocation -> {
+            var result = (ProcessArtifactCleanupLedgerService.Reservation) invocation.getArgument(0);
+            reservation.set(result);
+            registered.countDown();
+            if (!resume.await(20, TimeUnit.SECONDS)) throw new IllegalStateException("pre-storage lease pause timed out");
+            invocation.callRealMethod();
+            return null;
+        }).when(cleanupLedger).renew(any(ProcessArtifactCleanupLedgerService.Reservation.class));
+
+        var generated = CompletableFuture.supplyAsync(() -> new TransactionTemplate(transactionManager).execute(status -> {
+            var artifact = service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
+            status.setRollbackOnly();
+            return artifact;
+        }));
+        assertThat(registered.await(20, TimeUnit.SECONDS)).isTrue();
+        try {
+            cleanupLedger.reconcileOnStartup();
+            assertThat(ledgerState(reservation.get().storageKey())).isEqualTo("RESERVED");
+            assertThat(Files.exists(archivePath(reservation.get().storageKey()))).isFalse();
+            verify(storage, never()).delete(eq(reservation.get().storageKey()));
+        } finally {
+            resume.countDown();
+        }
+
+        var artifact = generated.get(20, TimeUnit.SECONDS);
+        assertThat(Files.exists(archivePath(artifact.storageKey()))).isFalse();
+        assertThat(ledgerCount(artifact.storageKey())).isZero();
+    }
+
+    @Test
+    void startupCannotDeleteStoredReservationBeforeCommitAndRollbackStillConverges() throws Exception {
+        var revision = formalRevision();
+        var stored = new CountDownLatch(1);
+        var resume = new CountDownLatch(1);
+        var storageKey = new AtomicReference<String>();
+        doAnswer(invocation -> {
+            var result = invocation.callRealMethod();
+            storageKey.set(invocation.getArgument(0));
+            stored.countDown();
+            if (!resume.await(20, TimeUnit.SECONDS)) throw new IllegalStateException("store pause timed out");
+            return result;
+        }).when(storage).store(anyString(), any());
+
+        var generated = CompletableFuture.supplyAsync(() -> new TransactionTemplate(transactionManager).execute(status -> {
+            var artifact = service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
+            status.setRollbackOnly();
+            return artifact;
+        }));
+        assertThat(stored.await(20, TimeUnit.SECONDS)).isTrue();
+        try {
+            cleanupLedger.reconcileOnStartup();
+            assertThat(ledgerState(storageKey.get())).isEqualTo("RESERVED");
+            assertThat(Files.exists(archivePath(storageKey.get()))).isTrue();
+            verify(storage, never()).delete(eq(storageKey.get()));
+        } finally {
+            resume.countDown();
+        }
+
+        var artifact = generated.get(20, TimeUnit.SECONDS);
+        assertThat(Files.exists(archivePath(artifact.storageKey()))).isFalse();
+        assertThat(ledgerCount(artifact.storageKey())).isZero();
+    }
+
+    @Test
+    void startupCannotDeleteStoredReservationAndAFollowingCommitPreservesReadyBytes() throws Exception {
+        var revision = formalRevision();
+        var stored = new CountDownLatch(1);
+        var resume = new CountDownLatch(1);
+        var storageKey = new AtomicReference<String>();
+        doAnswer(invocation -> {
+            var result = invocation.callRealMethod();
+            storageKey.set(invocation.getArgument(0));
+            stored.countDown();
+            if (!resume.await(20, TimeUnit.SECONDS)) throw new IllegalStateException("store pause timed out");
+            return result;
+        }).when(storage).store(anyString(), any());
+
+        var generated = CompletableFuture.supplyAsync(() -> service.generate(
+                FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER));
+        assertThat(stored.await(20, TimeUnit.SECONDS)).isTrue();
+        try {
+            cleanupLedger.reconcileOnStartup();
+            assertThat(ledgerState(storageKey.get())).isEqualTo("RESERVED");
+            assertThat(Files.exists(archivePath(storageKey.get()))).isTrue();
+            verify(storage, never()).delete(eq(storageKey.get()));
+        } finally {
+            resume.countDown();
+        }
+
+        var artifact = generated.get(20, TimeUnit.SECONDS);
+        assertThat(artifact.status()).isEqualTo(ProcessArtifact.READY);
+        assertThat(Files.exists(archivePath(artifact.storageKey()))).isTrue();
+        assertThat(ledgerCount(artifact.storageKey())).isZero();
+    }
+
+    @Test
+    void failedCommitConfirmationLeavesARecoverableReservationAndNeverDeletesReadyBytes() {
+        var revision = formalRevision();
+        doThrow(new IllegalStateException("injected confirm failure"))
+                .doCallRealMethod().when(cleanupLedger)
+                .confirm(any(ProcessArtifactCleanupLedgerService.Reservation.class));
+
+        var artifact = service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
+
+        assertThat(artifact.status()).isEqualTo(ProcessArtifact.READY);
+        assertThat(ledgerState(artifact.storageKey())).isEqualTo("RESERVED");
+        assertThat(Files.exists(archivePath(artifact.storageKey()))).isTrue();
+        expire(artifact.storageKey());
+        cleanupLedger.reconcileStale();
+        assertThat(ledgerCount(artifact.storageKey())).isZero();
+        assertThat(Files.exists(archivePath(artifact.storageKey()))).isTrue();
+    }
+
+    @Test
+    void durableLedgerCleansOnlyExpiredOrOrphanedReservationsAndRetriesDeleteFailure() throws Exception {
         var crashKey = "process-artifacts/crash-" + UUID.randomUUID() + ".xlsx";
-        cleanupLedger.register(crashKey);
+        var crashReservation = cleanupLedger.register(crashKey);
+        assertThat(crashReservation.ownerToken()).isNotBlank();
+        assertThat(crashReservation.leaseUntil()).isAfter(LocalDateTime.now());
         storage.store(crashKey, new byte[]{1});
-        jdbc.update("update process_artifact_cleanup_ledger set created_at = dateadd('MINUTE', -10, current_timestamp) where storage_key = ?", crashKey);
-        doThrow(new com.lhr.rnd.api.BusinessException("ARCHIVE_FILE_DELETE_FAILED", "injected"))
-                .doCallRealMethod().when(storage).delete(eq(crashKey));
+        expire(crashKey);
 
         cleanupLedger.reconcileOnStartup();
-        assertThat(Files.exists(Path.of("target", "rnd-archive").resolve(crashKey))).isTrue();
-        assertThat(jdbc.queryForObject("select error from process_artifact_cleanup_ledger where storage_key = ?", String.class, crashKey)).contains("injected");
-        cleanupLedger.reconcileStale();
-        assertThat(Files.exists(Path.of("target", "rnd-archive").resolve(crashKey))).isFalse();
-        assertThat(jdbc.queryForObject("select count(*) from process_artifact_cleanup_ledger where storage_key = ?", Integer.class, crashKey)).isZero();
+        assertThat(Files.exists(archivePath(crashKey))).isFalse();
+        assertThat(ledgerCount(crashKey)).isZero();
 
         var freshKey = "process-artifacts/fresh-" + UUID.randomUUID() + ".xlsx";
-        cleanupLedger.register(freshKey);
+        var freshReservation = cleanupLedger.register(freshKey);
+        assertThat(freshReservation.ownerToken()).isNotEqualTo(crashReservation.ownerToken());
         storage.store(freshKey, new byte[]{2});
+        var staleOwner = new ProcessArtifactCleanupLedgerService.Reservation(
+                freshKey, "stale-owner-token", freshReservation.leaseUntil());
+        cleanupLedger.confirm(staleOwner);
+        cleanupLedger.orphanAndDelete(staleOwner);
+        cleanupLedger.reconcileOnStartup();
+        assertThat(ledgerState(freshKey)).isEqualTo("RESERVED");
+        assertThat(Files.exists(archivePath(freshKey))).isTrue();
         cleanupLedger.reconcileStale();
-        assertThat(Files.exists(Path.of("target", "rnd-archive").resolve(freshKey))).isTrue();
-        storage.delete(freshKey);
-        cleanupLedger.confirm(freshKey);
+        assertThat(Files.exists(archivePath(freshKey))).isTrue();
+        cleanupLedger.orphanAndDelete(freshReservation);
+        assertThat(Files.exists(archivePath(freshKey))).isFalse();
+        assertThat(ledgerCount(freshKey)).isZero();
 
         var revision = formalRevision();
         var ready = service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
         cleanupLedger.register(ready.storageKey());
-        jdbc.update("update process_artifact_cleanup_ledger set error = 'retry-ready-reference' where storage_key = ?", ready.storageKey());
+        expire(ready.storageKey());
+        cleanupLedger.reconcileOnStartup();
+        assertThat(Files.exists(archivePath(ready.storageKey()))).isTrue();
+        assertThat(ledgerCount(ready.storageKey())).isZero();
+
+        var retryKey = "process-artifacts/retry-" + UUID.randomUUID() + ".xlsx";
+        var retryReservation = cleanupLedger.register(retryKey);
+        storage.store(retryKey, new byte[]{3});
+        doThrow(new com.lhr.rnd.api.BusinessException("ARCHIVE_FILE_DELETE_FAILED", "injected"))
+                .doCallRealMethod().when(storage).delete(eq(retryKey));
+        cleanupLedger.orphanAndDelete(retryReservation);
+        assertThat(ledgerState(retryKey)).isEqualTo("ORPHANED");
+        assertThat(jdbc.queryForObject("select error from process_artifact_cleanup_ledger where storage_key = ?", String.class, retryKey)).contains("injected");
+        assertThat(Files.exists(archivePath(retryKey))).isTrue();
         cleanupLedger.reconcileStale();
-        assertThat(Files.exists(Path.of("target", "rnd-archive").resolve(ready.storageKey()))).isTrue();
-        assertThat(jdbc.queryForObject("select count(*) from process_artifact_cleanup_ledger where storage_key = ?", Integer.class, ready.storageKey())).isZero();
+        assertThat(Files.exists(archivePath(retryKey))).isFalse();
+        assertThat(ledgerCount(retryKey)).isZero();
     }
 
     @Test
@@ -229,7 +372,8 @@ class ProcessArtifactServiceTest {
 
     @Test
     void generatesSopWithProductionControlsAndASeparateMeasurementTraceAppendix() throws Exception {
-        var revision = formalRevision();
+        var fixture = derivedFormalRevisionForSop();
+        var revision = fixture.revision();
 
         var artifact = service.generate(FORM_ID, revision.id(), ProcessArtifact.SOP_DOCX, ENGINEER);
         var download = service.download(FORM_ID, revision.id(), artifact.id(), ENGINEER);
@@ -237,18 +381,58 @@ class ProcessArtifactServiceTest {
         assertThat(download.contentType()).isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
         try (var document = new XWPFDocument(new ByteArrayInputStream(download.content()))) {
             var text = document.getParagraphs().stream().map(paragraph -> paragraph.getText()).collect(java.util.stream.Collectors.joining("\n"));
-            var tableText = document.getTables().stream().flatMap(table -> table.getRows().stream())
-                    .flatMap(row -> row.getTableCells().stream()).map(cell -> cell.getText()).collect(java.util.stream.Collectors.joining("\n"));
-            assertThat(text + tableText).contains("来源工艺版本：V1", "文件版本：V1", "适用批量", "100kg 标准配方",
-                    "大工序 1：熟制", "熟制描述哨兵", "熟制备注哨兵", "1 / 腌制", "外部投料", "鲜牛腩", "外部料备注哨兵",
-                    "中间流转", "来源：1.1 腌制 / 腌制牛腩", "流转熟制", "成品产出备注哨兵", "大工序得率", "步骤得率", "成品得率",
-                    "中心温度", "75", "72", "85", "探针测温", "数字探针", "每锅", "继续加热", "研发依据", "测量记录追溯附录");
+            assertThat(text).contains(
+                    "来源工艺版本：V2", "文件版本：V1", "来源版本标识：" + fixture.sourceRevisionId(),
+                    "版本变更：SOP-REV2-变更原因唯一值", "变更原因：SOP-REV2-变更原因唯一值",
+                    "生成信息：" + ENGINEER.name() + " / " + DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").format(LocalDateTime.parse(artifact.generatedAt())),
+                    "适用批量：打样外部投入 12.5000kg", "100kg 标准配方", "大工序 1：热加工大工序-SOP",
+                    "大工序描述-SOP-唯一", "大工序备注-SOP-唯一", "大工序得率：64.0000%", "成品得率：64.0000%",
+                    "测量记录追溯附录（不作为生产指令标准）");
+            var stepTable = document.getTables().stream()
+                    .filter(table -> "步骤".equals(table.getRow(0).getCell(0).getText()))
+                    .findFirst().orElseThrow();
+            assertThat(stepTable.getRow(1).getCell(0).getText()).isEqualTo("1 / 腌制步骤-SOP");
+            assertThat(stepTable.getRow(1).getCell(1).getText()).contains(
+                    "外部鲜牛腩-SOP", "BEEF-SOP-001", "PRIMARY", "FROZEN-SOLID-SOP", "12.5000kg", "外部投料备注-SOP");
+            assertThat(stepTable.getRow(1).getCell(2).getText()).contains(
+                    fixture.outputId(), "腌制中间产物-SOP", "MARINATED-STATE-SOP", "10.0000kg", "中间产出备注-SOP");
+            assertThat(stepTable.getRow(1).getCell(3).getText()).contains(
+                    "时长参数-SOP=31.7min-SOP", "真空参数-SOP=-0.08MPa-SOP", "滚揉设备-SOP-唯一");
+            assertThat(stepTable.getRow(1).getCell(4).getText()).isEqualTo("均匀腌制操作要求-SOP-唯一");
+            assertThat(stepTable.getRow(1).getCell(5).getText()).contains(
+                    "腌制中间产物-SOP", "MARINATED-STATE-SOP", "10.0000kg", "中间产出备注-SOP");
+            assertThat(stepTable.getRow(1).getCell(6).getText()).isEqualTo("80.0000%");
+            assertThat(stepTable.getRow(2).getCell(0).getText()).isEqualTo("2 / 熟制步骤-SOP");
+            assertThat(stepTable.getRow(2).getCell(2).getText()).contains(
+                    fixture.outputId(), "1.1 腌制步骤-SOP", "1.2 熟制步骤-SOP", "10.0000kg", "中间投入备注-SOP");
+            assertThat(stepTable.getRow(2).getCell(3).getText()).contains("中心温度参数-SOP=88.8℃-SOP", "夹层锅设备-SOP-唯一");
+            assertThat(stepTable.getRow(2).getCell(4).getText()).isEqualTo("加热至中心温度达标-SOP-唯一");
+            assertThat(stepTable.getRow(2).getCell(5).getText()).contains(
+                    "最终熟制成品-SOP", "FINISHED-STATE-SOP", "8.0000kg", "最终成品备注-SOP");
+            assertThat(stepTable.getRow(2).getCell(6).getText()).isEqualTo("80.0000%");
             var productionStandards = document.getTables().stream()
                     .filter(table -> table.getRow(0).getTableCells().stream().map(cell -> cell.getText()).collect(java.util.stream.Collectors.joining()).contains("控制项目"))
-                    .findFirst().orElseThrow().getText();
-            assertThat(productionStandards).doesNotContain("制品研发", "2026-08-19T22:05:00", "2026-08-19T22:00:00", "PASS", "复测合格哨兵", "实测正常哨兵");
+                    .findFirst().orElseThrow();
+            var standardRow = productionStandards.getRow(1);
+            assertThat(standardRow.getCell(0).getText()).contains("1.2", "熟制步骤-SOP");
+            assertThat(standardRow.getCell(1).getText()).isEqualTo("FOOD_SAFETY / CRITICAL");
+            assertThat(standardRow.getCell(2).getText()).isEqualTo("中心温度控制项目-SOP");
+            assertThat(standardRow.getCell(3).getText()).isEqualTo("77.7000");
+            assertThat(standardRow.getCell(4).getText()).isEqualTo("70.1000");
+            assertThat(standardRow.getCell(5).getText()).isEqualTo("88.8000");
+            assertThat(standardRow.getCell(6).getText()).isEqualTo("℃-CONTROL-SOP");
+            assertThat(standardRow.getCell(7).getText()).isEqualTo("探针检测方法-SOP");
+            assertThat(standardRow.getCell(8).getText()).isEqualTo("数字探针工具-SOP");
+            assertThat(standardRow.getCell(9).getText()).isEqualTo("每锅检测频次-SOP");
+            assertThat(standardRow.getCell(10).getText()).isEqualTo("继续加热偏差处理-SOP");
+            assertThat(standardRow.getCell(11).getText()).isEqualTo("研发依据-SOP-唯一");
+            assertThat(productionStandards.getText()).doesNotContain(
+                    "追溯确认人-SOP", "2026-08-19T22:05:11", "79.9000", "2026-08-19T22:00:22", "PASS",
+                    "测量偏差处理-SOP", "复测结果-SOP", "实测备注-SOP");
             var appendix = document.getTables().stream().filter(table -> table.getRow(0).getTableCells().stream().map(cell -> cell.getText()).collect(java.util.stream.Collectors.joining()).contains("实测值")).findFirst().orElseThrow().getText();
-            assertThat(appendix).contains("制品研发", "2026-08-19T22:05", "76", "2026-08-19T22:00", "PASS", "复测合格哨兵", "实测正常哨兵");
+            assertThat(appendix).contains(
+                    "追溯确认人-SOP", "2026-08-19T22:05:11", "79.9000", "2026-08-19T22:00:22", "PASS",
+                    "测量偏差处理-SOP", "复测结果-SOP", "实测备注-SOP");
         }
     }
 
@@ -322,6 +506,49 @@ class ProcessArtifactServiceTest {
         return revisionService.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(saved.versionNo(), true, "首次正式提交", ENGINEER.name()), ENGINEER);
     }
 
+    private SopRevisionFixture derivedFormalRevisionForSop() {
+        var outputId = "OUT-SOP-SOURCE-" + UUID.randomUUID();
+        var measurement = new ProcessPlan.ControlMeasurement(
+                "CM-SOP-UNIQUE", 1, new BigDecimal("79.9000"), "2026-08-19T22:00:22", "PASS",
+                "测量偏差处理-SOP", "复测结果-SOP", "实测备注-SOP");
+        var control = new ProcessPlan.ControlPoint(
+                "CP-SOP-UNIQUE", 1, "FOOD_SAFETY", "CRITICAL", "中心温度控制项目-SOP",
+                new BigDecimal("77.7000"), new BigDecimal("70.1000"), new BigDecimal("88.8000"), "℃-CONTROL-SOP",
+                "探针检测方法-SOP", "数字探针工具-SOP", "每锅检测频次-SOP", "继续加热偏差处理-SOP",
+                true, "追溯确认人-SOP", "2026-08-19T22:05:11", "研发依据-SOP-唯一", List.of(measurement));
+        var first = new ProcessPlan.MinorStep(
+                null, 1, "MARINATE-SOP", "腌制步骤-SOP", "NORMAL", "时长参数-SOP", "31.7", "min-SOP",
+                "真空参数-SOP", "-0.08", "MPa-SOP", "滚揉设备-SOP-唯一", "均匀腌制操作要求-SOP-唯一",
+                List.of(new ProcessPlan.StepMaterial(
+                        null, 1, "PRIMARY", "BEEF-SOP-001", "外部鲜牛腩-SOP", "FROZEN-SOLID-SOP",
+                        new BigDecimal("12.5000"), "MAT-BEEF-SOP-001", "外部投料备注-SOP", "EXTERNAL", null)),
+                List.of(new ProcessPlan.StepOutput(
+                        outputId, 1, "INTERMEDIATE", "腌制中间产物-SOP", "MARINATED-STATE-SOP",
+                        new BigDecimal("10.0000"), true, true, "中间产出备注-SOP")), List.of());
+        var second = new ProcessPlan.MinorStep(
+                null, 2, "COOK-SOP", "熟制步骤-SOP", "NORMAL", "中心温度参数-SOP", "88.8", "℃-SOP",
+                null, null, null, "夹层锅设备-SOP-唯一", "加热至中心温度达标-SOP-唯一",
+                List.of(new ProcessPlan.StepMaterial(
+                        null, 1, "PRIMARY", null, "腌制中间产物-SOP", "MARINATED-STATE-SOP",
+                        new BigDecimal("10.0000"), null, "中间投入备注-SOP", "STEP_OUTPUT", outputId)),
+                List.of(new ProcessPlan.StepOutput(
+                        "OUT-SOP-FINAL-UNIQUE", 1, "FINISHED", "最终熟制成品-SOP", "FINISHED-STATE-SOP",
+                        new BigDecimal("8.0000"), true, false, "最终成品备注-SOP")), List.of(control));
+        var major = new ProcessPlan.MajorProcess(
+                null, 1, "HEAT-SOP", "热加工大工序-SOP", "大工序描述-SOP-唯一", "PRIMARY_INPUT", "大工序备注-SOP-唯一",
+                List.of(first, second), List.of(), List.of(), null);
+        var current = planService.find(FORM_ID);
+        var saved = planService.save(FORM_ID, new ProcessPlan(
+                null, FORM_ID, current.versionNo(), "DRAFT", List.of(major), null, new BigDecimal("0.0100"), false));
+        var source = revisionService.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(
+                saved.versionNo(), true, "SOP-REV1-首次原因唯一值", ENGINEER.name()), ENGINEER);
+        var draft = revisionService.createDraftFromRevision(
+                FORM_ID, source.id(), "SOP-REV2-变更原因唯一值", ENGINEER);
+        var revision = revisionService.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(
+                draft.versionNo(), true, null, ENGINEER.name()), ENGINEER);
+        return new SopRevisionFixture(source.id(), revision, outputId);
+    }
+
     private void assertForbidden(org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
         assertThatThrownBy(action).isInstanceOf(com.lhr.rnd.api.BusinessException.class)
                 .extracting(error -> ((com.lhr.rnd.api.BusinessException) error).code())
@@ -345,4 +572,29 @@ class ProcessArtifactServiceTest {
         var saved = planService.save(FORM_ID, new ProcessPlan(null, FORM_ID, current.versionNo(), "DRAFT", List.of(major), null, new BigDecimal("0.0100"), false));
         return revisionService.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(saved.versionNo(), true, null, ENGINEER.name()), ENGINEER);
     }
+
+    private String ledgerState(String storageKey) {
+        return jdbc.queryForObject(
+                "select state from process_artifact_cleanup_ledger where storage_key = ?", String.class, storageKey);
+    }
+
+    private int ledgerCount(String storageKey) {
+        return jdbc.queryForObject(
+                "select count(*) from process_artifact_cleanup_ledger where storage_key = ?", Integer.class, storageKey);
+    }
+
+    private void expire(String storageKey) {
+        jdbc.update("update process_artifact_cleanup_ledger set lease_until = ? where storage_key = ?",
+                LocalDateTime.now().minusMinutes(1), storageKey);
+    }
+
+    private Path archivePath(String storageKey) {
+        return Path.of("target", "rnd-archive").resolve(storageKey);
+    }
+
+    private record SopRevisionFixture(
+            String sourceRevisionId,
+            com.lhr.rnd.model.ProcessRevision revision,
+            String outputId
+    ) { }
 }

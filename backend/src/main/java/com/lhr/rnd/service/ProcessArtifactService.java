@@ -91,12 +91,12 @@ public class ProcessArtifactService {
         var storageKey = storageKey(revisionId, artifactType, id);
         var productName = productName(formId);
         var readyMetadata = new boolean[]{false};
-        cleanupLedger.register(storageKey);
+        var reservation = cleanupLedger.register(storageKey);
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override public void afterCompletion(int status) {
-                    if (status == STATUS_COMMITTED && readyMetadata[0]) cleanupLedger.confirm(storageKey);
-                    else cleanupLedger.deleteOrRetainForRetry(storageKey);
+                    if (status == STATUS_COMMITTED && readyMetadata[0]) cleanupLedger.confirm(reservation);
+                    else cleanupLedger.orphanAndDelete(reservation);
                 }
             });
         }
@@ -105,6 +105,7 @@ public class ProcessArtifactService {
             bytes = ProcessArtifact.FORMULA_XLSX.equals(artifactType)
                     ? formulaBytes(productName, revision, documentVersion, generatedAt, principal.name())
                     : sopBytes(productName, revision, documentVersion, generatedAt, principal.name());
+            cleanupLedger.renew(reservation);
             storage.store(storageKey, bytes);
             var artifact = new ProcessArtifact(id, revisionId, artifactType, documentVersion, ProcessArtifact.READY,
                     generatedAt.toString(), principal.name().trim(), storageKey, summary(revision, artifactType), null,
@@ -116,14 +117,14 @@ public class ProcessArtifactService {
                 readyMetadata[0] = true;
                 return artifact;
             } catch (RuntimeException exception) {
-                cleanup(storageKey);
+                cleanup(reservation);
                 throw exception;
             }
         } catch (BusinessException exception) {
-            if (bytes != null) cleanup(storageKey);
+            if (bytes != null) cleanup(reservation);
             return recordFailure(formId, id, revisionId, artifactType, documentVersion, generatedAt, principal, exception.getMessage());
         } catch (Exception exception) {
-            if (bytes != null) cleanup(storageKey);
+            if (bytes != null) cleanup(reservation);
             return recordFailure(formId, id, revisionId, artifactType, documentVersion, generatedAt, principal, "文件生成失败");
         }
     }
@@ -352,8 +353,8 @@ public class ProcessArtifactService {
         return ProcessArtifact.FORMULA_XLSX.equals(type) ? XLSX_CONTENT_TYPE : DOCX_CONTENT_TYPE;
     }
 
-    private void cleanup(String key) {
-        cleanupLedger.deleteOrRetainForRetry(key);
+    private void cleanup(ProcessArtifactCleanupLedgerService.Reservation reservation) {
+        cleanupLedger.orphanAndDelete(reservation);
     }
 
     private void heading(XWPFDocument document, String text) {
@@ -401,22 +402,35 @@ public class ProcessArtifactService {
 
     private String materials(ProcessPlan.MinorStep step, String sourceType) {
         return values(step.materials()).stream().filter(material -> sourceType.equals(material.sourceType()))
-                .map(material -> value(material.materialName()) + " " + kg(material.weightKg()) + "（" + value(material.materialRole()) + "）" + (blank(material.remark()) ? "" : " 备注：" + material.remark()))
+                .map(material -> "名称：" + value(material.materialName())
+                        + "；编码：" + value(material.materialCode())
+                        + "；角色：" + value(material.materialRole())
+                        + "；状态：" + value(material.materialState())
+                        + "；重量：" + kg(material.weightKg())
+                        + (blank(material.remark()) ? "" : "；备注：" + material.remark()))
                 .collect(Collectors.joining("；"));
     }
 
     private String intermediateFlow(ProcessPlan plan, ProcessPlan.MinorStep step) {
-        var values = new ArrayList<String>();
-        var inputs = materials(step, "STEP_OUTPUT");
-        if (!inputs.isBlank()) {
-            var source = values(step.materials()).stream().filter(material -> "STEP_OUTPUT".equals(material.sourceType()))
-                    .map(material -> findOutputProducer(plan, material.sourceStepOutputId())).filter(value -> !blank(value)).collect(Collectors.joining("；"));
-            values.add("接收：" + inputs + (blank(source) ? "" : "；来源：" + source));
+        var flows = new ArrayList<String>();
+        for (var material : values(step.materials()).stream().filter(item -> "STEP_OUTPUT".equals(item.sourceType())).toList()) {
+            var producer = findOutputProducer(plan, material.sourceStepOutputId());
+            var consumer = findStepLabel(plan, step);
+            flows.add("接收产出ID：" + value(material.sourceStepOutputId())
+                    + (blank(producer) ? "" : "；流转：" + producer + " → " + consumer)
+                    + "；名称：" + value(material.materialName())
+                    + "；状态：" + value(material.materialState())
+                    + "；重量：" + kg(material.weightKg())
+                    + (blank(material.remark()) ? "" : "；备注：" + material.remark()));
         }
-        var outputs = values(step.outputs()).stream().filter(output -> "INTERMEDIATE".equals(output.outputType()) || output.continueFlow())
-                .map(output -> "产出：" + value(output.outputName()) + " " + kg(output.weightKg())).collect(Collectors.joining("；"));
-        if (!outputs.isBlank()) values.add(outputs);
-        return String.join("；", values);
+        for (var output : values(step.outputs()).stream().filter(item -> "INTERMEDIATE".equals(item.outputType()) || item.continueFlow()).toList()) {
+            flows.add("产出ID：" + value(output.id())
+                    + "；名称：" + value(output.outputName())
+                    + "；状态：" + value(output.materialState())
+                    + "；重量：" + kg(output.weightKg())
+                    + (blank(output.remark()) ? "" : "；备注：" + output.remark()));
+        }
+        return String.join("；", flows);
     }
 
     private String findOutputProducer(ProcessPlan plan, String outputId) {
@@ -426,6 +440,13 @@ public class ProcessArtifactService {
         return "";
     }
 
+    private String findStepLabel(ProcessPlan plan, ProcessPlan.MinorStep target) {
+        for (var major : values(plan.majorProcesses())) for (var step : values(major.steps()))
+            if (step == target || (step.id() != null && step.id().equals(target.id())))
+                return major.sequence() + "." + step.sequence() + " " + value(step.stepName());
+        return value(target.stepName());
+    }
+
     private String parameters(ProcessPlan.MinorStep step) {
         return join("；", parameter(step.parameter1Name(), step.parameter1Value(), step.parameter1Unit()),
                 parameter(step.parameter2Name(), step.parameter2Value(), step.parameter2Unit()),
@@ -433,7 +454,11 @@ public class ProcessArtifactService {
     }
 
     private String outputs(ProcessPlan.MinorStep step) {
-        return values(step.outputs()).stream().map(output -> value(output.outputName()) + " / " + value(output.outputType()) + " / " + kg(output.weightKg()) + (blank(output.remark()) ? "" : " 备注：" + output.remark()))
+        return values(step.outputs()).stream().map(output -> "名称：" + value(output.outputName())
+                        + "；类型：" + value(output.outputType())
+                        + "；状态：" + value(output.materialState())
+                        + "；重量：" + kg(output.weightKg())
+                        + (blank(output.remark()) ? "" : "；备注：" + output.remark()))
                 .collect(Collectors.joining("；"));
     }
 

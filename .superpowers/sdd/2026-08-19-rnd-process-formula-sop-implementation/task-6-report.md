@@ -79,3 +79,21 @@
 | API contract and route checks | PASS |
 
 The workspace `pnpm` wrapper attempted an online metadata/install check and could not run offline; the checked-in workspace binaries were used directly for the three authoritative typechecks. No `node_modules` paths are included in the commit.
+
+## Fix round 4
+
+- V23 keeps the cleanup ledger at migration 23 and now gives each reservation an explicit `RESERVED`/`ORPHANED` state, unique owner token, and future lease. Startup and runtime reconciliation use the same eligibility rule: an unexpired reservation is never touched; rollback first marks its own reservation `ORPHANED`, then deletes immediately; failed deletes retain the orphan for retry.
+- Reservation renewal and every confirm/orphan transition match the owner token. Expired reservations are claimed by a conditional state transition, and file deletion rechecks the owner under a row lock, so a delayed request cannot mutate or delete a later owner of the same key.
+- Latch-based transaction tests pause generation after durable registration but before storage, and after storage but before commit. Both startup interleavings preserve the live reservation; rollback converges file plus ledger, while commit preserves READY bytes. Additional tests cover expired crash cleanup, expired READY-reference ledger-only cleanup, delete retry, stale owner rejection, and failed post-commit confirmation recovery.
+- The SOP regression now creates revision 1, derives a new draft, submits revision 2, and parses the resulting DOCX by concrete metadata, step, control-standard, and trace-appendix tables. Unique sentinels cover source/change/generation metadata, batch bases, major/step/flow/output fields and yields, every production-control field, and every trace field. Production standards exclude confirmation and measurement data while the appendix retains it.
+
+### Fix round 4 verification
+
+| Check | Result |
+| --- | --- |
+| Combined artifact/controller/revision/workflow/auth/role/validator/schema run | PASS: 147 tests, 0 failures, 0 errors; workflow remains 81 tests |
+| `ProcessArtifactServiceTest` | PASS, 15 tests |
+| `SchemaMigrationTest` | PASS, 9 tests; migration total remains V23 |
+| API contract and route checks | PASS |
+| direct shared `tsc`, PC/mobile `vue-tsc` | PASS |
+| `git diff --check` | PASS |

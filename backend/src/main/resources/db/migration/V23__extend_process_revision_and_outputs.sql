@@ -37,9 +37,13 @@ alter table audit_log add column operator_user_id varchar(64);
 
 create table process_artifact_cleanup_ledger (
     storage_key varchar(500) primary key,
+    state varchar(20) not null default 'RESERVED',
+    lease_until timestamp not null,
+    owner_token varchar(64) not null,
     created_at timestamp not null,
     last_attempt timestamp,
-    error varchar(1000)
+    error varchar(1000),
+    constraint chk_artifact_cleanup_state check (state in ('RESERVED', 'ORPHANED'))
 );
 
 alter table experiment_process_plan add column balance_tolerance_kg numeric(14,4) not null default 0.0100;

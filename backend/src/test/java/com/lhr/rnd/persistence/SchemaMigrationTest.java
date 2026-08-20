@@ -130,6 +130,9 @@ class SchemaMigrationTest {
         assertColumnExists("audit_log", "operator_user_id");
         assertColumnExists("process_artifact_cleanup_ledger", "last_attempt");
         assertColumnExists("process_artifact_cleanup_ledger", "error");
+        assertColumnExists("process_artifact_cleanup_ledger", "state");
+        assertColumnExists("process_artifact_cleanup_ledger", "lease_until");
+        assertColumnExists("process_artifact_cleanup_ledger", "owner_token");
         assertColumnExists("experiment_step_material", "source_type");
         assertColumnExists("experiment_step_material", "source_step_output_id");
         assertColumnExists("experiment_process_plan", "balance_tolerance_kg");
