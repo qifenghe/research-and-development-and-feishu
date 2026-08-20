@@ -236,8 +236,12 @@ const processPlan = ref<ProcessPlanDraft>(createEmptyProcessPlan());
 const processWorkspace = ref<{ flushSave: (silent?: boolean) => Promise<void> }>();
 const showLegacyProcessEditor = computed(() => processPlan.value.legacy && !processPlan.value.majorProcesses.some((item) => item.steps.length));
 const processRecipe = computed(() => aggregateProcessRecipe(processPlan.value));
-const hasProcessPlanData = computed(() => processPlan.value.majorProcesses.length > 0 || processRecipe.value.length > 0);
-const effectiveMaterials = computed<MaterialRow[]>(() => hasProcessPlanData.value ? processRecipe.value.map((item, index) => { const primary = item.sources.some(source => source.materialRole === "PRIMARY"); return { key:index+1, materialCategory:primary ? "RAW" : "AUXILIARY", primaryMaterial:primary, materialCode:item.materialCode || "", materialName:item.materialName, weightKg:item.weightKg, inputUnit:"kg", utilizationRate:100, remark:"工艺方案自动汇总" }; }) : materials.value);
+const hasProcessPlanData = computed(() => !processPlan.value.legacy && processRecipe.value.length > 0);
+const effectiveMaterials = computed<MaterialRow[]>(() => hasProcessPlanData.value ? processRecipe.value.flatMap((item, index) => {
+  const grouped = new Map<string, number>();
+  item.sources.forEach(source => grouped.set(source.materialRole, (grouped.get(source.materialRole) || 0) + source.weightKg));
+  return [...grouped].map(([role, weight], roleIndex) => ({ key:index * 10 + roleIndex + 1, materialCategory:role === "PRIMARY" ? "RAW" : "AUXILIARY", primaryMaterial:role === "PRIMARY", materialCode:item.materialCode || "", materialName:item.materialName, weightKg:weight, inputUnit:"kg", utilizationRate:100, remark:"工艺方案自动汇总" }));
+}) : materials.value);
 const formulaRatioValues = computed(() => formulaRatios(effectiveMaterials.value.map((item) => item.weightKg ?? 0)));
 const totalFormulaWeight = computed(() => effectiveMaterials.value.reduce((sum, item) => sum + (item.weightKg ?? 0), 0));
 const yieldBasisWeight = computed(() => yieldBasisWeightKg(effectiveMaterials.value.map((item) => ({

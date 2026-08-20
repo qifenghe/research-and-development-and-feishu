@@ -24,3 +24,10 @@ No browser mock server was available in this worktree, so no Playwright screensh
 - Formal submit flushes the draft before opening the confirmation/check dialog, uses source-revision provenance for a change reason, and transitions from the immutable revision snapshot rather than treating a formal revision number as a draft CAS value.
 - Draft PUT now uses the trusted session principal and enforces engineer ownership (or director access); controller tests cover owner success and cross-engineer denial.
 - Critical-control display now mirrors the shared numeric-bound/deviation/retest semantics. Artifact failures show their failure reason and downloads receive a type/revision extension.
+
+## Review round 2
+
+- Bound the process-save coordinator to a concrete form ID, reject undefined-form flushes, fence acknowledgements by form/session epoch, and distinguish authoritative server hydration from a restored local dirty draft.
+- New experiment-form IDs rebind then persist the existing local graph; local cache restoration remains dirty. Flush failures now reject so the parent cannot report the composite save as successful.
+- Compatibility materials now remain on true historical/virtual legacy plans and layered compatibility rows split a material's PRIMARY/AUXILIARY sources so yield basis weights remain correct.
+- Formal snapshots propagate read-only state to both major/minor editors.

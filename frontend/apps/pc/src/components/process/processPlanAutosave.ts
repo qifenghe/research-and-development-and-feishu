@@ -8,11 +8,14 @@ export class ProcessPlanSaveCoordinator<T> {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight: Promise<void> | undefined;
   private disposed = false;
+  private formId: string | undefined;
+  private epoch = 0;
   private readonly options: {
     debounceMs: number;
     isDraft: (value: T) => boolean;
     mergeAck: (local: T, acknowledgement: T) => T;
-    save: (value: T) => Promise<T>;
+    formId?: string;
+    save: (formId: string, value: T) => Promise<T>;
     onChange?: (value: T, state: ProcessPlanSaveState) => void;
     onError?: (error: unknown) => void;
   };
@@ -21,19 +24,40 @@ export class ProcessPlanSaveCoordinator<T> {
     debounceMs: number;
     isDraft: (value: T) => boolean;
     mergeAck: (local: T, acknowledgement: T) => T;
-    save: (value: T) => Promise<T>;
+    formId?: string;
+    save: (formId: string, value: T) => Promise<T>;
     onChange?: (value: T, state: ProcessPlanSaveState) => void;
     onError?: (error: unknown) => void;
   }) {
     this.options = options;
+    this.formId = options.formId;
   }
 
   hydrate(value: T) {
+    this.hydrateServer(value);
+  }
+
+  hydrateServer(value: T) {
     this.cancelTimer();
     this.value = structuredClone(value);
     this.persistedGeneration = this.generation;
     this.state = "idle";
     this.publish();
+  }
+
+  restoreLocalDirty(value: T) {
+    this.cancelTimer();
+    this.value = structuredClone(value);
+    this.generation++;
+    this.state = this.options.isDraft(this.value) ? "dirty" : "idle";
+    this.publish();
+  }
+
+  rebind(formId: string | undefined, serverValue: T) {
+    this.epoch++;
+    this.cancelTimer();
+    this.formId = formId;
+    this.hydrateServer(serverValue);
   }
 
   edit(edit: (current: T) => T) {
@@ -48,7 +72,10 @@ export class ProcessPlanSaveCoordinator<T> {
 
   async flush(): Promise<void> {
     this.cancelTimer();
-    if (this.disposed || !this.options.isDraft(this.value) || this.generation === this.persistedGeneration) return;
+    if (this.disposed || !this.formId || !this.options.isDraft(this.value) || this.generation === this.persistedGeneration) {
+      if (!this.formId && this.generation !== this.persistedGeneration) throw new Error("PROCESS_PLAN_FORM_ID_REQUIRED");
+      return;
+    }
     if (this.inFlight) return this.inFlight;
     this.inFlight = this.saveUntilCurrent();
     try {
@@ -68,11 +95,13 @@ export class ProcessPlanSaveCoordinator<T> {
     while (!this.disposed && this.options.isDraft(this.value) && this.generation !== this.persistedGeneration) {
       const saveGeneration = this.generation;
       const snapshot = structuredClone(this.value);
+      const saveFormId = this.formId;
+      const saveEpoch = this.epoch;
       this.state = "saving";
       this.publish();
       try {
-        const acknowledgement = await this.options.save(snapshot);
-        if (this.disposed) return;
+        const acknowledgement = await this.options.save(saveFormId!, snapshot);
+        if (this.disposed || saveEpoch !== this.epoch || saveFormId !== this.formId) return;
         this.persistedGeneration = saveGeneration;
         this.value = this.options.mergeAck(this.value, acknowledgement);
         this.state = this.generation === saveGeneration ? "saved" : "dirty";
@@ -83,7 +112,7 @@ export class ProcessPlanSaveCoordinator<T> {
           this.publish();
           this.options.onError?.(error);
         }
-        return;
+        throw error;
       }
     }
   }

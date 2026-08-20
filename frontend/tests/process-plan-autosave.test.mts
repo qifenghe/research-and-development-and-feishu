@@ -8,10 +8,11 @@ test("keeps an edit made while a save is in flight and persists one follow-up", 
   let resolveFirst!: (value: Draft) => void;
   const calls: Draft[] = [];
   const coordinator = new ProcessPlanSaveCoordinator<Draft>({
+    formId: "FORM-A",
     debounceMs: 0,
     isDraft: plan => plan.status === "DRAFT",
     mergeAck: (local, ack) => ({ ...local, versionNo: ack.versionNo, status: ack.status }),
-    save: plan => {
+    save: (_formId, plan) => {
       calls.push(plan);
       if (calls.length === 1) return new Promise(resolve => { resolveFirst = resolve; });
       return Promise.resolve({ ...plan, versionNo: 2 });
@@ -31,10 +32,11 @@ test("keeps an edit made while a save is in flight and persists one follow-up", 
 test("hydration, late acknowledgements and submitted drafts never schedule a write", async () => {
   const calls: Draft[] = [];
   const coordinator = new ProcessPlanSaveCoordinator<Draft>({
+    formId: "FORM-A",
     debounceMs: 0,
     isDraft: plan => plan.status === "DRAFT",
     mergeAck: (local, ack) => ({ ...local, versionNo: ack.versionNo, status: ack.status }),
-    save: async plan => { calls.push(plan); return { ...plan, versionNo: plan.versionNo + 1 }; },
+    save: async (_formId, plan) => { calls.push(plan); return { ...plan, versionNo: plan.versionNo + 1 }; },
   });
   coordinator.hydrate({ versionNo: 7, status: "DRAFT", graph: "server" });
   await coordinator.flush();
@@ -43,4 +45,25 @@ test("hydration, late acknowledgements and submitted drafts never schedule a wri
   await coordinator.flush();
   coordinator.dispose();
   assert.equal(calls.length, 0);
+});
+
+test("rebind fences a late acknowledgement and restores a local draft as dirty", async () => {
+  let resolveA!: (value: Draft) => void;
+  const calls: Array<[string, Draft]> = [];
+  const coordinator = new ProcessPlanSaveCoordinator<Draft>({
+    formId: "FORM-A", debounceMs: 0, isDraft: value => value.status === "DRAFT",
+    mergeAck: (local, ack) => ({ ...local, versionNo: ack.versionNo }),
+    save: (formId, plan) => { calls.push([formId, plan]); return formId === "FORM-A" ? new Promise(resolve => { resolveA = resolve; }) : Promise.resolve({ ...plan, versionNo: 8 }); },
+  });
+  coordinator.hydrateServer({ versionNo: 0, status: "DRAFT", graph: "A" });
+  coordinator.edit(value => ({ ...value, graph: "A-edit" }));
+  void coordinator.flush();
+  coordinator.rebind("FORM-B", { versionNo: 7, status: "DRAFT", graph: "B" });
+  coordinator.restoreLocalDirty({ versionNo: 7, status: "DRAFT", graph: "B-cache" });
+  resolveA({ versionNo: 1, status: "DRAFT", graph: "A-edit" });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(coordinator.value, { versionNo: 7, status: "DRAFT", graph: "B-cache" });
+  await assert.doesNotReject(() => coordinator.flush());
+  assert.equal(calls[0]![0], "FORM-A");
+  assert.equal(calls[1]![0], "FORM-B");
 });
