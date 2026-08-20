@@ -97,3 +97,21 @@ The workspace `pnpm` wrapper attempted an online metadata/install check and coul
 | API contract and route checks | PASS |
 | direct shared `tsc`, PC/mobile `vue-tsc` | PASS |
 | `git diff --check` | PASS |
+
+## Fix round 5
+
+- Generation now performs a post-store owner check with `SELECT ... FOR UPDATE` on the exact cleanup-ledger key/token/`RESERVED` row. The method uses `MANDATORY`, so the row lock belongs to the outer generation transaction and remains held until its commit or rollback; it is never released by a nested `REQUIRES_NEW` transaction.
+- Reconciliation now locks each candidate ledger row first, then rechecks owner, state, lease expiry, and committed READY references under that lock. A future-skewed instance therefore blocks behind active finalization; after commit it removes only the ledger and preserves downloadable READY bytes, while after rollback it removes the bytes.
+- If cleanup claims the reservation while storage is still in flight, post-store validation fails, the just-written key is deleted, and the attempt records only FAILED metadata. A stale owner token cannot lock or delay a replacement reservation.
+- The previously observed save/submit concurrency flake was a real mixed-snapshot race: submission loaded the plan header and child graph with multiple queries before taking the submission lock. Submission now locks the plan header before loading and validating the graph, so save-first yields a version conflict and submit-first prevents the save from replacing children.
+
+### Fix round 5 verification
+
+| Check | Result |
+| --- | --- |
+| Combined artifact/controller/revision/workflow/auth/role/validator/schema run | PASS: 151 tests, 0 failures, 0 errors; artifact suite 19 tests (existing 15 plus 4 concurrency regressions) |
+| Four artifact lease/owner concurrency regressions repeated 3 times | PASS on all 3 runs |
+| Save/submit concurrency regression repeated 5 times | PASS on all 5 runs |
+| API contract and route checks | PASS; 30 PC routes and 16 mobile routes |
+| direct shared `tsc`, PC/mobile `vue-tsc` | PASS |
+| `git diff --check` | PASS |

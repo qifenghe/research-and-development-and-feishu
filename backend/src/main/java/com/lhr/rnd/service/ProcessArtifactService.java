@@ -107,24 +107,21 @@ public class ProcessArtifactService {
                     : sopBytes(productName, revision, documentVersion, generatedAt, principal.name());
             cleanupLedger.renew(reservation);
             storage.store(storageKey, bytes);
+            if (!cleanupLedger.lockForReady(reservation)) {
+                storage.delete(storageKey);
+                throw new BusinessException("PROCESS_ARTIFACT_RESERVATION_LOST", "成果文件生成租约已失效，请重试");
+            }
             var artifact = new ProcessArtifact(id, revisionId, artifactType, documentVersion, ProcessArtifact.READY,
                     generatedAt.toString(), principal.name().trim(), storageKey, summary(revision, artifactType), null,
                     principal.userId(), sha256(bytes), (long) bytes.length);
-            try {
-                insert(artifact);
-                auditLogService.record("PROCESS_ARTIFACT", formId, "PROCESS_ARTIFACT_GENERATED", principal.name().trim(), principal.userId(),
-                        "artifactId=%s;revisionId=%s;type=%s;documentVersion=%s".formatted(id, revisionId, artifactType, documentVersion));
-                readyMetadata[0] = true;
-                return artifact;
-            } catch (RuntimeException exception) {
-                cleanup(reservation);
-                throw exception;
-            }
+            insert(artifact);
+            auditLogService.record("PROCESS_ARTIFACT", formId, "PROCESS_ARTIFACT_GENERATED", principal.name().trim(), principal.userId(),
+                    "artifactId=%s;revisionId=%s;type=%s;documentVersion=%s".formatted(id, revisionId, artifactType, documentVersion));
+            readyMetadata[0] = true;
+            return artifact;
         } catch (BusinessException exception) {
-            if (bytes != null) cleanup(reservation);
             return recordFailure(formId, id, revisionId, artifactType, documentVersion, generatedAt, principal, exception.getMessage());
         } catch (Exception exception) {
-            if (bytes != null) cleanup(reservation);
             return recordFailure(formId, id, revisionId, artifactType, documentVersion, generatedAt, principal, "文件生成失败");
         }
     }
@@ -351,10 +348,6 @@ public class ProcessArtifactService {
 
     private String contentType(String type) {
         return ProcessArtifact.FORMULA_XLSX.equals(type) ? XLSX_CONTENT_TYPE : DOCX_CONTENT_TYPE;
-    }
-
-    private void cleanup(ProcessArtifactCleanupLedgerService.Reservation reservation) {
-        cleanupLedger.orphanAndDelete(reservation);
     }
 
     private void heading(XWPFDocument document, String text) {

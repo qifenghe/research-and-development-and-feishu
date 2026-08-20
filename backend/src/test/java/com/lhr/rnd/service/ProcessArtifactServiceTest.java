@@ -21,6 +21,8 @@ import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -28,6 +30,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -276,6 +279,144 @@ class ProcessArtifactServiceTest {
         assertThat(artifact.status()).isEqualTo(ProcessArtifact.READY);
         assertThat(Files.exists(archivePath(artifact.storageKey()))).isTrue();
         assertThat(ledgerCount(artifact.storageKey())).isZero();
+    }
+
+    @Test
+    void ownershipLostWhileStoreIsInFlightFailsWithoutReadyMetadataOrOrphanedBytes() throws Exception {
+        var revision = formalRevision();
+        var storeEntered = new CountDownLatch(1);
+        var resumeStore = new CountDownLatch(1);
+        var storageKey = new AtomicReference<String>();
+        doAnswer(invocation -> {
+            storageKey.set(invocation.getArgument(0));
+            storeEntered.countDown();
+            if (!resumeStore.await(20, TimeUnit.SECONDS)) throw new IllegalStateException("store ownership pause timed out");
+            return invocation.callRealMethod();
+        }).when(storage).store(anyString(), any());
+
+        var generated = CompletableFuture.supplyAsync(() -> service.generate(
+                FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER));
+        assertThat(storeEntered.await(20, TimeUnit.SECONDS)).isTrue();
+        try {
+            new TransactionTemplate(transactionManager).executeWithoutResult(status -> futureReconciler().reconcileOnStartup());
+            assertThat(ledgerCount(storageKey.get())).isZero();
+        } finally {
+            resumeStore.countDown();
+        }
+
+        var artifact = generated.get(20, TimeUnit.SECONDS);
+        assertThat(artifact.status()).isEqualTo(ProcessArtifact.FAILED);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from experiment_process_artifact where storage_key = ? and status = 'READY'",
+                Integer.class, storageKey.get())).isZero();
+        assertThat(Files.exists(archivePath(storageKey.get()))).isFalse();
+        assertThat(ledgerCount(storageKey.get())).isZero();
+    }
+
+    @Test
+    void expiredReservationReconcileWaitsForReadyCommitThenKeepsDownloadableBytes() throws Exception {
+        var revision = formalRevision();
+        var locked = new CountDownLatch(1);
+        var releaseCommit = new CountDownLatch(1);
+        var generated = CompletableFuture.supplyAsync(() -> new TransactionTemplate(transactionManager).execute(status -> {
+            var artifact = service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
+            locked.countDown();
+            try {
+                if (!releaseCommit.await(20, TimeUnit.SECONDS)) throw new IllegalStateException("ready commit pause timed out");
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(exception);
+            }
+            return artifact;
+        }));
+        assertThat(locked.await(20, TimeUnit.SECONDS)).isTrue();
+        var reconcileStarted = new CountDownLatch(1);
+        var reconcile = CompletableFuture.runAsync(() -> new TransactionTemplate(transactionManager)
+                .executeWithoutResult(status -> futureReconciler(reconcileStarted).reconcileOnStartup()));
+        assertThat(reconcileStarted.await(20, TimeUnit.SECONDS)).isTrue();
+        try {
+            assertThatThrownBy(() -> reconcile.get(300, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+        } finally {
+            releaseCommit.countDown();
+        }
+
+        var artifact = generated.get(20, TimeUnit.SECONDS);
+        reconcile.get(20, TimeUnit.SECONDS);
+        assertThat(artifact.status()).isEqualTo(ProcessArtifact.READY);
+        assertThat(service.download(FORM_ID, revision.id(), artifact.id(), ENGINEER).content()).isNotEmpty();
+        assertThat(Files.exists(archivePath(artifact.storageKey()))).isTrue();
+        assertThat(ledgerCount(artifact.storageKey())).isZero();
+    }
+
+    @Test
+    void expiredReservationReconcileWaitsForOuterRollbackThenDeletesStoredBytes() throws Exception {
+        var revision = formalRevision();
+        var locked = new CountDownLatch(1);
+        var releaseRollback = new CountDownLatch(1);
+        var generated = CompletableFuture.supplyAsync(() -> new TransactionTemplate(transactionManager).execute(status -> {
+            var artifact = service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
+            locked.countDown();
+            try {
+                if (!releaseRollback.await(20, TimeUnit.SECONDS)) throw new IllegalStateException("ready rollback pause timed out");
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(exception);
+            }
+            status.setRollbackOnly();
+            return artifact;
+        }));
+        assertThat(locked.await(20, TimeUnit.SECONDS)).isTrue();
+        var reconcileStarted = new CountDownLatch(1);
+        var reconcile = CompletableFuture.runAsync(() -> new TransactionTemplate(transactionManager)
+                .executeWithoutResult(status -> futureReconciler(reconcileStarted).reconcileOnStartup()));
+        assertThat(reconcileStarted.await(20, TimeUnit.SECONDS)).isTrue();
+        try {
+            assertThatThrownBy(() -> reconcile.get(300, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+        } finally {
+            releaseRollback.countDown();
+        }
+
+        var artifact = generated.get(20, TimeUnit.SECONDS);
+        reconcile.get(20, TimeUnit.SECONDS);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from experiment_process_artifact where id = ?", Integer.class, artifact.id())).isZero();
+        assertThat(Files.exists(archivePath(artifact.storageKey()))).isFalse();
+        assertThat(ledgerCount(artifact.storageKey())).isZero();
+    }
+
+    @Test
+    void staleOwnerTokenCannotLockOrDelayAReplacementReservation() throws Exception {
+        var key = "process-artifacts/replaced-" + UUID.randomUUID() + ".xlsx";
+        var stale = cleanupLedger.register(key);
+        cleanupLedger.confirm(stale);
+        var replacement = cleanupLedger.register(key);
+        storage.store(key, new byte[]{4});
+        var staleChecked = new CountDownLatch(1);
+        var releaseStaleTransaction = new CountDownLatch(1);
+        var staleAttempt = CompletableFuture.runAsync(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            assertThat(futureReconciler().lockForReady(stale)).isFalse();
+            staleChecked.countDown();
+            try {
+                if (!releaseStaleTransaction.await(20, TimeUnit.SECONDS)) throw new IllegalStateException("stale transaction pause timed out");
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(exception);
+            }
+        }));
+        assertThat(staleChecked.await(20, TimeUnit.SECONDS)).isTrue();
+        CompletableFuture<Void> replacementCleanup = null;
+        try {
+            replacementCleanup = CompletableFuture.runAsync(() -> cleanupLedger.orphanAndDelete(replacement));
+            replacementCleanup.get(2, TimeUnit.SECONDS);
+        } finally {
+            releaseStaleTransaction.countDown();
+            staleAttempt.get(20, TimeUnit.SECONDS);
+            if (replacementCleanup != null) replacementCleanup.get(20, TimeUnit.SECONDS);
+        }
+        assertThat(Files.exists(archivePath(key))).isFalse();
+        assertThat(ledgerCount(key)).isZero();
     }
 
     @Test
@@ -586,6 +727,21 @@ class ProcessArtifactServiceTest {
     private void expire(String storageKey) {
         jdbc.update("update process_artifact_cleanup_ledger set lease_until = ? where storage_key = ?",
                 LocalDateTime.now().minusMinutes(1), storageKey);
+    }
+
+    private ProcessArtifactCleanupLedgerService futureReconciler() {
+        return new ProcessArtifactCleanupLedgerService(
+                jdbc, storage, Clock.offset(Clock.systemDefaultZone(), Duration.ofHours(2)), Duration.ofMillis(10));
+    }
+
+    private ProcessArtifactCleanupLedgerService futureReconciler(CountDownLatch started) {
+        return new ProcessArtifactCleanupLedgerService(
+                jdbc, storage, Clock.offset(Clock.systemDefaultZone(), Duration.ofHours(2)), Duration.ofMillis(10)) {
+            @Override public void reconcileOnStartup() {
+                started.countDown();
+                super.reconcileOnStartup();
+            }
+        };
     }
 
     private Path archivePath(String storageKey) {

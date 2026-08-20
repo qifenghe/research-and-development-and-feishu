@@ -55,6 +55,9 @@ public class ProcessRevisionService {
         if (blank(command.submittedBy())) {
             throw new BusinessException("PROCESS_SUBMITTED_BY_REQUIRED", "正式提交必须使用可信会话身份");
         }
+        // Lock before the multi-query graph load so a concurrent save cannot replace children mid-validation.
+        jdbc.query("select id from experiment_process_plan where experiment_form_id = ? for update",
+                (rs, row) -> rs.getString(1), formId);
         var plan = planService.find(formId);
         if (plan.versionNo() != command.versionNo()) {
             throw new BusinessException("PROCESS_PLAN_VERSION_CONFLICT", "工艺方案已被更新，请刷新后重试");

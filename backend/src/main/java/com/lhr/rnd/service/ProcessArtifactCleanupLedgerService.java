@@ -69,6 +69,15 @@ public class ProcessArtifactCleanupLedgerService {
                 reservation.storageKey(), reservation.ownerToken());
     }
 
+    /** Joins the generation transaction so this ownership lock is held through its commit or rollback. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean lockForReady(Reservation reservation) {
+        requireKey(reservation.storageKey());
+        return !jdbc.query(
+                "select storage_key from process_artifact_cleanup_ledger where storage_key = ? and owner_token = ? and state = ? for update",
+                (rs, row) -> rs.getString(1), reservation.storageKey(), reservation.ownerToken(), RESERVED).isEmpty();
+    }
+
     /** Runtime reconciliation retries explicit orphans and claims only reservations whose lease has expired. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void reconcileStale() {
@@ -86,25 +95,31 @@ public class ProcessArtifactCleanupLedgerService {
     public void orphanAndDelete(Reservation reservation) {
         jdbc.update("update process_artifact_cleanup_ledger set state = ?, lease_until = ?, last_attempt = null, error = null where storage_key = ? and owner_token = ?",
                 ORPHANED, now(), reservation.storageKey(), reservation.ownerToken());
-        reconcileOwned(reservation.storageKey(), reservation.ownerToken());
+        reconcileCandidate(reservation.storageKey(), reservation.ownerToken(), now());
     }
 
     private void reconcileEligible() {
         var now = now();
-        var rows = jdbc.query("select storage_key, owner_token, state from process_artifact_cleanup_ledger where state = ? or (state = ? and lease_until <= ?)",
-                (rs, row) -> new LedgerRow(rs.getString(1), rs.getString(2), rs.getString(3)), ORPHANED, RESERVED, now);
+        var rows = jdbc.query("select storage_key, owner_token from process_artifact_cleanup_ledger where state = ? or (state = ? and lease_until <= ?)",
+                (rs, row) -> new LedgerCandidate(rs.getString(1), rs.getString(2)), ORPHANED, RESERVED, now);
         for (var row : rows) {
-            if (RESERVED.equals(row.state())) {
-                var claimed = jdbc.update("update process_artifact_cleanup_ledger set state = ?, last_attempt = null, error = null where storage_key = ? and owner_token = ? and state = ? and lease_until <= ?",
-                        ORPHANED, row.storageKey(), row.ownerToken(), RESERVED, now);
-                if (claimed != 1) continue;
-            }
-            reconcileOwned(row.storageKey(), row.ownerToken());
+            reconcileCandidate(row.storageKey(), row.ownerToken(), now);
         }
     }
 
-    private void reconcileOwned(String key, String ownerToken) {
-        if (!ownsOrphan(key, ownerToken)) return;
+    private void reconcileCandidate(String key, String ownerToken, LocalDateTime now) {
+        var rows = jdbc.query(
+                "select state, lease_until from process_artifact_cleanup_ledger where storage_key = ? and owner_token = ? for update",
+                (rs, row) -> new LockedLedgerRow(rs.getString(1), rs.getTimestamp(2).toLocalDateTime()), key, ownerToken);
+        if (rows.isEmpty()) return;
+        var row = rows.get(0);
+        if (RESERVED.equals(row.state())) {
+            if (row.leaseUntil().isAfter(now)) return;
+            jdbc.update("update process_artifact_cleanup_ledger set state = ?, last_attempt = null, error = null where storage_key = ? and owner_token = ? and state = ?",
+                    ORPHANED, key, ownerToken, RESERVED);
+        } else if (!ORPHANED.equals(row.state())) {
+            return;
+        }
         if (!safe(key)) {
             recordError(key, ownerToken, "unsafe artifact cleanup key");
             return;
@@ -114,31 +129,14 @@ public class ProcessArtifactCleanupLedgerService {
             jdbc.update("delete from process_artifact_cleanup_ledger where storage_key = ? and owner_token = ? and state = ?",
                     key, ownerToken, ORPHANED);
         } else {
-            deleteOne(key, ownerToken);
+            try {
+                storage.delete(key);
+                jdbc.update("delete from process_artifact_cleanup_ledger where storage_key = ? and owner_token = ? and state = ?",
+                        key, ownerToken, ORPHANED);
+            } catch (RuntimeException exception) {
+                recordError(key, ownerToken, truncate(exception.getMessage()));
+            }
         }
-    }
-
-    private void deleteOne(String key, String ownerToken) {
-        if (!ownsOrphanForUpdate(key, ownerToken)) return;
-        try {
-            storage.delete(key);
-            jdbc.update("delete from process_artifact_cleanup_ledger where storage_key = ? and owner_token = ? and state = ?",
-                    key, ownerToken, ORPHANED);
-        } catch (RuntimeException exception) {
-            recordError(key, ownerToken, truncate(exception.getMessage()));
-        }
-    }
-
-    private boolean ownsOrphan(String key, String ownerToken) {
-        return Boolean.TRUE.equals(jdbc.queryForObject(
-                "select count(*) > 0 from process_artifact_cleanup_ledger where storage_key = ? and owner_token = ? and state = ?",
-                Boolean.class, key, ownerToken, ORPHANED));
-    }
-
-    private boolean ownsOrphanForUpdate(String key, String ownerToken) {
-        return !jdbc.query(
-                "select storage_key from process_artifact_cleanup_ledger where storage_key = ? and owner_token = ? and state = ? for update",
-                (rs, row) -> rs.getString(1), key, ownerToken, ORPHANED).isEmpty();
     }
 
     private void recordError(String key, String ownerToken, String error) {
@@ -164,5 +162,6 @@ public class ProcessArtifactCleanupLedgerService {
 
     public record Reservation(String storageKey, String ownerToken, LocalDateTime leaseUntil) { }
 
-    private record LedgerRow(String storageKey, String ownerToken, String state) { }
+    private record LedgerCandidate(String storageKey, String ownerToken) { }
+    private record LockedLedgerRow(String state, LocalDateTime leaseUntil) { }
 }
