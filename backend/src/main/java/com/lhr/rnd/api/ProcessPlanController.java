@@ -50,7 +50,8 @@ public class ProcessPlanController {
     }
 
     @PutMapping
-    public ApiResponse<ProcessPlan> save(@PathVariable String formId, @RequestBody ProcessPlan request) {
+    public ApiResponse<ProcessPlan> save(@PathVariable String formId, @RequestBody ProcessPlan request, HttpServletRequest servletRequest) {
+        service.requireDraftWriteAccess(formId, requiredSessionPrincipal(servletRequest));
         return ApiResponse.success(service.save(formId, request));
     }
 

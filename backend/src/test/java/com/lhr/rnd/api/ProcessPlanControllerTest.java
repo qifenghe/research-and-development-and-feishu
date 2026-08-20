@@ -70,6 +70,7 @@ class ProcessPlanControllerTest {
                 }]}""";
 
         mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON).content(oldDraft))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("0"))
@@ -86,6 +87,7 @@ class ProcessPlanControllerTest {
                   "sequence":1,"processCode":"HEAT","processName":"热加工","yieldBasis":"PRIMARY_INPUT","steps":[],"inputs":[],"outputs":[]
                 }]}""";
         mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON).content(invalidDraft))
                 .andExpect(status().isOk());
 
@@ -111,6 +113,7 @@ class ProcessPlanControllerTest {
                 }]}""";
 
         mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON).content(draftWithTraceability))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].measurementTool").value("数字探针"))
@@ -158,6 +161,19 @@ class ProcessPlanControllerTest {
     }
 
     @Test
+    void rejectsProcessDraftSaveByAnotherEngineer() throws Exception {
+        var draft = """
+                {"versionNo":0,"status":"DRAFT","majorProcesses":[{"sequence":1,"processName":"热加工","yieldBasis":"PRIMARY_INPUT","steps":[],"inputs":[],"outputs":[]}]}
+                """;
+        var intruder = new SessionPrincipal("USER-INTRUDER", "other", "其他研发", null, "RND_ENGINEER", Instant.now().plusSeconds(60));
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, intruder)
+                        .contentType(MediaType.APPLICATION_JSON).content(draft))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PROCESS_PLAN_FORM_FORBIDDEN"));
+    }
+
+    @Test
     void generatesListsAndDownloadsFormalRevisionArtifactsWithTheSessionPrincipal() throws Exception {
         saveReadyDraft();
         var principal = new SessionPrincipal("USER-PROCESS", "rnd_engineer", "会话研发", "ou-process", "RND_ENGINEER", Instant.now().plusSeconds(60));
@@ -195,7 +211,12 @@ class ProcessPlanControllerTest {
                   }],"inputs":[],"outputs":[]
                 }]}""";
         mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON).content(readyDraft))
                 .andExpect(status().isOk());
+    }
+
+    private SessionPrincipal ownerPrincipal() {
+        return new SessionPrincipal("USER-PROCESS", "rnd_engineer", "会话研发", "ou-process", "RND_ENGINEER", Instant.now().plusSeconds(60));
     }
 }

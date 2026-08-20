@@ -10,7 +10,7 @@
         <div v-for="(measurement, measurementIndex) in point.measurements" :key="measurement.key" class="measurement-row"><a-input-number v-model:value="measurement.measuredValue" :disabled="readonly" placeholder="实测值" /><a-date-picker v-model:value="measurement.measuredAt" :disabled="readonly" value-format="YYYY-MM-DD HH:mm:ss" show-time placeholder="测量时间" /><a-select v-model:value="measurement.result" :disabled="readonly" :options="results" /><a-input v-model:value="measurement.deviationAction" :disabled="readonly" placeholder="处理/复测说明" /><a-select v-model:value="measurement.retestResult" :disabled="readonly" :options="results" /><a-button v-if="!readonly" type="text" danger @click="point.measurements.splice(measurementIndex, 1)">删除</a-button></div>
       </div>
       <div class="grid two"><a-input v-model:value="point.confirmedBy" :disabled="readonly" placeholder="确认人" /><a-input v-model:value="point.basisOrRemark" :disabled="readonly" placeholder="依据或备注" /></div>
-      <a-checkbox v-model:checked="point.resolved" :disabled="readonly || !isCriticalFailed(point)">偏差已闭环</a-checkbox><span v-if="isBlocking(point)" class="block-note">需要填写实测、完成偏差闭环并由负责人确认。</span>
+      <a-checkbox v-model:checked="point.resolved" :disabled="readonly || !hasDeviation(point)">偏差已闭环</a-checkbox><span v-if="isBlocking(point)" class="block-note">{{ missingFields(point) }}</span>
     </div>
   </section>
 </template>
@@ -26,8 +26,11 @@ const results=[{label:"待判定",value:"PENDING"},{label:"合格",value:"PASS"}
 function addPoint(){ points.value=[...points.value,{key:nextProcessKey("control"),sequence:points.value.length+1,controlType:"PROCESS",importance:"NORMAL",itemName:"",resolved:false,measurements:[]}]; }
 function removePoint(index:number){points.value=points.value.filter((_, i)=>i!==index);}
 function addMeasurement(point:ControlPointDraft){point.measurements.push({key:nextProcessKey("measurement"),sequence:point.measurements.length+1,result:"PENDING",retestResult:"PENDING"} as ControlMeasurementDraft);}
-function isCriticalFailed(point:ControlPointDraft){return point.measurements.some(item=>item.result==="FAIL" && item.retestResult!=="PASS");}
-function isBlocking(point:ControlPointDraft){return point.importance==="CRITICAL" && (!point.measurements.some(item=>item.measuredValue != null && item.result==="PASS") || isCriticalFailed(point) || !point.resolved && isCriticalFailed(point) || !point.confirmedBy);}
+function outside(point:ControlPointDraft, value?:number){return value != null && ((point.lowerLimit != null && value < point.lowerLimit) || (point.upperLimit != null && value > point.upperLimit));}
+function hasDeviation(point:ControlPointDraft){return point.measurements.some(item=>item.result==="FAIL" || outside(point,item.measuredValue));}
+function unresolvedDeviation(point:ControlPointDraft){return point.measurements.some(item=>(item.result==="FAIL" || outside(point,item.measuredValue)) && (!item.deviationAction?.trim() || !item.retestResult || item.retestResult==="PENDING" || item.retestResult==="FAIL"));}
+function isBlocking(point:ControlPointDraft){return point.importance==="CRITICAL" && (!point.measurements.some(item=>item.measuredValue != null) || !point.confirmedBy?.trim() || (hasDeviation(point) && (!point.resolved || unresolvedDeviation(point))));}
+function missingFields(point:ControlPointDraft){const missing=[];if(!point.measurements.some(item=>item.measuredValue != null))missing.push("实测值");if(!point.confirmedBy?.trim())missing.push("确认人");if(hasDeviation(point)&&!point.resolved)missing.push("偏差闭环");if(unresolvedDeviation(point))missing.push("偏差处理/复测");return `需补充：${missing.join("、")}`;}
 function importanceLabel(value:ControlPointDraft["importance"]){return value==="CRITICAL"?"极重要":value==="IMPORTANT"?"重要":"一般";}
 </script>
 <style scoped>

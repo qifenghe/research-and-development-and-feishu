@@ -94,6 +94,23 @@ public class ProcessPlanService {
         return find(formId);
     }
 
+    @Transactional(readOnly = true)
+    public void requireDraftWriteAccess(String formId, SessionPrincipal principal) {
+        if (principal == null || blank(principal.userId()) || blank(principal.role())) {
+            throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "保存工艺草稿必须使用服务端会话身份");
+        }
+        if ("RND_DIRECTOR".equals(principal.role())) return;
+        if (!"RND_ENGINEER".equals(principal.role())) {
+            throw new BusinessException("PROCESS_PLAN_FORM_FORBIDDEN", "当前用户无权操作该工艺单");
+        }
+        var owners = jdbc.query("select task.assignee_user_id, task.assignee_name from experiment_form form join rnd_task task on form.task_id = task.id where form.id = ?",
+                (rs, row) -> new String[]{rs.getString(1), rs.getString(2)}, formId);
+        if (owners.isEmpty()) throw new BusinessException("PROCESS_PLAN_FORM_FORBIDDEN", "当前用户无权操作该工艺单");
+        var owner = owners.get(0);
+        var allowed = !blank(owner[0]) ? owner[0].equals(principal.userId()) : legacyOwnerMatches(owner[1], principal.userId());
+        if (!allowed) throw new BusinessException("PROCESS_PLAN_FORM_FORBIDDEN", "当前用户无权操作该工艺单");
+    }
+
     @Transactional
     public ProcessPlan restoreAsNewDraft(String formId, ProcessPlan snapshot, String sourceRevisionId, String changeReason) {
         requireForm(formId);
@@ -166,6 +183,16 @@ public class ProcessPlanService {
             jdbc.update("insert into experiment_process_output(id, major_process_id, sequence, output_type, weight_kg, remark) values (?,?,?,?,?,?)",
                     id("OUT"), majorId, index + 1, valueOr(item.outputType(), "QUALIFIED"), item.weightKg(), item.remark());
         }
+    }
+
+    private boolean legacyOwnerMatches(String name, String userId) {
+        if (blank(name) || blank(userId)) return false;
+        var ids = jdbc.query("select id from user_account where name = ? and status = 'ACTIVE'", (rs, row) -> rs.getString(1), name);
+        return ids.size() == 1 && userId.equals(ids.get(0));
+    }
+
+    private boolean blank(String value) {
+        return value == null || value.isBlank();
     }
 
     private void saveStep(String majorId, int sequence, ProcessPlan.MinorStep step) {

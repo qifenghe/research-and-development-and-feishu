@@ -75,7 +75,7 @@
           </a-collapse>
 
           <a-card title="工艺工作台" class="page-card process-plan-card">
-            <ProcessPlanWorkspace v-model="processPlan" :form-id="detail?.currentExperimentForm?.id" :readonly="readOnly" :hydrating="loading" @request-save="saveDraft" />
+            <ProcessPlanWorkspace ref="processWorkspace" v-model="processPlan" :form-id="detail?.currentExperimentForm?.id" :readonly="readOnly" :hydrating="loading" @request-save="saveDraft" />
             <a-collapse v-if="showLegacyProcessEditor" ghost style="margin-top:12px">
               <a-collapse-panel key="legacy" header="历史兼容数据（旧版工序编辑器）">
                 <ProcessTabsEditor v-model="processSteps" :readonly="readOnly" :create-row="blankProcess" />
@@ -165,7 +165,7 @@ import type {
   YieldCalculationMode,
   ProcessPlanDraft,
 } from "@rnd/shared";
-import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, clearExperimentDraft, createEmptyProcessPlan, experimentDraftKey, formulaRatios, isCachedDraftNewer, nextProcessKey, normalizePositiveIntegerQuantity, normalizeProcessPlan, processPlanToLegacySteps, readExperimentDraft, writeExperimentDraft, yieldBasisWeightKg } from "@rnd/shared";
+import { aggregateProcessRecipe, calculatePricingPreview, canEditExperiment, canNotifyInternalTest, clearExperimentDraft, createEmptyProcessPlan, experimentDraftKey, formulaRatios, isCachedDraftNewer, nextProcessKey, normalizePositiveIntegerQuantity, normalizeProcessPlan, processPlanToLegacySteps, readExperimentDraft, writeExperimentDraft, yieldBasisWeightKg } from "@rnd/shared";
 import ProcessTabsEditor from "../../components/ProcessTabsEditor.vue";
 import ProcessPlanWorkspace from "../../components/process/ProcessPlanWorkspace.vue";
 import { useAuthStore } from "../../stores/auth";
@@ -233,10 +233,14 @@ const form = reactive({
 const materials = ref<MaterialRow[]>([blankMaterial(false)]);
 const processSteps = ref<ProcessRow[]>([blankProcess()]);
 const processPlan = ref<ProcessPlanDraft>(createEmptyProcessPlan());
+const processWorkspace = ref<{ flushSave: (silent?: boolean) => Promise<void> }>();
 const showLegacyProcessEditor = computed(() => processPlan.value.legacy && !processPlan.value.majorProcesses.some((item) => item.steps.length));
-const formulaRatioValues = computed(() => formulaRatios(materials.value.map((item) => item.weightKg ?? 0)));
-const totalFormulaWeight = computed(() => materials.value.reduce((sum, item) => sum + (item.weightKg ?? 0), 0));
-const yieldBasisWeight = computed(() => yieldBasisWeightKg(materials.value.map((item) => ({
+const processRecipe = computed(() => aggregateProcessRecipe(processPlan.value));
+const hasProcessPlanData = computed(() => processPlan.value.majorProcesses.length > 0 || processRecipe.value.length > 0);
+const effectiveMaterials = computed<MaterialRow[]>(() => hasProcessPlanData.value ? processRecipe.value.map((item, index) => { const primary = item.sources.some(source => source.materialRole === "PRIMARY"); return { key:index+1, materialCategory:primary ? "RAW" : "AUXILIARY", primaryMaterial:primary, materialCode:item.materialCode || "", materialName:item.materialName, weightKg:item.weightKg, inputUnit:"kg", utilizationRate:100, remark:"工艺方案自动汇总" }; }) : materials.value);
+const formulaRatioValues = computed(() => formulaRatios(effectiveMaterials.value.map((item) => item.weightKg ?? 0)));
+const totalFormulaWeight = computed(() => effectiveMaterials.value.reduce((sum, item) => sum + (item.weightKg ?? 0), 0));
+const yieldBasisWeight = computed(() => yieldBasisWeightKg(effectiveMaterials.value.map((item) => ({
   weightKg: item.weightKg,
   utilizationRatePercent: item.utilizationRate,
   materialCategory: item.materialCategory,
@@ -250,7 +254,7 @@ const pricingPreview = computed(() => calculatePricingPreview({
 }));
 const draftStatusLabel = computed(() => ({ idle: "", local: "已本地保存", syncing: "正在自动保存", saved: "已自动保存", error: "网络异常，已本地保存" }[draftSyncState.value]));
 const localDraftKey = computed(() => experimentDraftKey(auth.principal?.userId || auth.user?.id || auth.displayName, String(route.params.id)));
-const pricingPreviewMaterials = computed(() => materials.value.map((item, index) => ({
+const pricingPreviewMaterials = computed(() => effectiveMaterials.value.map((item, index) => ({
   key: item.key,
   role: `${categoryLabel(item.materialCategory)}${item.primaryMaterial ? " · 主料" : ""}`,
   materialName: item.materialName || "未命名",
@@ -393,7 +397,7 @@ function categoryFromStage(stage?: string): MaterialCategory {
 }
 
 function buildMaterials(): ExperimentMaterial[] {
-  return materials.value
+  return effectiveMaterials.value
     .filter((item) => item.materialName.trim())
     .map((item, index) => ({
       stage: categoryLabel(item.materialCategory),
@@ -578,7 +582,7 @@ async function autoSave() {
   await saveDraft({ silent: true });
 }
 
-watch([form, materials, processSteps, processPlan, yieldCalculationMode, experimentPhase], scheduleAutoSave, { deep: true });
+watch([form, materials, processSteps, yieldCalculationMode, experimentPhase], scheduleAutoSave, { deep: true });
 
 async function saveDraft(options: { silent?: boolean } = {}) {
   const finishedOutputQuantity = validateFinishedOutputQuantity();
@@ -598,14 +602,8 @@ async function saveDraft(options: { silent?: boolean } = {}) {
     });
     detail.value = { ...detail.value!, currentExperimentForm: saved };
     if (processPlan.value.majorProcesses.length) {
-      const savedPlan = await api.task.saveProcessPlan(saved.id, {
-        ...processPlan.value,
-        experimentFormId: saved.id,
-      });
-      suppressAutoSave = true;
-      processPlan.value = normalizeProcessPlan(savedPlan);
       await nextTick();
-      suppressAutoSave = false;
+      await processWorkspace.value?.flushSave(true);
     }
     draftSaved.value = true;
     draftSyncState.value = "saved";
@@ -651,7 +649,7 @@ async function submitSamplingRecord() {
     message.warning(yieldCalculationMode.value === "SELECTED_PRIMARY_MATERIALS" ? "请至少选择一项有重量的主料" : "请填写非包材物料重量");
     return;
   }
-  if (!processSteps.value.some((step) => step.processName.trim() && (step.beforeWeightKg ?? 0) > 0)) {
+  if (!buildProcessSteps().some((step) => step.processName.trim() && (step.beforeWeightKg ?? 0) > 0)) {
     message.warning("通知测试前请至少完成一道有效工序");
     return;
   }
