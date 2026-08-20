@@ -18,15 +18,21 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.lhr.rnd.service.SessionPrincipal;
 import com.lhr.rnd.model.ProcessPlan;
+import com.lhr.rnd.model.PricingFileRecord;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 
+import java.io.ByteArrayInputStream;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -1447,7 +1454,7 @@ class SampleWorkflowControllerTest {
                 .isEqualTo(generatedFileName);
         var archivedSampleNo = valueById("pricing_file", pricingFileId, "sample_no");
         assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "file_path"))
-                .isEqualTo(archivedSampleNo + "/A0/核价/" + generatedFileName);
+                .isEqualTo(archivedSampleNo + "/A0/核价/" + pricingFileId + "/" + generatedFileName);
         assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "file_status")).isEqualTo("ARCHIVED");
         var archivedPath = Path.of("target/rnd-archive")
                 .resolve(valueByColumn("archive_file", "business_id", pricingFileId, "file_path"));
@@ -1545,6 +1552,7 @@ class SampleWorkflowControllerTest {
         var formId = valueByColumn("experiment_form", "version_id", versionId, "id");
         insertFormalPricingRevision(formId, "PREV-PRICING-1", 1, "80");
         var firstPricingId = generatePricingFile(versionId);
+        var firstPricingBytes = workflowService.downloadPricingFile(firstPricingId).content();
 
         insertFormalPricingRevision(formId, "PREV-PRICING-2", 2, "70");
         mockMvc.perform(post("/api/v1/pricing-files/{id}/review", firstPricingId)
@@ -1557,6 +1565,130 @@ class SampleWorkflowControllerTest {
         var secondPricingId = generatePricingFile(versionId);
         assertThat(valueById("pricing_file", firstPricingId, "process_revision_id")).isEqualTo("PREV-PRICING-1");
         assertThat(valueById("pricing_file", secondPricingId, "process_revision_id")).isEqualTo("PREV-PRICING-2");
+        assertThat(workflowService.downloadPricingFile(firstPricingId).content()).isEqualTo(firstPricingBytes);
+        assertPricingWorkbookRevision(workflowService.downloadPricingFile(firstPricingId).content(), "PREV-PRICING-1", "80");
+        assertPricingWorkbookRevision(workflowService.downloadPricingFile(secondPricingId).content(), "PREV-PRICING-2", "70");
+    }
+
+    @Test
+    void targetPricingPinsOnlyItsOwnFormsLatestRevision() throws Exception {
+        var firstVersionId = createLockedSampleVersion();
+        var secondVersionId = createLockedSampleVersion();
+        var firstFormId = valueByColumn("experiment_form", "version_id", firstVersionId, "id");
+        var secondFormId = valueByColumn("experiment_form", "version_id", secondVersionId, "id");
+        insertFormalPricingRevision(firstFormId, "PREV-FIRST-1", 1, "90");
+        insertFormalPricingRevision(firstFormId, "PREV-FIRST-2", 2, "80");
+        insertFormalPricingRevision(secondFormId, "PREV-SECOND-8", 8, "60");
+        insertFormalPricingRevision(secondFormId, "PREV-SECOND-9", 9, "50");
+
+        var pricingFileId = generatePricingFile(firstVersionId);
+
+        assertThat(valueById("pricing_file", pricingFileId, "process_revision_id")).isEqualTo("PREV-FIRST-2");
+        assertPricingWorkbookRevision(workflowService.downloadPricingFile(pricingFileId).content(), "PREV-FIRST-2", "80");
+    }
+
+    @Test
+    void tamperedSnapshotAbortsPackagingConfirmationWithoutChangingAnyState() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var formId = valueByColumn("experiment_form", "version_id", versionId, "id");
+        insertFormalPricingRevision(formId, "PREV-TAMPERED", 1, "80");
+        var pricingFileId = createPricingDraft(versionId);
+        var items = workflowService.pricingPackagingItems(pricingFileId);
+        var packagingBefore = pricingPackagingRows(pricingFileId);
+        var filesBefore = pricingArchiveFiles(versionId);
+        var cachedBefore = cachedPricingFile(pricingFileId);
+        var snapshot = valueById("experiment_process_revision", "PREV-TAMPERED", "snapshot_json");
+        jdbcTemplate.update("update experiment_process_revision set snapshot_json = ? where id = ?", snapshot + " ", "PREV-TAMPERED");
+
+        mockMvc.perform(put("/api/v1/pricing-files/{id}/packaging-items", pricingFileId)
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("items", modifiedQuantity(items)))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PROCESS_REVISION_SNAPSHOT_INTEGRITY_ERROR"));
+
+        assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("DRAFT_PACKAGING");
+        assertThat(valueById("pricing_file", pricingFileId, "process_revision_id")).isNull();
+        assertThat(pricingPackagingRows(pricingFileId)).isEqualTo(packagingBefore);
+        assertThat(countByColumn("archive_file", "business_id", pricingFileId)).isZero();
+        assertThat(pricingArchiveFiles(versionId)).isEqualTo(filesBefore);
+        assertThat(cachedPricingFile(pricingFileId)).isEqualTo(cachedBefore);
+    }
+
+    @Test
+    void rolledBackPackagingConfirmationLeavesDatabaseCacheAndArchiveUnchanged() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var formId = valueByColumn("experiment_form", "version_id", versionId, "id");
+        insertFormalPricingRevision(formId, "PREV-ROLLBACK", 1, "80");
+        ReflectionTestUtils.setField(workflowService, "pricingFileSequence",
+                100_000 + (int) (System.nanoTime() % 800_000));
+        var pricingFileId = createPricingDraft(versionId);
+        var items = workflowService.pricingPackagingItems(pricingFileId);
+        var packagingBefore = pricingPackagingRows(pricingFileId);
+        var filesBefore = pricingArchiveFiles(versionId);
+        var cachedBefore = cachedPricingFile(pricingFileId);
+
+        new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
+            workflowService.confirmPricingPackaging(pricingFileId, items, "张研发", "RND_ENGINEER");
+            transaction.setRollbackOnly();
+        });
+
+        assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("DRAFT_PACKAGING");
+        assertThat(valueById("pricing_file", pricingFileId, "process_revision_id")).isNull();
+        assertThat(pricingPackagingRows(pricingFileId)).isEqualTo(packagingBefore);
+        assertThat(countByColumn("archive_file", "business_id", pricingFileId)).isZero();
+        assertThat(pricingArchiveFiles(versionId)).isEqualTo(filesBefore);
+        assertThat(cachedPricingFile(pricingFileId)).isEqualTo(cachedBefore);
+    }
+
+    @Test
+    void formalRevisionWithUnavailableYieldLeavesWorkbookAndDetailNull() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var formId = valueByColumn("experiment_form", "version_id", versionId, "id");
+        insertFormalPricingRevision(formId, "PREV-YIELD-NULL", 1, null, "NONE");
+
+        var pricingFileId = generatePricingFile(versionId);
+
+        var bytes = workflowService.downloadPricingFile(pricingFileId).content();
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getRow(8).getCell(6).getStringCellValue()).contains("finishedYield=UNAVAILABLE");
+            assertThat(sheet.getRow(15).getCell(6).getCellType()).isEqualTo(CellType.BLANK);
+        }
+        mockMvc.perform(get("/api/v1/pricing-files/{id}/detail", pricingFileId)
+                        .requestAttr("sessionPrincipal", principal("研发内勤", "RND_ASSISTANT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.source.finishedYieldPercent").value(nullValue()));
+    }
+
+    @Test
+    void concurrentPackagingConfirmationIsDatabaseLinearizedForThreeRounds() throws Exception {
+        for (int round = 1; round <= 3; round++) {
+            var currentRound = round;
+            var versionId = createLockedSampleVersion();
+            var formId = valueByColumn("experiment_form", "version_id", versionId, "id");
+            insertFormalPricingRevision(formId, "PREV-RACE-" + currentRound + "-1", 1, "80");
+            insertFormalPricingRevision(formId, "PREV-RACE-" + currentRound + "-2", 2, "70");
+            var pricingFileId = createPricingDraft(versionId);
+            var items = workflowService.pricingPackagingItems(pricingFileId);
+            var ready = new CountDownLatch(3);
+            var go = new CountDownLatch(1);
+            var first = CompletableFuture.supplyAsync(() -> confirmTogether(pricingFileId, items, ready, go));
+            var second = CompletableFuture.supplyAsync(() -> confirmTogether(pricingFileId, items, ready, go));
+            var nextRevision = CompletableFuture.runAsync(() -> insertRevisionTogether(
+                    formId, "PREV-RACE-" + currentRound + "-3", 3, "60", ready, go));
+            ready.await();
+            go.countDown();
+
+            var outcomes = List.of(first.join(), second.join());
+            nextRevision.join();
+            assertThat(outcomes).filteredOn("SUCCESS"::equals).hasSize(1);
+            assertThat(outcomes).filteredOn("PRICING_PACKAGING_CONFIRM_ILLEGAL"::equals).hasSize(1);
+            var pinnedRevision = valueById("pricing_file", pricingFileId, "process_revision_id");
+            assertThat(pinnedRevision).isIn("PREV-RACE-" + currentRound + "-2", "PREV-RACE-" + currentRound + "-3");
+            assertPricingPersistenceCoherent(pricingFileId, items, pinnedRevision,
+                    pinnedRevision.endsWith("-3") ? "60" : "70");
+        }
     }
 
     @Test
@@ -2711,19 +2843,134 @@ class SampleWorkflowControllerTest {
                 .split("\"")[0];
     }
 
+    private String confirmTogether(String pricingFileId, List<com.lhr.rnd.model.PricingPackagingItem> items,
+                                   CountDownLatch ready, CountDownLatch go) {
+        ready.countDown();
+        try {
+            go.await();
+            workflowService.confirmPricingPackaging(pricingFileId, items, "张研发", "RND_ENGINEER");
+            return "SUCCESS";
+        } catch (BusinessException exception) {
+            return exception.code();
+        } catch (Exception exception) {
+            throw new RuntimeException(exception);
+        }
+    }
+
+    private void insertRevisionTogether(String formId, String revisionId, int revisionNo,
+                                        String outputWeightKg, CountDownLatch ready, CountDownLatch go) {
+        try {
+            ready.countDown();
+            go.await();
+            insertFormalPricingRevision(formId, revisionId, revisionNo, outputWeightKg);
+        } catch (Exception exception) {
+            throw new RuntimeException(exception);
+        }
+    }
+
+    private String createPricingDraft(String versionId) throws Exception {
+        var draft = mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files", versionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DRAFT_PACKAGING"))
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(draft).path("data").path("id").asText();
+    }
+
+    private List<com.lhr.rnd.model.PricingPackagingItem> modifiedQuantity(
+            List<com.lhr.rnd.model.PricingPackagingItem> items) {
+        var result = new java.util.ArrayList<>(items);
+        var first = result.get(0);
+        result.set(0, new com.lhr.rnd.model.PricingPackagingItem(
+                first.id(), first.pricingFileId(), first.sequence(), first.source(), first.materialCode(),
+                first.materialName(), first.quantity().add(BigDecimal.ONE), first.packageSpec(),
+                first.conversionRule(), first.remark(), first.confirmationStatus(), first.modificationReason()));
+        return List.copyOf(result);
+    }
+
+    private List<Map<String, Object>> pricingPackagingRows(String pricingFileId) {
+        return jdbcTemplate.queryForList(
+                "select sequence,source,material_code,material_name,quantity,package_spec,confirmation_status "
+                        + "from pricing_packaging_item where pricing_file_id = ? order by sequence", pricingFileId);
+    }
+
+    private Map<String, String> pricingArchiveFiles(String versionId) throws Exception {
+        var sampleNo = valueById("sample_version", versionId, "sample_no");
+        var versionCode = valueById("sample_version", versionId, "version_code");
+        var directory = Path.of("target", "rnd-archive", sampleNo, versionCode, "核价");
+        if (!Files.exists(directory)) return Map.of();
+        var result = new java.util.TreeMap<String, String>();
+        try (var paths = Files.walk(directory)) {
+            for (var path : paths.filter(Files::isRegularFile).toList()) {
+                result.put(path.getFileName().toString(), sha256Bytes(Files.readAllBytes(path)));
+            }
+        }
+        return Map.copyOf(result);
+    }
+
+    @SuppressWarnings("unchecked")
+    private PricingFileRecord cachedPricingFile(String pricingFileId) {
+        return ((Map<String, PricingFileRecord>) ReflectionTestUtils.getField(workflowService, "pricingFiles"))
+                .get(pricingFileId);
+    }
+
+    private void assertPricingPersistenceCoherent(
+            String pricingFileId,
+            List<com.lhr.rnd.model.PricingPackagingItem> items,
+            String revisionId,
+            String finishedYield
+    ) throws Exception {
+        assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("PENDING_PRICING_REVIEW");
+        assertThat(valueById("pricing_file", pricingFileId, "process_revision_id")).isEqualTo(revisionId);
+        assertThat(cachedPricingFile(pricingFileId).processRevisionId()).isEqualTo(revisionId);
+        assertThat(cachedPricingFile(pricingFileId).status().name()).isEqualTo("PENDING_PRICING_REVIEW");
+        assertThat(pricingPackagingRows(pricingFileId)).hasSize(items.size());
+        var persistedQuantities = jdbcTemplate.query(
+                "select quantity from pricing_packaging_item where pricing_file_id = ? order by sequence",
+                (resultSet, row) -> resultSet.getBigDecimal(1), pricingFileId);
+        assertThat(persistedQuantities).containsExactlyElementsOf(
+                items.stream().map(com.lhr.rnd.model.PricingPackagingItem::quantity).toList());
+        assertThat(countById("experiment_process_revision", revisionId)).isEqualTo(1);
+        assertThat(countByColumn("archive_file", "business_id", pricingFileId)).isEqualTo(1);
+        var archive = jdbcTemplate.queryForMap("select * from archive_file where business_id = ?", pricingFileId);
+        assertThat(archive.get("remark")).isEqualTo("processRevisionId=" + revisionId);
+        assertThat(((Number) archive.get("file_size")).longValue())
+                .isEqualTo(Long.parseLong(valueById("pricing_file", pricingFileId, "content_length")));
+        assertThat(archive.get("file_name")).isEqualTo(valueById("pricing_file", pricingFileId, "file_name"));
+        var archiveBytes = workflowService.downloadArchiveFile((String) archive.get("id")).content();
+        var pricingBytes = workflowService.downloadPricingFile(pricingFileId).content();
+        assertThat(archiveBytes).isEqualTo(pricingBytes);
+        assertPricingWorkbookRevision(pricingBytes, revisionId, finishedYield);
+    }
+
+    private void assertPricingWorkbookRevision(byte[] bytes, String revisionId, String finishedYield) throws Exception {
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getRow(8).getCell(6).getStringCellValue())
+                    .contains("revisionId=" + revisionId,
+                            "finishedYield=" + new BigDecimal(finishedYield).setScale(6) + "%");
+            assertThat(sheet.getRow(15).getCell(6).getNumericCellValue())
+                    .isEqualTo(new BigDecimal(finishedYield).movePointLeft(2).doubleValue());
+        }
+    }
+
     private void insertFormalPricingRevision(String formId, String revisionId, int revisionNo, String outputWeightKg) throws Exception {
+        insertFormalPricingRevision(formId, revisionId, revisionNo, outputWeightKg, "PRIMARY_INPUT");
+    }
+
+    private void insertFormalPricingRevision(String formId, String revisionId, int revisionNo,
+                                             String outputWeightKg, String yieldBasis) throws Exception {
         var planId = "PLAN-" + revisionId;
         var snapshot = new ProcessPlan(
                 planId, formId, 1, "SUBMITTED",
                 java.util.List.of(new ProcessPlan.MajorProcess(
-                        "MAJOR-" + revisionId, 1, "COOK", "熟制", null, "PRIMARY_INPUT", null,
+                        "MAJOR-" + revisionId, 1, "COOK", "熟制", null, yieldBasis, null,
                         java.util.List.of(new ProcessPlan.MinorStep(
                                 "STEP-" + revisionId, 1, "COOK", "熟制", "NORMAL", null, null, null,
                                 null, null, null, null, null,
                                 java.util.List.of(new ProcessPlan.StepMaterial(
                                         "MATERIAL-" + revisionId, 1, "PRIMARY", "YRP00033", "正式主料名称", "SOLID",
                                         new BigDecimal("100"), "YRP00033", null, "EXTERNAL", null)),
-                                java.util.List.of(new ProcessPlan.StepOutput(
+                                outputWeightKg == null ? java.util.List.of() : java.util.List.of(new ProcessPlan.StepOutput(
                                         "OUTPUT-" + revisionId, 1, "FINISHED", "正式成品", "SOLID",
                                         new BigDecimal(outputWeightKg), true, false, null)),
                                 java.util.List.of())),
@@ -2748,5 +2995,10 @@ class SampleWorkflowControllerTest {
         var result = new StringBuilder(bytes.length * 2);
         for (var item : bytes) result.append(String.format("%02x", item));
         return result.toString();
+    }
+
+    private String sha256Bytes(byte[] value) throws Exception {
+        var bytes = MessageDigest.getInstance("SHA-256").digest(value);
+        return java.util.HexFormat.of().formatHex(bytes);
     }
 }

@@ -1788,13 +1788,13 @@ public class SampleWorkflowService {
     }
 
     @Transactional
-    public synchronized PricingFileRecord confirmPricingPackaging(
+    public PricingFileRecord confirmPricingPackaging(
             String pricingFileId,
             List<PricingPackagingItem> requestedItems,
             String operatorName,
             String operatorRole
     ) {
-        var pricingFile = requiredPricingFile(pricingFileId);
+        var pricingFile = lockedPricingFile(pricingFileId);
         ensurePricingReviewer(pricingFile, operatorName, operatorRole);
         if (pricingFile.status() != PricingFileStatus.DRAFT_PACKAGING) {
             throw new BusinessException("PRICING_PACKAGING_CONFIRM_ILLEGAL", "当前核价文件不处于包装确认状态");
@@ -2965,12 +2965,14 @@ public class SampleWorkflowService {
         if (archiveFileRepository == null) {
             return;
         }
-        var relativePath = "%s/%s/核价/%s".formatted(
+        var relativePath = "%s/%s/核价/%s/%s".formatted(
                 pricingFile.sampleNo(),
                 pricingFile.versionCode(),
+                pricingFile.id(),
                 pricingFile.fileName()
         );
         archiveStorageService.store(relativePath, content);
+        deleteArchiveAfterRollback(relativePath);
         archiveFileRepository.save(new ArchiveFileEntity(
                 "ARCH-" + pricingFile.id(),
                 "PRICING_FILE",
@@ -2979,9 +2981,30 @@ public class SampleWorkflowService {
                 pricingFile.fileName(),
                 relativePath,
                 null,
+                "PRICING",
+                null,
+                pricingFile.processRevisionId() == null
+                        ? "source=LEGACY"
+                        : "processRevisionId=" + pricingFile.processRevisionId(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                (long) content.length,
                 "ARCHIVED",
                 pricingFile.generatedAt()
         ));
+    }
+
+    private void deleteArchiveAfterRollback(String relativePath) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) {
+                    archiveStorageService.delete(relativePath);
+                }
+            }
+        });
     }
 
     private void persistFinanceNotification(PricingFileRecord notifiedPricingFile, FinanceNotification notification) {
@@ -3226,6 +3249,15 @@ public class SampleWorkflowService {
                 entity.getReviewedBy(), entity.getReviewedAt(), entity.getReviewComment(), entity.getRejectionReason(),
                 entity.getProcessRevisionId()
         );
+    }
+
+    private PricingFileRecord lockedPricingFile(String pricingFileId) {
+        if (pricingFileRepository == null) {
+            return requiredPricingFile(pricingFileId);
+        }
+        return pricingFileRepository.findByIdForUpdate(pricingFileId)
+                .map(this::toPricingFileRecord)
+                .orElseThrow(() -> new BusinessException("PRICING_FILE_NOT_FOUND", "核价文件不存在"));
     }
 
     private ProcessRevision latestFormalPricingRevision(ExperimentForm lockedForm) {

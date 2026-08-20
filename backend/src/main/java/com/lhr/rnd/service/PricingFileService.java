@@ -87,39 +87,71 @@ public class PricingFileService {
             return generate(version, pricingVersionNo, customerName,
                     YieldCalculationMode.SELECTED_PRIMARY_MATERIALS, packagingItems);
         }
-        var recipe = new ProcessRecipeService().aggregate(revision.snapshot());
-        var materials = new ArrayList<ExperimentMaterial>();
-        for (int index = 0; index < recipe.size(); index++) {
-            var line = recipe.get(index);
-            var firstSource = line.sources().isEmpty() ? null : line.sources().get(0);
-            var materialCode = blankToDefault(line.materialCode(), line.formulaMaterialId());
-            if (materialCode == null || materialCode.isBlank()) {
-                throw new BusinessException(
-                        "PROCESS_REVISION_PRICING_MATERIAL_UNPRICED",
-                        "正式工艺配方存在无法按物料标识核价的外部物料"
-                );
-            }
-            var costSource = costSourceFor(version.materials(), line);
-            materials.add(new ExperimentMaterial(
-                    costSource.stage(),
-                    index + 1,
-                    materialCode,
-                    line.materialName(),
-                    line.weightKg(),
-                    costSource.utilizationRate() == null ? BigDecimal.ONE : costSource.utilizationRate(),
-                    "正式工艺版本 " + revision.revisionNo(),
-                    costSource.materialCategory() == null
-                            ? ("PRIMARY".equals(firstSource == null ? null : firstSource.materialRole()) ? "RAW" : "AUXILIARY")
-                            : costSource.materialCategory(),
-                    "PRIMARY".equals(firstSource == null ? null : firstSource.materialRole()),
-                    line.ratioPercent(),
-                    costSource.inputUnit() == null ? "kg" : costSource.inputUnit()
-            ));
-        }
+        var materials = resolveFormalPricingMaterials(version, revision);
         var finishedYieldPercent = new ProcessPlanCalculationService().calculateBatch(revision.snapshot());
         return generateWorkbook(version, pricingVersionNo, customerName,
                 YieldCalculationMode.SELECTED_PRIMARY_MATERIALS, packagingItems, materials,
                 finishedYieldPercent, revisionSource(revision, finishedYieldPercent));
+    }
+
+    List<ExperimentMaterial> resolveFormalPricingMaterials(SampleVersion version, ProcessRevision revision) {
+        var recipe = new ProcessRecipeService().aggregate(revision.snapshot());
+        var resolved = new java.util.LinkedHashMap<String, FormalPricingMaterial>();
+        for (var line : recipe) {
+            var materialCode = blankToDefault(line.materialCode(), line.formulaMaterialId());
+            if (materialCode == null || materialCode.isBlank()) {
+                throw new BusinessException("PROCESS_REVISION_PRICING_MATERIAL_UNPRICED", "正式工艺配方存在无法按物料标识核价的外部物料");
+            }
+            var costSource = costSourceFor(version.materials(), line);
+            var roles = line.sources().stream()
+                    .map(ProcessRecipeService.RecipeSource::materialRole)
+                    .map(this::normalizedStableValue)
+                    .distinct()
+                    .toList();
+            if (roles.size() != 1 || roles.get(0) == null) {
+                throw new BusinessException("PROCESS_REVISION_PRICING_MATERIAL_ATTRIBUTE_CONFLICT",
+                        "正式工艺配方物料的投料角色冲突");
+            }
+            var role = roles.get(0);
+            var canonicalCode = costSource.materialCode().trim();
+            var prior = resolved.get(canonicalCode);
+            if (prior == null) {
+                resolved.put(canonicalCode, new FormalPricingMaterial(line, costSource, role, line.weightKg()));
+            } else if (!java.util.Objects.equals(prior.materialRole, role)
+                    || !java.util.Objects.equals(prior.costSource.stage(), costSource.stage())
+                    || !java.util.Objects.equals(prior.costSource.materialCategory(), costSource.materialCategory())
+                    || !sameDecimal(prior.costSource.utilizationRate(), costSource.utilizationRate())
+                    || !java.util.Objects.equals(normalizedStableValue(prior.costSource.inputUnit()),
+                    normalizedStableValue(costSource.inputUnit()))) {
+                throw new BusinessException("PROCESS_REVISION_PRICING_MATERIAL_ATTRIBUTE_CONFLICT", "正式工艺配方物料的核价属性冲突");
+            } else {
+                prior.weightKg = prior.weightKg.add(line.weightKg());
+            }
+        }
+        var materials = new ArrayList<ExperimentMaterial>();
+        var totalWeight = resolved.values().stream().map(item -> item.weightKg).reduce(BigDecimal.ZERO, BigDecimal::add);
+        int index = 0;
+        for (var item : resolved.values()) {
+            index++;
+            var line = item.line;
+            var costSource = item.costSource;
+            materials.add(new ExperimentMaterial(
+                    costSource.stage(),
+                    index,
+                    costSource.materialCode(),
+                    line.materialName(),
+                    item.weightKg,
+                    costSource.utilizationRate() == null ? BigDecimal.ONE : costSource.utilizationRate(),
+                    "正式工艺版本 " + revision.revisionNo(),
+                    costSource.materialCategory() == null
+                            ? ("PRIMARY".equals(item.materialRole) ? "RAW" : "AUXILIARY")
+                            : costSource.materialCategory(),
+                    "PRIMARY".equals(item.materialRole),
+                    totalWeight.signum() == 0 ? null : item.weightKg.divide(totalWeight, 6, RoundingMode.HALF_UP),
+                    costSource.inputUnit() == null ? "kg" : costSource.inputUnit()
+            ));
+        }
+        return List.copyOf(materials);
     }
 
     private PricingFileResult generateWorkbook(
@@ -145,7 +177,8 @@ public class PricingFileService {
             relocateTemplateStructure(sheet, layout);
             fillHeader(sheet, version, customer, effectiveDate, sourceDescription);
             fillMaterials(sheet, materials, layout);
-            fillSummary(sheet, materials, version, layout, yieldCalculationMode, finishedYieldPercent);
+            fillSummary(sheet, materials, version, layout, yieldCalculationMode, finishedYieldPercent,
+                    sourceDescription != null);
             if (confirmedPackaging.isEmpty()) {
                 fillPackagingQuantities(sheet, version, layout);
             } else {
@@ -408,7 +441,8 @@ public class PricingFileService {
             SampleVersion version,
             LayoutRows layout,
             YieldCalculationMode yieldCalculationMode,
-            BigDecimal finishedYieldPercent
+            BigDecimal finishedYieldPercent,
+            boolean finishedYieldAuthoritative
     ) {
         var firstExcelRow = MATERIAL_START_ROW + 1;
         var lastExcelRow = layout.lastMaterialRow() + 1;
@@ -426,7 +460,7 @@ public class PricingFileService {
         if (finishedYieldPercent != null) {
             setNumeric(sheet, layout.yieldRateRow(), 6,
                     decimalValue(finishedYieldPercent.divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP)));
-        } else {
+        } else if (!finishedYieldAuthoritative) {
             var yieldRows = yieldFormulaRows(materials, yieldCalculationMode);
             if (!yieldRows.isEmpty() && version.referenceOutputKg() != null) {
             var denominatorCells = yieldRows.stream()
@@ -661,9 +695,9 @@ public class PricingFileService {
     }
 
     private String revisionSource(ProcessRevision revision, BigDecimal finishedYieldPercent) {
-        return "source=FORMAL_PROCESS_REVISION;revisionNo=%d;revisionId=%s;finishedYield=%s%%".formatted(
-                revision.revisionNo(), revision.id(),
-                (finishedYieldPercent == null ? BigDecimal.ZERO : finishedYieldPercent).setScale(6, RoundingMode.HALF_UP));
+        var yield = finishedYieldPercent == null ? "UNAVAILABLE" : finishedYieldPercent.setScale(6, RoundingMode.HALF_UP) + "%";
+        return "source=FORMAL_PROCESS_REVISION;revisionNo=%d;revisionId=%s;finishedYield=%s".formatted(
+                revision.revisionNo(), revision.id(), yield);
     }
 
     private ExperimentMaterial costSourceFor(
@@ -683,21 +717,40 @@ public class PricingFileService {
                     "正式工艺配方物料未关联现有核价物料编码"
             );
         }
-        var first = matches.get(0);
-        for (var match : matches) {
-            if (!sameStableMaterialKey(first.materialCode(), match.materialCode())) {
-                throw new BusinessException(
-                        "PROCESS_REVISION_PRICING_MATERIAL_MAPPING_AMBIGUOUS",
-                        "正式工艺配方物料匹配到多个核价物料编码"
-                );
-            }
+        if (matches.size() != 1) {
+            throw new BusinessException(
+                    "PROCESS_REVISION_PRICING_MATERIAL_MAPPING_AMBIGUOUS",
+                    "正式工艺配方物料匹配到多个核价物料编码"
+            );
         }
-        return first;
+        return matches.get(0);
     }
 
     private boolean sameStableMaterialKey(String first, String second) {
         return first != null && !first.isBlank() && second != null && !second.isBlank()
                 && first.trim().equals(second.trim());
+    }
+
+    private String normalizedStableValue(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private boolean sameDecimal(BigDecimal first, BigDecimal second) {
+        return first == null ? second == null : second != null && first.compareTo(second) == 0;
+    }
+
+    private static final class FormalPricingMaterial {
+        private final ProcessRecipeService.RecipeLine line;
+        private final ExperimentMaterial costSource;
+        private final String materialRole;
+        private BigDecimal weightKg;
+
+        private FormalPricingMaterial(ProcessRecipeService.RecipeLine line, ExperimentMaterial costSource, String materialRole, BigDecimal weightKg) {
+            this.line = line;
+            this.costSource = costSource;
+            this.materialRole = materialRole;
+            this.weightKg = weightKg;
+        }
     }
 
     private double decimalValue(BigDecimal value) {

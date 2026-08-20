@@ -148,6 +148,105 @@ class PricingFileServiceTest {
     }
 
     @Test
+    void rejectsDuplicateLegacyCostRowsForTheSameStableCode() {
+        var revision = formalRevision("PREV-DUPLICATE", 1, "RAW-001", "正式主料", "100", "80");
+        var version = pricingVersionWithCustomMaterials(List.of(
+                new ExperimentMaterial("原料", 1, "RAW-001", "旧主料A", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg"),
+                new ExperimentMaterial("原料", 2, "RAW-001", "旧主料B", new BigDecimal("10"), new BigDecimal("0.9"), null, "RAW", true, null, "kg")));
+
+        assertThatThrownBy(() -> new PricingFileService().generate(version, "V1", "LHYC", revision, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).code())
+                .isEqualTo("PROCESS_REVISION_PRICING_MATERIAL_MAPPING_AMBIGUOUS");
+    }
+
+    @Test
+    void rejectsDuplicateLegacyCostRowsWithConflictingUnits() {
+        var revision = formalRevision("PREV-DUPLICATE-UNIT", 1, "RAW-001", "正式主料", "100", "80");
+        var version = pricingVersionWithCustomMaterials(List.of(
+                new ExperimentMaterial("原料", 1, "RAW-001", "旧主料A", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg"),
+                new ExperimentMaterial("原料", 2, "RAW-001", "旧主料B", new BigDecimal("10000"), new BigDecimal("0.8"), null, "RAW", true, null, "g")));
+
+        assertThatThrownBy(() -> new PricingFileService().generate(version, "V1", "LHYC", revision, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).code())
+                .isEqualTo("PROCESS_REVISION_PRICING_MATERIAL_MAPPING_AMBIGUOUS");
+    }
+
+    @Test
+    void rejectsFormulaIdAndMaterialCodeThatResolveToDifferentLegacyRows() {
+        var revision = formalRevision("PREV-CONFLICT", 1, "ERP-001", "FORMULA-001", "正式主料", "100", "80", "PRIMARY_INPUT");
+        var version = pricingVersionWithCustomMaterials(List.of(
+                new ExperimentMaterial("原料", 1, "FORMULA-001", "公式物料", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg"),
+                new ExperimentMaterial("原料", 2, "ERP-001", "ERP物料", new BigDecimal("10"), new BigDecimal("0.9"), null, "RAW", true, null, "kg")));
+
+        assertThatThrownBy(() -> new PricingFileService().generate(version, "V1", "LHYC", revision, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).code())
+                .isEqualTo("PROCESS_REVISION_PRICING_MATERIAL_MAPPING_AMBIGUOUS");
+    }
+
+    @Test
+    void aggregatesCanonicalExternalMaterialsAndPreservesLegacyRatioScale() throws Exception {
+        var revision = formalRevisionWithMixedCanonicalInputs();
+        var version = pricingVersionWithCustomMaterials(List.of(
+                new ExperimentMaterial("原料", 1, "ERP-001", "成本主料", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg")));
+        var service = new PricingFileService();
+
+        var materials = service.resolveFormalPricingMaterials(version, revision);
+
+        assertThat(materials).singleElement().satisfies(material -> {
+            assertThat(material.materialCode()).isEqualTo("ERP-001");
+            assertThat(material.weightKg()).isEqualByComparingTo("100.0000");
+            assertThat(material.formulaRatio()).isEqualByComparingTo("1.000000");
+            assertThat(material.inputUnit()).isEqualTo("kg");
+        });
+        var result = service.generate(version, "V1", "LHYC", revision, List.of());
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getRow(12).getCell(3).getStringCellValue()).isEqualTo("ERP-001");
+            assertThat(sheet.getRow(12).getCell(6).getNumericCellValue()).isEqualTo(100D);
+            assertThat(sheet.getRow(13).getCell(3).getStringCellValue()).isEqualTo("总计");
+        }
+    }
+
+    @Test
+    void rejectsConflictingRolesWithinOneCanonicalFormalMaterial() {
+        var revision = formalRevisionWithConflictingRoles();
+        var version = pricingVersionWithCustomMaterials(List.of(
+                new ExperimentMaterial("原料", 1, "ERP-001", "成本主料", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg")));
+
+        assertThatThrownBy(() -> new PricingFileService().generate(version, "V1", "LHYC", revision, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).code())
+                .isEqualTo("PROCESS_REVISION_PRICING_MATERIAL_ATTRIBUTE_CONFLICT");
+    }
+
+    @Test
+    void preservesUnavailableZeroHundredAndOverHundredFormalYields() throws Exception {
+        var version = pricingVersionWithCustomMaterials(List.of(
+                new ExperimentMaterial("原料", 1, "RAW-001", "旧主料", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg")));
+        var unavailable = new PricingFileService().generate(version, "V1", "LHYC",
+                formalRevision("PREV-YIELD-NULL", 1, "RAW-001", "RAW-001", "正式主料", "100", null, "NONE"), List.of());
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(unavailable.content()))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getRow(8).getCell(6).getStringCellValue()).contains("finishedYield=UNAVAILABLE");
+            assertThat(sheet.getRow(15).getCell(6).getCellType()).isEqualTo(CellType.BLANK);
+        }
+        for (var expected : List.of("0", "100", "125")) {
+            var result = new PricingFileService().generate(version, "V1", "LHYC",
+                    formalRevision("PREV-YIELD-" + expected, 1, "RAW-001", "正式主料", "100", expected), List.of());
+            try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
+                var sheet = workbook.getSheetAt(0);
+                assertThat(sheet.getRow(8).getCell(6).getStringCellValue())
+                        .contains("finishedYield=" + new BigDecimal(expected).setScale(6) + "%");
+                assertThat(sheet.getRow(15).getCell(6).getNumericCellValue())
+                        .isEqualTo(new BigDecimal(expected).divide(new BigDecimal("100")).doubleValue());
+            }
+        }
+    }
+
+    @Test
     void generatesFormalLayoutForTwentyFiveMaterials() throws Exception {
         var service = new PricingFileService();
         var result = service.generate(pricingVersionWithMaterials(25), "V1", "LHYC");
@@ -365,23 +464,80 @@ class PricingFileServiceTest {
             String materialWeight,
             String finishedOutputWeight
     ) {
+        return formalRevision(revisionId, revisionNo, materialCode, materialCode, materialName,
+                materialWeight, finishedOutputWeight, "PRIMARY_INPUT");
+    }
+
+    private ProcessRevision formalRevision(
+            String revisionId,
+            int revisionNo,
+            String materialCode,
+            String formulaMaterialId,
+            String materialName,
+            String materialWeight,
+            String finishedOutputWeight,
+            String yieldBasis
+    ) {
         var step = new ProcessPlan.MinorStep(
                 "STEP-" + revisionId, 1, "COOK", "熟制", "NORMAL", null, null, null,
                 null, null, null, null, null,
                 List.of(new ProcessPlan.StepMaterial(
                         "STEP-MATERIAL-" + revisionId, 1, "PRIMARY", materialCode, materialName, "SOLID",
-                        new BigDecimal(materialWeight), materialCode, null, "EXTERNAL", null)),
-                List.of(new ProcessPlan.StepOutput(
+                        new BigDecimal(materialWeight), formulaMaterialId, null, "EXTERNAL", null)),
+                finishedOutputWeight == null ? List.of() : List.of(new ProcessPlan.StepOutput(
                         "STEP-OUTPUT-" + revisionId, 1, "FINISHED", "正式成品", "SOLID",
                         new BigDecimal(finishedOutputWeight), true, false, null)),
                 List.of());
         var plan = new ProcessPlan(
                 "PLAN-" + revisionId, "FORM-1", 1, "SUBMITTED",
                 List.of(new ProcessPlan.MajorProcess(
-                        "MAJOR-" + revisionId, 1, "COOK", "熟制", null, "PRIMARY_INPUT", null,
+                        "MAJOR-" + revisionId, 1, "COOK", "熟制", null, yieldBasis, null,
                         List.of(step), List.of(), List.of(), null)),
                 null, false);
         return new ProcessRevision(revisionId, plan.id(), plan.experimentFormId(), revisionNo,
+                null, null, "研发", "2026-08-20T00:00:00", "0".repeat(64), plan);
+    }
+
+    private ProcessRevision formalRevisionWithMixedCanonicalInputs() {
+        var first = new ProcessPlan.MinorStep("STEP-MIX-1", 1, "MIX", "混合1", "NORMAL",
+                null, null, null, null, null, null, null, null,
+                List.of(new ProcessPlan.StepMaterial("MIX-1", 1, "PRIMARY", "ERP-001", "正式主料A", "SOLID",
+                        new BigDecimal("40"), "FORMULA-A", null, "EXTERNAL", null)), List.of(), List.of());
+        var second = new ProcessPlan.MinorStep("STEP-MIX-2", 2, "MIX", "混合2", "NORMAL",
+                null, null, null, null, null, null, null, null,
+                List.of(
+                        new ProcessPlan.StepMaterial("MIX-2", 1, "PRIMARY", "ERP-001", "正式主料B", "SOLID",
+                                new BigDecimal("35"), "FORMULA-B", null, "EXTERNAL", null),
+                        new ProcessPlan.StepMaterial("MIX-INTERMEDIATE", 2, "AUXILIARY", "ERP-001", "中间产物", "SOLID",
+                                new BigDecimal("999"), null, null, "STEP_OUTPUT", "OUT-1")),
+                List.of(), List.of());
+        var third = new ProcessPlan.MinorStep("STEP-MIX-3", 3, "MIX", "混合3", "NORMAL",
+                null, null, null, null, null, null, null, null,
+                List.of(new ProcessPlan.StepMaterial("MIX-3", 1, "PRIMARY", "ERP-001", "正式主料C", "SOLID",
+                        new BigDecimal("25"), null, null, "EXTERNAL", null)),
+                List.of(new ProcessPlan.StepOutput("MIX-OUT", 1, "FINISHED", "正式成品", "SOLID",
+                        new BigDecimal("80"), true, false, null)), List.of());
+        return revision("PREV-MIXED", List.of(first, second, third), "PRIMARY_INPUT");
+    }
+
+    private ProcessRevision formalRevisionWithConflictingRoles() {
+        var step = new ProcessPlan.MinorStep("STEP-ROLE", 1, "MIX", "混合", "NORMAL",
+                null, null, null, null, null, null, null, null,
+                List.of(
+                        new ProcessPlan.StepMaterial("ROLE-1", 1, "PRIMARY", "ERP-001", "正式主料", "SOLID",
+                                new BigDecimal("40"), "FORMULA-A", null, "EXTERNAL", null),
+                        new ProcessPlan.StepMaterial("ROLE-2", 2, "AUXILIARY", "ERP-001", "正式辅料", "SOLID",
+                                new BigDecimal("60"), "FORMULA-A", null, "EXTERNAL", null)),
+                List.of(new ProcessPlan.StepOutput("ROLE-OUT", 1, "FINISHED", "正式成品", "SOLID",
+                        new BigDecimal("80"), true, false, null)), List.of());
+        return revision("PREV-ROLE", List.of(step), "PRIMARY_INPUT");
+    }
+
+    private ProcessRevision revision(String id, List<ProcessPlan.MinorStep> steps, String yieldBasis) {
+        var plan = new ProcessPlan("PLAN-" + id, "FORM-1", 1, "SUBMITTED",
+                List.of(new ProcessPlan.MajorProcess("MAJOR-" + id, 1, "COOK", "熟制", null, yieldBasis, null,
+                        steps, List.of(), List.of(), null)), null, false);
+        return new ProcessRevision(id, plan.id(), plan.experimentFormId(), 1,
                 null, null, "研发", "2026-08-20T00:00:00", "0".repeat(64), plan);
     }
 

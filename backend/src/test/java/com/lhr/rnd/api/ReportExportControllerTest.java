@@ -50,7 +50,6 @@ class ReportExportControllerTest {
                 "experiment_material",
                 "experiment_form",
                 "feishu_notification",
-                "user_account",
                 "rnd_task",
                 "sample_version",
                 "sample_project",
@@ -59,6 +58,9 @@ class ReportExportControllerTest {
         }) {
             jdbcTemplate.update("delete from " + table);
         }
+        jdbcTemplate.update("delete from user_account where name = '张研发'");
+        jdbcTemplate.update("insert into user_account(id,username,password_hash,name,feishu_user_id,role,status,created_at,updated_at) "
+                        + "values ('REPORT-ASSIGNEE','report_assignee','x','张研发','ou-report-assignee','RND_ENGINEER','ACTIVE',current_timestamp,current_timestamp)");
         for (String field : new String[]{
                 "requests",
                 "projects",
