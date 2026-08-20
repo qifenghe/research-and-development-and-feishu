@@ -45,6 +45,7 @@ public class ProcessArtifactService {
     private final ProcessRevisionService revisionService;
     private final LocalArchiveStorageService storage;
     private final AuditLogService auditLogService;
+    private final ProcessArtifactCleanupLedgerService cleanupLedger;
     private final ProcessRecipeService recipeService = new ProcessRecipeService();
     private final ProcessPlanCalculationService calculationService = new ProcessPlanCalculationService();
 
@@ -52,12 +53,14 @@ public class ProcessArtifactService {
             JdbcTemplate jdbc,
             ProcessRevisionService revisionService,
             LocalArchiveStorageService storage,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            ProcessArtifactCleanupLedgerService cleanupLedger
     ) {
         this.jdbc = jdbc;
         this.revisionService = revisionService;
         this.storage = storage;
         this.auditLogService = auditLogService;
+        this.cleanupLedger = cleanupLedger;
     }
 
     @Transactional(readOnly = true)
@@ -70,6 +73,7 @@ public class ProcessArtifactService {
 
     @Transactional
     public ProcessArtifact generate(String formId, String revisionId, String artifactType, SessionPrincipal principal) {
+        cleanupLedger.reconcileStale();
         requireWriteAccess(formId, principal);
         var revision = revisionService.find(formId, revisionId);
         validateType(artifactType);
@@ -86,27 +90,30 @@ public class ProcessArtifactService {
         var generatedAt = LocalDateTime.now();
         var storageKey = storageKey(revisionId, artifactType, id);
         var productName = productName(formId);
+        var readyMetadata = new boolean[]{false};
+        cleanupLedger.register(storageKey);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCompletion(int status) {
+                    if (status == STATUS_COMMITTED && readyMetadata[0]) cleanupLedger.confirm(storageKey);
+                    else cleanupLedger.deleteOrRetainForRetry(storageKey);
+                }
+            });
+        }
         byte[] bytes = null;
         try {
             bytes = ProcessArtifact.FORMULA_XLSX.equals(artifactType)
                     ? formulaBytes(productName, revision, documentVersion, generatedAt, principal.name())
                     : sopBytes(productName, revision, documentVersion, generatedAt, principal.name());
             storage.store(storageKey, bytes);
-            // File bytes must not survive a transaction that rolls back after the atomic write.
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                    @Override public void afterCompletion(int status) {
-                        if (status != STATUS_COMMITTED) cleanup(storageKey);
-                    }
-                });
-            }
             var artifact = new ProcessArtifact(id, revisionId, artifactType, documentVersion, ProcessArtifact.READY,
                     generatedAt.toString(), principal.name().trim(), storageKey, summary(revision, artifactType), null,
                     principal.userId(), sha256(bytes), (long) bytes.length);
             try {
                 insert(artifact);
-                auditLogService.record("PROCESS_ARTIFACT", formId, "PROCESS_ARTIFACT_GENERATED", principal.name().trim(),
+                auditLogService.record("PROCESS_ARTIFACT", formId, "PROCESS_ARTIFACT_GENERATED", principal.name().trim(), principal.userId(),
                         "artifactId=%s;revisionId=%s;type=%s;documentVersion=%s".formatted(id, revisionId, artifactType, documentVersion));
+                readyMetadata[0] = true;
                 return artifact;
             } catch (RuntimeException exception) {
                 cleanup(storageKey);
@@ -151,7 +158,7 @@ public class ProcessArtifactService {
         var artifact = new ProcessArtifact(id, revisionId, type, version, ProcessArtifact.FAILED, at.toString(), operator.name().trim(),
                 null, "generation failed", truncate(reason), operator.userId(), null, null);
         insert(artifact);
-        auditLogService.record("PROCESS_ARTIFACT", formId, "PROCESS_ARTIFACT_GENERATION_FAILED", operator.name().trim(),
+        auditLogService.record("PROCESS_ARTIFACT", formId, "PROCESS_ARTIFACT_GENERATION_FAILED", operator.name().trim(), operator.userId(),
                 "artifactId=%s;type=%s;documentVersion=%s;reason=%s".formatted(id, type, version, truncate(reason)));
         return artifact;
     }
@@ -346,11 +353,7 @@ public class ProcessArtifactService {
     }
 
     private void cleanup(String key) {
-        try {
-            storage.delete(key);
-        } catch (RuntimeException ignored) {
-            // The storage key is UUID-based and cannot overwrite another artifact; a later archive cleanup can safely retry.
-        }
+        cleanupLedger.deleteOrRetainForRetry(key);
     }
 
     private void heading(XWPFDocument document, String text) {

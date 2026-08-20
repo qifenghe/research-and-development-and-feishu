@@ -11,6 +11,10 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.lhr.rnd.service.SessionPrincipal;
 
@@ -52,14 +56,19 @@ class SampleWorkflowControllerTest {
     @Autowired
     private com.lhr.rnd.service.SampleWorkflowService workflowService;
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     @BeforeEach
     void clearWorkflowState() {
         clearBusinessTables();
+        jdbcTemplate.update("insert into user_account(id,username,password_hash,name,feishu_user_id,role,status,created_at,updated_at) values ('TEST-ASSIGNEE','test_assignee','x','张研发','ou-test-assignee','RND_ENGINEER','ACTIVE',current_timestamp,current_timestamp)");
         clearWorkflowServiceMemory();
     }
 
     private void clearBusinessTables() {
         for (String table : new String[]{
+                "process_artifact_cleanup_ledger",
                 "audit_log",
                 "archive_file",
                 "finance_notification",
@@ -69,6 +78,15 @@ class SampleWorkflowControllerTest {
                 "shipment_record",
                 "test_record",
                 "test_assignment",
+                "experiment_process_artifact",
+                "experiment_process_revision",
+                "experiment_control_measurement",
+                "experiment_control_point",
+                "experiment_step_output",
+                "experiment_step_material",
+                "experiment_minor_step",
+                "experiment_major_process",
+                "experiment_process_plan",
                 "experiment_process",
                 "experiment_material",
                 "experiment_form",
@@ -284,6 +302,7 @@ class SampleWorkflowControllerTest {
     @Test
     void savesFinishedQuantityAndProductOwner() throws Exception {
         var taskId = createApprovedRequest();
+        jdbcTemplate.update("insert into user_account(id,username,password_hash,name,feishu_user_id,role,status,created_at,updated_at) values ('TEST-LI','test_li','x','李研发','ou-test-li','RND_ENGINEER','ACTIVE',current_timestamp,current_timestamp)");
 
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/assign", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -615,6 +634,7 @@ class SampleWorkflowControllerTest {
 
     @Test
     void bindingFeishuUserCreatesTaskAssignmentNotificationWhenTaskIsAssigned() throws Exception {
+        jdbcTemplate.update("delete from user_account where id = 'TEST-ASSIGNEE'");
         mockMvc.perform(post("/api/v1/feishu/users/bind")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -842,10 +862,57 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("rnd_task", taskId, "assignee_name")).isEqualTo("张研发");
         assertThat(valueById("rnd_task", taskId, "due_date")).isEqualTo("2026-06-25");
         assertThat(valueById("rnd_task", taskId, "assigned_at")).isNotBlank();
+        assertThat(valueById("rnd_task", taskId, "assignee_user_id")).isEqualTo("TEST-ASSIGNEE");
 
         acceptTask(taskId);
         assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("SAMPLING");
         assertThat(valueById("rnd_task", taskId, "accepted_at")).isNotBlank();
+    }
+
+    @Test
+    void assignmentRejectsZeroOrMultipleActiveAccountsWithoutSplittingDatabaseAndCacheAndCanRetry() throws Exception {
+        var taskId = createApprovedRequest();
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/assign", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"assigneeName\":\"不存在研发\",\"dueDate\":\"2026-06-25\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("RND_TASK_ASSIGNEE_NOT_FOUND"));
+        assertPendingInDatabaseAndCache(taskId);
+
+        jdbcTemplate.update("insert into user_account(id,username,password_hash,name,feishu_user_id,role,status,created_at,updated_at) values ('DUP-1','dup1','x','重名研发','ou-dup-1','RND_ENGINEER','ACTIVE',current_timestamp,current_timestamp)");
+        jdbcTemplate.update("insert into user_account(id,username,password_hash,name,feishu_user_id,role,status,created_at,updated_at) values ('DUP-2','dup2','x','重名研发','ou-dup-2','RND_ENGINEER','ACTIVE',current_timestamp,current_timestamp)");
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/assign", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"assigneeName\":\"重名研发\",\"dueDate\":\"2026-06-25\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("RND_TASK_ASSIGNEE_AMBIGUOUS"));
+        assertPendingInDatabaseAndCache(taskId);
+
+        jdbcTemplate.update("delete from user_account where id = 'DUP-2'");
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/assign", taskId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"assigneeName\":\"重名研发\",\"dueDate\":\"2026-06-25\"}"))
+                .andExpect(status().isOk());
+        assertThat(valueById("rnd_task", taskId, "assignee_user_id")).isEqualTo("DUP-1");
+        assertThat(workflowService.taskPool()).extracting(com.lhr.rnd.model.RndTask::id).doesNotContain(taskId);
+    }
+
+    @Test
+    void assignmentCommitFailureRestoresCacheAndDatabaseForRetry() throws Exception {
+        var taskId = createApprovedRequest();
+        var transaction = new TransactionTemplate(transactionManager);
+
+        assertThatThrownBy(() -> transaction.executeWithoutResult(status -> {
+            workflowService.assignTask(taskId, "张研发", java.time.LocalDate.of(2026, 6, 25));
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void beforeCommit(boolean readOnly) { throw new IllegalStateException("injected assignment commit failure"); }
+            });
+        })).hasMessageContaining("injected assignment commit failure");
+        assertPendingInDatabaseAndCache(taskId);
+
+        assignTask(taskId);
+        assertThat(valueById("rnd_task", taskId, "assignee_user_id")).isEqualTo("TEST-ASSIGNEE");
     }
 
     @Test
@@ -1303,6 +1370,7 @@ class SampleWorkflowControllerTest {
         assertThat(countById("rnd_task", nextTaskId)).isEqualTo(1);
         assertThat(valueById("rnd_task", nextTaskId, "status")).isEqualTo("PENDING_ACCEPTANCE");
         assertThat(valueById("rnd_task", nextTaskId, "version_code")).isEqualTo("A1");
+        assertThat(valueById("rnd_task", nextTaskId, "assignee_user_id")).isEqualTo("TEST-ASSIGNEE");
     }
 
     @Test
@@ -1882,6 +1950,14 @@ class SampleWorkflowControllerTest {
                 .isEqualTo("PENDING_ACCEPTANCE");
         assertThat(valueByColumn("rnd_task", "version_id", nextVersionId, "version_code"))
                 .isEqualTo("A1");
+        assertThat(valueByColumn("rnd_task", "version_id", nextVersionId, "assignee_user_id"))
+                .isEqualTo("TEST-ASSIGNEE");
+    }
+
+    private void assertPendingInDatabaseAndCache(String taskId) {
+        assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("PENDING_ASSIGNMENT");
+        assertThat(valueById("rnd_task", taskId, "assignee_user_id")).isBlank();
+        assertThat(workflowService.taskPool()).extracting(com.lhr.rnd.model.RndTask::id).contains(taskId);
     }
 
     @Test
@@ -2475,6 +2551,9 @@ class SampleWorkflowControllerTest {
     }
 
     private void assignTask(String taskId, String assigneeName) throws Exception {
+        var accountId = "ASSIGN-" + assigneeName.hashCode();
+        if (!"张研发".equals(assigneeName) && jdbcTemplate.queryForObject("select count(*) from user_account where name = ? and status = 'ACTIVE'", Integer.class, assigneeName) == 0) jdbcTemplate.update("insert into user_account(id,username,password_hash,name,feishu_user_id,role,status,created_at,updated_at) values (?,?,?,?,?,?,?,current_timestamp,current_timestamp)",
+                accountId, "assign_" + Math.abs(assigneeName.hashCode()), "x", assigneeName, "ou-" + Math.abs(assigneeName.hashCode()), "RND_ENGINEER", "ACTIVE");
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/assign", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"assigneeName\":\"%s\",\"dueDate\":\"2026-06-25\"}".formatted(assigneeName)))

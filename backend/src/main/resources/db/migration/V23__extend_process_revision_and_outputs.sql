@@ -33,6 +33,14 @@ alter table experiment_process add constraint fk_experiment_process_form foreign
 alter table experiment_process_plan add constraint fk_process_plan_form foreign key (experiment_form_id) references experiment_form(id) on delete cascade;
 alter table audit_log alter column business_id type varchar(64);
 alter table audit_log alter column detail type text;
+alter table audit_log add column operator_user_id varchar(64);
+
+create table process_artifact_cleanup_ledger (
+    storage_key varchar(500) primary key,
+    created_at timestamp not null,
+    last_attempt timestamp,
+    error varchar(1000)
+);
 
 alter table experiment_process_plan add column balance_tolerance_kg numeric(14,4) not null default 0.0100;
 alter table experiment_process_plan add column source_revision_id varchar(64);

@@ -57,6 +57,7 @@ class SchemaMigrationTest {
         assertTableExists("experiment_control_measurement");
         assertTableExists("experiment_process_revision");
         assertTableExists("experiment_process_artifact");
+        assertTableExists("process_artifact_cleanup_ledger");
         assertTableExists("pricing_packaging_item");
         assertTableExists("packaging_template_item");
 
@@ -126,6 +127,9 @@ class SchemaMigrationTest {
         assertColumnExists("experiment_process_artifact", "byte_size");
         assertColumnExists("experiment_process_artifact", "generated_by_user_id");
         assertColumnExists("rnd_task", "assignee_user_id");
+        assertColumnExists("audit_log", "operator_user_id");
+        assertColumnExists("process_artifact_cleanup_ledger", "last_attempt");
+        assertColumnExists("process_artifact_cleanup_ledger", "error");
         assertColumnExists("experiment_step_material", "source_type");
         assertColumnExists("experiment_step_material", "source_step_output_id");
         assertColumnExists("experiment_process_plan", "balance_tolerance_kg");

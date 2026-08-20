@@ -25,12 +25,16 @@ public class AuditLogService {
             String operatorName,
             String detail
     ) {
+        record(businessType, businessId, action, operatorName, null, detail);
+    }
+
+    public void record(String businessType, String businessId, String action, String operatorName, String operatorUserId, String detail) {
         auditLogRepository.save(new AuditLogEntity(
                 "AUD-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12),
                 businessType,
                 businessId,
                 action,
-                operatorName,
+                operatorName, operatorUserId,
                 detail,
                 LocalDateTime.now(clock)
         ));

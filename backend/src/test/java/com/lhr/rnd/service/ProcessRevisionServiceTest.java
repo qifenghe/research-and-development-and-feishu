@@ -30,6 +30,7 @@ class ProcessRevisionServiceTest {
 
     @BeforeEach
     void seedForm() {
+        jdbc.update("update rnd_task set assignee_name = null, assignee_user_id = null where id = 'TASK-PROCESS-REVISION'");
         jdbc.update("delete from experiment_process_revision where experiment_form_id = ?", FORM_ID);
         jdbc.update("delete from experiment_step_material where minor_step_id in (select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id join experiment_process_plan plan on major.process_plan_id = plan.id where plan.experiment_form_id = ?)", FORM_ID);
         jdbc.update("delete from experiment_major_process where process_plan_id in (select id from experiment_process_plan where experiment_form_id = ?)", FORM_ID);
@@ -163,6 +164,31 @@ class ProcessRevisionServiceTest {
         assertThatThrownBy(() -> service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(
                 saved.versionNo(), false, "拒绝提交", "可信研发"))).isInstanceOf(BusinessException.class);
         assertThat(jdbc.queryForObject("select count(*) from audit_log where business_id = ?", Integer.class, FORM_ID)).isEqualTo(2);
+    }
+
+    @Test
+    void immutableOwnerIdAllowsOnlyTheRealSameNameAccountToSubmitAndCreateDraftAndAuditsItsId() {
+        var owner = new SessionPrincipal("OWNER-SAME-NAME", "owner_same", "同名负责人", null, "RND_ENGINEER", null);
+        var intruder = new SessionPrincipal("INTRUDER-SAME-NAME", "intruder_same", "同名负责人", null, "RND_ENGINEER", null);
+        jdbc.update("insert into user_account(id,username,password_hash,name,role,status,created_at,updated_at) values (?,?,?,?,?,?,current_timestamp,current_timestamp)",
+                owner.userId(), owner.username(), "x", owner.name(), owner.role(), "ACTIVE");
+        jdbc.update("insert into user_account(id,username,password_hash,name,role,status,created_at,updated_at) values (?,?,?,?,?,?,current_timestamp,current_timestamp)",
+                intruder.userId(), intruder.username(), "x", intruder.name(), intruder.role(), "ACTIVE");
+        jdbc.update("update rnd_task set assignee_name = ?, assignee_user_id = ? where id = 'TASK-PROCESS-REVISION'", owner.name(), owner.userId());
+        jdbc.update("delete from audit_log where business_id = ?", FORM_ID);
+        var saved = saveReadyDraft();
+
+        assertThatThrownBy(() -> service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(saved.versionNo(), true, "同名验证", intruder.name()), intruder))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).code()).isEqualTo("PROCESS_PLAN_FORM_FORBIDDEN");
+        var revision = service.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(saved.versionNo(), true, "同名验证", owner.name()), owner);
+
+        assertThatThrownBy(() -> service.createDraftFromRevision(FORM_ID, revision.id(), "侵入者不得建草稿", intruder))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).code()).isEqualTo("PROCESS_PLAN_FORM_FORBIDDEN");
+        assertThat(service.createDraftFromRevision(FORM_ID, revision.id(), "真实负责人建草稿", owner).sourceRevisionId()).isEqualTo(revision.id());
+        assertThat(jdbc.queryForList("select operator_user_id from audit_log where business_id = ? order by created_at", String.class, FORM_ID))
+                .containsExactly(owner.userId(), owner.userId());
     }
 
     @Test

@@ -44,10 +44,11 @@ public class ProcessRevisionService {
     @Transactional
     public ProcessRevision submit(String formId, SubmitCommand command, SessionPrincipal principal) {
         requireFormalWriteAccess(formId, principal);
-        return submitInternal(formId, new SubmitCommand(command.versionNo(), command.confirmed(), command.changeReason(), principal.name()), principal.name());
+        return submitInternal(formId, new SubmitCommand(command.versionNo(), command.confirmed(), command.changeReason(), principal.name()), principal.name(), principal.userId());
     }
 
-    private ProcessRevision submitInternal(String formId, SubmitCommand command, String trustedOperator) {
+    private ProcessRevision submitInternal(String formId, SubmitCommand command, String trustedOperator) { return submitInternal(formId, command, trustedOperator, null); }
+    private ProcessRevision submitInternal(String formId, SubmitCommand command, String trustedOperator, String trustedUserId) {
         if (command == null || !command.confirmed()) {
             throw new BusinessException("PROCESS_SUBMISSION_CONFIRMATION_REQUIRED", "正式提交前必须明确确认");
         }
@@ -91,7 +92,7 @@ public class ProcessRevisionService {
         } catch (DuplicateKeyException exception) {
             throw new BusinessException("PROCESS_PLAN_VERSION_CONFLICT", "工艺方案已被更新，请刷新后重试");
         }
-        auditLogService.record("PROCESS_PLAN", formId, "PROCESS_PLAN_SUBMITTED", trustedOperator == null ? command.submittedBy().trim() : trustedOperator,
+        auditLogService.record("PROCESS_PLAN", formId, "PROCESS_PLAN_SUBMITTED", trustedOperator == null ? command.submittedBy().trim() : trustedOperator, trustedUserId,
                 "revisionId=%s;revisionNo=%d;changeReason=%s".formatted(id, revisionNo, valueOrEmpty(changeReason)));
         return find(formId, id);
     }
@@ -132,16 +133,17 @@ public class ProcessRevisionService {
     @Transactional
     public ProcessPlan createDraftFromRevision(String formId, String revisionId, String changeReason, SessionPrincipal principal) {
         requireFormalWriteAccess(formId, principal);
-        return createDraftInternal(formId, revisionId, changeReason, principal.name());
+        return createDraftInternal(formId, revisionId, changeReason, principal.name(), principal.userId());
     }
 
-    private ProcessPlan createDraftInternal(String formId, String revisionId, String changeReason, String trustedOperator) {
+    private ProcessPlan createDraftInternal(String formId, String revisionId, String changeReason, String trustedOperator) { return createDraftInternal(formId, revisionId, changeReason, trustedOperator, null); }
+    private ProcessPlan createDraftInternal(String formId, String revisionId, String changeReason, String trustedOperator, String trustedUserId) {
         if (blank(changeReason)) {
             throw new BusinessException("PROCESS_CHANGE_REASON_REQUIRED", "从正式版本创建草稿必须填写变更原因");
         }
         var revision = find(formId, revisionId);
         var draft = planService.restoreAsNewDraft(formId, revision.snapshot(), revision.id(), changeReason.trim());
-        auditLogService.record("PROCESS_PLAN", formId, "PROCESS_PLAN_DRAFT_CREATED", trustedOperator == null ? "SYSTEM" : trustedOperator,
+        auditLogService.record("PROCESS_PLAN", formId, "PROCESS_PLAN_DRAFT_CREATED", trustedOperator == null ? "SYSTEM" : trustedOperator, trustedUserId,
                 "sourceRevisionId=%s;changeReason=%s".formatted(revision.id(), changeReason.trim()));
         return draft;
     }
@@ -197,7 +199,7 @@ public class ProcessRevisionService {
     }
 
     private void requireFormalWriteAccess(String formId, SessionPrincipal principal) {
-        if (principal == null || blank(principal.name()) || blank(principal.role())) {
+        if (principal == null || blank(principal.userId()) || blank(principal.name()) || blank(principal.role())) {
             throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "正式工艺操作必须使用服务端会话身份");
         }
         if ("RND_DIRECTOR".equals(principal.role())) return;

@@ -48,3 +48,34 @@
 - Restored dependent-first cleanup in `SampleWorkflowControllerTest` while retaining the V23 assignee FK.
 - Formula display values now use deterministic largest-remainder allocation at 0.0001 precision, so displayed ratio and 100 kg columns remain non-negative and total exactly `100.0000`.
 - Generation now requires a session user ID and records it on failed artifact metadata too. The obsolete implementation note `task-6-review.md` was removed; independent review remains untouched.
+
+## Fix round 3 (in progress)
+
+- V23 adds immutable `audit_log.operator_user_id`; artifact generation/failure and session-backed formal submit/new-draft pass the trusted ID to the audit service.
+- Assignment now resolves exactly one active account once before mutation and passes that ID directly to persistence. Workflow fixtures now create a real active assignee with Feishu identity.
+- Added a V23 durable cleanup ledger: every generated server key is registered independently, confirmed only after commit, and reconciled before later generation attempts; retry deletion remains constrained to `process-artifacts/` keys with no READY DB reference.
+
+## Fix round 3 completion
+
+- Assignment now resolves exactly one active account exactly once before any task-map mutation, persists that same immutable ID, and restores the prior cache value on transaction rollback. Zero/multiple matches leave both DB and cache pending and can be retried; internal-test and customer-feedback resample tasks retain the original assignee ID.
+- `audit_log.operator_user_id` is populated from the trusted session for READY/FAILED artifact generation, formal submission, and new-draft creation. Same-display-name tests prove the immutable owner succeeds while the different-ID account is denied for artifact list/generate/download and revision submit/new-draft.
+- `process_artifact_cleanup_ledger` now records `created_at`, `last_attempt`, and `error`. A server key is registered in `REQUIRES_NEW` before rendering/storage; commit confirms it, rollback deletes it, and delete failure remains durable for the next generate-time retry. Startup reconciliation handles crash reservations, while runtime reconciliation only processes rows already proven orphaned, so an uncommitted concurrent reservation cannot be deleted.
+- Transaction-template coverage injects a `beforeCommit` failure after `generate` returns and proves artifact/audit rollback, file deletion, and ledger convergence. Additional coverage proves delete-failure retry, crash-orphan cleanup, READY preservation, FAILED version consumption/retry/list/download behavior, immutable audit IDs, five-line/tiny/tie/three-equal exact allocation, exhaustive SOP sentinels, and production-standard/measurement-appendix separation.
+- Shared workflow-test cleanup now removes V23 process children before parent forms, eliminating the cross-class FK cleanup failure.
+
+### Fix round 3 verification
+
+| Check | Result |
+| --- | --- |
+| `ProcessArtifactServiceTest` | PASS, 11 tests |
+| `ProcessPlanControllerTest` | PASS, 6 tests |
+| `ProcessRevisionServiceTest` | PASS, 11 tests |
+| `SampleWorkflowControllerTest` | PASS, 81 tests |
+| `SessionAuthenticationInterceptorTest` | PASS, 12 tests |
+| `RolePermissionServiceTest` | PASS, 2 tests |
+| `ProcessSubmissionValidatorTest` | PASS, 11 tests |
+| `SchemaMigrationTest` | PASS, 9 tests; total migration remains V23 |
+| direct shared `tsc`, PC/mobile `vue-tsc` | PASS |
+| API contract and route checks | PASS |
+
+The workspace `pnpm` wrapper attempted an online metadata/install check and could not run offline; the checked-in workspace binaries were used directly for the three authoritative typechecks. No `node_modules` paths are included in the commit.

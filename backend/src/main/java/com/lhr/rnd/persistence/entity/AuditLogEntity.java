@@ -25,6 +25,9 @@ public class AuditLogEntity {
     @Column(name = "operator_name", nullable = false)
     private String operatorName;
 
+    @Column(name = "operator_user_id")
+    private String operatorUserId;
+
     @Column(columnDefinition = "text")
     private String detail;
 
@@ -43,11 +46,16 @@ public class AuditLogEntity {
             String detail,
             LocalDateTime createdAt
     ) {
+        this(id, businessType, businessId, action, operatorName, null, detail, createdAt);
+    }
+
+    public AuditLogEntity(String id, String businessType, String businessId, String action, String operatorName, String operatorUserId, String detail, LocalDateTime createdAt) {
         this.id = id;
         this.businessType = businessType;
         this.businessId = businessId;
         this.action = action;
         this.operatorName = operatorName;
+        this.operatorUserId = operatorUserId;
         this.detail = detail;
         this.createdAt = createdAt;
     }

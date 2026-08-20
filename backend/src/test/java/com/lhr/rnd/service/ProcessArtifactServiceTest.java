@@ -11,6 +11,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
@@ -20,9 +25,17 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -33,10 +46,15 @@ class ProcessArtifactServiceTest {
     @Autowired ProcessPlanService planService;
     @Autowired ProcessRevisionService revisionService;
     @Autowired ProcessArtifactService service;
+    @Autowired ProcessArtifactCleanupLedgerService cleanupLedger;
+    @Autowired PlatformTransactionManager transactionManager;
     @Autowired JdbcTemplate jdbc;
+    @SpyBean LocalArchiveStorageService storage;
 
     @BeforeEach
     void seedForm() {
+        clearInvocations(storage);
+        jdbc.update("delete from process_artifact_cleanup_ledger");
         jdbc.update("insert into user_account(id,username,password_hash,name,role,status,created_at,updated_at) select ?,?,?,?,?,?,?,? where not exists (select 1 from user_account where id = ?)",
                 ENGINEER.userId(), "artifact", "x", ENGINEER.name(), "RND_ENGINEER", "ACTIVE", LocalDateTime.now(), LocalDateTime.now(), ENGINEER.userId());
         jdbc.update("delete from audit_log where business_id in (?, ?) ", FORM_ID, "FORM-PROCESS-ARTIFACT");
@@ -45,6 +63,7 @@ class ProcessArtifactServiceTest {
         jdbc.update("delete from experiment_step_material where minor_step_id in (select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id join experiment_process_plan plan on major.process_plan_id = plan.id where plan.experiment_form_id = ?)", FORM_ID);
         jdbc.update("delete from experiment_major_process where process_plan_id in (select id from experiment_process_plan where experiment_form_id = ?)", FORM_ID);
         jdbc.update("delete from experiment_process_plan where experiment_form_id = ?", FORM_ID);
+        jdbc.update("update rnd_task set assignee_name = ?, assignee_user_id = null where id = 'TASK-PROCESS-ARTIFACT'", ENGINEER.name());
         if (jdbc.queryForObject("select count(*) from experiment_form where id = ?", Integer.class, FORM_ID) == 0) {
             var now = LocalDateTime.now();
             jdbc.update("insert into sample_request(id,sample_no,product_name,product_type,customer_name,specification,creator_name,status,created_at) values (?,?,?,?,?,?,?,?,?)", "REQ-PROCESS-ARTIFACT", "S-PROCESS-ARTIFACT", "牛腩", "预制菜", "客户", "1kg", "研发", "APPROVED", now);
@@ -53,6 +72,137 @@ class ProcessArtifactServiceTest {
             jdbc.update("insert into rnd_task(id,project_id,version_id,sample_no,product_name,version_code,status,assignee_name,created_at) values (?,?,?,?,?,?,?,?,?)", "TASK-PROCESS-ARTIFACT", "PRJ-PROCESS-ARTIFACT", "VER-PROCESS-ARTIFACT", "S-PROCESS-ARTIFACT", "牛腩", "V1", "IN_PROGRESS", "制品研发", now);
             jdbc.update("insert into experiment_form(id,task_id,project_id,version_id,sample_no,product_name,version_code,status,operator_name,saved_at) values (?,?,?,?,?,?,?,?,?,?)", FORM_ID, "TASK-PROCESS-ARTIFACT", "PRJ-PROCESS-ARTIFACT", "VER-PROCESS-ARTIFACT", "S-PROCESS-ARTIFACT", "牛腩", "V1", "DRAFT", "研发", now);
         }
+    }
+
+    @Test
+    void immutableOwnerIdAllowsOnlyTheRealSameNameAccountToListGenerateAndDownload() {
+        var owner = new SessionPrincipal("ARTIFACT-OWNER-SAME", "artifact_owner_same", "同名文件负责人", null, "RND_ENGINEER", null);
+        var intruder = new SessionPrincipal("ARTIFACT-INTRUDER-SAME", "artifact_intruder_same", "同名文件负责人", null, "RND_ENGINEER", null);
+        jdbc.update("insert into user_account(id,username,password_hash,name,role,status,created_at,updated_at) values (?,?,?,?,?,?,current_timestamp,current_timestamp)",
+                owner.userId(), owner.username(), "x", owner.name(), owner.role(), "ACTIVE");
+        jdbc.update("insert into user_account(id,username,password_hash,name,role,status,created_at,updated_at) values (?,?,?,?,?,?,current_timestamp,current_timestamp)",
+                intruder.userId(), intruder.username(), "x", intruder.name(), intruder.role(), "ACTIVE");
+        var revision = formalRevision();
+        jdbc.update("update rnd_task set assignee_name = ?, assignee_user_id = ? where id = 'TASK-PROCESS-ARTIFACT'", owner.name(), owner.userId());
+
+        assertForbidden(() -> service.list(FORM_ID, revision.id(), intruder));
+        assertForbidden(() -> service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, intruder));
+        var artifact = service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, owner);
+        assertForbidden(() -> service.download(FORM_ID, revision.id(), artifact.id(), intruder));
+
+        assertThat(service.list(FORM_ID, revision.id(), owner)).extracting(ProcessArtifact::id).containsExactly(artifact.id());
+        assertThat(service.download(FORM_ID, revision.id(), artifact.id(), owner).content()).isNotEmpty();
+    }
+
+    @Test
+    void allocatesEveryFormulaRowDeterministicallyWithoutNegativeValuesAndTotalsExactlyOneHundred() throws Exception {
+        var revision = formalRevisionWithExternalWeights(List.of(
+                new BigDecimal("20.1225"), new BigDecimal("31.6289"), new BigDecimal("52.4496"),
+                new BigDecimal("2.0622"), new BigDecimal("0.0001")));
+
+        var artifact = service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.download(FORM_ID, revision.id(), artifact.id(), ENGINEER).content()))) {
+            var sheet = workbook.getSheetAt(0);
+            BigDecimal ratioTotal = BigDecimal.ZERO;
+            BigDecimal hundredTotal = BigDecimal.ZERO;
+            for (int row = 5; row < 10; row++) {
+                assertThat(sheet.getRow(row).getCell(5).getNumericCellValue()).isNotNegative();
+                assertThat(sheet.getRow(row).getCell(6).getNumericCellValue()).isNotNegative();
+                ratioTotal = ratioTotal.add(BigDecimal.valueOf(sheet.getRow(row).getCell(5).getNumericCellValue()));
+                hundredTotal = hundredTotal.add(BigDecimal.valueOf(sheet.getRow(row).getCell(6).getNumericCellValue()));
+            }
+            assertThat(ratioTotal).isEqualByComparingTo("100.0000");
+            assertThat(hundredTotal).isEqualByComparingTo("100.0000");
+            assertThat(sheet.getRow(10).getCell(5).getNumericCellValue()).isEqualTo(100.0000);
+            assertThat(sheet.getRow(10).getCell(6).getNumericCellValue()).isEqualTo(100.0000);
+        }
+
+        revisionService.createDraftFromRevision(FORM_ID, revision.id(), "三等分测试草稿", ENGINEER);
+        var equalRevision = formalRevisionWithExternalWeights(List.of(BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE));
+        var equalArtifact = service.generate(FORM_ID, equalRevision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.download(FORM_ID, equalRevision.id(), equalArtifact.id(), ENGINEER).content()))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(List.of(5, 6, 7).stream().map(row -> sheet.getRow(row).getCell(5).getNumericCellValue()).toList())
+                    .containsExactly(33.3334, 33.3333, 33.3333);
+            assertThat(List.of(5, 6, 7).stream().map(row -> sheet.getRow(row).getCell(6).getNumericCellValue()).toList())
+                    .containsExactly(33.3334, 33.3333, 33.3333);
+        }
+    }
+
+    @Test
+    void failedAttemptConsumesVersionKeepsMetadataAndAuditIdentityAndNeverReadsStorageOnDownload() {
+        var revision = formalRevision();
+        doThrow(new com.lhr.rnd.api.BusinessException("ARCHIVE_FILE_WRITE_FAILED", "injected"))
+                .doCallRealMethod().when(storage).store(any(), any());
+
+        var failed = service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
+        assertThat(failed.status()).isEqualTo(ProcessArtifact.FAILED);
+        assertThat(failed.documentVersion()).isEqualTo("1");
+        assertThat(failed.generatedByUserId()).isEqualTo(ENGINEER.userId());
+        assertThatThrownBy(() -> service.download(FORM_ID, revision.id(), failed.id(), ENGINEER))
+                .isInstanceOf(com.lhr.rnd.api.BusinessException.class)
+                .extracting(error -> ((com.lhr.rnd.api.BusinessException) error).code())
+                .isEqualTo("PROCESS_ARTIFACT_NOT_READY");
+        verify(storage, never()).read(any());
+
+        var ready = service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
+        assertThat(ready.documentVersion()).isEqualTo("2");
+        assertThat(service.list(FORM_ID, revision.id(), ENGINEER)).extracting(ProcessArtifact::status)
+                .containsExactly(ProcessArtifact.READY, ProcessArtifact.FAILED);
+        assertThat(jdbc.queryForList("select operator_user_id from audit_log where business_id = ? and action in (?, ?) order by created_at", String.class,
+                FORM_ID, "PROCESS_ARTIFACT_GENERATION_FAILED", "PROCESS_ARTIFACT_GENERATED")).containsExactly(ENGINEER.userId(), ENGINEER.userId());
+    }
+
+    @Test
+    void commitFailureRollsBackArtifactAndAuditAndConvergesFileLedger() {
+        var revision = formalRevision();
+        var generated = new AtomicReference<ProcessArtifact>();
+        var transaction = new TransactionTemplate(transactionManager);
+
+        assertThatThrownBy(() -> transaction.executeWithoutResult(status -> {
+            generated.set(service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER));
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void beforeCommit(boolean readOnly) { throw new IllegalStateException("injected commit failure"); }
+            });
+        })).hasMessageContaining("injected commit failure");
+
+        assertThat(jdbc.queryForObject("select count(*) from experiment_process_artifact where id = ?", Integer.class, generated.get().id())).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from audit_log where detail like ?", Integer.class, "%" + generated.get().id() + "%")).isZero();
+        assertThat(Files.exists(Path.of("target", "rnd-archive").resolve(generated.get().storageKey()))).isFalse();
+        assertThat(jdbc.queryForObject("select count(*) from process_artifact_cleanup_ledger where storage_key = ?", Integer.class, generated.get().storageKey())).isZero();
+    }
+
+    @Test
+    void durableLedgerRetriesDeleteFailureReconcilesCrashOrphanAndPreservesReadyOrFreshKeys() throws Exception {
+        var crashKey = "process-artifacts/crash-" + UUID.randomUUID() + ".xlsx";
+        cleanupLedger.register(crashKey);
+        storage.store(crashKey, new byte[]{1});
+        jdbc.update("update process_artifact_cleanup_ledger set created_at = dateadd('MINUTE', -10, current_timestamp) where storage_key = ?", crashKey);
+        doThrow(new com.lhr.rnd.api.BusinessException("ARCHIVE_FILE_DELETE_FAILED", "injected"))
+                .doCallRealMethod().when(storage).delete(eq(crashKey));
+
+        cleanupLedger.reconcileOnStartup();
+        assertThat(Files.exists(Path.of("target", "rnd-archive").resolve(crashKey))).isTrue();
+        assertThat(jdbc.queryForObject("select error from process_artifact_cleanup_ledger where storage_key = ?", String.class, crashKey)).contains("injected");
+        cleanupLedger.reconcileStale();
+        assertThat(Files.exists(Path.of("target", "rnd-archive").resolve(crashKey))).isFalse();
+        assertThat(jdbc.queryForObject("select count(*) from process_artifact_cleanup_ledger where storage_key = ?", Integer.class, crashKey)).isZero();
+
+        var freshKey = "process-artifacts/fresh-" + UUID.randomUUID() + ".xlsx";
+        cleanupLedger.register(freshKey);
+        storage.store(freshKey, new byte[]{2});
+        cleanupLedger.reconcileStale();
+        assertThat(Files.exists(Path.of("target", "rnd-archive").resolve(freshKey))).isTrue();
+        storage.delete(freshKey);
+        cleanupLedger.confirm(freshKey);
+
+        var revision = formalRevision();
+        var ready = service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
+        cleanupLedger.register(ready.storageKey());
+        jdbc.update("update process_artifact_cleanup_ledger set error = 'retry-ready-reference' where storage_key = ?", ready.storageKey());
+        cleanupLedger.reconcileStale();
+        assertThat(Files.exists(Path.of("target", "rnd-archive").resolve(ready.storageKey()))).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from process_artifact_cleanup_ledger where storage_key = ?", Integer.class, ready.storageKey())).isZero();
     }
 
     @Test
@@ -89,8 +239,16 @@ class ProcessArtifactServiceTest {
             var text = document.getParagraphs().stream().map(paragraph -> paragraph.getText()).collect(java.util.stream.Collectors.joining("\n"));
             var tableText = document.getTables().stream().flatMap(table -> table.getRows().stream())
                     .flatMap(row -> row.getTableCells().stream()).map(cell -> cell.getText()).collect(java.util.stream.Collectors.joining("\n"));
-            assertThat(text + tableText).contains("熟制", "腌制牛腩", "中间流转", "中心温度", "继续加热", "测量记录追溯附录", "数字探针", "研发依据");
-            assertThat(text + tableText).contains("成品得率");
+            assertThat(text + tableText).contains("来源工艺版本：V1", "文件版本：V1", "适用批量", "100kg 标准配方",
+                    "大工序 1：熟制", "熟制描述哨兵", "熟制备注哨兵", "1 / 腌制", "外部投料", "鲜牛腩", "外部料备注哨兵",
+                    "中间流转", "来源：1.1 腌制 / 腌制牛腩", "流转熟制", "成品产出备注哨兵", "大工序得率", "步骤得率", "成品得率",
+                    "中心温度", "75", "72", "85", "探针测温", "数字探针", "每锅", "继续加热", "研发依据", "测量记录追溯附录");
+            var productionStandards = document.getTables().stream()
+                    .filter(table -> table.getRow(0).getTableCells().stream().map(cell -> cell.getText()).collect(java.util.stream.Collectors.joining()).contains("控制项目"))
+                    .findFirst().orElseThrow().getText();
+            assertThat(productionStandards).doesNotContain("制品研发", "2026-08-19T22:05:00", "2026-08-19T22:00:00", "PASS", "复测合格哨兵", "实测正常哨兵");
+            var appendix = document.getTables().stream().filter(table -> table.getRow(0).getTableCells().stream().map(cell -> cell.getText()).collect(java.util.stream.Collectors.joining()).contains("实测值")).findFirst().orElseThrow().getText();
+            assertThat(appendix).contains("制品研发", "2026-08-19T22:05", "76", "2026-08-19T22:00", "PASS", "复测合格哨兵", "实测正常哨兵");
         }
     }
 
@@ -150,17 +308,41 @@ class ProcessArtifactServiceTest {
 
     private com.lhr.rnd.model.ProcessRevision formalRevision() {
         var intermediateId = "OUT-ARTIFACT-" + UUID.randomUUID();
-        var measurement = new ProcessPlan.ControlMeasurement("CM-ARTIFACT", 1, new BigDecimal("76"), "2026-08-19T22:00:00", "PASS", null, null, "实测正常");
+        var measurement = new ProcessPlan.ControlMeasurement("CM-ARTIFACT", 1, new BigDecimal("76"), "2026-08-19T22:00:00", "PASS", null, "复测合格哨兵", "实测正常哨兵");
         var control = new ProcessPlan.ControlPoint("CP-ARTIFACT", 1, "FOOD_SAFETY", "CRITICAL", "中心温度", new BigDecimal("75"), new BigDecimal("72"), new BigDecimal("85"), "℃", "探针测温", "数字探针", "每锅", "继续加热", true, "制品研发", "2026-08-19T22:05:00", "研发依据", List.of(measurement));
         var first = new ProcessPlan.MinorStep(null, 1, "MARINATE", "腌制", "NORMAL", "时间", "30", "min", null, null, null, "滚揉机", "均匀腌制", List.of(
-                new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF", "鲜牛腩", "SOLID", new BigDecimal("10.0000"), "MAT-BEEF", null, "EXTERNAL", null)),
+                new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF", "鲜牛腩", "SOLID", new BigDecimal("10.0000"), "MAT-BEEF", "外部料备注哨兵", "EXTERNAL", null)),
                 List.of(new ProcessPlan.StepOutput(intermediateId, 1, "INTERMEDIATE", "腌制牛腩", "SEMI_SOLID", new BigDecimal("9.5000"), true, true, "流转熟制")), List.of());
         var second = new ProcessPlan.MinorStep(null, 2, "COOK", "熟制", "NORMAL", "温度", "85", "℃", null, null, null, "夹层锅", "加热至中心温度达标", List.of(
                 new ProcessPlan.StepMaterial(null, 1, "PRIMARY", null, "腌制牛腩", "SEMI_SOLID", new BigDecimal("9.5000"), null, null, "STEP_OUTPUT", intermediateId)),
-                List.of(new ProcessPlan.StepOutput("OUT-FINISHED", 1, "FINISHED", "熟制牛腩", "SEMI_SOLID", new BigDecimal("9.0000"), true, false, null)), List.of(control));
-        var major = new ProcessPlan.MajorProcess(null, 1, "COOK", "熟制", null, "PRIMARY_INPUT", "熟制损耗已记录", List.of(first, second), List.of(), List.of(), null);
+                List.of(new ProcessPlan.StepOutput("OUT-FINISHED", 1, "FINISHED", "熟制牛腩", "SEMI_SOLID", new BigDecimal("9.0000"), true, false, "成品产出备注哨兵")), List.of(control));
+        var major = new ProcessPlan.MajorProcess(null, 1, "COOK", "熟制", "熟制描述哨兵", "PRIMARY_INPUT", "熟制备注哨兵", List.of(first, second), List.of(), List.of(), null);
         var current = planService.find(FORM_ID);
         var saved = planService.save(FORM_ID, new ProcessPlan(null, FORM_ID, current.versionNo(), "DRAFT", List.of(major), null, new BigDecimal("0.0100"), false));
         return revisionService.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(saved.versionNo(), true, "首次正式提交", ENGINEER.name()), ENGINEER);
+    }
+
+    private void assertForbidden(org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
+        assertThatThrownBy(action).isInstanceOf(com.lhr.rnd.api.BusinessException.class)
+                .extracting(error -> ((com.lhr.rnd.api.BusinessException) error).code())
+                .isEqualTo("PROCESS_PLAN_FORM_FORBIDDEN");
+    }
+
+    private com.lhr.rnd.model.ProcessRevision formalRevisionWithExternalWeights(List<BigDecimal> weights) {
+        var suffix = UUID.randomUUID().toString();
+        var materials = new java.util.ArrayList<ProcessPlan.StepMaterial>();
+        for (int index = 0; index < weights.size(); index++) {
+            materials.add(new ProcessPlan.StepMaterial(null, index + 1, index == 0 ? "PRIMARY" : "AUXILIARY",
+                    Character.toString('A' + index), "物料" + index, "SOLID", weights.get(index), "MAT-" + suffix + "-" + index,
+                    null, "EXTERNAL", null));
+        }
+        var total = weights.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        var step = new ProcessPlan.MinorStep(null, 1, "MIX", "混合", "NORMAL", null, null, null, null, null, null,
+                "混合机", "混合均匀", materials,
+                List.of(new ProcessPlan.StepOutput("OUT-" + suffix, 1, "FINISHED", "成品", "SOLID", total, true, false, null)), List.of());
+        var major = new ProcessPlan.MajorProcess(null, 1, "MIX", "混合", null, "PRIMARY_INPUT", "测试", List.of(step), List.of(), List.of(), null);
+        var current = planService.find(FORM_ID);
+        var saved = planService.save(FORM_ID, new ProcessPlan(null, FORM_ID, current.versionNo(), "DRAFT", List.of(major), null, new BigDecimal("0.0100"), false));
+        return revisionService.submit(FORM_ID, new ProcessRevisionService.SubmitCommand(saved.versionNo(), true, null, ENGINEER.name()), ENGINEER);
     }
 }

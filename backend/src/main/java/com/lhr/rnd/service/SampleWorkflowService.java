@@ -389,12 +389,12 @@ public class SampleWorkflowService {
         if (task.status() != RndTaskStatus.PENDING_ASSIGNMENT) {
             throw new BusinessException("RND_TASK_STATUS_ILLEGAL", "当前任务状态不可分发");
         }
-        resolveAssigneeUserId(assigneeName);
+        var assigneeUserId = resolveExactlyOneActiveAssignee(assigneeName);
         var nextStatus = taskStatusAfter(SampleStatus.PENDING_ASSIGNMENT, SampleAction.ASSIGN_TASK);
         var assigned = task.assign(assigneeName, normalizeProductOwnerName(productOwnerName, assigneeName), dueDate, now())
                 .withStatus(nextStatus);
-        tasks.put(taskId, assigned);
-        persistAssignedTask(assigned);
+        persistAssignedTask(assigned, assigneeUserId);
+        cacheWithRollback(() -> tasks.put(taskId, assigned), () -> tasks.put(taskId, task));
         notifyTaskAssigned(assigned);
         return assigned;
     }
@@ -1059,6 +1059,21 @@ public class SampleWorkflowService {
             public void afterCommit() {
                 synchronized (SampleWorkflowService.this) {
                     cacheUpdate.run();
+                }
+            }
+        });
+    }
+
+    private void cacheWithRollback(Runnable cacheUpdate, Runnable rollbackUpdate) {
+        cacheUpdate.run();
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) return;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) {
+                    synchronized (SampleWorkflowService.this) {
+                        rollbackUpdate.run();
+                    }
                 }
             }
         });
@@ -2405,22 +2420,23 @@ public class SampleWorkflowService {
         ));
     }
 
-    private void persistAssignedTask(RndTask task) {
+    private void persistAssignedTask(RndTask task, String assigneeUserId) {
         if (rndTaskRepository == null) {
             return;
         }
         var taskEntity = rndTaskRepository.findById(task.id())
                 .orElseThrow(() -> new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在"));
         taskEntity.assign(task.assigneeName(), task.productOwnerName(), task.dueDate(), task.assignedAt());
-        taskEntity.setAssigneeUserId(resolveAssigneeUserId(task.assigneeName()));
+        taskEntity.setAssigneeUserId(assigneeUserId);
         rndTaskRepository.save(taskEntity);
     }
 
-    private String resolveAssigneeUserId(String assigneeName) {
-        if (userAccountRepository == null) return null;
+    private String resolveExactlyOneActiveAssignee(String assigneeName) {
+        if (userAccountRepository == null) throw new BusinessException("RND_TASK_ASSIGNEE_NOT_FOUND", "研发负责人不存在或未启用");
         var assignees = userAccountRepository.findAllByNameAndStatus(assigneeName, "ACTIVE");
+        if (assignees.isEmpty()) throw new BusinessException("RND_TASK_ASSIGNEE_NOT_FOUND", "研发负责人不存在或未启用");
         if (assignees.size() > 1) throw new BusinessException("RND_TASK_ASSIGNEE_AMBIGUOUS", "研发负责人姓名无法唯一解析，请由总监重新分配");
-        return assignees.isEmpty() ? null : assignees.get(0).getId();
+        return assignees.get(0).getId();
     }
 
     private void notifyTaskAssigned(RndTask task) {
