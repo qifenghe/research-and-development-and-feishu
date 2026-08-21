@@ -5,6 +5,8 @@
 - Rewrote `docs/工艺分层与得率功能使用说明.md` for R&D users in non-technical Chinese.
 - Documented the implemented major-process-first workflow, repeatable major/minor templates, step materials, intermediate products, primary-material yield, critical controls, draft/formal revisions, Formula/SOP generation, pricing linkage, mobile read-only behavior, role boundaries, common formal-submission blockers, and historical compatibility.
 - Corrected the obsolete guide's finished-yield description. The implemented finished yield is the product of participating major-process yields, not a direct last-output/first-input quotient.
+- Corrected the entry description: opening the experiment form goes directly to the process workspace and its major-process board; there is no separate confirmation transition in the normal PC flow.
+- Corrected pricing timing: the server selects and pins the then-latest formal process revision when packaging is confirmed and the downloadable pricing workbook is generated. The workflow does not expose a user revision selector.
 - No production code or test assertion was changed in Task 10.
 
 ## Fresh verification evidence
@@ -98,9 +100,9 @@ Results before commit:
 ## Handoff facts
 
 - Implementation range before the documentation commit: `19ef766..7affe08`.
-- R&D entry: PC `我的打样任务 → 打样实验单 → 工艺工作台`.
+- R&D entry: PC `我的打样任务 → 打样实验单 → 工艺工作台`; the workspace opens directly on the major-process board, and selecting a major process enters its minor steps.
 - Formula XLSX and SOP DOCX require a formal process revision and are generated for the selected formal revision.
-- Pricing remains in the existing workflow, is packaging-gated for its downloadable formal file, and freezes the selected formal process revision on the pricing record.
+- Pricing remains in the existing workflow. On packaging confirmation and downloadable workbook generation, the server obtains and pins the then-latest formal process revision on the pricing record; users do not select a revision. Later formal revisions do not alter that generated pricing file's source.
 - Tester/mobile formal readers do not receive draft access and only see READY process artifacts.
 
 ## Explicit residual risk
