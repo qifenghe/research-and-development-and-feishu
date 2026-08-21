@@ -103,3 +103,18 @@ No browser mock server was available in this worktree, so no Playwright screensh
 - Frontend API-contract and route checks passed (`30` PC routes, `16` mobile routes).
 - Playwright static discovery lists all 7 PC workspace cases. Chrome was not launched, in accordance with the retained usage-limit restriction.
 - `git diff --check` passed.
+
+## Real Chrome verification closure
+
+- Ran every process-workspace browser case in real Chrome after the execution restriction was lifted. The five initial failures were test-integration defects rather than production behavior regressions: hydration used an ambiguous duplicate-text locator; the submit harness omitted the production workspace's `ready` binding; forced pointer clicks targeted controls behind a modal instead of modeling a reactive parent update; Ant confirmation buttons exposed localized/space-separated accessible names and retained a leaving dialog during their close transition; and Playwright has no `getByDisplayValue` API.
+- Hydration now asserts the parent graph, visible workspace graph, dirty indicator, and authoritative PUT payload separately. Submit/revision cases pass `ready`, trigger parent state changes without a synthetic pointer sequence through the mask, wait for the newly bound check request, and assert the confirmation checkbox state. Flow cases scope actions to the visible dialog, wait for canceled confirmation teardown, and locate the real step-name textbox by its form item before proving cancel preserves and confirm commits.
+- No production process-workspace logic changed in this closure; the fixes are limited to the executable harness and browser assertions.
+
+### Real-Chrome verification
+
+- Real Chrome Playwright suite: 7 passed, 0 failed (`pc-chromium`, one worker).
+- Frontend Node suite: 83 passed, 0 failed.
+- PC direct type check passed.
+- PC Vite production build passed; the existing large-chunk warning remains informational.
+- Frontend API-contract and route checks passed (`30` PC routes, `16` mobile routes).
+- `git diff --check` passed.

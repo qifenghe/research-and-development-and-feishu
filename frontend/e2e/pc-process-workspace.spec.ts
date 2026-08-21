@@ -24,14 +24,16 @@ test("server hydration survives Vue batching and cache restoration remains dirty
   await page.waitForTimeout(200);
   expect(pageErrors).toEqual([]);
   await page.getByTestId("accept-server").click();
-  await expect(page.getByText("服务端大工序", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("parent-majors")).toHaveText("服务端大工序");
+  await expect(page.getByRole("article").getByText("服务端大工序", { exact: true })).toBeVisible();
   await page.getByText("原辅料准备", { exact: true }).dblclick();
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect.poll(() => saves.length).toBe(1);
   expect(saves[0]?.majorProcesses.map(item => item.processName)).toEqual(["服务端大工序", "原辅料准备"]);
 
   await page.getByTestId("accept-cache").click();
-  await expect(page.getByText("缓存大工序", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("parent-majors")).toHaveText("缓存大工序");
+  await expect(page.getByText("待保存", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect.poll(() => saves.length).toBe(2);
   expect(saves[1]?.majorProcesses.map(item => item.processName)).toEqual(["缓存大工序"]);
@@ -97,12 +99,15 @@ test("reopening submit after a failed current check cannot reuse the earlier suc
   await page.goto(harness("submit"));
   await page.getByTestId("open-submit").click();
   await expect(page.getByText("正式提交工艺版本")).toBeVisible();
+  await expect.poll(() => checks).toBe(1);
   await page.getByText("我已核对配方、工艺得率和关键控制点").click();
+  await expect(page.getByRole("checkbox", { name: /我已核对配方、工艺得率和关键控制点/ })).toBeChecked();
   await expect(page.getByRole("button", { name: "确认提交" })).toBeEnabled();
-  await page.getByTestId("bump-version").click({ force: true });
+  await page.getByTestId("bump-version").evaluate((element: HTMLElement) => element.click());
+  await expect.poll(() => checks).toBe(2);
   await expect(page.getByText("failed")).toBeVisible();
   await expect(page.getByRole("button", { name: "确认提交" })).toBeDisabled();
-  await page.getByRole("button", { name: "取消" }).click();
+  await page.locator('[role="dialog"]:visible').getByRole("button", { name: /^(?:Cancel|取\s*消)$/ }).click();
   await page.getByTestId("open-submit").click();
   await expect(page.getByText("failed")).toBeVisible();
   await page.getByText("我已核对配方、工艺得率和关键控制点").click();
@@ -123,7 +128,7 @@ test("changing form clears a revision reason and requires a freshly bound diff c
   await page.getByText("我已核对版本差异").click();
   await page.getByText("我已核对配方、工艺得率和关键控制点").click();
   await expect(page.getByRole("button", { name: "确认提交" })).toBeEnabled();
-  await page.getByTestId("change-form").click({ force: true });
+  await page.getByTestId("change-form").evaluate((element: HTMLElement) => element.click());
   await expect(reason).toHaveValue("");
   await expect(page.getByRole("button", { name: "确认提交" })).toBeDisabled();
 });
@@ -137,11 +142,11 @@ test("flow destructive toggle is transactional on modal cancel and commit", asyn
   const toggle = page.getByText("继续流转", { exact: true });
   await toggle.click();
   await expect(page.getByText(/后段\/使用\/中间料/)).toBeVisible();
-  await page.getByRole("button", { name: "取消" }).click();
+  await page.locator('[role="dialog"]:visible').getByRole("button", { name: /^(?:Cancel|取\s*消)$/ }).click();
   await expect(page.getByTestId("consumer-count")).toHaveText("1");
   await expect(page.getByRole("checkbox", { name: "继续流转" })).toBeChecked();
   await toggle.click();
-  await page.getByRole("button", { name: /继续并修复/ }).click();
+  await page.locator('[role="dialog"]:visible').getByRole("button", { name: /继续并修复/ }).click();
   await expect(page.getByTestId("consumer-count")).toHaveText("0");
 });
 
@@ -149,17 +154,19 @@ test("ordinary flow edits also require transactional repair confirmation", async
   await page.goto(harness("flow"));
   await page.getByTestId("inject-broken-flow").click();
   await page.getByRole("button", { name: "编辑" }).click();
-  const stepName = page.getByDisplayValue("产出");
+  const stepName = page.locator(".ant-form-item").filter({ hasText: "步骤名称" }).getByRole("textbox");
+  await expect(stepName).toHaveValue("产出");
   await stepName.fill("产出已编辑");
   await expect(page.getByText(/后段\/使用\/中间料/)).toBeVisible();
-  await page.getByRole("button", { name: "取消" }).click();
+  await page.locator('[role="dialog"]:visible').getByRole("button", { name: /^(?:Cancel|取\s*消)$/ }).click();
   await expect(page.getByTestId("consumer-count")).toHaveText("1");
-  await expect(page.getByDisplayValue("产出")).toBeVisible();
+  await expect(stepName).toHaveValue("产出");
+  await expect(page.getByRole("button", { name: /继续并修复/ })).toHaveCount(0);
 
-  await page.getByDisplayValue("产出").fill("产出已编辑");
-  await page.getByRole("button", { name: /继续并修复/ }).click();
+  await stepName.fill("产出已编辑");
+  await page.locator('[role="dialog"]:visible').getByRole("button", { name: /继续并修复/ }).click();
   await expect(page.getByTestId("consumer-count")).toHaveText("0");
-  await expect(page.getByDisplayValue("产出已编辑")).toBeVisible();
+  await expect(stepName).toHaveValue("产出已编辑");
 });
 
 test("artifact list and generation interleavings converge on the authoritative list", async ({ page }) => {

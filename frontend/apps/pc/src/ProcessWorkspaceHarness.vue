@@ -21,13 +21,13 @@
     <template v-else-if="scenario === 'submit'">
       <button data-testid="open-submit" @click="submitOpen = true">打开提交</button>
       <button data-testid="bump-version" @click="submitPlan.versionNo++">更新方案版本</button>
-      <ProcessSubmitDialog v-model:open="submitOpen" :form-id="submitFormId" :plan="submitPlan" />
+      <ProcessSubmitDialog v-model:open="submitOpen" :form-id="submitFormId" :plan="submitPlan" :ready="true" />
     </template>
 
     <template v-else-if="scenario === 'submit-revision'">
       <button data-testid="open-submit" @click="submitOpen = true">打开提交</button>
       <button data-testid="change-form" @click="submitFormId = 'form-submit-b'">切换表单</button>
-      <ProcessSubmitDialog v-model:open="submitOpen" :form-id="submitFormId" :plan="revisionSubmitPlan" />
+      <ProcessSubmitDialog v-model:open="submitOpen" :form-id="submitFormId" :plan="revisionSubmitPlan" :ready="true" />
     </template>
 
     <template v-else-if="scenario === 'flow'">
