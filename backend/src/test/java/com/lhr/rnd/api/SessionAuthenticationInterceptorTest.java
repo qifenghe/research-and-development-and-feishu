@@ -108,7 +108,7 @@ class SessionAuthenticationInterceptorTest {
             mockMvc.perform(get("/api/v1/experiment-forms/FORM-AUTH-REVISION/process-plan/revisions/REV-1")
                             .header("Authorization", "Bearer " + testerToken))
                     .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("EXPERIMENT_FORM_NOT_FOUND"));
+                    .andExpect(jsonPath("$.code").value("PROCESS_REVISION_NOT_ASSIGNED"));
             mockMvc.perform(post("/api/v1/experiment-forms/FORM-AUTH-REVISION/process-plan/submit")
                             .header("Authorization", "Bearer " + testerToken)
                             .contentType(MediaType.APPLICATION_JSON).content("{\"versionNo\":0,\"confirmed\":true}"))
@@ -135,6 +135,7 @@ class SessionAuthenticationInterceptorTest {
             var owner = tokenFor("制品归属研发", "ou_process_artifact_owner", "RND_ENGINEER");
             var tester = tokenFor("制品只读测试", "ou_process_artifact_tester", "TESTER");
             var otherEngineer = tokenFor("制品越权研发", "ou_process_artifact_other", "RND_ENGINEER");
+            assignRevisionToTester(formId, revision.id(), "ou_process_artifact_tester", "制品只读测试");
 
             mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/artifacts", formId, revision.id())
                             .header("Authorization", "Bearer " + owner)
@@ -221,6 +222,7 @@ class SessionAuthenticationInterceptorTest {
             var revision = processRevisionService.submit(formId, new ProcessRevisionService.SubmitCommand(
                     draft.versionNo(), true, "首次正式提交", "归属研发测试"));
             processRevisionService.createDraftFromRevision(formId, revision.id(), "研发修改中");
+            assignRevisionToTester(formId, revision.id(), "ou_process_tester", "工艺测试员");
 
             mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan", formId)
                             .header("Authorization", "Bearer " + tester))
@@ -293,6 +295,7 @@ class SessionAuthenticationInterceptorTest {
             jdbc.update("update experiment_form set summary = ? where id = ?", "DRAFT-REOPENED-SENSITIVE", formId);
 
             var tester = tokenFor("已提交测试查看", "ou_formal_detail_submitted", "TESTER");
+            assignRevisionToTester(formId, revision.id(), "ou_formal_detail_submitted", "已提交测试查看");
             mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
                             .header("Authorization", "Bearer " + tester))
                     .andExpect(status().isOk())
@@ -321,6 +324,7 @@ class SessionAuthenticationInterceptorTest {
                     draft.versionNo(), true, "首次正式提交", "归属研发版本"));
             var intruder = tokenFor("越权研发版本", "ou_revision_owner_intruder", "RND_ENGINEER");
             var tester = tokenFor("只读正式版本", "ou_revision_owner_tester", "TESTER");
+            assignRevisionToTester(formId, revision.id(), "ou_revision_owner_tester", "只读正式版本");
 
             for (var path : List.of(
                     "/api/v1/experiment-forms/" + formId + "/process-plan/submission-check",
@@ -547,7 +551,20 @@ class SessionAuthenticationInterceptorTest {
         return oauthToken(feishuUserId);
     }
 
+    private void assignRevisionToTester(String formId, String revisionId, String testerFeishuUserId, String testerName) {
+        var testerUserId = jdbc.queryForObject(
+                "select id from user_account where feishu_user_id = ?",
+                String.class,
+                testerFeishuUserId
+        );
+        var form = jdbc.queryForMap("select task_id, version_id from experiment_form where id = ?", formId);
+        jdbc.update("insert into test_assignment(id,experiment_form_id,task_id,version_id,process_revision_id,tester_name,tester_user_id,status,assigned_at) values (?,?,?,?,?,?,?,?,?)",
+                "ASSIGN-" + formId, formId, form.get("task_id"), form.get("version_id"), revisionId,
+                testerName, testerUserId, "PENDING_TEST", LocalDateTime.now());
+    }
+
     private void seedProcessForm(String formId, String assigneeName) {
+        jdbc.update("delete from test_assignment where experiment_form_id = ?", formId);
         jdbc.update("delete from experiment_process_revision where experiment_form_id = ?", formId);
         jdbc.update("delete from experiment_step_material where minor_step_id in (select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id join experiment_process_plan plan on major.process_plan_id = plan.id where plan.experiment_form_id = ?)", formId);
         jdbc.update("delete from experiment_major_process where process_plan_id in (select id from experiment_process_plan where experiment_form_id = ?)", formId);

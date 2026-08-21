@@ -54,6 +54,12 @@ public final class ProcessRecipeService {
         public RecipeLine {
             sources = List.copyOf(sources);
         }
+
+        public String canonicalMaterialRole() {
+            if (sources.stream().anyMatch(source -> "PRIMARY".equals(source.materialRole()))) return "PRIMARY";
+            if (sources.stream().anyMatch(source -> "PROCESS_WATER".equals(source.materialRole()))) return "PROCESS_WATER";
+            return "AUXILIARY";
+        }
     }
 
     public record RecipeSource(

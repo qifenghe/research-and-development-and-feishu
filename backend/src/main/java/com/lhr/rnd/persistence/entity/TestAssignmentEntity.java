@@ -22,8 +22,14 @@ public class TestAssignmentEntity {
     @Column(name = "version_id", nullable = false)
     private String versionId;
 
+    @Column(name = "process_revision_id", length = 64)
+    private String processRevisionId;
+
     @Column(name = "tester_name", nullable = false)
     private String testerName;
+
+    @Column(name = "tester_user_id", length = 64)
+    private String testerUserId;
 
     @Column(name = "status", nullable = false)
     private String status;
@@ -39,7 +45,9 @@ public class TestAssignmentEntity {
             String experimentFormId,
             String taskId,
             String versionId,
+            String processRevisionId,
             String testerName,
+            String testerUserId,
             String status,
             LocalDateTime assignedAt
     ) {
@@ -47,9 +55,21 @@ public class TestAssignmentEntity {
         this.experimentFormId = experimentFormId;
         this.taskId = taskId;
         this.versionId = versionId;
+        this.processRevisionId = processRevisionId;
         this.testerName = testerName;
+        this.testerUserId = testerUserId;
         this.status = status;
         this.assignedAt = assignedAt;
+    }
+
+    public TestAssignmentEntity(String id, String experimentFormId, String taskId, String versionId,
+                                String testerName, String status, LocalDateTime assignedAt) {
+        this(id, experimentFormId, taskId, versionId, null, testerName, null, status, assignedAt);
+    }
+
+    public TestAssignmentEntity(String id, String experimentFormId, String taskId, String versionId,
+                                String processRevisionId, String testerName, String status, LocalDateTime assignedAt) {
+        this(id, experimentFormId, taskId, versionId, processRevisionId, testerName, null, status, assignedAt);
     }
 
     public void pass() {
@@ -76,8 +96,16 @@ public class TestAssignmentEntity {
         return versionId;
     }
 
+    public String getProcessRevisionId() {
+        return processRevisionId;
+    }
+
     public String getTesterName() {
         return testerName;
+    }
+
+    public String getTesterUserId() {
+        return testerUserId;
     }
 
     public String getStatus() {

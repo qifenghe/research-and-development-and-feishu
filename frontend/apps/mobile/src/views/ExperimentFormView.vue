@@ -244,13 +244,11 @@ async function loadProcessPlanForRole(formId:string,generation:number){
   formalRevision.value=null;processArtifacts.value=[];
   try{
     if(formalRevisionReader.value){
-      const revisions=await api.task.getProcessRevisions(formId);
-      if(generation!==routeRequestGeneration)return;
-      const latest=revisions[0];
-      if(!latest){processPlan.value=createEmptyProcessPlan();return}
-      const revision=await api.task.getProcessRevision(formId,latest.id);if(generation!==routeRequestGeneration)return;
+      const revisionId=detail.value?.currentTestAssignment?.processRevisionId;
+      if(!revisionId)throw new Error("该测试任务未绑定正式工艺版本，请研发重新送测");
+      const revision=await api.task.getProcessRevision(formId,revisionId);if(generation!==routeRequestGeneration)return;
       formalRevision.value=revision;processPlan.value=normalizeProcessPlan(revision.snapshot);
-      const artifacts=await api.task.getProcessArtifacts(formId,latest.id);if(generation!==routeRequestGeneration)return;
+      const artifacts=await api.task.getProcessArtifacts(formId,revisionId);if(generation!==routeRequestGeneration)return;
       processArtifacts.value=artifacts;
       return;
     }
@@ -400,12 +398,14 @@ async function notifyTest(){
   const finishedOutputQuantity=validateFinishedOutputQuantity();if(finishedOutputQuantity===undefined)return;
   const context=captureActionContext();
   const payload=buildDraftPayload(finishedOutputQuantity,context.operatorName);
-  let experimentId=context.formId;
-  if(!experimentId&&canSaveDraft.value){const saved=await saveDraft({silent:true,context,payload});if(!isActionContextCurrent(context)||!saved)return;experimentId=saved.id}
+  if(autoSaveTimer){window.clearTimeout(autoSaveTimer);autoSaveTimer=undefined}
+  const flushed=await saveDraft({silent:true,context,payload});
+  if(!isActionContextCurrent(context)||!flushed)return;
+  let experimentId=flushed.id;
   if(!experimentId){showFailToast("请先保存草稿");return}
   if(!isActionContextCurrent(context,experimentId))return;
   submitting.value=true;
-  try{await api.task.submitExperimentForTest(experimentId,context.operatorName);if(!isActionContextCurrent(context,experimentId))return;hydrated.value=false;clearExperimentDraft(localStorage,context.localDraftKey);showSuccessToast("已通知内部测试");void router.push("/todo")}
+  try{await api.task.submitExperimentForTest(experimentId,"AUTO_ASSIGN");if(!isActionContextCurrent(context,experimentId))return;hydrated.value=false;clearExperimentDraft(localStorage,context.localDraftKey);showSuccessToast("已通知内部测试");void router.push("/todo")}
   catch(error){if(!isActionContextCurrent(context,experimentId))return;showFailToast(error instanceof Error?error.message:"提交失败")}
   finally{if(isActionContextCurrent(context,experimentId))submitting.value=false}
 }

@@ -103,28 +103,25 @@ public class PricingFileService {
                 throw new BusinessException("PROCESS_REVISION_PRICING_MATERIAL_UNPRICED", "正式工艺配方存在无法按物料标识核价的外部物料");
             }
             var costSource = costSourceFor(version.materials(), line);
-            var roles = line.sources().stream()
-                    .map(ProcessRecipeService.RecipeSource::materialRole)
-                    .map(this::normalizedStableValue)
-                    .distinct()
-                    .toList();
-            if (roles.size() != 1 || roles.get(0) == null) {
+            var roles = line.sources().stream().map(ProcessRecipeService.RecipeSource::materialRole)
+                    .map(this::normalizedStableValue).toList();
+            if (roles.isEmpty() || roles.contains(null)) {
                 throw new BusinessException("PROCESS_REVISION_PRICING_MATERIAL_ATTRIBUTE_CONFLICT",
                         "正式工艺配方物料的投料角色冲突");
             }
-            var role = roles.get(0);
+            var role = line.canonicalMaterialRole();
             var canonicalCode = costSource.materialCode().trim();
             var prior = resolved.get(canonicalCode);
             if (prior == null) {
                 resolved.put(canonicalCode, new FormalPricingMaterial(line, costSource, role, line.weightKg()));
-            } else if (!java.util.Objects.equals(prior.materialRole, role)
-                    || !java.util.Objects.equals(prior.costSource.stage(), costSource.stage())
+            } else if (!java.util.Objects.equals(prior.costSource.stage(), costSource.stage())
                     || !java.util.Objects.equals(prior.costSource.materialCategory(), costSource.materialCategory())
                     || !sameDecimal(prior.costSource.utilizationRate(), costSource.utilizationRate())
                     || !java.util.Objects.equals(normalizedStableValue(prior.costSource.inputUnit()),
                     normalizedStableValue(costSource.inputUnit()))) {
                 throw new BusinessException("PROCESS_REVISION_PRICING_MATERIAL_ATTRIBUTE_CONFLICT", "正式工艺配方物料的核价属性冲突");
             } else {
+                prior.materialRole = canonicalMaterialRole(List.of(prior.materialRole, role));
                 prior.weightKg = prior.weightKg.add(line.weightKg());
             }
         }
@@ -152,6 +149,12 @@ public class PricingFileService {
             ));
         }
         return List.copyOf(materials);
+    }
+
+    private String canonicalMaterialRole(List<String> roles) {
+        if (roles.stream().anyMatch("PRIMARY"::equals)) return "PRIMARY";
+        if (roles.stream().anyMatch("PROCESS_WATER"::equals)) return "PROCESS_WATER";
+        return "AUXILIARY";
     }
 
     private PricingFileResult generateWorkbook(
@@ -742,7 +745,7 @@ public class PricingFileService {
     private static final class FormalPricingMaterial {
         private final ProcessRecipeService.RecipeLine line;
         private final ExperimentMaterial costSource;
-        private final String materialRole;
+        private String materialRole;
         private BigDecimal weightKg;
 
         private FormalPricingMaterial(ProcessRecipeService.RecipeLine line, ExperimentMaterial costSource, String materialRole, BigDecimal weightKg) {

@@ -38,10 +38,14 @@
         </div>
       </div>
       <div class="grid two">
-        <a-input v-model:value="point.confirmedBy" :disabled="readonly" placeholder="确认人" @update:value="publish" />
+        <div class="confirmation">
+          <span v-if="point.confirmedBy">已由 {{ displayConfirmedBy(point.confirmedBy) }}确认<span v-if="point.confirmedAt"> · {{ point.confirmedAt }}</span></span>
+          <span v-else>尚未确认；确认身份与时间由系统记录</span>
+          <a-button v-if="!readonly && point.importance === 'CRITICAL' && !hasDeviation(point) && !point.confirmedBy" size="small" @click="requestConfirmation(index)">本人确认</a-button>
+          <a-button v-if="!readonly && point.importance === 'CRITICAL' && hasDeviation(point) && !point.resolved" size="small" danger @click="requestDeviationConfirmation(point)">负责人确认偏差</a-button>
+        </div>
         <a-input v-model:value="point.basisOrRemark" :disabled="readonly" placeholder="依据或备注" @update:value="publish" />
       </div>
-      <a-checkbox v-model:checked="point.resolved" :disabled="readonly || !hasDeviation(point)" @change="publish">偏差已闭环</a-checkbox>
       <span v-if="isBlocking(point)" class="block-note">{{ missingFields(point) }}</span>
     </div>
   </section>
@@ -53,7 +57,7 @@ import { nextProcessKey, type ControlMeasurementDraft, type ControlPointDraft } 
 import { cloneVueValue } from "./cloneVueValue";
 
 const props = defineProps<{ modelValue: ControlPointDraft[]; readonly?: boolean }>();
-const emit = defineEmits<{ "update:modelValue": [value: ControlPointDraft[]] }>();
+const emit = defineEmits<{ "update:modelValue": [value: ControlPointDraft[]]; "confirm-deviation": [point: ControlPointDraft] }>();
 const clonePoints = (value: ControlPointDraft[]) => cloneVueValue(value);
 const points = ref<ControlPointDraft[]>(clonePoints(props.modelValue || []));
 watch(() => props.modelValue, value => { points.value = clonePoints(value || []); });
@@ -63,15 +67,18 @@ const importanceOptions = [{ label: "极重要", value: "CRITICAL" }, { label: "
 const results = [{ label: "待判定", value: "PENDING" }, { label: "合格", value: "PASS" }, { label: "不合格", value: "FAIL" }];
 
 function publish() { emit("update:modelValue", clonePoints(points.value)); }
-function addPoint() { points.value.push({ key: nextProcessKey("control"), sequence: points.value.length + 1, controlType: "PROCESS", importance: "NORMAL", itemName: "", resolved: false, measurements: [] }); publish(); }
+function addPoint() { const key = nextProcessKey("control"); points.value.push({ id: key, key, sequence: points.value.length + 1, controlType: "PROCESS", importance: "NORMAL", itemName: "", resolved: false, measurements: [] }); publish(); }
 function removePoint(index: number) { points.value.splice(index, 1); publish(); }
-function addMeasurement(pointIndex: number) { const point = points.value[pointIndex]; if (!point) return; point.measurements.push({ key: nextProcessKey("measurement"), sequence: point.measurements.length + 1, result: "PENDING", retestResult: "PENDING" } as ControlMeasurementDraft); publish(); }
+function addMeasurement(pointIndex: number) { const point = points.value[pointIndex]; if (!point) return; const key = nextProcessKey("measurement"); point.measurements.push({ id: key, key, sequence: point.measurements.length + 1, result: "PENDING", retestResult: "PENDING" } as ControlMeasurementDraft); publish(); }
 function removeMeasurement(pointIndex: number, measurementIndex: number) { points.value[pointIndex]?.measurements.splice(measurementIndex, 1); publish(); }
 function outside(point: ControlPointDraft, value?: number) { return value != null && ((point.lowerLimit != null && value < point.lowerLimit) || (point.upperLimit != null && value > point.upperLimit)); }
 function hasDeviation(point: ControlPointDraft) { return point.measurements.some(item => item.result === "FAIL" || outside(point, item.measuredValue)); }
 function unresolvedDeviation(point: ControlPointDraft) { return point.measurements.some(item => (item.result === "FAIL" || outside(point, item.measuredValue)) && (!item.deviationAction?.trim() || !item.retestResult || item.retestResult === "PENDING" || item.retestResult === "FAIL")); }
 function isBlocking(point: ControlPointDraft) { return point.importance === "CRITICAL" && (!point.measurements.some(item => item.measuredValue != null) || !point.confirmedBy?.trim() || (hasDeviation(point) && (!point.resolved || unresolvedDeviation(point)))); }
 function missingFields(point: ControlPointDraft) { const missing = []; if (!point.measurements.some(item => item.measuredValue != null)) missing.push("实测值"); if (!point.confirmedBy?.trim()) missing.push("确认人"); if (hasDeviation(point) && !point.resolved) missing.push("偏差闭环"); if (unresolvedDeviation(point)) missing.push("偏差处理/复测"); return `需补充：${missing.join("、")}`; }
+function requestConfirmation(index: number) { const point = points.value[index]; if (!point) return; point.confirmedBy = "__SESSION_CONFIRMATION_REQUESTED__"; publish(); }
+function requestDeviationConfirmation(point: ControlPointDraft) { emit("confirm-deviation", clonePoints([point])[0]!); }
+function displayConfirmedBy(value: string) { return value === "__SESSION_CONFIRMATION_REQUESTED__" ? "当前登录人（待保存）" : value; }
 function importanceLabel(value: ControlPointDraft["importance"]) { return value === "CRITICAL" ? "极重要" : value === "IMPORTANT" ? "重要" : "一般"; }
 </script>
 
@@ -80,5 +87,6 @@ function importanceLabel(value: ControlPointDraft["importance"]) { return value 
 .control-card { display: grid; gap: 8px; padding: 12px; border: 1px solid #e5e6eb; border-radius: 10px; background: #fff; } .control-card.blocking { border-color: #ff7875; background: #fff8f7; } .point-heading .ant-input { flex: 1; }
 .grid { display: grid; gap: 8px; } .two { grid-template-columns: repeat(2, minmax(0, 1fr)); } .three { grid-template-columns: 1.2fr 1fr .6fr; } .four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .measurements { padding: 8px; border-radius: 8px; background: #f7f8fa; } .measure-title { justify-content: space-between; margin-bottom: 6px; } .measurement-row { display: grid; grid-template-columns: 1fr 1.4fr .8fr 1.3fr .8fr 44px; gap: 6px; margin-top: 6px; } .block-note { color: #cf1322; font-size: 12px; }
+.confirmation { display: flex; align-items: center; gap: 8px; min-height: 32px; color: #595959; font-size: 12px; }
 @media (max-width: 900px) { .four, .measurement-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

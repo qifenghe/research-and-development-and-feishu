@@ -94,6 +94,8 @@ export function createTaskApi(client: ApiClient) {
       client.get<ProcessPlanDraft>(`/experiment-forms/${formId}/process-plan`),
     saveProcessPlan: (formId: string, plan: ProcessPlanDraft) =>
       client.put<ProcessPlanDraft>(`/experiment-forms/${formId}/process-plan`, plan),
+    confirmProcessDeviation: (formId: string, pointId: string, resolutionNote?: string) =>
+      client.post<ProcessPlanDraft>(`/experiment-forms/${formId}/process-plan/control-points/${pointId}/confirm-deviation`, { resolutionNote }),
     getProcessSubmissionCheck: (formId: string) =>
       client.get<ProcessSubmissionPreview>(`/experiment-forms/${formId}/process-plan/submission-check`),
     submitProcessPlan: (formId: string, request: SubmitProcessPlanRequest) =>

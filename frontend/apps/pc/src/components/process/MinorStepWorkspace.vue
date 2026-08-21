@@ -81,7 +81,7 @@
       </section>
 
       <section class="section live"><div><b>得率摘要</b><span>小步骤 {{ percent(stepYield.mainYieldPercent) }} · 大工序 {{ percent(majorYield.mainYieldPercent) }} · 最终 {{ percent(finalYield) }}</span></div><div><b>配方汇总</b><span>外部物料 {{ recipeTotal.toFixed(3) }} kg</span></div></section>
-      <ControlPointEditor :model-value="selectedStep.controlPoints || []" :readonly="readonly" @update:model-value="replaceControls" />
+      <ControlPointEditor :model-value="selectedStep.controlPoints || []" :readonly="readonly" @update:model-value="replaceControls" @confirm-deviation="confirmDeviation" />
     </main>
     <main v-else class="no-step">先添加一个小步骤</main>
   </div>
@@ -100,7 +100,7 @@ import { confirmProcessPlanRepair, previousFlowOutputs, type RemovedFlowConsumer
 import { cloneVueValue } from "./cloneVueValue";
 
 const props = defineProps<{ modelValue: ProcessPlanDraft; majorKey: string; readonly?: boolean }>();
-const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft] }>();
+const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft]; "confirm-deviation": [point: ControlPointDraft] }>();
 const clonePlan = (value: ProcessPlanDraft) => cloneVueValue(value);
 const localPlan = ref(clonePlan(props.modelValue));
 const selectedStepKey = ref("");
@@ -254,6 +254,7 @@ function removeMaterial(index: number) { selectedStep.value?.materials.splice(in
 function addOutput() { if (!selectedStep.value) return; const id = nextProcessKey("output"); (selectedStep.value.outputs ||= []).push({ id, key: id, sequence: selectedStep.value.outputs.length + 1, outputType: "INTERMEDIATE", outputName: "", materialState: "SOLID", primaryOutput: false, continueFlow: true }); publishLocal(); }
 function removeOutput(index: number) { if (!selectedStep.value) return; selectedStep.value.outputs?.splice(index, 1); void publish(clonePlan(localPlan.value)); }
 function replaceControls(value: ControlPointDraft[]) { if (!selectedStep.value) return; selectedStep.value.controlPoints = cloneVueValue(value); publishLocal(); }
+function confirmDeviation(point: ControlPointDraft) { emit("confirm-deviation", cloneVueValue(point)); }
 function onSourceChange(material: ProcessStepMaterialDraft) {
   if (material.sourceType === "EXTERNAL") publishLocal();
   else {

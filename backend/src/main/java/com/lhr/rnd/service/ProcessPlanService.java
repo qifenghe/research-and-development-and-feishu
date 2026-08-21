@@ -24,16 +24,19 @@ public class ProcessPlanService {
     private final JdbcTemplate jdbc;
     private final ExperimentFormRepository formRepository;
     private final ExperimentProcessRepository legacyRepository;
+    private final AuditLogService auditLogService;
     private final ProcessPlanCalculationService calculations = new ProcessPlanCalculationService();
 
     public ProcessPlanService(
             JdbcTemplate jdbc,
             ExperimentFormRepository formRepository,
-            ExperimentProcessRepository legacyRepository
+            ExperimentProcessRepository legacyRepository,
+            AuditLogService auditLogService
     ) {
         this.jdbc = jdbc;
         this.formRepository = formRepository;
         this.legacyRepository = legacyRepository;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional(readOnly = true)
@@ -56,6 +59,16 @@ public class ProcessPlanService {
 
     @Transactional
     public ProcessPlan save(String formId, ProcessPlan request) {
+        return saveInternal(formId, request);
+    }
+
+    @Transactional
+    public ProcessPlan save(String formId, ProcessPlan request, SessionPrincipal principal) {
+        requireDraftAccess(formId, principal);
+        return saveInternal(formId, sanitizeControlConfirmations(request, principal));
+    }
+
+    private ProcessPlan saveInternal(String formId, ProcessPlan request) {
         requireForm(formId);
         var balanceTolerance = requireBalanceTolerance(request.balanceToleranceKg());
         var current = jdbc.query("select id, version_no, status, balance_tolerance_kg, source_revision_id, change_reason from experiment_process_plan where experiment_form_id = ?",
@@ -92,6 +105,64 @@ public class ProcessPlanService {
         var majors = request.majorProcesses() == null ? List.<ProcessPlan.MajorProcess>of() : request.majorProcesses();
         for (int index = 0; index < majors.size(); index++) saveMajor(planId, index + 1, majors.get(index));
         return find(formId);
+    }
+
+    @Transactional
+    public ProcessPlan confirmCriticalDeviation(String formId, String controlPointId, String resolutionNote,
+                                                SessionPrincipal principal) {
+        if (principal == null || !"RND_DIRECTOR".equals(principal.role()) || blank(principal.userId()) || blank(principal.name())) {
+            throw new BusinessException("PROCESS_DEVIATION_CONFIRMATION_FORBIDDEN", "极重要偏差只能由研发负责人或总监确认");
+        }
+        var points = jdbc.query("""
+                select cp.lower_limit, cp.upper_limit
+                from experiment_control_point cp
+                join experiment_minor_step step on step.id = cp.minor_step_id
+                join experiment_major_process major on major.id = step.major_process_id
+                join experiment_process_plan plan on plan.id = major.process_plan_id
+                where cp.id = ? and plan.experiment_form_id = ? and plan.status = 'DRAFT' and cp.importance = 'CRITICAL'
+                for update
+                """, (rs, row) -> new ControlLimits(rs.getBigDecimal(1), rs.getBigDecimal(2)), controlPointId, formId);
+        if (points.isEmpty()) {
+            throw new BusinessException("PROCESS_CONTROL_POINT_NOT_CONFIRMABLE", "极重要偏差不存在或当前工艺不是可确认草稿");
+        }
+        var limits = points.get(0);
+        var measurements = jdbc.query("select measured_value, result, deviation_action, retest_result from experiment_control_measurement where control_point_id = ? order by sequence",
+                (rs, row) -> new DeviationMeasurement(rs.getBigDecimal(1), rs.getString(2), rs.getString(3), rs.getString(4)), controlPointId);
+        var deviations = measurements.stream().filter(item -> item.isDeviation(limits)).toList();
+        if (deviations.isEmpty() || deviations.stream().anyMatch(item -> blank(item.deviationAction()) || !"PASS".equals(item.retestResult()))) {
+            throw new BusinessException("PROCESS_DEVIATION_NOT_RESOLVED", "偏差处理与复测合格记录完整后才能确认");
+        }
+        var confirmedAt = LocalDateTime.now();
+        var updated = jdbc.update("update experiment_control_point set resolved = true, confirmed_by = ?, confirmed_at = ?, basis_or_remark = coalesce(?, basis_or_remark) where id = ?",
+                principal.name(), confirmedAt, blank(resolutionNote) ? null : resolutionNote.trim(), controlPointId);
+        if (updated != 1) throw new BusinessException("PROCESS_CONTROL_POINT_NOT_CONFIRMABLE", "极重要偏差确认失败");
+        auditLogService.record("PROCESS_CONTROL_POINT", controlPointId, "CRITICAL_DEVIATION_CONFIRMED",
+                principal.name(), principal.userId(), "formId=%s;confirmedAt=%s;note=%s".formatted(formId, confirmedAt, valueOr(resolutionNote, "")));
+        return find(formId);
+    }
+
+    private ProcessPlan sanitizeControlConfirmations(ProcessPlan request, SessionPrincipal principal) {
+        var majors = values(request.majorProcesses()).stream().map(major -> new ProcessPlan.MajorProcess(
+                major.id(), major.sequence(), major.processCode(), major.processName(), major.description(), major.yieldBasis(), major.remark(),
+                values(major.steps()).stream().map(step -> new ProcessPlan.MinorStep(step.id(), step.sequence(), step.stepCode(), step.stepName(),
+                        step.stepType(), step.parameter1Name(), step.parameter1Value(), step.parameter1Unit(), step.parameter2Name(),
+                        step.parameter2Value(), step.parameter2Unit(), step.equipment(), step.instruction(), step.materials(), step.outputs(),
+                        values(step.controlPoints()).stream().map(point -> sanitizeControlConfirmation(point, principal)).toList())).toList(),
+                major.inputs(), major.outputs(), major.yield())).toList();
+        return new ProcessPlan(request.id(), request.experimentFormId(), request.versionNo(), request.status(), majors,
+                request.batchYieldPercent(), request.balanceToleranceKg(), request.legacy(), request.sourceRevisionId(), request.changeReason());
+    }
+
+    private ProcessPlan.ControlPoint sanitizeControlConfirmation(ProcessPlan.ControlPoint point, SessionPrincipal principal) {
+        var hasDeviation = values(point.measurements()).stream().anyMatch(item -> "FAIL".equals(item.result())
+                || item.measuredValue() != null && (point.lowerLimit() != null && item.measuredValue().compareTo(point.lowerLimit()) < 0
+                || point.upperLimit() != null && item.measuredValue().compareTo(point.upperLimit()) > 0));
+        var requestedConfirmation = !blank(point.confirmedBy()) || !blank(point.confirmedAt()) || point.resolved();
+        var trustedBy = !hasDeviation && requestedConfirmation ? principal.name() : null;
+        var trustedAt = trustedBy == null ? null : LocalDateTime.now().toString();
+        return new ProcessPlan.ControlPoint(point.id(), point.sequence(), point.controlType(), point.importance(), point.itemName(),
+                point.targetValue(), point.lowerLimit(), point.upperLimit(), point.unit(), point.method(), point.measurementTool(),
+                point.frequency(), point.deviationAction(), false, trustedBy, trustedAt, point.basisOrRemark(), point.measurements());
     }
 
     @Transactional(readOnly = true)
@@ -365,11 +436,26 @@ public class ProcessPlanService {
         return value == null || value.isBlank() ? fallback : value;
     }
 
+    private <T> List<T> values(List<T> items) {
+        return items == null ? List.of() : items;
+    }
+
     private Timestamp timestamp(String value) {
         return value == null || value.isBlank() ? null : Timestamp.valueOf(LocalDateTime.parse(value));
     }
 
     private record PlanHeader(String id, int versionNo, String status, BigDecimal balanceToleranceKg,
                               String sourceRevisionId, String changeReason) {
+    }
+
+    private record ControlLimits(BigDecimal lower, BigDecimal upper) {
+    }
+
+    private record DeviationMeasurement(BigDecimal measuredValue, String result, String deviationAction, String retestResult) {
+        private boolean isDeviation(ControlLimits limits) {
+            return "FAIL".equals(result) || measuredValue != null
+                    && (limits.lower != null && measuredValue.compareTo(limits.lower) < 0
+                    || limits.upper != null && measuredValue.compareTo(limits.upper) > 0);
+        }
     }
 }

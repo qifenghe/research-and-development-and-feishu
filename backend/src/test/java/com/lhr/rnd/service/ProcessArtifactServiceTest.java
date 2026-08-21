@@ -528,6 +528,7 @@ class ProcessArtifactServiceTest {
                     "生成信息：" + ENGINEER.name() + " / " + DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").format(LocalDateTime.parse(artifact.generatedAt())),
                     "适用批量：打样外部投入 12.5000kg", "100kg 标准配方", "大工序 1：热加工大工序-SOP",
                     "大工序描述-SOP-唯一", "大工序备注-SOP-唯一", "大工序得率：64.0000%", "成品得率：64.0000%",
+                    "终端产出合计：10.5000kg", "物料平衡差：2.0000kg",
                     "测量记录追溯附录（不作为生产指令标准）");
             var stepTable = document.getTables().stream()
                     .filter(table -> "步骤".equals(table.getRow(0).getCell(0).getText()))
@@ -595,7 +596,10 @@ class ProcessArtifactServiceTest {
         var revision = formalRevision();
         var tester = new SessionPrincipal("USER-TEST", "tester", "测试", "ou-test", "TESTER", null);
 
-        assertThat(service.list(FORM_ID, revision.id(), tester)).isEmpty();
+        assertThatThrownBy(() -> service.list(FORM_ID, revision.id(), tester))
+                .isInstanceOf(com.lhr.rnd.api.BusinessException.class)
+                .extracting(error -> ((com.lhr.rnd.api.BusinessException) error).code())
+                .isEqualTo("PROCESS_REVISION_NOT_ASSIGNED");
         assertThatThrownBy(() -> service.generate(FORM_ID, revision.id(), ProcessArtifact.SOP_DOCX, tester))
                 .hasMessageContaining("无权");
         assertThatThrownBy(() -> service.list("FORM-OTHER", revision.id(), ENGINEER))
@@ -663,9 +667,13 @@ class ProcessArtifactServiceTest {
                 List.of(new ProcessPlan.StepMaterial(
                         null, 1, "PRIMARY", "BEEF-SOP-001", "外部鲜牛腩-SOP", "FROZEN-SOLID-SOP",
                         new BigDecimal("12.5000"), "MAT-BEEF-SOP-001", "外部投料备注-SOP", "EXTERNAL", null)),
-                List.of(new ProcessPlan.StepOutput(
-                        outputId, 1, "INTERMEDIATE", "腌制中间产物-SOP", "MARINATED-STATE-SOP",
-                        new BigDecimal("10.0000"), true, true, "中间产出备注-SOP")), List.of());
+                List.of(
+                        new ProcessPlan.StepOutput(
+                                outputId, 1, "INTERMEDIATE", "腌制中间产物-SOP", "MARINATED-STATE-SOP",
+                                new BigDecimal("10.0000"), true, true, "中间产出备注-SOP"),
+                        new ProcessPlan.StepOutput(
+                                "OUT-SOP-EARLY-WASTE", 2, "WASTE", "前段修割损耗-SOP", "SOLID",
+                                new BigDecimal("2.5000"), false, false, "前段旁路损耗-SOP")), List.of());
         var second = new ProcessPlan.MinorStep(
                 null, 2, "COOK-SOP", "熟制步骤-SOP", "NORMAL", "中心温度参数-SOP", "88.8", "℃-SOP",
                 null, null, null, "夹层锅设备-SOP-唯一", "加热至中心温度达标-SOP-唯一",

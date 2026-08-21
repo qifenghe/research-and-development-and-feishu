@@ -175,7 +175,8 @@ public class SampleWorkflowController {
     @PostMapping("/rnd-tasks/{id}/experiment-form/draft")
     public ApiResponse<ExperimentForm> saveExperimentDraft(
             @PathVariable String id,
-            @Valid @RequestBody SaveExperimentDraftRequest request
+            @Valid @RequestBody SaveExperimentDraftRequest request,
+            HttpServletRequest servletRequest
     ) {
         return ApiResponse.success(workflowService.saveExperimentDraft(new SampleWorkflowService.SaveExperimentDraftCommand(
                 id,
@@ -188,15 +189,16 @@ public class SampleWorkflowController {
                 request.finishedOutputUnit(),
                 request.finishedYieldPercent(),
                 request.yieldCalculationMode()
-        )));
+        ), requiredSessionPrincipal(servletRequest)));
     }
 
     @PostMapping("/experiment-forms/{id}/submit-test")
     public ApiResponse<SubmitExperimentForTestResult> submitExperimentForTest(
             @PathVariable String id,
-            @Valid @RequestBody SubmitExperimentForTestRequest request
+            @Valid @RequestBody SubmitExperimentForTestRequest request,
+            HttpServletRequest servletRequest
     ) {
-        return ApiResponse.success(workflowService.submitExperimentForTest(id, request.testerName()));
+        return ApiResponse.success(workflowService.submitExperimentForTest(id, request.testerName(), requiredSessionPrincipal(servletRequest)));
     }
 
     @PostMapping(value = "/experiment-forms/{id}/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -227,17 +229,19 @@ public class SampleWorkflowController {
     @PostMapping("/test-assignments/{id}/pass")
     public ApiResponse<PassInternalTestResult> passInternalTest(
             @PathVariable String id,
-            @Valid @RequestBody InternalTestDecisionRequest request
+            @Valid @RequestBody InternalTestDecisionRequest request,
+            HttpServletRequest servletRequest
     ) {
-        return ApiResponse.success(workflowService.passInternalTest(id, request.testerName(), request.comment()));
+        return ApiResponse.success(workflowService.passInternalTest(id, request.testerName(), request.comment(), requiredSessionPrincipal(servletRequest)));
     }
 
     @PostMapping("/test-assignments/{id}/fail-resample")
     public ApiResponse<FailInternalTestResult> failInternalTestForResample(
             @PathVariable String id,
-            @Valid @RequestBody InternalTestDecisionRequest request
+            @Valid @RequestBody InternalTestDecisionRequest request,
+            HttpServletRequest servletRequest
     ) {
-        return ApiResponse.success(workflowService.failInternalTestForResample(id, request.testerName(), request.comment()));
+        return ApiResponse.success(workflowService.failInternalTestForResample(id, request.testerName(), request.comment(), requiredSessionPrincipal(servletRequest)));
     }
 
     @PostMapping("/sample-versions/{id}/shipments")

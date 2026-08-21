@@ -27,7 +27,7 @@
           <a-button type="link" @click="activeMajorKey = undefined">‹ 返回大工序</a-button>
           <span>工艺工作台 / {{ activeMajor?.processName }}</span>
         </div>
-        <MinorStepWorkspace v-if="activeMajor" :model-value="plan" :major-key="activeMajor.key" :readonly="readonly || plan.status !== 'DRAFT'" @update:model-value="replacePlan" />
+        <MinorStepWorkspace v-if="activeMajor" :model-value="plan" :major-key="activeMajor.key" :readonly="readonly || plan.status !== 'DRAFT'" @update:model-value="replacePlan" @confirm-deviation="confirmDeviation" />
       </div>
 
       <aside class="side">
@@ -86,7 +86,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { message } from "ant-design-vue";
-import { aggregateProcessRecipe, calculateBatchYield, normalizeProcessPlan, type ProcessPlanDraft, type ProcessRevision, type ProcessRevisionSummary } from "@rnd/shared";
+import { aggregateProcessRecipe, calculateBatchYield, normalizeProcessPlan, type ControlPointDraft, type ProcessPlanDraft, type ProcessRevision, type ProcessRevisionSummary } from "@rnd/shared";
 import { api } from "../../services/api";
 import MajorProcessBoard from "./MajorProcessBoard.vue";
 import MinorStepWorkspace from "./MinorStepWorkspace.vue";
@@ -200,6 +200,22 @@ async function saveNow(silent = false) {
 async function openSubmit() {
   await saveNow(true);
   if (saveState.value !== "error" && saveState.value !== "saving") showSubmit.value = true;
+}
+
+async function confirmDeviation(point: ControlPointDraft) {
+  const formId = props.formId;
+  if (!formId || !point.id) return;
+  try {
+    await saveNow(true);
+    const confirmed = normalizeProcessPlan(await api.task.confirmProcessDeviation(formId, point.id, point.basisOrRemark));
+    if (formId !== props.formId) return;
+    plan.value = confirmed;
+    coordinator.hydrateServer(clonePlan(confirmed));
+    emit("update:modelValue", clonePlan(confirmed));
+    message.success("偏差已由当前负责人确认并留痕");
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : "偏差确认失败");
+  }
 }
 
 function restoreLocalDirty(value: ProcessPlanDraft) {

@@ -66,7 +66,7 @@ public class ProcessArtifactService {
 
     @Transactional(readOnly = true)
     public List<ProcessArtifact> list(String formId, String revisionId, SessionPrincipal principal) {
-        requireReadAccess(formId, principal);
+        requireReadAccess(formId, revisionId, principal);
         revisionService.find(formId, revisionId);
         return jdbc.query("select * from experiment_process_artifact where process_revision_id = ? order by generated_at desc, id desc",
                 (rs, row) -> map(rs), revisionId);
@@ -74,7 +74,7 @@ public class ProcessArtifactService {
 
     @Transactional(readOnly = true)
     public List<ProcessArtifactPublic> listReadyPublic(String formId, String revisionId, SessionPrincipal principal) {
-        requireReadAccess(formId, principal);
+        requireReadAccess(formId, revisionId, principal);
         revisionService.find(formId, revisionId);
         return jdbc.query("select id, process_revision_id, artifact_type, document_version, status, generated_at from experiment_process_artifact where process_revision_id = ? and status = 'READY' order by generated_at desc, id desc",
                 (rs, row) -> new ProcessArtifactPublic(rs.getString("id"), rs.getString("process_revision_id"),
@@ -139,7 +139,7 @@ public class ProcessArtifactService {
 
     @Transactional(readOnly = true)
     public ArtifactDownload download(String formId, String revisionId, String artifactId, SessionPrincipal principal) {
-        requireReadAccess(formId, principal);
+        requireReadAccess(formId, revisionId, principal);
         var revision = revisionService.find(formId, revisionId);
         var rows = jdbc.query("select * from experiment_process_artifact where id = ? and process_revision_id = ?",
                 (rs, row) -> map(rs), artifactId, revisionId);
@@ -215,7 +215,7 @@ public class ProcessArtifactService {
                 setNumber(row, 0, index + 1, number);
                 set(row, 1, value(line.materialCode()));
                 set(row, 2, value(line.materialName()));
-                set(row, 3, line.sources().stream().map(ProcessRecipeService.RecipeSource::materialRole).filter(role -> !blank(role)).distinct().collect(Collectors.joining("、")));
+                set(row, 3, line.canonicalMaterialRole());
                 setNumber(row, 4, line.weightKg(), number);
                 var hundredKg = displayedPercentages.get(index);
                 setNumber(row, 5, hundredKg, number);
@@ -247,7 +247,11 @@ public class ProcessArtifactService {
                 heading(document, "大工序 " + major.sequence() + "：" + value(major.processName()));
                 paragraph(document, "工序说明：" + value(major.description()) + "；备注：" + value(major.remark()));
                 var yield = calculationService.calculate(major);
-                paragraph(document, "大工序得率：" + percent(yield.mainYieldPercent()) + "；主料首端投入：" + kg(yield.primaryInputWeightKg()) + "；末端产出：" + kg(yield.qualifiedOutputWeightKg()));
+                paragraph(document, "大工序得率：" + percent(yield.mainYieldPercent())
+                        + "；主料首端投入：" + kg(yield.primaryInputWeightKg())
+                        + "；末端产出：" + kg(yield.qualifiedOutputWeightKg())
+                        + "；终端产出合计：" + kg(yield.totalOutputWeightKg())
+                        + "；物料平衡差：" + kg(yield.balanceDifferenceKg()));
                 var table = table(document, "步骤", "外部投料", "中间流转", "操作参数/设备工具", "操作要求", "产出状态/重量", "步骤得率");
                 for (var step : sorted(major.steps(), ProcessPlan.MinorStep::sequence)) {
                     var row = table.createRow();
@@ -305,9 +309,15 @@ public class ProcessArtifactService {
         }
     }
 
-    private void requireReadAccess(String formId, SessionPrincipal principal) {
+    private void requireReadAccess(String formId, String revisionId, SessionPrincipal principal) {
         requirePrincipal(principal);
-        if ("RND_DIRECTOR".equals(principal.role()) || "TESTER".equals(principal.role()) || "QA_TESTER".equals(principal.role())) return;
+        if ("RND_DIRECTOR".equals(principal.role())) return;
+        if ("TESTER".equals(principal.role()) || "QA_TESTER".equals(principal.role())) {
+            var count = jdbc.queryForObject("select count(*) from test_assignment where experiment_form_id = ? and process_revision_id = ? and tester_user_id = ?",
+                    Integer.class, formId, revisionId, principal.userId());
+            if (count != null && count > 0) return;
+            throw new BusinessException("PROCESS_REVISION_NOT_ASSIGNED", "测试人员只能查看当前测试任务绑定版本的成果文件");
+        }
         if (!"RND_ENGINEER".equals(principal.role()) || !isOwner(formId, principal)) {
             throw new BusinessException("PROCESS_PLAN_FORM_FORBIDDEN", "当前用户无权查看该工艺成果文件");
         }

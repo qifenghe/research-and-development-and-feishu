@@ -50,6 +50,60 @@ class ProcessSubmissionValidatorTest {
     }
 
     @Test
+    void blocksForkedAndSkippedPrimaryChainsWithinAMajor() {
+        var forked = validPlan(List.of(
+                step(1, material("PRIMARY", "EXTERNAL", null, "牛肉", "10"), output("OUT-1", "9", true, true)),
+                step(2, material("PRIMARY", "STEP_OUTPUT", "OUT-1", "牛肉", "9"), output("OUT-2", "8", true, true)),
+                step(3, material("PRIMARY", "STEP_OUTPUT", "OUT-1", "牛肉", "9"), output("OUT-3", "7", true, false))), null);
+        var skipped = validPlan(List.of(
+                step(1, material("PRIMARY", "EXTERNAL", null, "牛肉", "10"), output("OUT-1", "9", true, true)),
+                step(2, material("PRIMARY", "STEP_OUTPUT", "OUT-1", "牛肉", "9"), output("OUT-2", "8", true, true)),
+                step(3, material("PRIMARY", "STEP_OUTPUT", "OUT-1", "牛肉", "9"), output("OUT-3", "7", true, false))), null);
+
+        assertThat(validator.validate(forked).errors()).extracting(ProcessSubmissionCheck.Issue::code)
+                .contains("PRIMARY_FLOW_BROKEN");
+        assertThat(validator.validate(skipped).errors()).extracting(ProcessSubmissionCheck.Issue::code)
+                .contains("PRIMARY_FLOW_BROKEN");
+    }
+
+    @Test
+    void rejectsEmptyYieldExemptMajorAndZeroWeightPrimaryBoundary() {
+        var valid = validPlan(validSteps(), null);
+        var emptyNone = new ProcessPlan.MajorProcess("MAJOR-NONE", 2, "HOLD", "静置", null, "NONE", null,
+                List.of(), List.of(), List.of(), null);
+        var withEmptyNone = new ProcessPlan(valid.id(), valid.experimentFormId(), valid.versionNo(), valid.status(),
+                List.of(valid.majorProcesses().get(0), emptyNone), null, false);
+        var zeroPrimary = validPlan(List.of(step(1,
+                material("PRIMARY", "EXTERNAL", null, "牛肉", "0"), output("OUT-ZERO", "1", true, false))), null);
+
+        assertThat(validator.validate(withEmptyNone).errors()).extracting(ProcessSubmissionCheck.Issue::code)
+                .contains("MAJOR_STEP_REQUIRED", "MAJOR_YIELD_EXCLUSION_REASON_REQUIRED");
+        assertThat(validator.validate(zeroPrimary).errors()).extracting(ProcessSubmissionCheck.Issue::code)
+                .contains("MAJOR_PRIMARY_INPUT_WEIGHT_REQUIRED");
+
+        var zeroLegacyMajor = new ProcessPlan.MajorProcess("MAJOR-LEGACY-ZERO", 2, "LEGACY", "旧工序", null,
+                "PRIMARY_INPUT", "旧数据补录", List.of(),
+                List.of(new ProcessPlan.ProcessInput("LEGACY-IN", 1, "PRIMARY", "BEEF", "牛肉", BigDecimal.ZERO, null)),
+                List.of(new ProcessPlan.ProcessOutput("LEGACY-OUT", 1, "QUALIFIED", BigDecimal.ZERO, null)), null);
+        var withZeroLegacy = new ProcessPlan(valid.id(), valid.experimentFormId(), valid.versionNo(), valid.status(),
+                List.of(valid.majorProcesses().get(0), zeroLegacyMajor), null, false);
+        assertThat(validator.validate(withZeroLegacy).errors()).extracting(ProcessSubmissionCheck.Issue::code)
+                .contains("MAJOR_PRIMARY_INPUT_WEIGHT_REQUIRED", "MAJOR_PRIMARY_OUTPUT_WEIGHT_REQUIRED");
+    }
+
+    @Test
+    void permitsDocumentedNoYieldMajorWithAnOperationalStep() {
+        var valid = validPlan(validSteps(), null);
+        var documented = new ProcessPlan.MajorProcess("MAJOR-NONE", 2, "PACKAGING", "包装", null, "NONE", "包装工序不改变主料重量",
+                List.of(step(1, material("AUXILIARY", "EXTERNAL", null, "包装袋", "0.1"), null)), List.of(), List.of(), null);
+        var plan = new ProcessPlan(valid.id(), valid.experimentFormId(), valid.versionNo(), valid.status(),
+                List.of(valid.majorProcesses().get(0), documented), null, false);
+
+        assertThat(validator.validate(plan).errors()).extracting(ProcessSubmissionCheck.Issue::code)
+                .doesNotContain("MAJOR_STEP_REQUIRED", "MAJOR_YIELD_EXCLUSION_REASON_REQUIRED");
+    }
+
+    @Test
     void blocksYieldMajorWhenItsOnlyPrimaryOutputPrecedesItsPrimaryInput() {
         var plan = validPlan(List.of(
                 step(1, material("AUXILIARY", "EXTERNAL", null, "盐", "0.2"), output("OUT-1", "9", true, true)),

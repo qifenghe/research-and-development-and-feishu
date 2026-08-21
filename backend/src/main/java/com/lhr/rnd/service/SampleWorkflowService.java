@@ -429,6 +429,18 @@ public class SampleWorkflowService {
 
     @Transactional
     public synchronized ExperimentForm saveExperimentDraft(SaveExperimentDraftCommand command) {
+        return saveExperimentDraftInternal(command);
+    }
+
+    @Transactional
+    public synchronized ExperimentForm saveExperimentDraft(SaveExperimentDraftCommand command, SessionPrincipal principal) {
+        requireTaskWriteAccess(command.taskId(), principal);
+        return saveExperimentDraftInternal(new SaveExperimentDraftCommand(command.taskId(), principal.name(), command.summary(),
+                command.materials(), command.processSteps(), command.finishedOutputWeightKg(), command.finishedOutputQuantity(),
+                command.finishedOutputUnit(), command.finishedYieldPercent(), command.yieldCalculationMode()));
+    }
+
+    private ExperimentForm saveExperimentDraftInternal(SaveExperimentDraftCommand command) {
         var task = requiredTask(command.taskId());
         if (task.status() != RndTaskStatus.SAMPLING) {
             throw new BusinessException("RND_TASK_STATUS_ILLEGAL", "任务接受后才能填写实验单");
@@ -481,11 +493,29 @@ public class SampleWorkflowService {
 
     @Transactional
     public synchronized SubmitExperimentForTestResult submitExperimentForTest(String experimentFormId, String testerName) {
+        return submitExperimentForTestInternal(experimentFormId, testerName, null);
+    }
+
+    @Transactional
+    public synchronized SubmitExperimentForTestResult submitExperimentForTest(String experimentFormId, String testerName,
+                                                                               SessionPrincipal principal) {
+        var form = requiredExperimentForm(experimentFormId);
+        requireTaskWriteAccess(form.taskId(), principal);
+        return submitExperimentForTestInternal(experimentFormId, testerName, principal);
+    }
+
+    private SubmitExperimentForTestResult submitExperimentForTestInternal(String experimentFormId, String testerName,
+                                                                           SessionPrincipal principal) {
+        lockExperimentFormForSubmission(experimentFormId);
         var form = requiredExperimentForm(experimentFormId);
         if (form.status() != ExperimentFormStatus.DRAFT) {
             throw new BusinessException("EXPERIMENT_FORM_STATUS_ILLEGAL", "只有草稿实验单可以提交测试");
         }
         validateSubmittableExperiment(form);
+        var formalRevision = principal == null || processRevisionService == null ? null : processRevisionService.requireCurrentFormalForTest(experimentFormId);
+        if (principal != null && formalRevision == null) {
+            throw new BusinessException("PROCESS_FORMAL_REVISION_REQUIRED", "通知测试前请先正式提交当前工艺版本");
+        }
         var nextTaskStatus = taskStatusAfter(SampleStatus.SAMPLING, SampleAction.SUBMIT_EXPERIMENT);
         var submitted = form.submit(now());
 
@@ -513,16 +543,23 @@ public class SampleWorkflowService {
             );
         }
 
+        var tester = principal == null ? new TesterIdentity(null, testerName) : resolveTester(testerName);
         var assignment = new TestAssignment(
                 nextTestAssignmentId(),
                 submitted.id(),
                 submitted.taskId(),
                 submitted.versionId(),
-                testerName,
+                formalRevision == null ? null : formalRevision.id(),
+                tester.name(),
+                tester.userId(),
                 TestAssignmentStatus.PENDING_TEST,
                 now()
         );
         persistSubmittedExperiment(submitted, assignment);
+        if (auditLogService != null && principal != null) {
+            auditLogService.record("EXPERIMENT_FORM", submitted.id(), "SUBMIT_FOR_TEST", principal.name(), principal.userId(),
+                    "testAssignmentId=%s;processRevisionId=%s;testerName=%s".formatted(assignment.id(), formalRevision.id(), tester.name()));
+        }
         var taskToCache = pendingTestTask;
         cacheAfterCommit(() -> {
             experimentForms.put(submitted.id(), submitted);
@@ -534,15 +571,53 @@ public class SampleWorkflowService {
         return new SubmitExperimentForTestResult(submitted, assignment);
     }
 
+    private void requireTaskWriteAccess(String taskId, SessionPrincipal principal) {
+        if (principal == null || principal.userId() == null || principal.userId().isBlank()
+                || principal.role() == null || principal.role().isBlank()) {
+            throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "实验单操作必须使用服务端会话身份");
+        }
+        if ("RND_DIRECTOR".equals(principal.role())) return;
+        if (!"RND_ENGINEER".equals(principal.role())) {
+            throw new BusinessException("EXPERIMENT_FORM_TASK_FORBIDDEN", "当前用户无权操作该实验单");
+        }
+        if (rndTaskRepository == null) {
+            var task = tasks.get(taskId);
+            if (task == null || !principal.name().equals(task.assigneeName())) {
+                throw new BusinessException("EXPERIMENT_FORM_TASK_FORBIDDEN", "当前用户无权操作该实验单");
+            }
+            return;
+        }
+        var entity = rndTaskRepository.findById(taskId)
+                .orElseThrow(() -> new BusinessException("EXPERIMENT_FORM_TASK_FORBIDDEN", "当前用户无权操作该实验单"));
+        var ownerId = entity.getAssigneeUserId();
+        if (ownerId == null || ownerId.isBlank()) {
+            var matches = userAccountRepository == null ? List.<com.lhr.rnd.persistence.entity.UserAccountEntity>of()
+                    : userAccountRepository.findAllByNameAndStatus(entity.getAssigneeName(), "ACTIVE");
+            if (matches.size() != 1) throw new BusinessException("EXPERIMENT_FORM_TASK_FORBIDDEN", "当前用户无权操作该实验单");
+            ownerId = matches.get(0).getId();
+        }
+        if (!principal.userId().equals(ownerId)) {
+            throw new BusinessException("EXPERIMENT_FORM_TASK_FORBIDDEN", "当前用户无权操作该实验单");
+        }
+    }
+
     @Transactional
     public synchronized PassInternalTestResult passInternalTest(String testAssignmentId, String testerName, String comment) {
-        var assignment = pendingTestAssignment(testAssignmentId, testerName);
+        return passInternalTest(testAssignmentId, testerName, comment, null);
+    }
+
+    @Transactional
+    public synchronized PassInternalTestResult passInternalTest(String testAssignmentId, String testerName, String comment,
+                                                                SessionPrincipal principal) {
+        var assignment = principal == null ? pendingTestAssignment(testAssignmentId, testerName)
+                : pendingTestAssignment(testAssignmentId, principal);
+        var trustedTesterName = principal == null ? testerName : principal.name();
         var form = requiredExperimentForm(assignment.experimentFormId());
         ensureWorkflowAllows(SampleStatus.PENDING_TEST, SampleAction.TEST_PASS);
         var locked = form.lock();
 
         var passed = assignment.withStatus(TestAssignmentStatus.PASSED);
-        var record = testRecord(passed, testerName, TestAssignmentStatus.PASSED, comment);
+        var record = testRecord(passed, trustedTesterName, TestAssignmentStatus.PASSED, comment);
 
         var task = tasks.get(assignment.taskId());
         if (task == null && rndTaskRepository != null) {
@@ -556,30 +631,38 @@ public class SampleWorkflowService {
         cacheAfterCommit(() -> {
             experimentForms.put(locked.id(), locked);
             testAssignments.put(passed.id(), passed);
+            testRecords.put(record.id(), record);
             if (taskToCache != null) {
                 tasks.put(taskToCache.id(), taskToCache);
             }
         });
+        if (auditLogService != null && principal != null) {
+            auditLogService.record("TEST_ASSIGNMENT", assignment.id(), "PASS", principal.name(), principal.userId(), comment == null ? "" : comment);
+        }
         return new PassInternalTestResult(locked, passed, record, completedTask);
     }
 
     @Transactional
     public synchronized FailInternalTestResult failInternalTestForResample(String testAssignmentId, String testerName, String comment) {
-        var assignment = pendingTestAssignment(testAssignmentId, testerName);
+        return failInternalTestForResample(testAssignmentId, testerName, comment, null);
+    }
+
+    @Transactional
+    public synchronized FailInternalTestResult failInternalTestForResample(String testAssignmentId, String testerName, String comment,
+                                                                           SessionPrincipal principal) {
+        var assignment = principal == null ? pendingTestAssignment(testAssignmentId, testerName)
+                : pendingTestAssignment(testAssignmentId, principal);
+        var trustedTesterName = principal == null ? testerName : principal.name();
         ensureWorkflowAllows(SampleStatus.PENDING_TEST, SampleAction.TEST_FAIL_RESAMPLE);
         var locked = requiredExperimentForm(assignment.experimentFormId()).lock();
         var failed = assignment.withStatus(TestAssignmentStatus.FAILED_RESAMPLE);
-        testAssignments.put(failed.id(), failed);
-        var record = testRecord(failed, testerName, TestAssignmentStatus.FAILED_RESAMPLE, comment);
+        var record = testRecord(failed, trustedTesterName, TestAssignmentStatus.FAILED_RESAMPLE, comment);
 
-        var currentVersion = versions.get(assignment.versionId());
-        if (currentVersion == null) {
-            throw new BusinessException("SAMPLE_VERSION_NOT_FOUND", "样品版本不存在");
-        }
+        var currentVersion = requiredVersion(assignment.versionId());
         var nextNumber = currentVersion.versionNumber() == null ? 1 : currentVersion.versionNumber() + 1;
         var nextCode = SampleVersionCode.fromNumber(nextNumber).code();
         var nextVersion = SampleVersion.builder()
-                .id("VER-%04d".formatted(versions.size() + 1))
+                .id(nextSampleVersionId())
                 .projectId(currentVersion.projectId())
                 .sampleNo(currentVersion.sampleNo())
                 .productName(currentVersion.productName())
@@ -594,15 +677,11 @@ public class SampleWorkflowService {
                 .authorName(currentVersion.authorName())
                 .createdAt(now())
                 .build();
-        versions.put(nextVersion.id(), nextVersion);
 
-        var previousTask = tasks.get(assignment.taskId());
-        if (previousTask != null) {
-            tasks.put(previousTask.id(), previousTask.withStatus(RndTaskStatus.COMPLETED));
-        }
+        var previousTask = requiredTask(assignment.taskId());
         var nextTaskStatus = taskStatusAfter(SampleStatus.RESAMPLING_REQUIRED, SampleAction.CREATE_NEXT_VERSION);
         var nextTask = new RndTask(
-                "TASK-%04d".formatted(taskSequence++),
+                nextRndTaskId(),
                 nextVersion.projectId(),
                 nextVersion.id(),
                 nextVersion.sampleNo(),
@@ -615,9 +694,18 @@ public class SampleWorkflowService {
                 now(),
                 null
         );
-        tasks.put(nextTask.id(), nextTask);
         persistFailedInternalTest(locked, failed, record, nextVersion, previousTask, nextTask);
-        experimentForms.put(locked.id(), locked);
+        cacheAfterCommit(() -> {
+            experimentForms.put(locked.id(), locked);
+            testAssignments.put(failed.id(), failed);
+            testRecords.put(record.id(), record);
+            versions.put(nextVersion.id(), nextVersion);
+            tasks.put(previousTask.id(), previousTask.withStatus(RndTaskStatus.COMPLETED));
+            tasks.put(nextTask.id(), nextTask);
+        });
+        if (auditLogService != null && principal != null) {
+            auditLogService.record("TEST_ASSIGNMENT", assignment.id(), "FAIL_RESAMPLE", principal.name(), principal.userId(), comment == null ? "" : comment);
+        }
         return new FailInternalTestResult(failed, record, nextVersion, nextTask);
     }
 
@@ -702,7 +790,7 @@ public class SampleWorkflowService {
     }
 
     public synchronized RndTaskDetailView rndTaskDetail(String taskId, String role, String operatorName) {
-        return rndTaskDetailInternal(taskId, role, operatorName, false);
+        return rndTaskDetailInternal(taskId, role, operatorName, false, null);
     }
 
     public synchronized RndTaskDetailView rndTaskDetail(String taskId, SessionPrincipal principal) {
@@ -710,16 +798,21 @@ public class SampleWorkflowService {
             throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "任务详情必须使用服务端会话身份");
         }
         return rndTaskDetailInternal(taskId, principal.role(), principal.name(),
-                "TESTER".equals(principal.role()) || "QA_TESTER".equals(principal.role()));
+                "TESTER".equals(principal.role()) || "QA_TESTER".equals(principal.role()), principal.userId());
     }
 
-    private RndTaskDetailView rndTaskDetailInternal(String taskId, String role, String operatorName, boolean formalOnly) {
+    private RndTaskDetailView rndTaskDetailInternal(String taskId, String role, String operatorName, boolean formalOnly,
+                                                    String operatorUserId) {
         var task = requiredTask(taskId);
         var version = requiredVersion(task.versionId());
         var project = SampleProjectSummary.from(projects.get(task.projectId()));
-        var currentExperimentForm = currentExperimentForm(taskId);
-        if (formalOnly) currentExperimentForm = formalExperimentFormOrNull(currentExperimentForm);
         var currentTestAssignment = currentTestAssignment(taskId);
+        if (formalOnly && currentTestAssignment != null && currentTestAssignment.testerUserId() != null
+                && !currentTestAssignment.testerUserId().equals(operatorUserId)) {
+            throw new BusinessException("TEST_ASSIGNMENT_TESTER_MISMATCH", "只能由被配置的测试人员查看该测试任务");
+        }
+        var currentExperimentForm = currentExperimentForm(taskId);
+        if (formalOnly) currentExperimentForm = formalExperimentFormOrNull(currentExperimentForm, currentTestAssignment);
         return new RndTaskDetailView(
                 task,
                 version,
@@ -731,10 +824,13 @@ public class SampleWorkflowService {
         );
     }
 
-    private ExperimentForm formalExperimentFormOrNull(ExperimentForm draft) {
+    private ExperimentForm formalExperimentFormOrNull(ExperimentForm draft, TestAssignment assignment) {
         if (draft == null || processRevisionService == null) return null;
-        var revision = processRevisionService.latestOrNull(draft.id());
-        if (revision == null) return null;
+        if (assignment == null) return null;
+        if (assignment.processRevisionId() == null || assignment.processRevisionId().isBlank()) {
+            throw new BusinessException("PROCESS_FORMAL_REVISION_REQUIRED", "该测试任务未绑定正式工艺版本，请研发重新送测");
+        }
+        var revision = processRevisionService.find(draft.id(), assignment.processRevisionId());
         return new ExperimentForm(draft.id(), draft.taskId(), draft.projectId(), draft.versionId(), draft.sampleNo(),
                 draft.productName(), draft.versionCode(), ExperimentFormStatus.SUBMITTED_FOR_TEST, revision.submittedBy(),
                 null, List.of(), List.of(), null, null, null, null, null, null,
@@ -1081,6 +1177,18 @@ public class SampleWorkflowService {
         }
     }
 
+    private String nextTestRecordId() {
+        return "TREC-" + UUID.randomUUID().toString().replace("-", "").substring(0, 27);
+    }
+
+    private String nextSampleVersionId() {
+        return "VER-" + UUID.randomUUID().toString().replace("-", "").substring(0, 28);
+    }
+
+    private String nextRndTaskId() {
+        return "TASK-" + UUID.randomUUID().toString().replace("-", "").substring(0, 27);
+    }
+
     private void cacheAfterCommit(Runnable cacheUpdate) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             cacheUpdate.run();
@@ -1379,10 +1487,17 @@ public class SampleWorkflowService {
     }
 
     private TestAssignment currentTestAssignment(String taskId) {
-        return testAssignments.values().stream()
+        var cached = testAssignments.values().stream()
                 .filter(assignment -> assignment.taskId().equals(taskId))
                 .max(Comparator.comparing(TestAssignment::assignedAt))
                 .orElse(null);
+        if (cached != null || testAssignmentRepository == null) return cached;
+        return testAssignmentRepository.findByTaskIdOrderByAssignedAtDesc(taskId).stream().findFirst()
+                .map(this::hydrateTestAssignment)
+                .map(persisted -> {
+                    testAssignments.put(persisted.id(), persisted);
+                    return persisted;
+                }).orElse(null);
     }
 
     private CustomerFeedback currentCustomerFeedback(String shipmentId) {
@@ -1470,9 +1585,8 @@ public class SampleWorkflowService {
     }
 
     private boolean canEngineerOperate(RndTask task, String role, String operatorName) {
-        if (!hasRole(role, "RND_ENGINEER", "RND_DIRECTOR", "RND")) {
-            return false;
-        }
+        if (hasRole(role, "RND_DIRECTOR")) return true;
+        if (!hasRole(role, "RND_ENGINEER")) return false;
         if (operatorName == null || operatorName.isBlank()) {
             return true;
         }
@@ -1496,13 +1610,13 @@ public class SampleWorkflowService {
             ));
         }
         if (currentExperimentForm != null && currentExperimentForm.status() == ExperimentFormStatus.DRAFT
-                && (canEngineerOperate(task, role, operatorName) || hasRole(role, "RND_ASSISTANT"))) {
+                && canEngineerOperate(task, role, operatorName)) {
             actions.add(action(
                     "SUBMIT_EXPERIMENT_TEST",
-                    hasRole(role, "RND_ASSISTANT") ? "通知内部测试" : "提交内部测试",
+                    "提交内部测试",
                     "POST",
                     "/api/v1/experiment-forms/" + currentExperimentForm.id() + "/submit-test",
-                    hasRole(role, "RND_ASSISTANT")
+                    true
             ));
         }
         return actions;
@@ -2728,7 +2842,9 @@ public class SampleWorkflowService {
                 assignment.experimentFormId(),
                 assignment.taskId(),
                 assignment.versionId(),
+                assignment.processRevisionId(),
                 assignment.testerName(),
+                assignment.testerUserId(),
                 assignment.status().name(),
                 assignment.assignedAt()
         ));
@@ -3385,26 +3501,67 @@ public class SampleWorkflowService {
     }
 
     private TestAssignment pendingTestAssignment(String testAssignmentId, String testerName) {
-        var assignment = testAssignments.get(testAssignmentId);
-        if (assignment == null) {
-            if (testAssignmentRepository == null) {
-                throw new BusinessException("TEST_ASSIGNMENT_NOT_FOUND", "内部测试任务不存在");
-            }
-            assignment = testAssignmentRepository.findById(testAssignmentId)
-                    .map(this::hydrateTestAssignment)
-                    .map(persisted -> {
-                        testAssignments.put(persisted.id(), persisted);
-                        return persisted;
-                    })
-                    .orElseThrow(() -> new BusinessException("TEST_ASSIGNMENT_NOT_FOUND", "内部测试任务不存在"));
-        }
-        if (assignment.status() != TestAssignmentStatus.PENDING_TEST) {
-            throw new BusinessException("TEST_ASSIGNMENT_STATUS_ILLEGAL", "当前测试任务状态不可确认");
-        }
+        var assignment = pendingTestAssignment(testAssignmentId);
         if (!testerName.equals(assignment.testerName())) {
             throw new BusinessException("TEST_ASSIGNMENT_TESTER_MISMATCH", "只能由被配置的测试人员确认");
         }
         return assignment;
+    }
+
+    private TestAssignment pendingTestAssignment(String testAssignmentId, SessionPrincipal principal) {
+        if (principal == null || principal.userId() == null || principal.userId().isBlank()
+                || !("TESTER".equals(principal.role()) || "QA_TESTER".equals(principal.role()))) {
+            throw new BusinessException("TEST_ASSIGNMENT_TESTER_MISMATCH", "只能由被配置的测试人员确认");
+        }
+        var assignment = pendingTestAssignment(testAssignmentId);
+        var testerUserId = assignment.testerUserId();
+        if (testerUserId == null || testerUserId.isBlank()) testerUserId = requireTesterUserId(assignment.testerName());
+        if (!principal.userId().equals(testerUserId)) {
+            throw new BusinessException("TEST_ASSIGNMENT_TESTER_MISMATCH", "只能由被配置的测试人员确认");
+        }
+        if (assignment.processRevisionId() == null || assignment.processRevisionId().isBlank()) {
+            throw new BusinessException("PROCESS_FORMAL_REVISION_REQUIRED", "该测试任务未绑定正式工艺版本，请研发重新送测");
+        }
+        return assignment;
+    }
+
+    private TestAssignment pendingTestAssignment(String testAssignmentId) {
+        var assignment = testAssignmentRepository == null ? testAssignments.get(testAssignmentId)
+                : testAssignmentRepository.findByIdForUpdate(testAssignmentId).map(this::hydrateTestAssignment).orElse(null);
+        if (assignment == null) throw new BusinessException("TEST_ASSIGNMENT_NOT_FOUND", "内部测试任务不存在");
+        testAssignments.put(assignment.id(), assignment);
+        if (assignment.status() != TestAssignmentStatus.PENDING_TEST) {
+            throw new BusinessException("TEST_ASSIGNMENT_STATUS_ILLEGAL", "当前测试任务状态不可确认");
+        }
+        return assignment;
+    }
+
+    private void lockExperimentFormForSubmission(String experimentFormId) {
+        if (experimentFormRepository == null) return;
+        var entity = experimentFormRepository.findByIdForUpdate(experimentFormId)
+                .orElseThrow(() -> new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在"));
+        if (!ExperimentFormStatus.DRAFT.name().equals(entity.getStatus())) {
+            throw new BusinessException("EXPERIMENT_FORM_STATUS_ILLEGAL", "只有草稿实验单可以提交测试");
+        }
+    }
+
+    private String requireTesterUserId(String testerName) {
+        return resolveTester(testerName).userId();
+    }
+
+    private TesterIdentity resolveTester(String requestedName) {
+        if (userAccountRepository == null) return new TesterIdentity(null, requestedName);
+        var eligible = userAccountRepository.findAll().stream()
+                .filter(account -> "ACTIVE".equals(account.getStatus()))
+                .filter(account -> "TESTER".equals(account.getRole()) || "QA_TESTER".equals(account.getRole()))
+                .toList();
+        var matches = "AUTO_ASSIGN".equals(requestedName)
+                ? eligible
+                : eligible.stream().filter(account -> account.getName().equals(requestedName)).toList();
+        if (matches.size() != 1) {
+            throw new BusinessException("TESTER_ACCOUNT_NOT_UNIQUE", "内部测试人员账号不存在或无法唯一确定，请先配置或选择唯一测试账号");
+        }
+        return new TesterIdentity(matches.get(0).getId(), matches.get(0).getName());
     }
 
     private TestAssignment hydrateTestAssignment(TestAssignmentEntity entity) {
@@ -3413,7 +3570,9 @@ public class SampleWorkflowService {
                 entity.getExperimentFormId(),
                 entity.getTaskId(),
                 entity.getVersionId(),
+                entity.getProcessRevisionId(),
                 entity.getTesterName(),
+                entity.getTesterUserId(),
                 TestAssignmentStatus.valueOf(entity.getStatus()),
                 entity.getAssignedAt()
         );
@@ -3421,7 +3580,7 @@ public class SampleWorkflowService {
 
     private TestRecord testRecord(TestAssignment assignment, String testerName, TestAssignmentStatus result, String comment) {
         var record = new TestRecord(
-                "TREC-%04d".formatted(testRecordSequence++),
+                nextTestRecordId(),
                 assignment.id(),
                 assignment.experimentFormId(),
                 testerName,
@@ -3429,7 +3588,6 @@ public class SampleWorkflowService {
                 comment,
                 now()
         );
-        testRecords.put(record.id(), record);
         return record;
     }
 
@@ -3513,6 +3671,9 @@ public class SampleWorkflowService {
             String sampleNo,
             String versionCode
     ) {
+    }
+
+    private record TesterIdentity(String userId, String name) {
     }
 
     private record CustomerResampleTask(

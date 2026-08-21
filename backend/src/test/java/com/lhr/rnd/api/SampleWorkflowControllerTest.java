@@ -80,6 +80,12 @@ class SampleWorkflowControllerTest {
     private com.lhr.rnd.service.SampleWorkflowService workflowService;
 
     @Autowired
+    private com.lhr.rnd.service.ProcessPlanService processPlanService;
+
+    @Autowired
+    private com.lhr.rnd.service.ProcessRevisionService processRevisionService;
+
+    @Autowired
     private PlatformTransactionManager transactionManager;
 
     @SpyBean
@@ -92,6 +98,7 @@ class SampleWorkflowControllerTest {
     void clearWorkflowState() {
         clearBusinessTables();
         jdbcTemplate.update("insert into user_account(id,username,password_hash,name,feishu_user_id,role,status,created_at,updated_at) values ('TEST-ASSIGNEE','test_assignee','x','张研发','ou-test-assignee','RND_ENGINEER','ACTIVE',current_timestamp,current_timestamp)");
+        jdbcTemplate.update("insert into user_account(id,username,password_hash,name,feishu_user_id,role,status,created_at,updated_at) values ('TEST-TESTER','test_tester','x','内部测试员','ou-test-tester','TESTER','ACTIVE',current_timestamp,current_timestamp)");
         clearWorkflowServiceMemory();
     }
 
@@ -248,6 +255,7 @@ class SampleWorkflowControllerTest {
         acceptTask(taskId);
 
         var response = mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -330,6 +338,76 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void experimentDraftWriteUsesSessionOwnerIdentityAndRejectsAnotherEngineer() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var payload = """
+                {"operatorName":"伪造研发","materials":[{"stage":"原料","sequence":1,"materialName":"主料","weightKg":10,"materialCategory":"RAW","primaryMaterial":true}],
+                 "processSteps":[{"sequence":1,"processName":"熟制","beforeWeightKg":10,"afterWeightKg":8}],
+                 "finishedOutputWeightKg":8,"finishedOutputQuantity":8,"finishedOutputUnit":"袋"}
+                """;
+        var intruder = new SessionPrincipal("OTHER-ENGINEER", "other", "张研发", null, "RND_ENGINEER", Instant.now().plusSeconds(60));
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, intruder)
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("EXPERIMENT_FORM_TASK_FORBIDDEN"));
+
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,
+                                ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.operatorName").value("张研发"));
+    }
+
+    @Test
+    void testHandoffRequiresAndBindsCurrentFormalProcessRevision() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var formId = saveExperimentDraftWithPrincipal(taskId, ownerPrincipal());
+
+        mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", formId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"testerName\":\"AUTO_ASSIGN\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PROCESS_FORMAL_REVISION_REQUIRED"));
+
+        var revisionId = submitFormalProcessRevision(formId, ownerPrincipal());
+        mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", formId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"testerName\":\"张研发\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("TESTER_ACCOUNT_NOT_UNIQUE"));
+
+        var response = mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", formId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"testerName\":\"AUTO_ASSIGN\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.testAssignment.testerName").value("内部测试员"))
+                .andExpect(jsonPath("$.data.testAssignment.testerUserId").value("TEST-TESTER"))
+                .andReturn().getResponse().getContentAsString();
+        var assignmentId = response.split("\\\"testAssignment\\\":\\{\\\"id\\\":\\\"")[1].split("\"")[0];
+
+        assertThat(valueById("test_assignment", assignmentId, "process_revision_id")).isEqualTo(revisionId);
+        assertThat(processRevisionService.list(formId, testerPrincipal())).extracting(com.lhr.rnd.model.ProcessRevision.ProcessRevisionSummary::id)
+                .containsExactly(revisionId);
+        assertThatThrownBy(() -> processRevisionService.find(formId, revisionId,
+                new SessionPrincipal("OTHER-TESTER", "other_tester", "内部测试员", null, "TESTER", Instant.now().plusSeconds(60))))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).code())
+                .isEqualTo("PROCESS_REVISION_NOT_ASSIGNED");
+        assertThat(jdbcTemplate.queryForObject("select count(*) from audit_log where business_type='EXPERIMENT_FORM' and business_id=? and action='SUBMIT_FOR_TEST' and operator_user_id='TEST-ASSIGNEE'", Integer.class, formId)).isEqualTo(1);
+        assertThatThrownBy(() -> processRevisionService.createDraftFromRevision(formId, revisionId, "送测后漂移版本", ownerPrincipal()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).code())
+                .isEqualTo("PROCESS_EDIT_AFTER_TEST_FORBIDDEN");
+    }
+
+    @Test
     void savesFinishedQuantityAndProductOwner() throws Exception {
         var taskId = createApprovedRequest();
         jdbcTemplate.update("insert into user_account(id,username,password_hash,name,feishu_user_id,role,status,created_at,updated_at) values ('TEST-LI','test_li','x','李研发','ou-test-li','RND_ENGINEER','ACTIVE',current_timestamp,current_timestamp)");
@@ -347,6 +425,8 @@ class SampleWorkflowControllerTest {
         acceptTask(taskId, "李研发");
 
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,
+                                new SessionPrincipal("TEST-LI", "test_li", "李研发", "ou-test-li", "RND_ENGINEER", Instant.now().plusSeconds(60)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -377,6 +457,7 @@ class SampleWorkflowControllerTest {
         acceptTask(taskId);
 
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -396,6 +477,7 @@ class SampleWorkflowControllerTest {
         acceptTask(taskId);
 
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -415,6 +497,7 @@ class SampleWorkflowControllerTest {
         acceptTask(taskId);
 
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -433,6 +516,7 @@ class SampleWorkflowControllerTest {
         acceptTask(taskId);
 
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -456,6 +540,7 @@ class SampleWorkflowControllerTest {
                 "{\"operatorName\":\"张研发\",\"finishedOutputUnit\":\"  \"}"
         }) {
             mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                            .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(payload))
                     .andExpect(status().isOk())
@@ -500,6 +585,7 @@ class SampleWorkflowControllerTest {
         acceptTask(taskId);
 
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -553,6 +639,7 @@ class SampleWorkflowControllerTest {
         acceptTask(taskId);
 
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -577,6 +664,7 @@ class SampleWorkflowControllerTest {
         acceptTask(taskId);
 
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -602,6 +690,7 @@ class SampleWorkflowControllerTest {
         acceptTask(taskId);
 
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -621,9 +710,11 @@ class SampleWorkflowControllerTest {
         assignTask(taskId);
         acceptTask(taskId);
         var experimentFormId = saveExperimentDraft(taskId);
+        submitFormalProcessRevision(experimentFormId, ownerPrincipal());
         disableWorkflowAction("SAMPLING", "SUBMIT_EXPERIMENT", "PENDING_TEST");
 
         mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", experimentFormId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"testerName\":\"内部测试员\"}"))
                 .andExpect(status().isBadRequest())
@@ -640,6 +731,7 @@ class SampleWorkflowControllerTest {
         disableWorkflowAction("PENDING_TEST", "TEST_PASS", "SAMPLE_COMPLETED");
 
         mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"testerName\":\"内部测试员\",\"comment\":\"口味和复热状态通过\"}"))
                 .andExpect(status().isBadRequest())
@@ -656,6 +748,7 @@ class SampleWorkflowControllerTest {
         disableWorkflowAction("PENDING_TEST", "TEST_FAIL_RESAMPLE", "RESAMPLING_REQUIRED");
 
         mockMvc.perform(post("/api/v1/test-assignments/{id}/fail-resample", testAssignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"testerName\":\"内部测试员\",\"comment\":\"需要调整咸度后复打样\"}"))
                 .andExpect(status().isBadRequest())
@@ -981,6 +1074,7 @@ class SampleWorkflowControllerTest {
         acceptTask(taskId);
 
         var response = mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -1000,6 +1094,7 @@ class SampleWorkflowControllerTest {
         var experimentFormId = objectMapper.readTree(response).path("data").path("id").asText();
 
         mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", experimentFormId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"testerName\":\"内部测试员\"}"))
                 .andExpect(status().isBadRequest())
@@ -1013,6 +1108,7 @@ class SampleWorkflowControllerTest {
         acceptTask(taskId);
 
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -1034,6 +1130,7 @@ class SampleWorkflowControllerTest {
         acceptTask(taskId);
 
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -1059,7 +1156,8 @@ class SampleWorkflowControllerTest {
         clearWorkflowServiceMemory();
 
         mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", experimentFormId)
-                .contentType(MediaType.APPLICATION_JSON)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"testerName\":\"内部测试员\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("PRIMARY_MATERIAL_INVALID"));
@@ -1115,6 +1213,7 @@ class SampleWorkflowControllerTest {
         clearWorkflowServiceMemory();
 
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -1145,10 +1244,51 @@ class SampleWorkflowControllerTest {
         clearWorkflowServiceMemory();
 
         var testAssignmentId = submitExperimentForTest(experimentFormId);
+        var processRevisionId = valueById("test_assignment", testAssignmentId, "process_revision_id");
+        clearWorkflowServiceMemory();
 
         assertThat(valueById("experiment_form", experimentFormId, "status")).isEqualTo("SUBMITTED_FOR_TEST");
         assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("PENDING_TEST");
         assertThat(valueById("test_assignment", testAssignmentId, "experiment_form_id")).isEqualTo(experimentFormId);
+        mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentTestAssignment.id").value(testAssignmentId))
+                .andExpect(jsonPath("$.data.currentTestAssignment.processRevisionId").value(processRevisionId))
+                .andExpect(jsonPath("$.data.currentExperimentForm.status").value("SUBMITTED_FOR_TEST"));
+    }
+
+    @Test
+    void concurrentTestHandoffsAndDecisionsHaveExactlyOneDatabaseWinner() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var formId = saveExperimentDraft(taskId);
+        submitFormalProcessRevision(formId, ownerPrincipal());
+        var start = new CountDownLatch(1);
+        var first = CompletableFuture.supplyAsync(() -> afterGate(start,
+                () -> workflowService.submitExperimentForTest(formId, "AUTO_ASSIGN", ownerPrincipal())));
+        var second = CompletableFuture.supplyAsync(() -> afterGate(start,
+                () -> workflowService.submitExperimentForTest(formId, "AUTO_ASSIGN", ownerPrincipal())));
+        start.countDown();
+        var handoffResults = List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS));
+
+        assertThat(handoffResults.stream().filter(result -> result instanceof com.lhr.rnd.service.SubmitExperimentForTestResult).count()).isEqualTo(1);
+        assertThat(handoffResults.stream().filter(result -> result instanceof BusinessException).count()).isEqualTo(1);
+        assertThat(countByColumn("test_assignment", "experiment_form_id", formId)).isEqualTo(1);
+        var assignmentId = jdbcTemplate.queryForObject("select id from test_assignment where experiment_form_id = ?", String.class, formId);
+
+        var decisionStart = new CountDownLatch(1);
+        var pass = CompletableFuture.supplyAsync(() -> afterGate(decisionStart,
+                () -> workflowService.passInternalTest(assignmentId, "伪造姓名", "通过", testerPrincipal())));
+        var fail = CompletableFuture.supplyAsync(() -> afterGate(decisionStart,
+                () -> workflowService.failInternalTestForResample(assignmentId, "伪造姓名", "打回", testerPrincipal())));
+        decisionStart.countDown();
+        var decisionResults = List.of(pass.get(10, TimeUnit.SECONDS), fail.get(10, TimeUnit.SECONDS));
+
+        assertThat(decisionResults.stream().filter(result -> result instanceof BusinessException).count()).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from test_record where test_assignment_id = ?", Integer.class, assignmentId)).isEqualTo(1);
+        assertThat(valueById("test_assignment", assignmentId, "status")).isIn("PASSED", "FAILED_RESAMPLE");
     }
 
     @Test
@@ -1162,6 +1302,15 @@ class SampleWorkflowControllerTest {
         clearWorkflowServiceMemory();
 
         mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,
+                                new SessionPrincipal("FORGED-SAME-NAME", "forged", "内部测试员", null, "TESTER", Instant.now().plusSeconds(60)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"伪造同名测试员\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("TEST_ASSIGNMENT_TESTER_MISMATCH"));
+
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"testerName\":\"内部测试员\",\"comment\":\"口味和复热状态通过\"}"))
                 .andExpect(status().isOk())
@@ -1171,6 +1320,94 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("experiment_form", experimentFormId, "status")).isEqualTo("LOCKED");
         assertThat(valueById("test_assignment", testAssignmentId, "status")).isEqualTo("PASSED");
         assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void legacyPendingTestWithoutFormalRevisionCannotPassOrFailAndLeavesWorkflowUnchanged() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var formId = saveExperimentDraft(taskId);
+        var assignmentId = submitExperimentForTest(formId);
+        jdbcTemplate.update("update test_assignment set process_revision_id = null where id = ?", assignmentId);
+        clearWorkflowServiceMemory();
+
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", assignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"旧任务通过\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PROCESS_FORMAL_REVISION_REQUIRED"));
+
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/fail-resample", assignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"旧任务打回\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PROCESS_FORMAL_REVISION_REQUIRED"));
+
+        assertThat(valueById("test_assignment", assignmentId, "status")).isEqualTo("PENDING_TEST");
+        assertThat(valueById("experiment_form", formId, "status")).isEqualTo("SUBMITTED_FOR_TEST");
+        assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("PENDING_TEST");
+        assertThat(jdbcTemplate.queryForObject("select count(*) from test_record where test_assignment_id = ?", Integer.class, assignmentId)).isZero();
+    }
+
+    @Test
+    void directPassAfterRestartAvoidsExistingTestRecordIds() throws Exception {
+        var firstTaskId = createApprovedRequest();
+        assignTask(firstTaskId);
+        acceptTask(firstTaskId);
+        var firstAssignmentId = submitExperimentForTest(saveExperimentDraft(firstTaskId));
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", firstAssignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"首个历史记录\"}"))
+                .andExpect(status().isOk());
+        var existingRecordId = jdbcTemplate.queryForObject(
+                "select id from test_record where test_assignment_id = ?", String.class, firstAssignmentId);
+
+        var secondTaskId = createApprovedRequest();
+        assignTask(secondTaskId);
+        acceptTask(secondTaskId);
+        var secondFormId = saveExperimentDraft(secondTaskId);
+        var secondAssignmentId = submitExperimentForTest(secondFormId);
+        clearWorkflowServiceMemory();
+
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", secondAssignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"重启后直接通过\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.task.status").value("COMPLETED"));
+
+        assertThat(jdbcTemplate.queryForObject("select count(*) from test_record", Integer.class)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+                "select id from test_record where test_assignment_id = ?", String.class, secondAssignmentId))
+                .isNotEqualTo(existingRecordId);
+    }
+
+    @Test
+    void directFailForResampleAfterRestartHydratesVersionAndTaskAndUsesFreeIds() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var formId = saveExperimentDraft(taskId);
+        var assignmentId = submitExperimentForTest(formId);
+        clearWorkflowServiceMemory();
+
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/fail-resample", assignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"重启后直接打回\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.testAssignment.status").value("FAILED_RESAMPLE"))
+                .andExpect(jsonPath("$.data.nextTask.status").value("PENDING_ACCEPTANCE"));
+
+        assertThat(valueById("test_assignment", assignmentId, "status")).isEqualTo("FAILED_RESAMPLE");
+        assertThat(valueById("rnd_task", taskId, "status")).isEqualTo("COMPLETED");
+        assertThat(jdbcTemplate.queryForObject("select count(*) from test_record where test_assignment_id = ?", Integer.class, assignmentId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from sample_version", Integer.class)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from rnd_task", Integer.class)).isEqualTo(2);
     }
 
     @Test
@@ -1343,6 +1580,7 @@ class SampleWorkflowControllerTest {
         var testAssignmentId = submitExperimentForTest(experimentFormId);
 
         var testRecordId = mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"testerName\":\"内部测试员\",\"comment\":\"口味和复热状态通过\"}"))
                 .andExpect(status().isOk())
@@ -1373,6 +1611,7 @@ class SampleWorkflowControllerTest {
         var testAssignmentId = submitExperimentForTest(experimentFormId);
 
         var response = mockMvc.perform(post("/api/v1/test-assignments/{id}/fail-resample", testAssignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"testerName\":\"内部测试员\",\"comment\":\"口感偏硬，需调整卤制时间\"}"))
                 .andExpect(status().isOk())
@@ -1561,7 +1800,7 @@ class SampleWorkflowControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pricingFile.processRevisionId").value("PREV-PRICING-1"))
                 .andExpect(jsonPath("$.data.source.source").value("FORMAL_PROCESS_REVISION"))
-                .andExpect(jsonPath("$.data.source.revisionNo").value(1))
+                .andExpect(jsonPath("$.data.source.revisionNo").value(2))
                 .andExpect(jsonPath("$.data.source.finishedYieldPercent").value(80));
     }
 
@@ -2552,6 +2791,20 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.data.availableActions[0].code").value("OPEN_EXPERIMENT_FORM"))
                 .andExpect(jsonPath("$.data.availableActions[1].code").value("SUBMIT_EXPERIMENT_TEST"));
 
+        mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                        .param("role", "RND_ASSISTANT")
+                        .param("operatorName", "赵内勤"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.availableActions", hasSize(0)));
+
+        mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                        .param("role", "RND_DIRECTOR")
+                        .param("operatorName", "赵总监"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.availableActions", hasSize(2)))
+                .andExpect(jsonPath("$.data.availableActions[0].code").value("OPEN_EXPERIMENT_FORM"))
+                .andExpect(jsonPath("$.data.availableActions[1].code").value("SUBMIT_EXPERIMENT_TEST"));
+
         var testAssignmentId = submitExperimentForTest(experimentFormId);
 
         mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
@@ -2616,8 +2869,8 @@ class SampleWorkflowControllerTest {
                         .requestAttr("sessionPrincipal", principal("研发内勤", "RND_ASSISTANT")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pricingFile.id").value(pricingFileId))
-                .andExpect(jsonPath("$.data.pricingFile.source").value("LEGACY"))
-                .andExpect(jsonPath("$.data.source.source").value("LEGACY"))
+                .andExpect(jsonPath("$.data.pricingFile.source").value("FORMAL_PROCESS_REVISION"))
+                .andExpect(jsonPath("$.data.source.source").value("FORMAL_PROCESS_REVISION"))
                 .andExpect(jsonPath("$.data.version.versionCode").value("A0"))
                 .andExpect(jsonPath("$.data.fieldGroups[0].title").value("核价文件"))
                 .andExpect(jsonPath("$.data.availableActions", hasSize(1)))
@@ -2691,6 +2944,7 @@ class SampleWorkflowControllerTest {
                 """;
 
         return mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, taskPrincipal(taskId))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(draftJson))
                 .andExpect(status().isOk())
@@ -2703,6 +2957,51 @@ class SampleWorkflowControllerTest {
                 .getContentAsString()
                 .split("\"id\":\"")[1]
                 .split("\"")[0];
+    }
+
+    private String saveExperimentDraftWithPrincipal(String taskId, SessionPrincipal principal) throws Exception {
+        return mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, principal)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"operatorName":"伪造用户","materials":[{"stage":"原料","sequence":1,"materialCode":"RAW-001","materialName":"主料","weightKg":10,"materialCategory":"RAW","primaryMaterial":true}],
+                                 "processSteps":[{"sequence":1,"processName":"熟制","beforeWeightKg":10,"afterWeightKg":8}],
+                                 "finishedOutputWeightKg":8,"finishedOutputQuantity":8,"finishedOutputUnit":"袋"}
+                                """))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString().split("\"id\":\"")[1].split("\"")[0];
+    }
+
+    private String submitFormalProcessRevision(String formId, SessionPrincipal principal) {
+        var current = processPlanService.find(formId);
+        var step = new ProcessPlan.MinorStep(null, 1, "COOK", "熟制", "NORMAL", null, null, null, null, null,
+                null, null, null, List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "YRP00033", "主料", "SOLID",
+                new BigDecimal("10"), "YRP00033", null, "EXTERNAL", null)), List.of(
+                new ProcessPlan.StepOutput("OUT-TEST-HANDOFF-" + formId, 1, "FINISHED", "成品", "SOLID", new BigDecimal("8"), true, false, null)), List.of());
+        var major = new ProcessPlan.MajorProcess(null, 1, "COOK", "熟制", null, "PRIMARY_INPUT", "熟制损耗已说明",
+                List.of(step), List.of(), List.of(), null);
+        var saved = processPlanService.save(formId, new ProcessPlan(null, formId, current.versionNo(), "DRAFT", List.of(major), null, false), principal);
+        return processRevisionService.submit(formId,
+                new com.lhr.rnd.service.ProcessRevisionService.SubmitCommand(saved.versionNo(), true, "首次正式提交", principal.name()), principal).id();
+    }
+
+    private SessionPrincipal ownerPrincipal() {
+        return new SessionPrincipal("TEST-ASSIGNEE", "test_assignee", "张研发", null, "RND_ENGINEER", Instant.now().plusSeconds(60));
+    }
+
+    private SessionPrincipal testerPrincipal() {
+        return new SessionPrincipal("TEST-TESTER", "test_tester", "内部测试员", "ou-test-tester", "TESTER", Instant.now().plusSeconds(60));
+    }
+
+    private Object afterGate(CountDownLatch gate, java.util.function.Supplier<?> action) {
+        try {
+            if (!gate.await(5, TimeUnit.SECONDS)) return new IllegalStateException("并发测试启动超时");
+            return action.get();
+        } catch (Throwable error) {
+            var cause = error;
+            while (cause.getCause() != null && cause != cause.getCause()) cause = cause.getCause();
+            return cause;
+        }
     }
 
     private String saveSubmissionValidationDraft(
@@ -2732,6 +3031,7 @@ class SampleWorkflowControllerTest {
                 """.formatted(primaryWeightKg, processSteps, finishedOutputWeightKg, finishedOutputQuantity);
 
         return mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(draftJson))
                 .andExpect(status().isOk())
@@ -2757,6 +3057,7 @@ class SampleWorkflowControllerTest {
 
     private void submitExperimentForTestExpecting(String experimentFormId, String expectedCode) throws Exception {
         mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", experimentFormId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"testerName\":\"内部测试员\"}"))
                 .andExpect(status().isBadRequest())
@@ -2764,7 +3065,10 @@ class SampleWorkflowControllerTest {
     }
 
     private String submitExperimentForTest(String experimentFormId) throws Exception {
+        var principal = formPrincipal(experimentFormId);
+        submitFormalProcessRevision(experimentFormId, principal);
         return mockMvc.perform(post("/api/v1/experiment-forms/{id}/submit-test", experimentFormId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, principal)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"testerName\":\"内部测试员\"}"))
                 .andExpect(status().isOk())
@@ -2776,6 +3080,18 @@ class SampleWorkflowControllerTest {
                 .getContentAsString()
                 .split("\\\"testAssignment\\\":\\{\\\"id\\\":\\\"")[1]
                 .split("\"")[0];
+    }
+
+    private SessionPrincipal taskPrincipal(String taskId) {
+        return jdbcTemplate.queryForObject("select assignee_user_id, assignee_name from rnd_task where id = ?",
+                (rs, row) -> new SessionPrincipal(rs.getString(1), rs.getString(2), rs.getString(2), null,
+                        "RND_ENGINEER", Instant.now().plusSeconds(60)), taskId);
+    }
+
+    private SessionPrincipal formPrincipal(String formId) {
+        return jdbcTemplate.queryForObject("select task.assignee_user_id, task.assignee_name from experiment_form form join rnd_task task on task.id = form.task_id where form.id = ?",
+                (rs, row) -> new SessionPrincipal(rs.getString(1), rs.getString(2), rs.getString(2), null,
+                        "RND_ENGINEER", Instant.now().plusSeconds(60)), formId);
     }
 
     private String createShipment(String versionId) throws Exception {
@@ -3002,6 +3318,7 @@ class SampleWorkflowControllerTest {
         var experimentFormId = saveExperimentDraft(taskId);
         var testAssignmentId = submitExperimentForTest(experimentFormId);
         return mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"testerName\":\"内部测试员\",\"comment\":\"口味和复热状态通过\"}"))
                 .andExpect(status().isOk())
@@ -3134,6 +3451,8 @@ class SampleWorkflowControllerTest {
 
     private void insertFormalPricingRevision(String formId, String revisionId, int revisionNo,
                                              String outputWeightKg, String yieldBasis) throws Exception {
+        var storedMaxRevision = jdbcTemplate.queryForObject("select coalesce(max(revision_no), 0) from experiment_process_revision where experiment_form_id = ?", Integer.class, formId);
+        var actualRevisionNo = Math.max(revisionNo, storedMaxRevision + 1);
         var planId = "PLAN-" + revisionId;
         var snapshot = new ProcessPlan(
                 planId, formId, 1, "SUBMITTED",
@@ -3162,7 +3481,7 @@ class SampleWorkflowControllerTest {
             snapshotJson = objectMapper.writeValueAsString(snapshot);
         }
         jdbcTemplate.update("insert into experiment_process_revision(id,process_plan_id,experiment_form_id,revision_no,submitted_by,submitted_at,snapshot_json,snapshot_hash) values (?,?,?,?,?,?,?,?)",
-                revisionId, planId, formId, revisionNo, "张研发", LocalDateTime.now(), snapshotJson, sha256(snapshotJson));
+                revisionId, planId, formId, actualRevisionNo, "张研发", LocalDateTime.now(), snapshotJson, sha256(snapshotJson));
     }
 
     private String sha256(String value) throws Exception {

@@ -97,7 +97,7 @@ class RolePermissionServiceTest {
         assertThat(service.hasPermission("FINANCE", "GET", "/api/v1/pricing-files/PRICE-0001/detail")).isTrue();
         assertThat(service.hasPermission("RND_ENGINEER", "GET", "/api/v1/pricing-files/PRICE-0001/detail")).isTrue();
         assertThat(service.hasPermission("RND_ASSISTANT", "GET", "/api/v1/pricing-files/PRICE-0001/download")).isTrue();
-        assertThat(service.hasPermission("RND_ASSISTANT", "POST", "/api/v1/experiment-forms/EXP-0001/submit-test")).isTrue();
+        assertThat(service.hasPermission("RND_ASSISTANT", "POST", "/api/v1/experiment-forms/EXP-0001/submit-test")).isFalse();
         assertThat(service.hasPermission("RND_ENGINEER", "POST", "/api/v1/experiment-forms/EXP-0001/submit-test")).isTrue();
         assertThat(service.hasPermission("TESTER", "POST", "/api/v1/experiment-forms/EXP-0001/submit-test")).isFalse();
         assertThat(service.hasPermission("FINANCE", "GET", "/api/v1/pricing-files/PRICE-0001/download")).isTrue();
@@ -127,6 +127,15 @@ class RolePermissionServiceTest {
         assertThat(service.hasPermission("RND_ENGINEER", "GET", "/api/v1/experiment-forms/FORM-1/process-plan/revisions/PREV-1/artifacts/PART-1/download")).isTrue();
         assertThat(service.hasPermission("TESTER", "GET", "/api/v1/experiment-forms/FORM-1/process-plan/revisions/PREV-1/artifacts")).isTrue();
         assertThat(service.hasPermission("TESTER", "POST", "/api/v1/experiment-forms/FORM-1/process-plan/revisions/PREV-1/artifacts")).isFalse();
+    }
+
+    @Test
+    void onlyDirectorCanConfirmCriticalProcessDeviation() {
+        var path = "/api/v1/experiment-forms/EXP-0001/process-plan/control-points/CP-1/confirm-deviation";
+
+        assertThat(service.hasPermission("RND_DIRECTOR", "POST", path)).isTrue();
+        assertThat(service.hasPermission("RND_ENGINEER", "POST", path)).isFalse();
+        assertThat(service.hasPermission("RND_ASSISTANT", "POST", path)).isFalse();
     }
 
     @Test

@@ -11,7 +11,7 @@
         v-if="readOnly"
         type="info"
         show-icon
-        message="当前为只读查看模式。确认研发草稿无误后，可在右侧通知内部测试。"
+        message="当前为只读查看模式。只有任务归属研发或研发总监可以修改并提交测试。"
         style="margin-bottom: 16px"
       />
       <a-card v-if="experimentPhase === 'arrange'" title="编排本次打样工序" class="page-card">
@@ -130,7 +130,7 @@
             </a-descriptions>
             <a-divider />
             <a-typography-text type="secondary">
-              {{ readOnly ? "确认研发草稿后，内勤可通知内部测试。" : "先保存草稿，再提交打样记录通知内部测试。" }}
+              {{ readOnly ? "当前账号只能查看，不能修改或提交测试。" : "先保存草稿，再提交打样记录通知内部测试。" }}
             </a-typography-text>
             <a-space direction="vertical" style="width: 100%; margin-top: 16px">
               <a-button
@@ -149,7 +149,7 @@
                 :loading="submitting"
                 @click="submitSamplingRecord"
               >
-                {{ auth.role === "RND_ASSISTANT" ? "② 通知内部测试" : "② 提交打样记录" }}
+                ② 提交打样记录
               </a-button>
             </a-space>
           </a-card>
@@ -249,11 +249,17 @@ const processWorkspace = ref<{ flushSave: (silent?: boolean) => Promise<void>; r
 const showLegacyProcessEditor = computed(() => processPlan.value.legacy && !processPlan.value.majorProcesses.some((item) => item.steps.length));
 const processRecipe = computed(() => aggregateProcessRecipe(processPlan.value));
 const hasProcessPlanData = computed(() => !processPlan.value.legacy && processRecipe.value.length > 0);
-const effectiveMaterials = computed<MaterialRow[]>(() => hasProcessPlanData.value ? processRecipe.value.flatMap((item, index) => {
-  const grouped = new Map<string, number>();
-  item.sources.forEach(source => grouped.set(source.materialRole, (grouped.get(source.materialRole) || 0) + source.weightKg));
-  return [...grouped].map(([role, weight], roleIndex) => ({ key:index * 10 + roleIndex + 1, materialCategory:role === "PRIMARY" ? "RAW" : "AUXILIARY", primaryMaterial:role === "PRIMARY", materialCode:item.materialCode || "", materialName:item.materialName, weightKg:weight, inputUnit:"kg", utilizationRate:100, remark:"工艺方案自动汇总" }));
-}) : materials.value);
+const effectiveMaterials = computed<MaterialRow[]>(() => hasProcessPlanData.value ? processRecipe.value.map((item, index) => ({
+  key: index + 1,
+  materialCategory: item.canonicalMaterialRole === "PRIMARY" ? "RAW" : "AUXILIARY",
+  primaryMaterial: item.canonicalMaterialRole === "PRIMARY",
+  materialCode: item.materialCode || "",
+  materialName: item.materialName,
+  weightKg: item.weightKg,
+  inputUnit: "kg",
+  utilizationRate: 100,
+  remark: "工艺方案自动汇总",
+})) : materials.value);
 const formulaRatioValues = computed(() => formulaRatios(effectiveMaterials.value.map((item) => item.weightKg ?? 0)));
 const totalFormulaWeight = computed(() => effectiveMaterials.value.reduce((sum, item) => sum + (item.weightKg ?? 0), 0));
 const yieldBasisWeight = computed(() => yieldBasisWeightKg(effectiveMaterials.value.map((item) => ({
@@ -520,7 +526,12 @@ async function resetAndLoad(taskId: string, generation: number) {
     const formId = loadedDetail.currentExperimentForm?.id;
     if (formId) {
       try {
-        const loadedPlan = await api.task.getProcessPlan(formId);
+        const assignedRevisionId = loadedDetail.currentTestAssignment?.processRevisionId;
+        const loadedPlan = ["TESTER", "QA_TESTER"].includes(auth.role)
+          ? assignedRevisionId
+            ? (await api.task.getProcessRevision(formId, assignedRevisionId)).snapshot
+            : (() => { throw new Error("该测试任务未绑定正式工艺版本，请研发重新送测"); })()
+          : await api.task.getProcessPlan(formId);
         if (!requestGeneration.isCurrent(generation)) return;
         processPlan.value = normalizeProcessPlan(loadedPlan);
       } catch (error) {
@@ -697,9 +708,14 @@ async function submitSamplingRecord() {
     return;
   }
   if (validateFinishedOutputQuantity() === undefined) return;
-  if (canSaveDraft.value && !detail.value?.currentExperimentForm?.id) {
-    await saveDraft();
+  if (canSaveDraft.value) {
+    if (autoSaveTimer) {
+      window.clearTimeout(autoSaveTimer);
+      autoSaveTimer = undefined;
+    }
+    const flushed = await saveDraft({ silent: true });
     if (!requestGeneration.isCurrent(generation)) return;
+    if (!flushed) return;
   }
   const experimentId = detail.value?.currentExperimentForm?.id;
   if (!experimentId) {
@@ -708,7 +724,7 @@ async function submitSamplingRecord() {
   }
   submitting.value = true;
   try {
-    await api.task.submitExperimentForTest(experimentId, auth.displayName);
+    await api.task.submitExperimentForTest(experimentId, "AUTO_ASSIGN");
     if (!requestGeneration.isCurrent(generation)) return;
     hydrated.value = false;
     clearExperimentDraft(localStorage, localDraftKey.value);

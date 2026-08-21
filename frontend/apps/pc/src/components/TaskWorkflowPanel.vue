@@ -212,24 +212,24 @@ const actionBlocks = computed((): WorkflowActionBlock[] => {
     ],
   });
 
-  blocks.push({
-    key: "submit",
-    title: "② 提交打样记录",
-    description: isAssistant.value
-      ? "研发保存草稿后，内勤可代为通知内部测试"
-      : "将实验单提交给内部测试，提交后研发不可再改",
-    active: status === "SAMPLING" && expStatus === "DRAFT" && canNotifyTest.value,
-    badge: expStatus === "SUBMITTED_FOR_TEST" ? "已提交" : undefined,
-    badgeColor: "blue",
-    buttons: [
-      {
-        label: isAssistant.value ? "通知内部测试" : "提交打样记录并通知测试",
-        primary: true,
-        disabled: status !== "SAMPLING" || expStatus !== "DRAFT" || !canNotifyTest.value,
-        onClick: () => emit("submitSampling"),
-      },
-    ],
-  });
+  if (!isAssistant.value) {
+    blocks.push({
+      key: "submit",
+      title: "② 提交打样记录",
+      description: "将实验单提交给内部测试，提交后研发不可再改",
+      active: status === "SAMPLING" && expStatus === "DRAFT" && canNotifyTest.value,
+      badge: expStatus === "SUBMITTED_FOR_TEST" ? "已提交" : undefined,
+      badgeColor: "blue",
+      buttons: [
+        {
+          label: "提交打样记录并通知测试",
+          primary: true,
+          disabled: status !== "SAMPLING" || expStatus !== "DRAFT" || !canNotifyTest.value,
+          onClick: () => emit("submitSampling"),
+        },
+      ],
+    });
+  }
 
   blocks.push({
     key: "internal-test",

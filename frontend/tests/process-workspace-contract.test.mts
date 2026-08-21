@@ -41,6 +41,22 @@ test("major and minor workspaces expose native drag, clone, prior-output flow an
   assert.match(controls, /cloneVueValue/);
 });
 
+test("critical confirmation uses the trusted session endpoint instead of editable identity fields", () => {
+  const workspace = source("components/process/ProcessPlanWorkspace.vue");
+  const minor = source("components/process/MinorStepWorkspace.vue");
+  const controls = source("components/process/ControlPointEditor.vue");
+  const taskApi = fs.readFileSync(new URL("../packages/shared/src/api/task.ts", import.meta.url), "utf8");
+
+  assert.doesNotMatch(controls, /v-model:value="point\.confirmedBy"/);
+  assert.doesNotMatch(controls, /v-model:checked="point\.resolved"/);
+  assert.match(controls, /负责人确认偏差/);
+  assert.match(controls, /confirm-deviation/);
+  assert.match(minor, /@confirm-deviation="confirmDeviation"/);
+  assert.match(workspace, /@confirm-deviation="confirmDeviation"/);
+  assert.match(workspace, /confirmProcessDeviation/);
+  assert.match(taskApi, /control-points\/\$\{pointId\}\/confirm-deviation/);
+});
+
 test("route loader and output center fence stale requests and reset controlled selection", () => {
   const form = source("views/rnd/ExperimentFormView.vue");
   const output = source("components/process/RndOutputCenter.vue");

@@ -198,16 +198,14 @@ export function buildTaskSummaryRows(detail: RndTaskDetailView): DetailField[] {
 export function canEditExperiment(detail: RndTaskDetailView, operatorName: string, role: string): boolean {
   const { task } = detail;
   if (task.status !== "SAMPLING") return false;
-  return ["RND_ENGINEER", "RND_DIRECTOR", "RND"].includes(role) && task.assigneeName === operatorName;
+  if (role === "RND_DIRECTOR") return true;
+  return role === "RND_ENGINEER" && task.assigneeName === operatorName;
 }
 
 export function canNotifyInternalTest(detail: RndTaskDetailView, operatorName: string, role: string): boolean {
   const { task, currentExperimentForm } = detail;
   if (task.status !== "SAMPLING" || !currentExperimentForm || currentExperimentForm.status !== "DRAFT") {
     return false;
-  }
-  if (role === "RND_ASSISTANT") {
-    return true;
   }
   return canEditExperiment(detail, operatorName, role);
 }

@@ -90,13 +90,24 @@ test("mounted A upload stops after deferred draft save when the memory router re
 });
 
 test("mounted late A submit cannot clear B cache, toast or navigate after memory-router reuse",async()=>{
-  const mounted=await mountView(true);const submit=deferred<unknown>();const submissions:string[]=[];
-  mounted.api.task.submitExperimentForTest=async(formId:string)=>{submissions.push(formId);return submit.promise};
+  const mounted=await mountView(true);const submit=deferred<unknown>();const submissions:string[]=[];const actions:string[]=[];
+  mounted.api.task.saveExperimentDraft=async(taskId:string)=>{actions.push(`save-${taskId}`);return form("task-a")};
+  mounted.api.task.submitExperimentForTest=async(formId:string)=>{actions.push(`submit-${formId}`);submissions.push(formId);return submit.promise};
   const action=mounted.view.notifyTest();await flush();
   localStorage.setItem("rnd:experiment-draft:v1:engineer-1:task-b","B-SENTINEL");
   await mounted.router.push("/experiments/task-b");await flush();submit.resolve({});await action;await flush();
   assert.deepEqual(submissions,["form-a"]);assert.equal(mounted.router.currentRoute.value.params.id,"task-b");assert.equal(localStorage.getItem("rnd:experiment-draft:v1:engineer-1:task-b"),"B-SENTINEL");
+  assert.deepEqual(actions,["save-task-a","submit-form-a"]);
   assert.equal(mounted.view.hydrated,true);
   assert.equal(documentAppends,0,"a stale submit completion must not publish a toast");
+  mounted.unmount();
+});
+
+test("mounted existing form never submits when the final draft flush fails",async()=>{
+  const mounted=await mountView(true);const submissions:string[]=[];
+  mounted.api.task.saveExperimentDraft=async()=>{throw new Error("save failed")};
+  mounted.api.task.submitExperimentForTest=async(formId:string)=>{submissions.push(formId)};
+  await mounted.view.notifyTest();await flush();
+  assert.deepEqual(submissions,[]);
   mounted.unmount();
 });

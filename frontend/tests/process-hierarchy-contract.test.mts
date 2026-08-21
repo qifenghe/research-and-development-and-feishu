@@ -75,6 +75,22 @@ test("normalizes output IDs so STEP_OUTPUT references persist as stable IDs", ()
   assert.equal(second!.materials[0]!.sourceStepOutputId, first!.outputs![0]!.id);
 });
 
+test("normalizes newly loaded control and measurement IDs for trusted confirmation endpoints", () => {
+  const major = majorWithFlow("10", "8");
+  major.steps[0]!.controlPoints = [{
+    sequence: 1, controlType: "FOOD_SAFETY", importance: "CRITICAL", itemName: "中心温度", resolved: false,
+    measurements: [{ sequence: 1, measuredValue: 76, result: "PASS", retestResult: "PENDING" }],
+  }];
+
+  const normalized = normalizeProcessPlan({ versionNo: 1, status: "DRAFT", majorProcesses: [major] });
+  const point = normalized.majorProcesses[0]!.steps[0]!.controlPoints![0]!;
+
+  assert.ok(point.id);
+  assert.equal(point.id, point.key);
+  assert.ok(point.measurements[0]!.id);
+  assert.equal(point.measurements[0]!.id, point.measurements[0]!.key);
+});
+
 test("previews recipe aggregation and submission flow errors without including intermediate inputs", () => {
   const plan = createEmptyProcessPlan();
   plan.majorProcesses.push(majorWithFlow("10", "8"));
@@ -90,6 +106,21 @@ test("previews recipe aggregation and submission flow errors without including i
     ...plan.majorProcesses[0]!.steps[0]!.materials[0]!, sourceType: "STEP_OUTPUT", sourceStepOutputId: "missing-output",
   };
   assert.ok(previewProcessSubmission(plan).errors.some((issue) => issue.code === "PRIMARY_FLOW_BROKEN"));
+});
+
+test("uses PRIMARY as the canonical recipe role when one material is auxiliary in another step", () => {
+  const plan = createEmptyProcessPlan();
+  plan.majorProcesses.push(majorWithFlow("10", "8"));
+  const first = plan.majorProcesses[0]!.steps[0]!.materials[0]!;
+  first.formulaMaterialId = "BEEF-1";
+  plan.majorProcesses[0]!.steps[1]!.materials.push({
+    key: "beef-aux", sequence: 2, materialRole: "AUXILIARY", sourceType: "EXTERNAL",
+    formulaMaterialId: "BEEF-1", materialCode: "BEEF", materialName: "鲜牛腩", materialState: "SOLID", weightKg: 0.2,
+  });
+
+  const [line] = aggregateProcessRecipe(plan);
+  assert.equal(line?.canonicalMaterialRole, "PRIMARY");
+  assert.equal(line?.weightKg, 10.2);
 });
 
 test("rejects a primary output before input and unresolved individual critical measurements in previews", () => {
@@ -140,6 +171,58 @@ test("allows confirmed passing critical controls but blocks unresolved deviation
     ],
   }];
   assert.ok(previewProcessSubmission(plan).errors.some((issue) => issue.code === "CRITICAL_CONTROL_UNRESOLVED"));
+});
+
+test("major balance includes terminal side outputs from earlier steps", () => {
+  const major = majorWithFlow("10", "8");
+  major.steps[0]!.outputs!.push({
+    key: "waste-early", id: "waste-early", sequence: 2, outputType: "WASTE", outputName: "前段损耗",
+    materialState: "SOLID", weightKg: 1, primaryOutput: false, continueFlow: false,
+  });
+  major.steps[1]!.outputs!.push({
+    key: "waste-last", id: "waste-last", sequence: 2, outputType: "WASTE", outputName: "后段损耗",
+    materialState: "SOLID", weightKg: 1, primaryOutput: false, continueFlow: false,
+  });
+
+  assert.equal(calculateMajorProcessYield(major).balanceDifferenceKg, 0);
+});
+
+test("formal preview blocks forks, zero primary weights, and undocumented empty NONE majors", () => {
+  const forked = createEmptyProcessPlan();
+  const major = majorWithFlow("10", "8");
+  major.steps.push({
+    key: "fork-step", sequence: 3, stepName: "分叉", stepType: "NORMAL", materials: [{
+      key: "fork-input", sequence: 1, materialRole: "PRIMARY", materialName: "牛肉", materialState: "SOLID",
+      weightKg: 9, sourceType: "STEP_OUTPUT", sourceStepOutputId: major.steps[0]!.outputs![0]!.key,
+    }], outputs: [{ key: "fork-output", id: "fork-output", sequence: 1, outputType: "FINISHED", outputName: "分叉产出",
+      materialState: "SOLID", weightKg: 7, primaryOutput: true, continueFlow: false }], controlPoints: [],
+  });
+  forked.majorProcesses.push(major);
+  assert.ok(previewProcessSubmission(forked).errors.some((error) => error.code === "PRIMARY_FLOW_BROKEN"));
+
+  const zero = createEmptyProcessPlan();
+  zero.majorProcesses.push(majorWithFlow("0", "1"));
+  assert.ok(previewProcessSubmission(zero).errors.some((error) => error.code === "MAJOR_PRIMARY_INPUT_WEIGHT_REQUIRED"));
+
+  const emptyNone = createEmptyProcessPlan();
+  emptyNone.majorProcesses.push(majorWithFlow("10", "8"), {
+    key: "empty-none", sequence: 2, processCode: "HOLD", processName: "静置", yieldBasis: "NONE", remark: "",
+    steps: [], inputs: [], outputs: [],
+  });
+  const noneErrors = previewProcessSubmission(emptyNone).errors.map((error) => error.code);
+  assert.ok(noneErrors.includes("MAJOR_STEP_REQUIRED"));
+  assert.ok(noneErrors.includes("MAJOR_YIELD_EXCLUSION_REASON_REQUIRED"));
+
+  const zeroLegacy = createEmptyProcessPlan();
+  zeroLegacy.majorProcesses.push(majorWithFlow("10", "8"), {
+    key: "legacy-zero", sequence: 2, processCode: "LEGACY", processName: "旧工序", yieldBasis: "PRIMARY_INPUT", remark: "旧数据补录",
+    steps: [],
+    inputs: [{ key: "legacy-in", sequence: 1, inputRole: "PRIMARY", materialName: "牛肉", weightKg: 0 }],
+    outputs: [{ key: "legacy-out", sequence: 1, outputType: "QUALIFIED", weightKg: 0 }],
+  });
+  const legacyErrors = previewProcessSubmission(zeroLegacy).errors.map((error) => error.code);
+  assert.ok(legacyErrors.includes("MAJOR_PRIMARY_INPUT_WEIGHT_REQUIRED"));
+  assert.ok(legacyErrors.includes("MAJOR_PRIMARY_OUTPUT_WEIGHT_REQUIRED"));
 });
 
 function majorWithFlow(inputWeight: string, outputWeight: string) {

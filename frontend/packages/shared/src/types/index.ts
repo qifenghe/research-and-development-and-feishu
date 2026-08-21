@@ -222,7 +222,9 @@ export interface TemplateConfigItem {
 export interface TestAssignment {
   id: string;
   versionId: string;
+  processRevisionId?: string;
   testerName: string;
+  testerUserId?: string;
   status: string;
 }
 

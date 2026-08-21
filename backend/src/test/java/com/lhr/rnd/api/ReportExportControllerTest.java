@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
+import com.lhr.rnd.service.SessionPrincipal;
 
 import java.io.ByteArrayInputStream;
 import java.util.Map;
@@ -182,6 +183,9 @@ class ReportExportControllerTest {
                 .andExpect(status().isOk());
 
         return mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,
+                                new SessionPrincipal("REPORT-ASSIGNEE", "report_assignee", "张研发", "ou-report-assignee",
+                                        "RND_ENGINEER", java.time.Instant.now().plusSeconds(60)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {

@@ -37,6 +37,7 @@ class ProcessPlanControllerTest {
         var accountNow = LocalDateTime.now();
         jdbc.update("insert into user_account(id,username,password_hash,name,role,status,created_at,updated_at) select ?,?,?,?,?,?,?,? where not exists (select 1 from user_account where id = ?)",
                 "USER-PROCESS", "rnd_engineer_process", "x", "会话研发", "RND_ENGINEER", "ACTIVE", accountNow, accountNow, "USER-PROCESS");
+        jdbc.update("delete from test_assignment where experiment_form_id = ?", FORM_ID);
         jdbc.update("delete from experiment_process_artifact where process_revision_id in (select id from experiment_process_revision where experiment_form_id = ?)", FORM_ID);
         jdbc.update("delete from experiment_process_revision where experiment_form_id = ?", FORM_ID);
         jdbc.update("delete from experiment_step_material where minor_step_id in (select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id join experiment_process_plan plan on major.process_plan_id = plan.id where plan.experiment_form_id = ?)", FORM_ID);
@@ -118,8 +119,49 @@ class ProcessPlanControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content(draftWithTraceability))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].measurementTool").value("数字探针"))
-                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedAt").value("2026-08-19T21:15"))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").value("会话研发"))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedAt").exists())
                 .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].basisOrRemark").value("以产品中心温度为放行依据"));
+    }
+
+    @Test
+    void rejectsClientForgedDeviationConfirmationAndAuditsDirectorConfirmation() throws Exception {
+        var draft = """
+                {"versionNo":0,"status":"DRAFT","majorProcesses":[{
+                  "sequence":1,"processCode":"HEAT","processName":"热加工","yieldBasis":"PRIMARY_INPUT","remark":"损耗已说明","steps":[{
+                    "sequence":1,"stepCode":"COOK","stepName":"熟制","stepType":"NORMAL",
+                    "materials":[{"sequence":1,"materialRole":"PRIMARY","materialName":"牛肉","materialState":"SOLID","weightKg":10,"formulaMaterialId":"BEEF","sourceType":"EXTERNAL"}],
+                    "outputs":[{"id":"OUT-DEVIATION","sequence":1,"outputType":"FINISHED","outputName":"熟制牛肉","materialState":"SOLID","weightKg":8,"primaryOutput":true,"continueFlow":false}],
+                    "controlPoints":[{"id":"CP-DEVIATION","sequence":1,"controlType":"FOOD_SAFETY","importance":"CRITICAL","itemName":"中心温度","lowerLimit":75,
+                      "resolved":true,"confirmedBy":"伪造总监","confirmedAt":"2026-08-19T21:15:00","measurements":[{"id":"M-DEVIATION","sequence":1,"measuredValue":72,"result":"FAIL","deviationAction":"继续加热","retestResult":"PASS"}]}]
+                  }],"inputs":[],"outputs":[]
+                }]}""";
+
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON).content(draft))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].resolved").value(false))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").doesNotExist());
+
+        var engineerAttempt = mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/control-points/{pointId}/confirm-deviation", FORM_ID, "CP-DEVIATION")
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"resolutionNote\":\"复测合格\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PROCESS_DEVIATION_CONFIRMATION_FORBIDDEN"));
+
+        var director = new SessionPrincipal("USER-DIRECTOR", "rnd_director", "研发总监", null, "RND_DIRECTOR", Instant.now().plusSeconds(60));
+        mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/control-points/{pointId}/confirm-deviation", FORM_ID, "CP-DEVIATION")
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, director)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"resolutionNote\":\"复测合格\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].resolved").value(true))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").value("研发总监"))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedAt").isNotEmpty());
+
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+                "select count(*) from audit_log where business_type='PROCESS_CONTROL_POINT' and business_id='CP-DEVIATION' and action='CRITICAL_DEVIATION_CONFIRMED' and operator_user_id='USER-DIRECTOR'",
+                Integer.class)).isEqualTo(1);
     }
 
     @Test
@@ -220,6 +262,11 @@ class ProcessPlanControllerTest {
         var readyId = readyBody.split("\\\"id\\\":\\\"")[1].split("\\\"")[0];
         jdbc.update("insert into experiment_process_artifact(id,process_revision_id,artifact_type,document_version,status,generated_at,generated_by,generated_by_user_id,storage_key,content_sha256,byte_size,content_summary,failure_reason) values (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 "PART-FAILED-PUBLIC", revisionId, "SOP_DOCX", "1", "FAILED", LocalDateTime.now(), "内部生成人", "SECRET-USER", "secret/storage/key", "secret-hash", 99L, "internal summary", "SECRET FAILURE");
+        jdbc.update("insert into user_account(id,username,password_hash,name,role,status,created_at,updated_at) values (?,?,?,?,?,?,?,?)",
+                "USER-TESTER-PUBLIC", "tester_public", "x", "测试只读", "TESTER", "ACTIVE", LocalDateTime.now(), LocalDateTime.now());
+        jdbc.update("insert into test_assignment(id,experiment_form_id,task_id,version_id,process_revision_id,tester_name,tester_user_id,status,assigned_at) values (?,?,?,?,?,?,?,?,?)",
+                "TEST-PROCESS-PUBLIC", FORM_ID, "TASK-PROCESS-CONTROLLER", "VER-PROCESS-CONTROLLER", revisionId,
+                "测试只读", "USER-TESTER-PUBLIC", "PENDING_TEST", LocalDateTime.now());
         var tester = new SessionPrincipal("USER-TESTER-PUBLIC", "tester_public", "测试只读", null, "TESTER", Instant.now().plusSeconds(60));
 
         mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions/{revisionId}/artifacts", FORM_ID, revisionId)

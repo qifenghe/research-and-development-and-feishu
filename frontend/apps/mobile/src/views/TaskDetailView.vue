@@ -134,7 +134,7 @@ const assigneeHint = computed(() => {
   const task = detail.value?.task;
   if (!task?.assigneeName) return "";
   if (task.status === "SAMPLING" && auth.role === "RND_ASSISTANT") {
-    return `研发负责人：${task.assigneeName}。内勤可在研发保存草稿后通知测试。`;
+    return `研发负责人：${task.assigneeName}。内勤仅可查看，保存与送测由任务归属研发或研发总监完成。`;
   }
   if (task.status === "PENDING_ACCEPTANCE") {
     return `已分配给 ${task.assigneeName}，请确认接单后开始打样。`;
@@ -191,7 +191,7 @@ async function notifyTest() {
   }
   submitting.value = true;
   try {
-    await api.task.submitExperimentForTest(experimentId, auth.displayName);
+    await api.task.submitExperimentForTest(experimentId, "AUTO_ASSIGN");
     showSuccessToast("已通知内部测试");
     router.push("/todo");
   } catch (error) {

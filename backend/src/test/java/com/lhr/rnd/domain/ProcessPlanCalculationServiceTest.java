@@ -30,6 +30,24 @@ class ProcessPlanCalculationServiceTest {
     }
 
     @Test
+    void balancesEveryTerminalOutputAcrossTheWholeMajorBoundary() {
+        var firstOutputId = "FLOW-MAIN-1";
+        var first = new ProcessPlan.MinorStep(null, 1, "CUT", "修割", "NORMAL", null, null, null, null, null,
+                null, null, null, List.of(material("PRIMARY", "EXTERNAL", null, "牛肉", "10")), List.of(
+                new ProcessPlan.StepOutput(firstOutputId, 1, "INTERMEDIATE", "修割牛肉", "SOLID", new BigDecimal("9"), true, true, null),
+                new ProcessPlan.StepOutput("WASTE-1", 2, "WASTE", "修割废料", "SOLID", new BigDecimal("1"), false, false, null)), List.of());
+        var second = new ProcessPlan.MinorStep(null, 2, "COOK", "熟制", "NORMAL", null, null, null, null, null,
+                null, null, null, List.of(material("PRIMARY", "STEP_OUTPUT", firstOutputId, "修割牛肉", "9")), List.of(
+                new ProcessPlan.StepOutput("FINISHED-1", 1, "FINISHED", "熟制牛肉", "SOLID", new BigDecimal("8"), true, false, null),
+                new ProcessPlan.StepOutput("WASTE-2", 2, "WASTE", "熟制损耗", "SOLID", new BigDecimal("1"), false, false, null)), List.of());
+
+        var result = service.calculate(major(List.of(first, second)));
+
+        assertThat(result.totalOutputWeightKg()).isEqualByComparingTo("10.0000");
+        assertThat(result.balanceDifferenceKg()).isEqualByComparingTo("0.0000");
+    }
+
+    @Test
     void returnsNullRateWhenBasisIsZero() {
         var result = service.calculate(major(List.of()));
 

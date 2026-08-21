@@ -49,6 +49,7 @@ public class ProcessRevisionService {
 
     private ProcessRevision submitInternal(String formId, SubmitCommand command, String trustedOperator) { return submitInternal(formId, command, trustedOperator, null); }
     private ProcessRevision submitInternal(String formId, SubmitCommand command, String trustedOperator, String trustedUserId) {
+        requireExperimentStillEditable(formId);
         if (command == null || !command.confirmed()) {
             throw new BusinessException("PROCESS_SUBMISSION_CONFIRMATION_REQUIRED", "正式提交前必须明确确认");
         }
@@ -112,6 +113,16 @@ public class ProcessRevisionService {
     @Transactional(readOnly = true)
     public List<ProcessRevision.ProcessRevisionSummary> list(String formId, SessionPrincipal principal) {
         requireFormalReadAccess(formId, principal);
+        if (isTester(principal)) {
+            return jdbc.query("""
+                    select revision.* from experiment_process_revision revision
+                    join test_assignment assignment on assignment.process_revision_id = revision.id
+                    where revision.experiment_form_id = ? and assignment.tester_user_id = ?
+                    order by revision.revision_no desc
+                    """, (rs, row) -> new ProcessRevision.ProcessRevisionSummary(rs.getString("id"), rs.getInt("revision_no"),
+                    rs.getString("source_revision_id"), rs.getString("change_reason"), rs.getString("submitted_by"),
+                    rs.getTimestamp("submitted_at").toLocalDateTime().toString(), rs.getString("snapshot_hash")), formId, principal.userId());
+        }
         return list(formId);
     }
 
@@ -126,6 +137,7 @@ public class ProcessRevisionService {
     @Transactional(readOnly = true)
     public ProcessRevision find(String formId, String revisionId, SessionPrincipal principal) {
         requireFormalReadAccess(formId, principal);
+        requirePinnedTesterRevision(formId, revisionId, principal);
         return find(formId, revisionId);
     }
 
@@ -135,6 +147,21 @@ public class ProcessRevisionService {
         var rows = jdbc.query("select * from experiment_process_revision where experiment_form_id = ? order by revision_no desc limit 1",
                 (rs, row) -> map(rs), formId);
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    @Transactional
+    public ProcessRevision requireCurrentFormalForTest(String formId) {
+        var plans = jdbc.query("select id, status from experiment_process_plan where experiment_form_id = ? for update",
+                (rs, row) -> new String[]{rs.getString(1), rs.getString(2)}, formId);
+        if (plans.isEmpty() || !"SUBMITTED".equals(plans.get(0)[1])) {
+            throw new BusinessException("PROCESS_FORMAL_REVISION_REQUIRED", "通知测试前请先正式提交当前工艺版本");
+        }
+        var rows = jdbc.query("select * from experiment_process_revision where experiment_form_id = ? and process_plan_id = ? order by revision_no desc limit 1",
+                (rs, row) -> map(rs), formId, plans.get(0)[0]);
+        if (rows.isEmpty()) {
+            throw new BusinessException("PROCESS_FORMAL_REVISION_REQUIRED", "通知测试前请先正式提交当前工艺版本");
+        }
+        return rows.get(0);
     }
 
     @Transactional(readOnly = true)
@@ -160,6 +187,7 @@ public class ProcessRevisionService {
 
     private ProcessPlan createDraftInternal(String formId, String revisionId, String changeReason, String trustedOperator) { return createDraftInternal(formId, revisionId, changeReason, trustedOperator, null); }
     private ProcessPlan createDraftInternal(String formId, String revisionId, String changeReason, String trustedOperator, String trustedUserId) {
+        requireExperimentStillEditable(formId);
         if (blank(changeReason)) {
             throw new BusinessException("PROCESS_CHANGE_REASON_REQUIRED", "从正式版本创建草稿必须填写变更原因");
         }
@@ -247,6 +275,28 @@ public class ProcessRevisionService {
         }
         if ("RND_DIRECTOR".equals(principal.role()) || "TESTER".equals(principal.role()) || "QA_TESTER".equals(principal.role())) return;
         requireFormalWriteAccess(formId, principal);
+    }
+
+    private void requirePinnedTesterRevision(String formId, String revisionId, SessionPrincipal principal) {
+        if (!isTester(principal)) return;
+        var count = jdbc.queryForObject("select count(*) from test_assignment where experiment_form_id = ? and process_revision_id = ? and tester_user_id = ?",
+                Integer.class, formId, revisionId, principal.userId());
+        if (count == null || count == 0) {
+            throw new BusinessException("PROCESS_REVISION_NOT_ASSIGNED", "测试人员只能查看当前测试任务绑定的正式工艺版本");
+        }
+    }
+
+    private boolean isTester(SessionPrincipal principal) {
+        return principal != null && ("TESTER".equals(principal.role()) || "QA_TESTER".equals(principal.role()));
+    }
+
+    private void requireExperimentStillEditable(String formId) {
+        var statuses = jdbc.query("select status from experiment_form where id = ? for update",
+                (rs, row) -> rs.getString(1), formId);
+        if (statuses.isEmpty()) throw new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在");
+        if (!"DRAFT".equals(statuses.get(0))) {
+            throw new BusinessException("PROCESS_EDIT_AFTER_TEST_FORBIDDEN", "实验单送测后不能新建或提交其他工艺版本");
+        }
     }
 
     private boolean legacyOwnerMatches(String name, String userId) {

@@ -31,6 +31,7 @@ public final class ProcessSubmissionValidator {
 
         var steps = flatten(majors);
         validateFlow(steps, errors);
+        validatePrimaryChains(majors, steps, errors);
         var hasExternalPrimary = false;
         for (var major : majors) {
             validateWeights(major, errors);
@@ -85,6 +86,65 @@ public final class ProcessSubmissionValidator {
         }
     }
 
+    private void validatePrimaryChains(List<ProcessPlan.MajorProcess> majors, List<StepRef> steps,
+                                       List<ProcessSubmissionCheck.Issue> errors) {
+        var outputs = new HashMap<String, OutputRef>();
+        for (var step : steps) for (var output : values(step.step.outputs())) {
+            if (!blank(output.id())) outputs.putIfAbsent(output.id(), new OutputRef(step, output));
+        }
+        var primaryConsumerCounts = new HashMap<String, Integer>();
+        for (var step : steps) for (var material : values(step.step.materials())) {
+            if (!"STEP_OUTPUT".equals(material.sourceType())) continue;
+            var source = outputs.get(material.sourceStepOutputId());
+            if (source != null && source.output.primaryOutput()) {
+                if (!"PRIMARY".equals(material.materialRole())) errors.add(flowBroken(step));
+                else primaryConsumerCounts.merge(material.sourceStepOutputId(), 1, Integer::sum);
+            }
+        }
+        primaryConsumerCounts.forEach((id, count) -> {
+            if (count > 1) {
+                var producer = outputs.get(id);
+                errors.add(producer == null ? error("PRIMARY_FLOW_BROKEN", "主料中间产物流转存在断链或循环", null, null)
+                        : flowBroken(producer.step));
+            }
+        });
+
+        for (var major : majors) {
+            String currentTip = null;
+            boolean started = false;
+            var ordered = values(major.steps()).stream().sorted(java.util.Comparator.comparingInt(ProcessPlan.MinorStep::sequence)).toList();
+            for (var step : ordered) {
+                var primaryInputs = values(step.materials()).stream().filter(item -> "PRIMARY".equals(item.materialRole())).toList();
+                var primaryOutputs = values(step.outputs()).stream().filter(ProcessPlan.StepOutput::primaryOutput).toList();
+                if (primaryInputs.size() > 1 || primaryOutputs.size() > 1) {
+                    errors.add(error("PRIMARY_FLOW_BROKEN", "每个小步骤只能有一个主料投入和一个主料产出", major.sequence(), step.sequence()));
+                    continue;
+                }
+                var input = primaryInputs.isEmpty() ? null : primaryInputs.get(0);
+                var output = primaryOutputs.isEmpty() ? null : primaryOutputs.get(0);
+                if (input == null && output == null) continue;
+                if (input == null || output == null) {
+                    errors.add(error("PRIMARY_FLOW_BROKEN", "主料链步骤必须同时记录主料投入和主料产出", major.sequence(), step.sequence()));
+                    continue;
+                }
+                if (!started) {
+                    if ("STEP_OUTPUT".equals(input.sourceType())) {
+                        var source = outputs.get(input.sourceStepOutputId());
+                        if (source == null || source.step.major.sequence() >= major.sequence()) {
+                            errors.add(error("PRIMARY_FLOW_BROKEN", "大工序主料起点必须来自外部主料或上一大工序产出", major.sequence(), step.sequence()));
+                        }
+                    } else if (!"EXTERNAL".equals(input.sourceType())) {
+                        errors.add(error("PRIMARY_FLOW_BROKEN", "大工序主料起点来源无效", major.sequence(), step.sequence()));
+                    }
+                    started = true;
+                } else if (!"STEP_OUTPUT".equals(input.sourceType()) || !java.util.Objects.equals(currentTip, input.sourceStepOutputId())) {
+                    errors.add(error("PRIMARY_FLOW_BROKEN", "主料链必须逐步承接上一主料产出，不能分叉或跳链", major.sequence(), step.sequence()));
+                }
+                currentTip = output.id();
+            }
+        }
+    }
+
     private boolean precedes(StepRef source, StepRef consumer) {
         if (source.major.sequence() != consumer.major.sequence()) return source.major.sequence() < consumer.major.sequence();
         return source.step.sequence() < consumer.step.sequence();
@@ -111,26 +171,50 @@ public final class ProcessSubmissionValidator {
     }
 
     private void validateMajorYield(ProcessPlan.MajorProcess major, List<ProcessSubmissionCheck.Issue> errors) {
-        if ("NONE".equals(major.yieldBasis())) return;
+        if ("NONE".equals(major.yieldBasis())) {
+            if (values(major.steps()).isEmpty()) {
+                errors.add(error("MAJOR_STEP_REQUIRED", "不计算得率的大工序也必须记录操作步骤", major.sequence(), null));
+            }
+            if (blank(major.remark())) {
+                errors.add(error("MAJOR_YIELD_EXCLUSION_REASON_REQUIRED", "不计算得率必须填写业务原因", major.sequence(), null));
+            }
+            return;
+        }
         var steps = values(major.steps());
         if (steps.isEmpty()) {
-            if (!hasLegacyPrimaryInput(major)) errors.add(error("MAJOR_PRIMARY_INPUT_REQUIRED", "需计算得率的大工序缺少首端主料投入", major.sequence(), null));
-            if (!hasLegacyQualifiedOutput(major)) errors.add(error("MAJOR_PRIMARY_OUTPUT_REQUIRED", "需计算得率的大工序缺少末端主料产出", major.sequence(), null));
+            var hasInput = hasLegacyPrimaryInput(major);
+            var hasOutput = hasLegacyQualifiedOutput(major);
+            if (!hasInput || !hasLegacyPositivePrimaryInput(major)) {
+                errors.add(error(hasInput ? "MAJOR_PRIMARY_INPUT_WEIGHT_REQUIRED" : "MAJOR_PRIMARY_INPUT_REQUIRED",
+                        hasInput ? "大工序首端主料投入重量必须大于0" : "需计算得率的大工序缺少首端主料投入", major.sequence(), null));
+            }
+            if (!hasOutput || !hasLegacyPositiveQualifiedOutput(major)) {
+                errors.add(error(hasOutput ? "MAJOR_PRIMARY_OUTPUT_WEIGHT_REQUIRED" : "MAJOR_PRIMARY_OUTPUT_REQUIRED",
+                        hasOutput ? "大工序末端主料产出重量必须大于0" : "需计算得率的大工序缺少末端主料产出", major.sequence(), null));
+            }
             return;
         }
         var firstInput = steps.stream().flatMap(step -> values(step.materials()).stream()
-                        .filter(material -> "PRIMARY".equals(material.materialRole()) && material.weightKg() != null)
+                        .filter(material -> "PRIMARY".equals(material.materialRole()) && positive(material.weightKg()))
                         .map(material -> new PrimaryInput(step, material)))
                 .min(java.util.Comparator.comparingInt((PrimaryInput value) -> value.step().sequence())
                         .thenComparingInt(value -> value.material().sequence())).orElse(null);
         var lastOutput = steps.stream().flatMap(step -> values(step.outputs()).stream()
-                        .filter(output -> output.primaryOutput() && output.weightKg() != null)
+                        .filter(output -> output.primaryOutput() && positive(output.weightKg()))
                         .map(output -> new PrimaryOutput(step, output)))
                 .max(java.util.Comparator.comparingInt((PrimaryOutput value) -> value.step().sequence())
                         .thenComparingInt(value -> value.output().sequence())).orElse(null);
-        if (firstInput == null) errors.add(error("MAJOR_PRIMARY_INPUT_REQUIRED", "需计算得率的大工序缺少首端主料投入", major.sequence(), null));
+        var hasAnyPrimaryInput = steps.stream().flatMap(step -> values(step.materials()).stream())
+                .anyMatch(material -> "PRIMARY".equals(material.materialRole()) && material.weightKg() != null);
+        var hasAnyPrimaryOutput = steps.stream().flatMap(step -> values(step.outputs()).stream())
+                .anyMatch(output -> output.primaryOutput() && output.weightKg() != null);
+        var hasPositivePrimaryOutput = steps.stream().flatMap(step -> values(step.outputs()).stream())
+                .anyMatch(output -> output.primaryOutput() && positive(output.weightKg()));
+        if (firstInput == null) errors.add(error(hasAnyPrimaryInput ? "MAJOR_PRIMARY_INPUT_WEIGHT_REQUIRED" : "MAJOR_PRIMARY_INPUT_REQUIRED",
+                hasAnyPrimaryInput ? "大工序首端主料投入重量必须大于0" : "需计算得率的大工序缺少首端主料投入", major.sequence(), null));
         if (lastOutput == null || firstInput != null && lastOutput.step().sequence() < firstInput.step().sequence()) {
-            errors.add(error("MAJOR_PRIMARY_OUTPUT_REQUIRED", "需计算得率的大工序缺少末端主料产出", major.sequence(), null));
+            errors.add(error(hasAnyPrimaryOutput && !hasPositivePrimaryOutput ? "MAJOR_PRIMARY_OUTPUT_WEIGHT_REQUIRED" : "MAJOR_PRIMARY_OUTPUT_REQUIRED",
+                    hasAnyPrimaryOutput && !hasPositivePrimaryOutput ? "大工序末端主料产出重量必须大于0" : "需计算得率的大工序缺少末端主料产出", major.sequence(), null));
         }
         if (firstInput != null && lastOutput != null && lastOutput.step().sequence() < firstInput.step().sequence()) {
             errors.add(error("MAJOR_PRIMARY_FLOW_INVALID", "主料首端投入必须早于末端主产出", major.sequence(), null));
@@ -205,8 +289,22 @@ public final class ProcessSubmissionValidator {
                 .anyMatch(output -> "QUALIFIED".equals(output.outputType()) && output.weightKg() != null);
     }
 
+    private boolean hasLegacyPositivePrimaryInput(ProcessPlan.MajorProcess major) {
+        return values(major.inputs()).stream()
+                .anyMatch(input -> "PRIMARY".equals(input.inputRole()) && positive(input.weightKg()));
+    }
+
+    private boolean hasLegacyPositiveQualifiedOutput(ProcessPlan.MajorProcess major) {
+        return values(major.outputs()).stream()
+                .anyMatch(output -> "QUALIFIED".equals(output.outputType()) && positive(output.weightKg()));
+    }
+
     private boolean negative(BigDecimal value) {
         return value != null && value.signum() < 0;
+    }
+
+    private boolean positive(BigDecimal value) {
+        return value != null && value.signum() > 0;
     }
 
     private List<StepRef> flatten(List<ProcessPlan.MajorProcess> majors) {

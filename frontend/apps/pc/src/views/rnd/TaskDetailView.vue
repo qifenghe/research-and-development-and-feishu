@@ -156,13 +156,7 @@ const permissionHint = computed(() => {
     return "该任务待研发总监分发，当前角色仅可查看项目信息。";
   }
   if (task.status === "SAMPLING" && auth.role === "RND_ASSISTANT") {
-    if (!detail.value.currentExperimentForm) {
-      return "研发尚未开始填写实验单，暂无法通知内部测试。";
-    }
-    if (detail.value.currentExperimentForm.status !== "DRAFT") {
-      return "实验单已提交测试，内勤无需再次通知。";
-    }
-    return `研发负责人 ${task.assigneeName || "—"} 已保存草稿，内勤可代为「通知内部测试」。`;
+    return `研发负责人：${task.assigneeName || "—"}。内勤仅可查看，实验单保存与送测由任务归属研发或研发总监完成。`;
   }
   return "";
 });
@@ -256,7 +250,7 @@ async function submitSamplingRecord() {
     okText: "确认提交",
     onOk: async () => {
       try {
-        await api.task.submitExperimentForTest(experimentId, auth.displayName);
+        await api.task.submitExperimentForTest(experimentId, "AUTO_ASSIGN");
         message.success("打样记录已提交，已通知内部测试");
         await load();
       } catch (error) {

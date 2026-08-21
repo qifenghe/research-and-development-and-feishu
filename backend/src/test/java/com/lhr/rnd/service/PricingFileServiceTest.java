@@ -211,15 +211,17 @@ class PricingFileServiceTest {
     }
 
     @Test
-    void rejectsConflictingRolesWithinOneCanonicalFormalMaterial() {
+    void canonicalizesMixedRolesWithinOneFormalMaterialWithPrimaryPrecedence() {
         var revision = formalRevisionWithConflictingRoles();
         var version = pricingVersionWithCustomMaterials(List.of(
                 new ExperimentMaterial("原料", 1, "ERP-001", "成本主料", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg")));
 
-        assertThatThrownBy(() -> new PricingFileService().generate(version, "V1", "LHYC", revision, List.of()))
-                .isInstanceOf(BusinessException.class)
-                .extracting(error -> ((BusinessException) error).code())
-                .isEqualTo("PROCESS_REVISION_PRICING_MATERIAL_ATTRIBUTE_CONFLICT");
+        var materials = new PricingFileService().resolveFormalPricingMaterials(version, revision);
+
+        assertThat(materials).singleElement().satisfies(material -> {
+            assertThat(material.primaryMaterial()).isTrue();
+            assertThat(material.materialCategory()).isEqualTo("RAW");
+        });
     }
 
     @Test

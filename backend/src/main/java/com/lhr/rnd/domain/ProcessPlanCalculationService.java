@@ -4,6 +4,7 @@ import com.lhr.rnd.model.ProcessPlan;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.HashSet;
 import java.util.List;
 
 public final class ProcessPlanCalculationService {
@@ -43,11 +44,14 @@ public final class ProcessPlanCalculationService {
         var externalInput = materials.stream()
                 .filter(item -> !"STEP_OUTPUT".equals(item.sourceType()))
                 .map(ProcessPlan.StepMaterial::weightKg).map(this::safe).reduce(BigDecimal.ZERO, BigDecimal::add);
-        var lastStepOutputs = steps.stream().map(ProcessPlan.MinorStep::outputs).filter(outputs -> outputs != null && !outputs.isEmpty())
-                .reduce((first, last) -> last).orElse(List.of());
+        var consumedOutputIds = new HashSet<String>();
+        materials.stream().filter(item -> "STEP_OUTPUT".equals(item.sourceType()) && item.sourceStepOutputId() != null)
+                .map(ProcessPlan.StepMaterial::sourceStepOutputId).forEach(consumedOutputIds::add);
+        var terminalOutputs = steps.stream().flatMap(step -> values(step.outputs()).stream())
+                .filter(output -> output.id() == null || !consumedOutputIds.contains(output.id())).toList();
         BigDecimal primaryOutput = lastPrimaryOutput == null ? null : lastPrimaryOutput.output().weightKg();
-        var reusable = sumStepOutputs(lastStepOutputs, "REUSABLE").add(sumStepOutputs(lastStepOutputs, "TAILING"));
-        var totalOutput = lastStepOutputs.stream().map(ProcessPlan.StepOutput::weightKg).map(this::safe)
+        var reusable = sumStepOutputs(terminalOutputs, "REUSABLE").add(sumStepOutputs(terminalOutputs, "TAILING"));
+        var totalOutput = terminalOutputs.stream().map(ProcessPlan.StepOutput::weightKg).map(this::safe)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         var validPrimaryFlow = firstPrimaryInput != null && lastPrimaryOutput != null
                 && firstPrimaryInput.step().sequence() <= lastPrimaryOutput.step().sequence();

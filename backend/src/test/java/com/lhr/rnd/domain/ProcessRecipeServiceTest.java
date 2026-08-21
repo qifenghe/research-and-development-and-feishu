@@ -46,6 +46,19 @@ class ProcessRecipeServiceTest {
                 .containsExactly(tuple("SPICE", "香辛料", bd("3.0000")), tuple(null, "水", bd("3.0000")));
     }
 
+    @Test
+    void usesPrimaryAsCanonicalRoleWhenOneMaterialHasMixedRolesAcrossSteps() {
+        var lines = service.aggregate(plan(
+                step(1, material(1, "AUXILIARY", "BEEF", "牛肉", "0.2", "BEEF-1", "EXTERNAL", null), null),
+                step(2, material(1, "PRIMARY", "BEEF", "牛肉", "10", "BEEF-1", "EXTERNAL", null),
+                        output("BEEF-OUT", "牛肉产出", "9", true, false))));
+
+        assertThat(lines).singleElement().satisfies(line -> {
+            assertThat(line.canonicalMaterialRole()).isEqualTo("PRIMARY");
+            assertThat(line.weightKg()).isEqualByComparingTo("10.2000");
+        });
+    }
+
     private ProcessPlan plan(ProcessPlan.MinorStep... steps) {
         var major = new ProcessPlan.MajorProcess("MAJOR-1", 1, "HEAT", "热加工", null, "PRIMARY_INPUT", null,
                 List.of(steps), List.of(), List.of(), null);

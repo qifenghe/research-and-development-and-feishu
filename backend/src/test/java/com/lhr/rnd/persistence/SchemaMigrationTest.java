@@ -64,6 +64,7 @@ class SchemaMigrationTest {
 
         assertUniqueConstraintExists("sample_version", "uk_sample_version_project_version");
         assertUniqueConstraintExists("pricing_file", "uk_pricing_file_version_pricing_version");
+        assertUniqueConstraintExists("test_assignment", "uk_test_assignment_experiment_form");
         assertForeignKeyExists("rnd_task", "fk_rnd_task_version");
         assertForeignKeyExists("experiment_form", "fk_experiment_form_version");
         assertForeignKeyExists("shipment_record", "fk_shipment_record_version");
@@ -78,7 +79,11 @@ class SchemaMigrationTest {
         assertForeignKeyExists("experiment_process_revision", "fk_process_revision_plan");
         assertForeignKeyExists("experiment_process_artifact", "fk_process_artifact_revision");
         assertForeignKeyExists("pricing_file", "fk_pricing_file_process_revision");
+        assertForeignKeyExists("test_assignment", "fk_test_assignment_process_revision");
+        assertForeignKeyExists("test_assignment", "fk_test_assignment_tester_user");
         assertForeignKeyExists("pricing_archive_cleanup_ledger", "fk_pricing_archive_cleanup_file");
+        assertIndexExists("test_assignment", "idx_test_assignment_process_revision");
+        assertIndexExists("test_assignment", "idx_test_assignment_tester_user");
         assertIndexExists("pricing_archive_cleanup_ledger", "idx_pricing_archive_cleanup_eligible");
 
         assertColumnExists("archive_file", "category");
@@ -108,6 +113,8 @@ class SchemaMigrationTest {
         assertColumnExists("workflow_rule_config", "notify_feishu");
         assertColumnExists("experiment_material", "material_category");
         assertColumnExists("experiment_material", "is_primary_material");
+        assertColumnExists("test_assignment", "process_revision_id");
+        assertColumnExists("test_assignment", "tester_user_id");
         assertColumnExists("experiment_material", "formula_ratio");
         assertColumnExists("experiment_material", "input_unit");
         assertColumnExists("experiment_process", "remaining_weight_kg");
@@ -558,6 +565,47 @@ class SchemaMigrationTest {
         )).isEqualTo(23);
     }
 
+    @Test
+    void v24UpgradesV23WithPinnedTestAssignmentColumnsAndSingleAssignmentConstraint() {
+        String databaseUrl = "jdbc:h2:mem:test-handoff-v24-" + UUID.randomUUID()
+                + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
+        Flyway.configure().dataSource(databaseUrl, "sa", "").locations("classpath:db/migration").target("23").load().migrate();
+        var upgradeJdbc = new JdbcTemplate(new DriverManagerDataSource(databaseUrl, "sa", ""));
+        seedFormAndAllLegacyFormChildren(upgradeJdbc, "FORM-V24-UPGRADE", "V24-UPGRADE");
+
+        Flyway.configure().dataSource(databaseUrl, "sa", "").locations("classpath:db/migration").target("24").load().migrate();
+
+        assertColumnExists(upgradeJdbc, "test_assignment", "process_revision_id");
+        assertColumnExists(upgradeJdbc, "test_assignment", "tester_user_id");
+        assertForeignKeyExists(upgradeJdbc, "test_assignment", "fk_test_assignment_process_revision");
+        assertForeignKeyExists(upgradeJdbc, "test_assignment", "fk_test_assignment_tester_user");
+        assertUniqueConstraintExists(upgradeJdbc, "test_assignment", "uk_test_assignment_experiment_form");
+        assertThat(upgradeJdbc.queryForObject(
+                "select count(*) from test_assignment where experiment_form_id = 'FORM-V24-UPGRADE'",
+                Integer.class
+        )).isEqualTo(1);
+        assertThat(upgradeJdbc.queryForObject(
+                "select process_revision_id from test_assignment where experiment_form_id = 'FORM-V24-UPGRADE'",
+                String.class
+        )).isNull();
+        assertThat(upgradeJdbc.queryForObject(
+                "select tester_user_id from test_assignment where experiment_form_id = 'FORM-V24-UPGRADE'",
+                String.class
+        )).isNull();
+        assertThat(upgradeJdbc.queryForObject(
+                "select count(*) from test_record where test_assignment_id = 'ASSIGN-V24-UPGRADE'",
+                Integer.class
+        )).isEqualTo(1);
+        assertThat(upgradeJdbc.queryForObject(
+                "select experiment_form_id from test_record where id = 'RECORD-V24-UPGRADE'",
+                String.class
+        )).isEqualTo("FORM-V24-UPGRADE");
+        assertThat(upgradeJdbc.queryForObject(
+                "select result from test_record where id = 'RECORD-V24-UPGRADE'",
+                String.class
+        )).isEqualTo("PASS");
+    }
+
     private void insertLegacyPricingWorkflowRules(JdbcTemplate legacyJdbcTemplate) {
         legacyJdbcTemplate.update(
                 """
@@ -638,7 +686,11 @@ class SchemaMigrationTest {
     }
 
     private void assertUniqueConstraintExists(String tableName, String constraintName) {
-        Integer count = jdbcTemplate.queryForObject(
+        assertUniqueConstraintExists(jdbcTemplate, tableName, constraintName);
+    }
+
+    private void assertUniqueConstraintExists(JdbcTemplate template, String tableName, String constraintName) {
+        Integer count = template.queryForObject(
                 """
                         select count(*)
                         from information_schema.table_constraints
@@ -676,7 +728,11 @@ class SchemaMigrationTest {
     }
 
     private void assertColumnExists(String tableName, String columnName) {
-        Integer count = jdbcTemplate.queryForObject(
+        assertColumnExists(jdbcTemplate, tableName, columnName);
+    }
+
+    private void assertColumnExists(JdbcTemplate template, String tableName, String columnName) {
+        Integer count = template.queryForObject(
                 """
                         select count(*)
                         from information_schema.columns

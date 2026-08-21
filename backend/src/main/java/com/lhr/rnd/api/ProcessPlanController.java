@@ -49,8 +49,17 @@ public class ProcessPlanController {
 
     @PutMapping
     public ApiResponse<ProcessPlan> save(@PathVariable String formId, @RequestBody ProcessPlan request, HttpServletRequest servletRequest) {
-        service.requireDraftWriteAccess(formId, requiredSessionPrincipal(servletRequest));
-        return ApiResponse.success(service.save(formId, request));
+        return ApiResponse.success(service.save(formId, request, requiredSessionPrincipal(servletRequest)));
+    }
+
+    @PostMapping("/control-points/{pointId}/confirm-deviation")
+    public ApiResponse<ProcessPlan> confirmDeviation(
+            @PathVariable String formId,
+            @PathVariable String pointId,
+            @RequestBody ConfirmDeviationRequest request,
+            HttpServletRequest servletRequest
+    ) {
+        return ApiResponse.success(service.confirmCriticalDeviation(formId, pointId, request.resolutionNote(), requiredSessionPrincipal(servletRequest)));
     }
 
     @GetMapping("/submission-check")
@@ -154,5 +163,8 @@ public class ProcessPlanController {
     }
 
     public record GenerateProcessArtifactRequest(String artifactType) {
+    }
+
+    public record ConfirmDeviationRequest(String resolutionNote) {
     }
 }
