@@ -37,6 +37,9 @@ public class TestAssignmentEntity {
     @Column(name = "assigned_at", nullable = false)
     private LocalDateTime assignedAt;
 
+    @Column(name = "archived_at")
+    private LocalDateTime archivedAt;
+
     protected TestAssignmentEntity() {
     }
 
@@ -114,5 +117,9 @@ public class TestAssignmentEntity {
 
     public LocalDateTime getAssignedAt() {
         return assignedAt;
+    }
+
+    public LocalDateTime getArchivedAt() {
+        return archivedAt;
     }
 }

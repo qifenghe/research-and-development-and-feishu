@@ -65,7 +65,7 @@ public class ProcessPlanService {
     @Transactional
     public ProcessPlan save(String formId, ProcessPlan request, SessionPrincipal principal) {
         requireDraftAccess(formId, principal);
-        return saveInternal(formId, sanitizeControlConfirmations(request, principal));
+        return saveInternal(formId, sanitizeControlConfirmations(formId, request));
     }
 
     private ProcessPlan saveInternal(String formId, ProcessPlan request) {
@@ -141,28 +141,94 @@ public class ProcessPlanService {
         return find(formId);
     }
 
-    private ProcessPlan sanitizeControlConfirmations(ProcessPlan request, SessionPrincipal principal) {
+    private ProcessPlan sanitizeControlConfirmations(String formId, ProcessPlan request) {
         var majors = values(request.majorProcesses()).stream().map(major -> new ProcessPlan.MajorProcess(
                 major.id(), major.sequence(), major.processCode(), major.processName(), major.description(), major.yieldBasis(), major.remark(),
                 values(major.steps()).stream().map(step -> new ProcessPlan.MinorStep(step.id(), step.sequence(), step.stepCode(), step.stepName(),
                         step.stepType(), step.parameter1Name(), step.parameter1Value(), step.parameter1Unit(), step.parameter2Name(),
                         step.parameter2Value(), step.parameter2Unit(), step.equipment(), step.instruction(), step.materials(), step.outputs(),
-                        values(step.controlPoints()).stream().map(point -> sanitizeControlConfirmation(point, principal)).toList())).toList(),
+                        values(step.controlPoints()).stream().map(point -> sanitizeControlConfirmation(formId, point)).toList())).toList(),
                 major.inputs(), major.outputs(), major.yield())).toList();
         return new ProcessPlan(request.id(), request.experimentFormId(), request.versionNo(), request.status(), majors,
                 request.batchYieldPercent(), request.balanceToleranceKg(), request.legacy(), request.sourceRevisionId(), request.changeReason());
     }
 
-    private ProcessPlan.ControlPoint sanitizeControlConfirmation(ProcessPlan.ControlPoint point, SessionPrincipal principal) {
-        var hasDeviation = values(point.measurements()).stream().anyMatch(item -> "FAIL".equals(item.result())
-                || item.measuredValue() != null && (point.lowerLimit() != null && item.measuredValue().compareTo(point.lowerLimit()) < 0
-                || point.upperLimit() != null && item.measuredValue().compareTo(point.upperLimit()) > 0));
-        var requestedConfirmation = !blank(point.confirmedBy()) || !blank(point.confirmedAt()) || point.resolved();
-        var trustedBy = !hasDeviation && requestedConfirmation ? principal.name() : null;
-        var trustedAt = trustedBy == null ? null : LocalDateTime.now().toString();
+    private ProcessPlan.ControlPoint sanitizeControlConfirmation(String formId, ProcessPlan.ControlPoint point) {
+        var persisted = persistedControlPoint(formId, point.id());
+        var inheritConfirmation = hasDeviation(point)
+                && persisted != null
+                && persisted.resolved()
+                && !blank(persisted.confirmedBy())
+                && !blank(persisted.confirmedAt())
+                && sameControlDefinition(point, persisted)
+                && sameMeasurements(point.measurements(), persisted.measurements());
+        var trustedBy = inheritConfirmation ? persisted.confirmedBy() : null;
+        var trustedAt = inheritConfirmation ? persisted.confirmedAt() : null;
         return new ProcessPlan.ControlPoint(point.id(), point.sequence(), point.controlType(), point.importance(), point.itemName(),
                 point.targetValue(), point.lowerLimit(), point.upperLimit(), point.unit(), point.method(), point.measurementTool(),
-                point.frequency(), point.deviationAction(), false, trustedBy, trustedAt, point.basisOrRemark(), point.measurements());
+                point.frequency(), point.deviationAction(), inheritConfirmation, trustedBy, trustedAt, point.basisOrRemark(), point.measurements());
+    }
+
+    private ProcessPlan.ControlPoint persistedControlPoint(String formId, String controlPointId) {
+        if (blank(controlPointId)) return null;
+        var points = jdbc.query("""
+                select cp.* from experiment_control_point cp
+                join experiment_minor_step step on step.id = cp.minor_step_id
+                join experiment_major_process major on major.id = step.major_process_id
+                join experiment_process_plan plan on plan.id = major.process_plan_id
+                where plan.experiment_form_id = ? and cp.id = ?
+                for update
+                """, (rs, row) -> mapControlPoint(rs), formId, controlPointId);
+        return points.isEmpty() ? null : points.get(0);
+    }
+
+    private boolean hasDeviation(ProcessPlan.ControlPoint point) {
+        return values(point.measurements()).stream().anyMatch(item -> "FAIL".equals(item.result())
+                || item.measuredValue() != null && (point.lowerLimit() != null && item.measuredValue().compareTo(point.lowerLimit()) < 0
+                || point.upperLimit() != null && item.measuredValue().compareTo(point.upperLimit()) > 0));
+    }
+
+    private boolean sameControlDefinition(ProcessPlan.ControlPoint requested, ProcessPlan.ControlPoint persisted) {
+        return equal(requested.controlType(), persisted.controlType())
+                && equal(requested.importance(), persisted.importance())
+                && equal(requested.itemName(), persisted.itemName())
+                && equal(requested.targetValue(), persisted.targetValue())
+                && equal(requested.lowerLimit(), persisted.lowerLimit())
+                && equal(requested.upperLimit(), persisted.upperLimit())
+                && equal(requested.unit(), persisted.unit())
+                && equal(requested.method(), persisted.method())
+                && equal(requested.measurementTool(), persisted.measurementTool())
+                && equal(requested.frequency(), persisted.frequency())
+                && equal(requested.deviationAction(), persisted.deviationAction())
+                && equal(requested.basisOrRemark(), persisted.basisOrRemark());
+    }
+
+    private boolean sameMeasurements(List<ProcessPlan.ControlMeasurement> requested, List<ProcessPlan.ControlMeasurement> persisted) {
+        var incoming = values(requested);
+        var stored = values(persisted);
+        if (incoming.size() != stored.size()) return false;
+        for (var measurement : incoming) {
+            if (blank(measurement.id())) return false;
+            var previous = stored.stream().filter(item -> measurement.id().equals(item.id())).findFirst().orElse(null);
+            if (previous == null || !sameMeasurement(measurement, previous)) return false;
+        }
+        return true;
+    }
+
+    private boolean sameMeasurement(ProcessPlan.ControlMeasurement requested, ProcessPlan.ControlMeasurement persisted) {
+        return equal(requested.measuredValue(), persisted.measuredValue())
+                && equal(requested.measuredAt(), persisted.measuredAt())
+                && equal(requested.result(), persisted.result())
+                && equal(requested.deviationAction(), persisted.deviationAction())
+                && equal(requested.retestResult(), persisted.retestResult())
+                && equal(requested.remark(), persisted.remark());
+    }
+
+    private boolean equal(Object left, Object right) {
+        if (left instanceof BigDecimal leftNumber && right instanceof BigDecimal rightNumber) {
+            return leftNumber.compareTo(rightNumber) == 0;
+        }
+        return java.util.Objects.equals(left, right);
     }
 
     @Transactional(readOnly = true)
@@ -354,26 +420,28 @@ public class ProcessPlanService {
                         item.getBigDecimal("weight_kg"), item.getBoolean("primary_output"), item.getBoolean("continue_flow"),
                         item.getString("remark")), stepId);
         var controlPoints = jdbc.query("select * from experiment_control_point where minor_step_id = ? order by sequence",
-                (item, row) -> {
-                    var pointId = item.getString("id");
-                    var measurements = jdbc.query("select * from experiment_control_measurement where control_point_id = ? order by sequence",
-                            (measurement, measurementRow) -> new ProcessPlan.ControlMeasurement(measurement.getString("id"),
-                                    measurement.getInt("sequence"), measurement.getBigDecimal("measured_value"),
-                                    measurement.getTimestamp("measured_at") == null ? null : measurement.getTimestamp("measured_at").toLocalDateTime().toString(),
-                                    measurement.getString("result"), measurement.getString("deviation_action"),
-                                    measurement.getString("retest_result"), measurement.getString("remark")), pointId);
-                    return new ProcessPlan.ControlPoint(pointId, item.getInt("sequence"), item.getString("control_type"),
-                            item.getString("importance"), item.getString("item_name"), item.getBigDecimal("target_value"),
-                            item.getBigDecimal("lower_limit"), item.getBigDecimal("upper_limit"), item.getString("unit"),
-                            item.getString("method"), item.getString("measurement_tool"), item.getString("frequency"), item.getString("deviation_action"),
-                            item.getBoolean("resolved"), item.getString("confirmed_by"),
-                            item.getTimestamp("confirmed_at") == null ? null : item.getTimestamp("confirmed_at").toLocalDateTime().toString(),
-                            item.getString("basis_or_remark"), measurements);
-                }, stepId);
+                (item, row) -> mapControlPoint(item), stepId);
         return new ProcessPlan.MinorStep(stepId, rs.getInt("sequence"), rs.getString("step_code"), rs.getString("step_name"),
                 rs.getString("step_type"), rs.getString("parameter_1_name"), rs.getString("parameter_1_value"),
                 rs.getString("parameter_1_unit"), rs.getString("parameter_2_name"), rs.getString("parameter_2_value"),
                 rs.getString("parameter_2_unit"), rs.getString("equipment"), rs.getString("instruction"), materials, outputs, controlPoints);
+    }
+
+    private ProcessPlan.ControlPoint mapControlPoint(ResultSet item) throws SQLException {
+        var pointId = item.getString("id");
+        var measurements = jdbc.query("select * from experiment_control_measurement where control_point_id = ? order by sequence",
+                (measurement, measurementRow) -> new ProcessPlan.ControlMeasurement(measurement.getString("id"),
+                        measurement.getInt("sequence"), measurement.getBigDecimal("measured_value"),
+                        measurement.getTimestamp("measured_at") == null ? null : measurement.getTimestamp("measured_at").toLocalDateTime().toString(),
+                        measurement.getString("result"), measurement.getString("deviation_action"),
+                        measurement.getString("retest_result"), measurement.getString("remark")), pointId);
+        return new ProcessPlan.ControlPoint(pointId, item.getInt("sequence"), item.getString("control_type"),
+                item.getString("importance"), item.getString("item_name"), item.getBigDecimal("target_value"),
+                item.getBigDecimal("lower_limit"), item.getBigDecimal("upper_limit"), item.getString("unit"),
+                item.getString("method"), item.getString("measurement_tool"), item.getString("frequency"), item.getString("deviation_action"),
+                item.getBoolean("resolved"), item.getString("confirmed_by"),
+                item.getTimestamp("confirmed_at") == null ? null : item.getTimestamp("confirmed_at").toLocalDateTime().toString(),
+                item.getString("basis_or_remark"), measurements);
     }
 
     private boolean isProcessPlanFormUniqueViolation(DataIntegrityViolationException exception) {

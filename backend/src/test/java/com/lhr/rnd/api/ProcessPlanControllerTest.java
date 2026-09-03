@@ -119,8 +119,9 @@ class ProcessPlanControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content(draftWithTraceability))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].measurementTool").value("数字探针"))
-                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").value("会话研发"))
-                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedAt").exists())
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].resolved").value(false))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").doesNotExist())
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedAt").doesNotExist())
                 .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].basisOrRemark").value("以产品中心温度为放行依据"));
     }
 
@@ -133,7 +134,7 @@ class ProcessPlanControllerTest {
                     "materials":[{"sequence":1,"materialRole":"PRIMARY","materialName":"牛肉","materialState":"SOLID","weightKg":10,"formulaMaterialId":"BEEF","sourceType":"EXTERNAL"}],
                     "outputs":[{"id":"OUT-DEVIATION","sequence":1,"outputType":"FINISHED","outputName":"熟制牛肉","materialState":"SOLID","weightKg":8,"primaryOutput":true,"continueFlow":false}],
                     "controlPoints":[{"id":"CP-DEVIATION","sequence":1,"controlType":"FOOD_SAFETY","importance":"CRITICAL","itemName":"中心温度","lowerLimit":75,
-                      "resolved":true,"confirmedBy":"伪造总监","confirmedAt":"2026-08-19T21:15:00","measurements":[{"id":"M-DEVIATION","sequence":1,"measuredValue":72,"result":"FAIL","deviationAction":"继续加热","retestResult":"PASS"}]}]
+                      "resolved":true,"confirmedBy":"伪造总监","confirmedAt":"2026-08-19T21:15:00","basisOrRemark":"复测合格","measurements":[{"id":"M-DEVIATION","sequence":1,"measuredValue":72,"result":"FAIL","deviationAction":"继续加热","retestResult":"PASS"}]}]
                   }],"inputs":[],"outputs":[]
                 }]}""";
 
@@ -162,6 +163,69 @@ class ProcessPlanControllerTest {
         org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
                 "select count(*) from audit_log where business_type='PROCESS_CONTROL_POINT' and business_id='CP-DEVIATION' and action='CRITICAL_DEVIATION_CONFIRMED' and operator_user_id='USER-DIRECTOR'",
                 Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void preservesOnlyThePersistedDirectorConfirmationWhenAnUnchangedDeviationIsSavedAgain() throws Exception {
+        var draft = criticalDeviationDraft("记录第一次打样");
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON).content(draft))
+                .andExpect(status().isOk());
+
+        var director = new SessionPrincipal("USER-DIRECTOR", "rnd_director", "研发总监", null, "RND_DIRECTOR", Instant.now().plusSeconds(60));
+        mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/control-points/{pointId}/confirm-deviation", FORM_ID, "CP-DEVIATION")
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, director)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"resolutionNote\":\"复测合格\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON).content(criticalDeviationDraft("只改工艺说明" ).replace("\"versionNo\":0", "\"versionNo\":1")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].resolved").value(true))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").value("研发总监"));
+
+        mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/submit", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"versionNo\":2,\"confirmed\":true}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void dropsPersistedDirectorConfirmationWhenTheMeasurementSetChanges() throws Exception {
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON).content(criticalDeviationDraft("首次")))
+                .andExpect(status().isOk());
+        var director = new SessionPrincipal("USER-DIRECTOR", "rnd_director", "研发总监", null, "RND_DIRECTOR", Instant.now().plusSeconds(60));
+        mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/control-points/{pointId}/confirm-deviation", FORM_ID, "CP-DEVIATION")
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, director)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"resolutionNote\":\"复测合格\"}"))
+                .andExpect(status().isOk());
+
+        var changedMeasurement = criticalDeviationDraft("首次")
+                .replace("\"versionNo\":0", "\"versionNo\":1")
+                .replace("\"measuredValue\":72", "\"measuredValue\":71");
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON).content(changedMeasurement))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].resolved").value(false))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").doesNotExist());
+    }
+
+    private String criticalDeviationDraft(String instruction) {
+        return """
+                {"versionNo":0,"status":"DRAFT","majorProcesses":[{
+                  "sequence":1,"processCode":"HEAT","processName":"热加工","yieldBasis":"PRIMARY_INPUT","remark":"损耗已说明","steps":[{
+                    "sequence":1,"stepCode":"COOK","stepName":"熟制","stepType":"NORMAL","instruction":"%s",
+                    "materials":[{"sequence":1,"materialRole":"PRIMARY","materialName":"牛肉","materialState":"SOLID","weightKg":10,"formulaMaterialId":"BEEF","sourceType":"EXTERNAL"}],
+                    "outputs":[{"id":"OUT-DEVIATION","sequence":1,"outputType":"FINISHED","outputName":"熟制牛肉","materialState":"SOLID","weightKg":8,"primaryOutput":true,"continueFlow":false}],
+                    "controlPoints":[{"id":"CP-DEVIATION","sequence":1,"controlType":"FOOD_SAFETY","importance":"CRITICAL","itemName":"中心温度","lowerLimit":75,
+                      "resolved":true,"confirmedBy":"伪造总监","confirmedAt":"2026-08-19T21:15:00","basisOrRemark":"复测合格","measurements":[{"id":"M-DEVIATION","sequence":1,"measuredValue":72,"result":"FAIL","deviationAction":"继续加热","retestResult":"PASS"}]}]
+                  }],"inputs":[],"outputs":[]
+                }]}""".formatted(instruction);
     }
 
     @Test

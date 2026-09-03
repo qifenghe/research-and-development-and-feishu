@@ -115,6 +115,8 @@ class SchemaMigrationTest {
         assertColumnExists("experiment_material", "is_primary_material");
         assertColumnExists("test_assignment", "process_revision_id");
         assertColumnExists("test_assignment", "tester_user_id");
+        assertColumnExists("test_assignment", "archived_at");
+        assertColumnExists("test_assignment", "active_marker");
         assertColumnExists("experiment_material", "formula_ratio");
         assertColumnExists("experiment_material", "input_unit");
         assertColumnExists("experiment_process", "remaining_weight_kg");
@@ -604,6 +606,47 @@ class SchemaMigrationTest {
                 "select result from test_record where id = 'RECORD-V24-UPGRADE'",
                 String.class
         )).isEqualTo("PASS");
+    }
+
+    @Test
+    void v24ArchivesDuplicateLegacyAssignmentsWithoutBreakingTheirTestRecords() {
+        String databaseUrl = "jdbc:h2:mem:test-handoff-v24-duplicates-" + UUID.randomUUID()
+                + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
+        Flyway.configure().dataSource(databaseUrl, "sa", "").locations("classpath:db/migration").target("23").load().migrate();
+        var upgradeJdbc = new JdbcTemplate(new DriverManagerDataSource(databaseUrl, "sa", ""));
+        seedFormAndAllLegacyFormChildren(upgradeJdbc, "FORM-V24-DUPLICATE", "V24-DUPLICATE");
+        upgradeJdbc.update("""
+                insert into test_assignment (id, experiment_form_id, task_id, version_id, tester_name, status, assigned_at)
+                values ('ASSIGN-V24-DUPLICATE-NEW', 'FORM-V24-DUPLICATE', 'TASK-V24-DUPLICATE',
+                        'VERSION-V24-DUPLICATE', '后续测试', 'PENDING_TEST', timestamp '2100-01-01 00:00:00')
+                """);
+        upgradeJdbc.update("""
+                insert into test_record (id, test_assignment_id, experiment_form_id, tester_name, result, tested_at)
+                values ('RECORD-V24-DUPLICATE-NEW', 'ASSIGN-V24-DUPLICATE-NEW', 'FORM-V24-DUPLICATE',
+                        '后续测试', 'PASS', timestamp '2100-01-02 00:00:00')
+                """);
+
+        Flyway.configure().dataSource(databaseUrl, "sa", "").locations("classpath:db/migration").target("24").load().migrate();
+
+        assertColumnExists(upgradeJdbc, "test_assignment", "archived_at");
+        assertColumnExists(upgradeJdbc, "test_assignment", "active_marker");
+        assertUniqueConstraintExists(upgradeJdbc, "test_assignment", "uk_test_assignment_experiment_form");
+        assertThat(upgradeJdbc.queryForObject("select count(*) from test_assignment where experiment_form_id = ? and archived_at is null",
+                Integer.class, "FORM-V24-DUPLICATE")).isEqualTo(1);
+        assertThat(upgradeJdbc.queryForObject("select id from test_assignment where experiment_form_id = ? and archived_at is null",
+                String.class, "FORM-V24-DUPLICATE")).isEqualTo("ASSIGN-V24-DUPLICATE-NEW");
+        assertThat(upgradeJdbc.queryForObject("select status from test_assignment where id = ?", String.class,
+                "ASSIGN-V24-DUPLICATE")).isEqualTo("ARCHIVED");
+        assertThat(upgradeJdbc.queryForObject("select count(*) from test_record where experiment_form_id = ?", Integer.class,
+                "FORM-V24-DUPLICATE")).isEqualTo(2);
+        assertThat(upgradeJdbc.queryForObject("select test_assignment_id from test_record where id = ?", String.class,
+                "RECORD-V24-DUPLICATE")).isEqualTo("ASSIGN-V24-DUPLICATE");
+        assertThatThrownBy(() -> upgradeJdbc.update("""
+                insert into test_assignment (id, experiment_form_id, task_id, version_id, tester_name, status, assigned_at)
+                values ('ASSIGN-V24-DUPLICATE-LATER', 'FORM-V24-DUPLICATE', 'TASK-V24-DUPLICATE',
+                        'VERSION-V24-DUPLICATE', '并发测试', 'PENDING_TEST', current_timestamp)
+                """))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     private void insertLegacyPricingWorkflowRules(JdbcTemplate legacyJdbcTemplate) {

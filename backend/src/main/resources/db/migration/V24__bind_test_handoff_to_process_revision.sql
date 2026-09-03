@@ -1,10 +1,27 @@
 alter table test_assignment add column process_revision_id varchar(64);
 alter table test_assignment add column tester_user_id varchar(64);
+alter table test_assignment add column archived_at timestamp;
+alter table test_assignment add column active_marker varchar(64) not null default 'ACTIVE';
 alter table test_assignment add constraint fk_test_assignment_process_revision
     foreign key (process_revision_id) references experiment_process_revision(id);
 alter table test_assignment add constraint fk_test_assignment_tester_user
     foreign key (tester_user_id) references user_account(id);
-alter table test_assignment add constraint uk_test_assignment_experiment_form unique (experiment_form_id);
+-- Preserve every legacy assignment (and its test_record FK).  A form may have been sent
+-- to test more than once before this release; retain the latest assignment as active and
+-- explicitly archive the rest before enforcing the single-active-assignment invariant.
+update test_assignment set active_marker = id;
+update test_assignment assignment
+set active_marker = 'ACTIVE'
+where assignment.id = (
+    select candidate.id
+    from test_assignment candidate
+    where candidate.experiment_form_id = assignment.experiment_form_id
+    order by candidate.assigned_at desc, candidate.id desc
+    limit 1
+);
+update test_assignment set archived_at = current_timestamp, status = 'ARCHIVED'
+where active_marker <> 'ACTIVE';
+alter table test_assignment add constraint uk_test_assignment_experiment_form unique (experiment_form_id, active_marker);
 create index idx_test_assignment_process_revision on test_assignment(process_revision_id);
 create index idx_test_assignment_tester_user on test_assignment(tester_user_id);
 

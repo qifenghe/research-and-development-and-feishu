@@ -117,7 +117,7 @@ public class ProcessRevisionService {
             return jdbc.query("""
                     select revision.* from experiment_process_revision revision
                     join test_assignment assignment on assignment.process_revision_id = revision.id
-                    where revision.experiment_form_id = ? and assignment.tester_user_id = ?
+                    where revision.experiment_form_id = ? and assignment.tester_user_id = ? and assignment.archived_at is null
                     order by revision.revision_no desc
                     """, (rs, row) -> new ProcessRevision.ProcessRevisionSummary(rs.getString("id"), rs.getInt("revision_no"),
                     rs.getString("source_revision_id"), rs.getString("change_reason"), rs.getString("submitted_by"),
@@ -279,7 +279,7 @@ public class ProcessRevisionService {
 
     private void requirePinnedTesterRevision(String formId, String revisionId, SessionPrincipal principal) {
         if (!isTester(principal)) return;
-        var count = jdbc.queryForObject("select count(*) from test_assignment where experiment_form_id = ? and process_revision_id = ? and tester_user_id = ?",
+        var count = jdbc.queryForObject("select count(*) from test_assignment where experiment_form_id = ? and process_revision_id = ? and tester_user_id = ? and archived_at is null",
                 Integer.class, formId, revisionId, principal.userId());
         if (count == null || count == 0) {
             throw new BusinessException("PROCESS_REVISION_NOT_ASSIGNED", "测试人员只能查看当前测试任务绑定的正式工艺版本");

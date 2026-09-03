@@ -1492,7 +1492,7 @@ public class SampleWorkflowService {
                 .max(Comparator.comparing(TestAssignment::assignedAt))
                 .orElse(null);
         if (cached != null || testAssignmentRepository == null) return cached;
-        return testAssignmentRepository.findByTaskIdOrderByAssignedAtDesc(taskId).stream().findFirst()
+        return testAssignmentRepository.findFirstByTaskIdAndArchivedAtIsNullOrderByAssignedAtDesc(taskId)
                 .map(this::hydrateTestAssignment)
                 .map(persisted -> {
                     testAssignments.put(persisted.id(), persisted);

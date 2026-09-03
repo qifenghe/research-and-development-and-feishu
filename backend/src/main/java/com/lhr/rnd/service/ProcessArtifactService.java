@@ -313,7 +313,7 @@ public class ProcessArtifactService {
         requirePrincipal(principal);
         if ("RND_DIRECTOR".equals(principal.role())) return;
         if ("TESTER".equals(principal.role()) || "QA_TESTER".equals(principal.role())) {
-            var count = jdbc.queryForObject("select count(*) from test_assignment where experiment_form_id = ? and process_revision_id = ? and tester_user_id = ?",
+            var count = jdbc.queryForObject("select count(*) from test_assignment where experiment_form_id = ? and process_revision_id = ? and tester_user_id = ? and archived_at is null",
                     Integer.class, formId, revisionId, principal.userId());
             if (count != null && count > 0) return;
             throw new BusinessException("PROCESS_REVISION_NOT_ASSIGNED", "测试人员只能查看当前测试任务绑定版本的成果文件");

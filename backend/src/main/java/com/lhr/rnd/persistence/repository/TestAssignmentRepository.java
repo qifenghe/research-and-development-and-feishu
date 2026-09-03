@@ -16,4 +16,6 @@ public interface TestAssignmentRepository extends JpaRepository<TestAssignmentEn
     Optional<TestAssignmentEntity> findByIdForUpdate(@Param("id") String id);
 
     List<TestAssignmentEntity> findByTaskIdOrderByAssignedAtDesc(String taskId);
+
+    Optional<TestAssignmentEntity> findFirstByTaskIdAndArchivedAtIsNullOrderByAssignedAtDesc(String taskId);
 }
