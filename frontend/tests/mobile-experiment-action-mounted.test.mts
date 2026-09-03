@@ -1,3 +1,4 @@
+import "./mobile-dom-bootstrap.mts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -41,8 +42,6 @@ let documentAppends=0;
 test.before(async()=>{
   Object.assign(globalThis,{
     localStorage:new MemoryStorage(),
-    window:{addEventListener(){},removeEventListener(){},clearTimeout,setTimeout},
-    document:{body:{appendChild(){documentAppends++},removeChild(){}},createElement(){return {style:{},remove(){},click(){}}}},
   });
   Object.assign(globalThis.URL,{createObjectURL(){return "blob:test"},revokeObjectURL(){}});
   const configFile=fileURLToPath(new URL("../apps/mobile/vite.config.ts",import.meta.url));
@@ -53,8 +52,9 @@ test.after(async()=>{await server.close()});
 async function mountView(aHasForm:boolean){
   localStorage.clear();
   documentAppends=0;
-  const apiModule=await server.ssrLoadModule("/src/services/api.ts");
-  const authModule=await server.ssrLoadModule("/src/stores/auth.ts");
+  (globalThis as {__mobileMountedTestDocumentAppends:number}).__mobileMountedTestDocumentAppends=0;
+  const apiModule=await server.ssrLoadModule("/src/services/api");
+  const authModule=await server.ssrLoadModule("/src/stores/auth");
   const viewModule=await server.ssrLoadModule("/src/views/ExperimentFormView.vue");
   viewModule.default.render=()=>null;
   const api=apiModule.api as any;
@@ -85,6 +85,7 @@ test("mounted A upload stops after deferred draft save when the memory router re
   await mounted.router.push("/experiments/task-b");await flush();save.resolve(form("task-a"));await action;await flush();
   assert.deepEqual(uploads,[]);assert.equal(mounted.router.currentRoute.value.params.id,"task-b");assert.equal(localStorage.getItem("rnd:experiment-draft:v1:engineer-1:task-b"),"B-SENTINEL");
   assert.equal(mounted.view.hydrated,true);
+  documentAppends=(globalThis as {__mobileMountedTestDocumentAppends:number}).__mobileMountedTestDocumentAppends;
   assert.equal(documentAppends,0,"a stale upload completion must not publish a toast");
   mounted.unmount();
 });
@@ -99,6 +100,7 @@ test("mounted late A submit cannot clear B cache, toast or navigate after memory
   assert.deepEqual(submissions,["form-a"]);assert.equal(mounted.router.currentRoute.value.params.id,"task-b");assert.equal(localStorage.getItem("rnd:experiment-draft:v1:engineer-1:task-b"),"B-SENTINEL");
   assert.deepEqual(actions,["save-task-a","submit-form-a"]);
   assert.equal(mounted.view.hydrated,true);
+  documentAppends=(globalThis as {__mobileMountedTestDocumentAppends:number}).__mobileMountedTestDocumentAppends;
   assert.equal(documentAppends,0,"a stale submit completion must not publish a toast");
   mounted.unmount();
 });
