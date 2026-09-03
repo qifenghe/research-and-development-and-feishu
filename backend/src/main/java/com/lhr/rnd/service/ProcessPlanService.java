@@ -193,16 +193,10 @@ public class ProcessPlanService {
 
     private boolean sameControlLocation(ProcessPlan.MajorProcess major, ProcessPlan.MinorStep step,
                                         PersistedControlPoint persisted) {
-        if (!blank(step.id())) {
-            return step.id().equals(persisted.stepId())
-                    && (blank(major.id()) || major.id().equals(persisted.majorId()));
-        }
-        return major.sequence() == persisted.majorSequence()
-                && equal(major.processCode(), persisted.processCode())
-                && equal(major.processName(), persisted.processName())
-                && step.sequence() == persisted.stepSequence()
-                && equal(step.stepCode(), persisted.stepCode())
-                && equal(step.stepName(), persisted.stepName());
+        return !blank(major.id())
+                && !blank(step.id())
+                && major.id().equals(persisted.majorId())
+                && step.id().equals(persisted.stepId());
     }
 
     private boolean hasDeviation(ProcessPlan.ControlPoint point) {

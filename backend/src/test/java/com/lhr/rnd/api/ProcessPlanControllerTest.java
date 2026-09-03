@@ -37,6 +37,7 @@ class ProcessPlanControllerTest {
         var accountNow = LocalDateTime.now();
         jdbc.update("insert into user_account(id,username,password_hash,name,role,status,created_at,updated_at) select ?,?,?,?,?,?,?,? where not exists (select 1 from user_account where id = ?)",
                 "USER-PROCESS", "rnd_engineer_process", "x", "会话研发", "RND_ENGINEER", "ACTIVE", accountNow, accountNow, "USER-PROCESS");
+        jdbc.update("delete from audit_log where business_type = ? and business_id = ?", "PROCESS_CONTROL_POINT", "CP-DEVIATION");
         jdbc.update("delete from test_assignment where experiment_form_id = ?", FORM_ID);
         jdbc.update("delete from experiment_process_artifact where process_revision_id in (select id from experiment_process_revision where experiment_form_id = ?)", FORM_ID);
         jdbc.update("delete from experiment_process_revision where experiment_form_id = ?", FORM_ID);
@@ -179,9 +180,12 @@ class ProcessPlanControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"resolutionNote\":\"复测合格\"}"))
                 .andExpect(status().isOk());
 
+        var majorId = currentMajorId();
+        var stepId = currentStepId();
+
         mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
                         .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
-                        .contentType(MediaType.APPLICATION_JSON).content(criticalDeviationDraft("只改工艺说明" ).replace("\"versionNo\":0", "\"versionNo\":1")))
+                        .contentType(MediaType.APPLICATION_JSON).content(criticalDeviationDraftWithLocation("只改工艺说明", 1, majorId, stepId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].resolved").value(true))
                 .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").value("研发总监"));
@@ -190,6 +194,34 @@ class ProcessPlanControllerTest {
                         .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"versionNo\":2,\"confirmed\":true}"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void dropsDirectorConfirmationWhenTheIncomingMajorIdIsMissingEvenIfTheStepIdMatches() throws Exception {
+        saveAndConfirmCriticalDeviation();
+        var stepId = currentStepId();
+
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(criticalDeviationDraftWithLocation("同路径但未带大工序身份", 1, null, stepId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].resolved").value(false))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").doesNotExist());
+    }
+
+    @Test
+    void dropsDirectorConfirmationWhenTheIncomingStepIdIsMissingEvenIfTheMajorIdMatches() throws Exception {
+        saveAndConfirmCriticalDeviation();
+        var majorId = currentMajorId();
+
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(criticalDeviationDraftWithLocation("同路径但未带小步骤身份", 1, majorId, null)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].resolved").value(false))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").doesNotExist());
     }
 
     @Test
@@ -249,6 +281,39 @@ class ProcessPlanControllerTest {
                       "resolved":true,"confirmedBy":"伪造总监","confirmedAt":"2026-08-19T21:15:00","basisOrRemark":"复测合格","measurements":[{"id":"M-DEVIATION","sequence":1,"measuredValue":72,"result":"FAIL","deviationAction":"继续加热","retestResult":"PASS"}]}]
                   }],"inputs":[],"outputs":[]
                 }]}""".formatted(instruction);
+    }
+
+    private void saveAndConfirmCriticalDeviation() throws Exception {
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON).content(criticalDeviationDraft("首次熟制")))
+                .andExpect(status().isOk());
+        var director = new SessionPrincipal("USER-DIRECTOR", "rnd_director", "研发总监", null, "RND_DIRECTOR", Instant.now().plusSeconds(60));
+        mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/control-points/{pointId}/confirm-deviation", FORM_ID, "CP-DEVIATION")
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, director)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"resolutionNote\":\"复测合格\"}"))
+                .andExpect(status().isOk());
+    }
+
+    private String criticalDeviationDraftWithLocation(String instruction, int versionNo, String majorId, String stepId) {
+        var draft = criticalDeviationDraft(instruction).replace("\"versionNo\":0", "\"versionNo\":" + versionNo);
+        if (majorId != null) {
+            draft = draft.replace("\"sequence\":1,\"processCode\":\"HEAT\"",
+                    "\"id\":\"" + majorId + "\",\"sequence\":1,\"processCode\":\"HEAT\"");
+        }
+        if (stepId != null) {
+            draft = draft.replace("\"sequence\":1,\"stepCode\":\"COOK\"",
+                    "\"id\":\"" + stepId + "\",\"sequence\":1,\"stepCode\":\"COOK\"");
+        }
+        return draft;
+    }
+
+    private String currentMajorId() {
+        return jdbc.queryForObject("select major.id from experiment_major_process major join experiment_process_plan plan on major.process_plan_id = plan.id where plan.experiment_form_id = ?", String.class, FORM_ID);
+    }
+
+    private String currentStepId() {
+        return jdbc.queryForObject("select step.id from experiment_minor_step step join experiment_major_process major on step.major_process_id = major.id join experiment_process_plan plan on major.process_plan_id = plan.id where plan.experiment_form_id = ?", String.class, FORM_ID);
     }
 
     private String reusedControlPointInAnotherMajorDraft() {
