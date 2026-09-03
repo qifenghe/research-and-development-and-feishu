@@ -15,6 +15,10 @@ public interface TestAssignmentRepository extends JpaRepository<TestAssignmentEn
     @Query("select assignment from TestAssignmentEntity assignment where assignment.id = :id")
     Optional<TestAssignmentEntity> findByIdForUpdate(@Param("id") String id);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select assignment from TestAssignmentEntity assignment where assignment.id = :id and assignment.archivedAt is null")
+    Optional<TestAssignmentEntity> findActiveByIdForUpdate(@Param("id") String id);
+
     List<TestAssignmentEntity> findByTaskIdOrderByAssignedAtDesc(String taskId);
 
     Optional<TestAssignmentEntity> findFirstByTaskIdAndArchivedAtIsNullOrderByAssignedAtDesc(String taskId);

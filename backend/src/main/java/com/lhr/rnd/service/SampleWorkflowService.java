@@ -3527,7 +3527,7 @@ public class SampleWorkflowService {
 
     private TestAssignment pendingTestAssignment(String testAssignmentId) {
         var assignment = testAssignmentRepository == null ? testAssignments.get(testAssignmentId)
-                : testAssignmentRepository.findByIdForUpdate(testAssignmentId).map(this::hydrateTestAssignment).orElse(null);
+                : testAssignmentRepository.findActiveByIdForUpdate(testAssignmentId).map(this::hydrateTestAssignment).orElse(null);
         if (assignment == null) throw new BusinessException("TEST_ASSIGNMENT_NOT_FOUND", "内部测试任务不存在");
         testAssignments.put(assignment.id(), assignment);
         if (assignment.status() != TestAssignmentStatus.PENDING_TEST) {

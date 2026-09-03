@@ -147,39 +147,62 @@ public class ProcessPlanService {
                 values(major.steps()).stream().map(step -> new ProcessPlan.MinorStep(step.id(), step.sequence(), step.stepCode(), step.stepName(),
                         step.stepType(), step.parameter1Name(), step.parameter1Value(), step.parameter1Unit(), step.parameter2Name(),
                         step.parameter2Value(), step.parameter2Unit(), step.equipment(), step.instruction(), step.materials(), step.outputs(),
-                        values(step.controlPoints()).stream().map(point -> sanitizeControlConfirmation(formId, point)).toList())).toList(),
+                        values(step.controlPoints()).stream().map(point -> sanitizeControlConfirmation(formId, major, step, point)).toList())).toList(),
                 major.inputs(), major.outputs(), major.yield())).toList();
         return new ProcessPlan(request.id(), request.experimentFormId(), request.versionNo(), request.status(), majors,
                 request.batchYieldPercent(), request.balanceToleranceKg(), request.legacy(), request.sourceRevisionId(), request.changeReason());
     }
 
-    private ProcessPlan.ControlPoint sanitizeControlConfirmation(String formId, ProcessPlan.ControlPoint point) {
+    private ProcessPlan.ControlPoint sanitizeControlConfirmation(String formId, ProcessPlan.MajorProcess major,
+                                                                 ProcessPlan.MinorStep step, ProcessPlan.ControlPoint point) {
         var persisted = persistedControlPoint(formId, point.id());
         var inheritConfirmation = hasDeviation(point)
                 && persisted != null
-                && persisted.resolved()
-                && !blank(persisted.confirmedBy())
-                && !blank(persisted.confirmedAt())
-                && sameControlDefinition(point, persisted)
-                && sameMeasurements(point.measurements(), persisted.measurements());
-        var trustedBy = inheritConfirmation ? persisted.confirmedBy() : null;
-        var trustedAt = inheritConfirmation ? persisted.confirmedAt() : null;
+                && persisted.point().resolved()
+                && !blank(persisted.point().confirmedBy())
+                && !blank(persisted.point().confirmedAt())
+                && sameControlLocation(major, step, persisted)
+                && sameControlDefinition(point, persisted.point())
+                && sameMeasurements(point.measurements(), persisted.point().measurements());
+        var trustedBy = inheritConfirmation ? persisted.point().confirmedBy() : null;
+        var trustedAt = inheritConfirmation ? persisted.point().confirmedAt() : null;
         return new ProcessPlan.ControlPoint(point.id(), point.sequence(), point.controlType(), point.importance(), point.itemName(),
                 point.targetValue(), point.lowerLimit(), point.upperLimit(), point.unit(), point.method(), point.measurementTool(),
                 point.frequency(), point.deviationAction(), inheritConfirmation, trustedBy, trustedAt, point.basisOrRemark(), point.measurements());
     }
 
-    private ProcessPlan.ControlPoint persistedControlPoint(String formId, String controlPointId) {
+    private PersistedControlPoint persistedControlPoint(String formId, String controlPointId) {
         if (blank(controlPointId)) return null;
         var points = jdbc.query("""
-                select cp.* from experiment_control_point cp
+                select cp.*, step.id as persisted_step_id, step.sequence as persisted_step_sequence,
+                       step.step_code as persisted_step_code, step.step_name as persisted_step_name,
+                       major.id as persisted_major_id, major.sequence as persisted_major_sequence,
+                       major.process_code as persisted_process_code, major.process_name as persisted_process_name
+                from experiment_control_point cp
                 join experiment_minor_step step on step.id = cp.minor_step_id
                 join experiment_major_process major on major.id = step.major_process_id
                 join experiment_process_plan plan on plan.id = major.process_plan_id
                 where plan.experiment_form_id = ? and cp.id = ?
                 for update
-                """, (rs, row) -> mapControlPoint(rs), formId, controlPointId);
+                """, (rs, row) -> new PersistedControlPoint(mapControlPoint(rs), rs.getString("persisted_major_id"),
+                rs.getInt("persisted_major_sequence"), rs.getString("persisted_process_code"), rs.getString("persisted_process_name"),
+                rs.getString("persisted_step_id"), rs.getInt("persisted_step_sequence"), rs.getString("persisted_step_code"),
+                rs.getString("persisted_step_name")), formId, controlPointId);
         return points.isEmpty() ? null : points.get(0);
+    }
+
+    private boolean sameControlLocation(ProcessPlan.MajorProcess major, ProcessPlan.MinorStep step,
+                                        PersistedControlPoint persisted) {
+        if (!blank(step.id())) {
+            return step.id().equals(persisted.stepId())
+                    && (blank(major.id()) || major.id().equals(persisted.majorId()));
+        }
+        return major.sequence() == persisted.majorSequence()
+                && equal(major.processCode(), persisted.processCode())
+                && equal(major.processName(), persisted.processName())
+                && step.sequence() == persisted.stepSequence()
+                && equal(step.stepCode(), persisted.stepCode())
+                && equal(step.stepName(), persisted.stepName());
     }
 
     private boolean hasDeviation(ProcessPlan.ControlPoint point) {
@@ -308,7 +331,7 @@ public class ProcessPlanService {
     private void saveMajor(String planId, int sequence, ProcessPlan.MajorProcess major) {
         if (major.processName() == null || major.processName().isBlank())
             throw new BusinessException("PROCESS_NAME_REQUIRED", "大工序名称不能为空");
-        var majorId = id("MP");
+        var majorId = valueOr(major.id(), id("MP"));
         jdbc.update("insert into experiment_major_process(id, process_plan_id, sequence, process_code, process_name, description, yield_basis, remark) values (?,?,?,?,?,?,?,?)",
                 majorId, planId, sequence, major.processCode(), major.processName(), major.description(),
                 valueOr(major.yieldBasis(), "PRIMARY_INPUT"), major.remark());
@@ -345,7 +368,7 @@ public class ProcessPlanService {
         if (step.stepName() == null || step.stepName().isBlank())
             throw new BusinessException("STEP_NAME_REQUIRED", "小步骤名称不能为空");
         calculations.validateStep(step);
-        var stepId = id("ST");
+        var stepId = valueOr(step.id(), id("ST"));
         jdbc.update("insert into experiment_minor_step(id, major_process_id, sequence, step_code, step_name, step_type, parameter_1_name, parameter_1_value, parameter_1_unit, parameter_2_name, parameter_2_value, parameter_2_unit, equipment, instruction) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 stepId, majorId, sequence, step.stepCode(), step.stepName(), valueOr(step.stepType(), "NORMAL"),
                 step.parameter1Name(), step.parameter1Value(), step.parameter1Unit(), step.parameter2Name(),
@@ -514,6 +537,11 @@ public class ProcessPlanService {
 
     private record PlanHeader(String id, int versionNo, String status, BigDecimal balanceToleranceKg,
                               String sourceRevisionId, String changeReason) {
+    }
+
+    private record PersistedControlPoint(ProcessPlan.ControlPoint point, String majorId, int majorSequence,
+                                         String processCode, String processName, String stepId, int stepSequence,
+                                         String stepCode, String stepName) {
     }
 
     private record ControlLimits(BigDecimal lower, BigDecimal upper) {

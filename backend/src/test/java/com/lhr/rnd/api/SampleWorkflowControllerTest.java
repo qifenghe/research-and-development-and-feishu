@@ -1353,6 +1353,34 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void archivedTestAssignmentCannotPassOrFailAfterSessionRestart() throws Exception {
+        var taskId = createApprovedRequest();
+        assignTask(taskId);
+        acceptTask(taskId);
+        var formId = saveExperimentDraft(taskId);
+        var assignmentId = submitExperimentForTest(formId);
+        jdbcTemplate.update("update test_assignment set status = 'ARCHIVED', archived_at = current_timestamp where id = ?", assignmentId);
+        clearWorkflowServiceMemory();
+
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", assignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"历史任务通过\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("TEST_ASSIGNMENT_NOT_FOUND"));
+
+        mockMvc.perform(post("/api/v1/test-assignments/{id}/fail-resample", assignmentId)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"testerName\":\"内部测试员\",\"comment\":\"历史任务打回\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("TEST_ASSIGNMENT_NOT_FOUND"));
+
+        assertThat(valueById("test_assignment", assignmentId, "status")).isEqualTo("ARCHIVED");
+        assertThat(jdbcTemplate.queryForObject("select count(*) from test_record where test_assignment_id = ?", Integer.class, assignmentId)).isZero();
+    }
+
+    @Test
     void directPassAfterRestartAvoidsExistingTestRecordIds() throws Exception {
         var firstTaskId = createApprovedRequest();
         assignTask(firstTaskId);

@@ -215,6 +215,29 @@ class ProcessPlanControllerTest {
                 .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").doesNotExist());
     }
 
+    @Test
+    void doesNotCarryDirectorConfirmationWhenAControlPointIdIsReusedInAnotherMajorAndStep() throws Exception {
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON).content(criticalDeviationDraft("首次熟制")))
+                .andExpect(status().isOk());
+        var director = new SessionPrincipal("USER-DIRECTOR", "rnd_director", "研发总监", null, "RND_DIRECTOR", Instant.now().plusSeconds(60));
+        mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/control-points/{pointId}/confirm-deviation", FORM_ID, "CP-DEVIATION")
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, director)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"resolutionNote\":\"复测合格\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                        .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reusedControlPointInAnotherMajorDraft()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.majorProcesses[0].processCode").value("CHILL"))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].stepCode").value("COOL"))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].resolved").value(false))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").doesNotExist());
+    }
+
     private String criticalDeviationDraft(String instruction) {
         return """
                 {"versionNo":0,"status":"DRAFT","majorProcesses":[{
@@ -226,6 +249,19 @@ class ProcessPlanControllerTest {
                       "resolved":true,"confirmedBy":"伪造总监","confirmedAt":"2026-08-19T21:15:00","basisOrRemark":"复测合格","measurements":[{"id":"M-DEVIATION","sequence":1,"measuredValue":72,"result":"FAIL","deviationAction":"继续加热","retestResult":"PASS"}]}]
                   }],"inputs":[],"outputs":[]
                 }]}""".formatted(instruction);
+    }
+
+    private String reusedControlPointInAnotherMajorDraft() {
+        return """
+                {"versionNo":1,"status":"DRAFT","majorProcesses":[{
+                  "sequence":1,"processCode":"CHILL","processName":"冷却","yieldBasis":"PRIMARY_INPUT","remark":"转入冷却","steps":[{
+                    "sequence":1,"stepCode":"COOL","stepName":"冷却定型","stepType":"NORMAL","instruction":"另一工序",
+                    "materials":[{"sequence":1,"materialRole":"PRIMARY","materialName":"熟制牛肉","materialState":"SEMI_SOLID","weightKg":8,"formulaMaterialId":"BEEF","sourceType":"EXTERNAL"}],
+                    "outputs":[{"id":"OUT-CHILL","sequence":1,"outputType":"FINISHED","outputName":"冷却牛肉","materialState":"SEMI_SOLID","weightKg":8,"primaryOutput":true,"continueFlow":false}],
+                    "controlPoints":[{"id":"CP-DEVIATION","sequence":1,"controlType":"FOOD_SAFETY","importance":"CRITICAL","itemName":"中心温度","lowerLimit":75,
+                      "resolved":true,"confirmedBy":"伪造总监","confirmedAt":"2026-08-19T21:15:00","basisOrRemark":"复测合格","measurements":[{"id":"M-DEVIATION","sequence":1,"measuredValue":72,"result":"FAIL","deviationAction":"继续加热","retestResult":"PASS"}]}]
+                  }],"inputs":[],"outputs":[]
+                }]}""";
     }
 
     @Test
