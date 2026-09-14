@@ -49,7 +49,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { RndTaskDetailView, ShipmentRecord } from "@rnd/shared";
-import { canEditExperiment, canNotifyInternalTest, canOperateTask } from "@rnd/shared";
+import { canAccessRoute, canEditExperiment, canNotifyInternalTest, canOperateTask } from "@rnd/shared";
 
 export interface WorkflowButton {
   label: string;
@@ -204,7 +204,7 @@ const actionBlocks = computed((): WorkflowActionBlock[] => {
       {
         label: canEditExp.value
           ? (experiment.value ? "继续填写打样实验单" : "开始填写打样实验单")
-          : "查看打样实验单",
+          : "查看实验单版本与归档",
         primary: status === "SAMPLING" && (canEditExp.value || isAssistant.value),
         disabled: status !== "SAMPLING" || (!canEditExp.value && !isAssistant.value),
         onClick: () => emit("openExperiment"),
@@ -242,7 +242,7 @@ const actionBlocks = computed((): WorkflowActionBlock[] => {
       {
         label: "填写内部测试评价",
         primary: status === "PENDING_TEST" && ["TESTER", "QA_TESTER"].includes(props.role),
-        disabled: status !== "PENDING_TEST",
+        disabled: status !== "PENDING_TEST" || !canAccessRoute(props.role, `/rnd/tasks/${props.detail.task.id}/test`, 'pc'),
         onClick: () => emit("openTest"),
       },
     ],
@@ -260,7 +260,7 @@ const actionBlocks = computed((): WorkflowActionBlock[] => {
         label: props.shipment ? "填写外部反馈" : "登记寄样",
         primary: (status === "COMPLETED" && !props.shipment && props.role === "RND_ASSISTANT")
           || (props.shipment?.status === "SHIPPED" && props.role === "RND_ASSISTANT"),
-        disabled: status !== "COMPLETED" && !props.shipment,
+        disabled: (status !== "COMPLETED" && !props.shipment) || !canAccessRoute(props.role, `/rnd/tasks/${props.detail.task.id}/feedback`, 'pc'),
         onClick: () => (props.shipment ? emit("openFeedback") : emit("createShipment")),
       },
     ],
@@ -277,7 +277,7 @@ const actionBlocks = computed((): WorkflowActionBlock[] => {
       {
         label: "填写外部反馈意见",
         primary: props.shipment?.status === "SHIPPED" && props.role === "RND_ASSISTANT",
-        disabled: !props.shipment || props.shipment.status !== "SHIPPED",
+        disabled: !props.shipment || props.shipment.status !== "SHIPPED" || !canAccessRoute(props.role, `/rnd/tasks/${props.detail.task.id}/feedback`, 'pc'),
         onClick: () => emit("openFeedback"),
       },
     ],

@@ -127,7 +127,7 @@ const coordinator = new ProcessPlanSaveCoordinator<ProcessPlanDraft>({
   formId: props.formId,
   debounceMs: 1200,
   isDraft: value => value.status === "DRAFT",
-  mergeAck: (local, ack) => normalizeProcessPlan({ ...local, versionNo: ack.versionNo, status: ack.status, sourceRevisionId: ack.sourceRevisionId, changeReason: ack.changeReason, balanceToleranceKg: ack.balanceToleranceKg }),
+  mergeAck: (local, ack) => normalizeProcessPlan({ ...local, legacy: ack.legacy, versionNo: ack.versionNo, status: ack.status, sourceRevisionId: ack.sourceRevisionId, changeReason: ack.changeReason, balanceToleranceKg: ack.balanceToleranceKg }),
   save: (formId, value) => api.task.saveProcessPlan(formId, { ...normalizeProcessPlan(value), experimentFormId: formId }),
   onChange: (value, state) => {
     saveState.value = state;
@@ -200,8 +200,12 @@ async function saveNow(silent = false) {
 }
 
 async function openSubmit() {
-  await saveNow(true);
-  if (saveState.value !== "error" && saveState.value !== "saving") showSubmit.value = true;
+  try {
+    await saveNow(true);
+    if (saveState.value !== "error" && saveState.value !== "saving") showSubmit.value = true;
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : "请先处理草稿保存问题");
+  }
 }
 
 async function confirmDeviation(point: ControlPointDraft) {
@@ -310,5 +314,12 @@ function formatDate(value: string) { return value ? new Date(value).toLocaleStri
 .top-summary { display: flex; gap: 16px; flex: 1; color: #595959; font-size: 13px; } .top-summary b { display: block; color: #262626; font-size: 17px; } .workspace-main { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 12px; } .view, .side-card { padding: 12px; border: 1px solid #e5e6eb; border-radius: 12px; background: #fff; } .view-bar { display: flex; justify-content: space-between; margin-bottom: 10px; } .view-bar small { display: block; color: #86909c; font-size: 12px; margin-top: 3px; } .breadcrumb { display: flex; align-items: center; gap: 6px; margin-bottom: 9px; color: #86909c; font-size: 12px; } .side { display: grid; align-content: start; gap: 12px; } .side-title { display: flex; justify-content: space-between; align-items: center; }
 .revision { display: grid; width: 100%; grid-template-columns: 36px 1fr; text-align: left; padding: 9px 0; border: 0; border-top: 1px solid #f0f0f0; background: #fff; cursor: pointer; } .revision span, .revision small { font-size: 12px; color: #86909c; } .revision small { grid-column: 2; }
 .revision-diff { margin: 12px 0; padding: 12px; border: 1px solid #e5e6eb; border-radius: 8px; background: #fafafa; } .revision-diff h3 { margin: 0 0 8px; } .revision-diff-line { display: flex; align-items: start; gap: 6px; margin-top: 6px; } .revision-diff-line span, .revision-diff-line small { display: block; } .revision-diff-line small { color: #595959; font-weight: 400; }
-@media (max-width: 1120px) { .workspace-main { grid-template-columns: 1fr; } .side { grid-template-columns: 1fr 1fr; } .workspace-top { flex-wrap: wrap; } .top-summary { order: 3; flex-basis: 100%; } } @media (max-width: 760px) { .side { grid-template-columns: 1fr; } }
+.workspace, .view, .side { min-width: 0; }
+.workspace-main { grid-template-columns: minmax(0, 1fr); }
+.side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.workspace-top { flex-wrap: wrap; }
+.top-summary { flex-wrap: wrap; min-width: 220px; }
+.top-summary > span { white-space: nowrap; }
+@media (max-width: 1120px) { .top-summary { order: 3; flex-basis: 100%; } }
+@media (max-width: 760px) { .side { grid-template-columns: 1fr; } }
 </style>

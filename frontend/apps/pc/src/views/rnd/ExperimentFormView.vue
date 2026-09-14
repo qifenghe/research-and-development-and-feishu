@@ -6,7 +6,7 @@
       @back="router.back()"
     />
 
-    <a-spin :spinning="loading">
+    <a-spin :spinning="loading || resolvingProcessConflict">
       <a-alert
         v-if="readOnly"
         type="info"
@@ -38,54 +38,65 @@
         </a-space>
       </a-card>
 
-      <a-row v-else :gutter="16">
-        <a-col :span="16">
+      <a-row v-else :gutter="16" class="experiment-layout">
+        <a-col :span="24">
           <a-card title="基本信息" class="page-card">
             <a-form layout="vertical">
               <a-row :gutter="16">
                 <a-col :span="12"><a-form-item label="产品名称"><a-input v-model:value="form.productName" disabled /></a-form-item></a-col>
                 <a-col :span="12"><a-form-item label="产品规格"><a-input v-model:value="form.specification" disabled /></a-form-item></a-col>
               </a-row>
-              <a-form-item label="实验摘要"><a-textarea v-model:value="form.summary" :rows="3" placeholder="填写本次打样说明" :disabled="readOnly" /></a-form-item>
+              <a-form-item label="实验摘要"><a-textarea v-model:value="form.summary" :rows="3" placeholder="填写本次打样说明" :disabled="editingBlocked" /></a-form-item>
             </a-form>
           </a-card>
 
           <a-collapse v-if="showLegacyProcessEditor" ghost class="page-card">
             <a-collapse-panel key="legacy-materials" header="历史兼容数据（旧版配方）">
             <a-alert type="info" show-icon style="margin-bottom:12px" message="利用率默认 100%。肉制品可勾选一项或多项主料；酱汁可按全部非包材物料计算得率。" />
-            <a-radio-group v-model:value="yieldCalculationMode" :disabled="readOnly" style="margin-bottom:12px">
+            <a-radio-group v-model:value="yieldCalculationMode" :disabled="editingBlocked" style="margin-bottom:12px">
               <a-radio-button value="SELECTED_PRIMARY_MATERIALS">按所选主料</a-radio-button>
               <a-radio-button value="TOTAL_PICKING_WEIGHT">按全部非包材物料</a-radio-button>
             </a-radio-group>
             <a-table :columns="materialColumns" :data-source="materials" row-key="key" :pagination="false" size="small">
               <template #bodyCell="{ column, record, index }">
                 <template v-if="column.key === 'role'">
-                  <a-select v-model:value="record.materialCategory" :disabled="readOnly" style="width:86px" :options="materialCategoryOptions" />
-                  <a-checkbox v-if="yieldCalculationMode === 'SELECTED_PRIMARY_MATERIALS' && record.materialCategory === 'RAW'" v-model:checked="record.primaryMaterial" :disabled="readOnly" style="margin-left:8px">主料</a-checkbox>
+                  <a-select v-model:value="record.materialCategory" :disabled="editingBlocked" style="width:86px" :options="materialCategoryOptions" />
+                  <a-checkbox v-if="yieldCalculationMode === 'SELECTED_PRIMARY_MATERIALS' && record.materialCategory === 'RAW'" v-model:checked="record.primaryMaterial" :disabled="editingBlocked" style="margin-left:8px">主料</a-checkbox>
                 </template>
-                <template v-else-if="column.key === 'materialName'"><a-input v-model:value="record.materialName" :disabled="readOnly" placeholder="物料名称" /></template>
-                <template v-else-if="column.key === 'weightKg'"><a-input-number v-model:value="record.weightKg" :disabled="readOnly" :min="0" :precision="4" addon-after="kg" style="width:100%" /></template>
+                <template v-else-if="column.key === 'materialName'"><a-input v-model:value="record.materialName" :disabled="editingBlocked" placeholder="物料名称" /></template>
+                <template v-else-if="column.key === 'weightKg'"><a-input-number v-model:value="record.weightKg" :disabled="editingBlocked" :min="0" :precision="4" addon-after="kg" style="width:100%" /></template>
                 <template v-else-if="column.key === 'ratio'">{{ formulaRatioAt(index).toFixed(2) }}%</template>
-                <template v-else-if="column.key === 'utilizationRate'"><a-input-number v-model:value="record.utilizationRate" :disabled="readOnly" :min="0" :max="100" addon-after="%" style="width:100%" /></template>
-                <template v-else-if="column.key === 'action'"><a-button v-if="!readOnly && materials.length > 1" type="link" danger @click="removeMaterial(index)">删除</a-button></template>
+                <template v-else-if="column.key === 'utilizationRate'"><a-input-number v-model:value="record.utilizationRate" :disabled="editingBlocked" :min="0" :max="100" addon-after="%" style="width:100%" /></template>
+                <template v-else-if="column.key === 'action'"><a-button v-if="!editingBlocked && materials.length > 1" type="link" danger @click="removeMaterial(index)">删除</a-button></template>
               </template>
             </a-table>
-            <a-button v-if="!readOnly" type="dashed" block style="margin-top:12px" @click="addMaterial">+ 添加物料</a-button>
+            <a-button v-if="!editingBlocked" type="dashed" block style="margin-top:12px" @click="addMaterial">+ 添加物料</a-button>
             </a-collapse-panel>
           </a-collapse>
 
           <a-card title="工艺工作台" class="page-card process-plan-card">
+            <a-alert v-if="processDraftConflict" type="warning" show-icon message="本地草稿与服务器工艺版本不同，请先核对再继续" style="margin-bottom: 12px">
+              <template #description>
+                <p>本地内容已保留，尚未覆盖服务器。核对完成前暂停编辑；可采用服务器内容，或明确确认使用本地内容继续修改。</p>
+                <details><summary>查看本地工艺内容（服务器版本显示在下方）</summary><ProcessPlanSnapshot :plan="processDraftConflict" /></details>
+                <a-space wrap>
+                  <a-button :disabled="resolvingProcessConflict" @click="resolveProcessConflict(false)">采用服务器版本</a-button>
+                  <a-button :disabled="resolvingProcessConflict || processPlan.status !== 'DRAFT'" @click="confirmLocalRecovery">保留本地内容并继续修改</a-button>
+                </a-space>
+              </template>
+            </a-alert>
             <ProcessPlanWorkspace
               ref="processWorkspace"
               v-model="processPlan"
               :form-id="detail?.currentExperimentForm?.id"
-              :readonly="readOnly"
+              :readonly="readOnly || !!processDraftConflict"
               :server-hydration-token="serverProcessHydrationToken"
               @request-save="saveDraft"
+              @saved="persistLocalDraft"
             />
             <a-collapse v-if="showLegacyProcessEditor" ghost style="margin-top:12px">
               <a-collapse-panel key="legacy" header="历史兼容数据（旧版工序编辑器）">
-                <ProcessTabsEditor v-model="processSteps" :readonly="readOnly" :create-row="blankProcess" />
+                <ProcessTabsEditor v-model="processSteps" :readonly="editingBlocked" :create-row="blankProcess" />
               </a-collapse-panel>
             </a-collapse>
           </a-card>
@@ -93,12 +104,12 @@
           <a-card title="成品产出" class="page-card">
             <a-form layout="vertical">
               <a-row :gutter="16">
-                <a-col :span="8"><a-form-item label="成品重量"><a-input-number v-model:value="form.finishedOutputWeightKg" :disabled="readOnly" :min="0" :precision="4" addon-after="kg" style="width:100%" /></a-form-item></a-col>
-                <a-col :span="8"><a-form-item label="成品数量"><a-input-number v-model:value="form.finishedOutputQuantity" :disabled="readOnly" :min="1" :precision="0" :step="1" style="width:100%" /></a-form-item></a-col>
-                <a-col :span="8"><a-form-item label="成品单位"><a-select v-model:value="form.finishedOutputUnit" :disabled="readOnly" :options="outputUnitOptions" /></a-form-item></a-col>
+                <a-col :span="8"><a-form-item label="成品重量"><a-input-number v-model:value="form.finishedOutputWeightKg" :disabled="editingBlocked" :min="0" :precision="4" addon-after="kg" style="width:100%" /></a-form-item></a-col>
+                <a-col :span="8"><a-form-item label="成品数量"><a-input-number v-model:value="form.finishedOutputQuantity" :disabled="editingBlocked" :min="1" :precision="0" :step="1" style="width:100%" /></a-form-item></a-col>
+                <a-col :span="8"><a-form-item label="成品单位"><a-select v-model:value="form.finishedOutputUnit" :disabled="editingBlocked" :options="outputUnitOptions" /></a-form-item></a-col>
               </a-row>
             </a-form>
-            <a-form-item label="备注"><a-textarea v-model:value="form.remark" :rows="2" :disabled="readOnly" /></a-form-item>
+            <a-form-item label="备注"><a-textarea v-model:value="form.remark" :rows="2" :disabled="editingBlocked" /></a-form-item>
           </a-card>
 
           <a-card title="核价数据预览" class="page-card">
@@ -114,13 +125,13 @@
           </a-card>
 
           <a-card title="照片附件" class="page-card">
-            <input v-if="!readOnly" type="file" accept="image/*" @change="onFileChange" />
+            <input v-if="!editingBlocked" type="file" accept="image/*" @change="onFileChange" />
             <p v-else style="color: #64748b; margin: 0">照片由研发人员在打样现场上传。</p>
             <p v-if="uploadHint" style="margin-top: 8px; color: #64748b">{{ uploadHint }}</p>
           </a-card>
         </a-col>
 
-        <a-col :span="8">
+        <a-col :span="24" class="workflow-status">
           <a-card title="打样状态" class="page-card workflow-side-card">
             <a-tag color="green">{{ detail?.currentExperimentForm?.status === 'LOCKED' ? '已完成并锁定' : detail?.currentExperimentForm?.status === 'SUBMITTED_FOR_TEST' ? '待内部测试' : '打样中' }}</a-tag>
             <a-tag v-if="draftStatusLabel" color="blue" style="margin-left: 8px">{{ draftStatusLabel }}</a-tag>
@@ -162,7 +173,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { message } from "ant-design-vue";
+import { message, Modal } from "ant-design-vue";
+import { hasLayeredProcessData, recoverProcessDraft } from '../../components/process/processDraftRecovery';
 import type {
   ExperimentMaterial,
   ExperimentProcessStep,
@@ -176,6 +188,7 @@ import { aggregateProcessRecipe, calculatePricingPreview, canEditExperiment, can
 import ProcessTabsEditor from "../../components/ProcessTabsEditor.vue";
 import { cloneVueValue } from "../../components/process/cloneVueValue";
 import ProcessPlanWorkspace from "../../components/process/ProcessPlanWorkspace.vue";
+import ProcessPlanSnapshot from "../../components/process/ProcessPlanSnapshot.vue";
 import { RequestGeneration } from "../../components/process/requestGeneration";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
@@ -244,11 +257,14 @@ const form = reactive({
 const materials = ref<MaterialRow[]>([blankMaterial(false)]);
 const processSteps = ref<ProcessRow[]>([blankProcess()]);
 const processPlan = ref<ProcessPlanDraft>(createEmptyProcessPlan());
+const processDraftConflict = ref<ProcessPlanDraft>();
+const resolvingProcessConflict = ref(false);
+const editingBlocked = computed(() => readOnly.value || !!processDraftConflict.value || resolvingProcessConflict.value);
 const serverProcessHydrationToken = ref(0);
 const processWorkspace = ref<{ flushSave: (silent?: boolean) => Promise<void>; restoreLocalDirty: (plan: ProcessPlanDraft) => void }>();
 const showLegacyProcessEditor = computed(() => processPlan.value.legacy && !processPlan.value.majorProcesses.some((item) => item.steps.length));
 const processRecipe = computed(() => aggregateProcessRecipe(processPlan.value));
-const hasProcessPlanData = computed(() => !processPlan.value.legacy && processRecipe.value.length > 0);
+const hasProcessPlanData = computed(() => hasLayeredProcessData(processPlan.value));
 const effectiveMaterials = computed<MaterialRow[]>(() => hasProcessPlanData.value ? processRecipe.value.map((item, index) => ({
   key: index + 1,
   materialCategory: item.canonicalMaterialRole === "PRIMARY" ? "RAW" : "AUXILIARY",
@@ -274,7 +290,7 @@ const pricingPreview = computed(() => calculatePricingPreview({
   finishedOutputWeightKg: form.finishedOutputWeightKg,
   finishedOutputQuantity: form.finishedOutputQuantity,
 }));
-const draftStatusLabel = computed(() => ({ idle: "", local: "已本地保存", syncing: "正在自动保存", saved: "已自动保存", error: "网络异常，已本地保存" }[draftSyncState.value]));
+const draftStatusLabel = computed(() => ({ idle: "", local: "已本地保存", syncing: "正在自动保存", saved: "已自动保存", error: "保存失败，已保留本地内容" }[draftSyncState.value]));
 const localDraftKey = computed(() => experimentDraftKey(auth.principal?.userId || auth.user?.id || auth.displayName, activeTaskId.value));
 const pricingPreviewMaterials = computed(() => effectiveMaterials.value.map((item, index) => ({
   key: item.key,
@@ -494,6 +510,7 @@ async function resetAndLoad(taskId: string, generation: number) {
   materials.value = [blankMaterial(false)];
   processSteps.value = [blankProcess()];
   processPlan.value = createEmptyProcessPlan();
+  processDraftConflict.value = undefined;
   try {
     const loadedDetail = await api.task.detail(taskId, auth.role, auth.displayName);
     if (!requestGeneration.isCurrent(generation)) return;
@@ -582,7 +599,7 @@ function draftSnapshot() {
 }
 
 function persistLocalDraft() {
-  if (!hydrated.value || readOnly.value) return;
+  if (!hydrated.value || readOnly.value || processDraftConflict.value) return;
   writeExperimentDraft(localStorage, localDraftKey.value, draftSnapshot());
   if (!["syncing", "error"].includes(draftSyncState.value)) draftSyncState.value = "local";
 }
@@ -600,17 +617,69 @@ function restoreLocalDraft(serverSavedAt?: string) {
   materials.value = cached.value.materials;
   processSteps.value = cached.value.processSteps;
   if (cached.value.processPlan) {
-    processPlan.value = normalizeProcessPlan(cached.value.processPlan);
-    processWorkspace.value?.restoreLocalDirty(processPlan.value);
+    const candidate = normalizeProcessPlan(cached.value.processPlan);
+    const decision = recoverProcessDraft(processPlan.value, candidate);
+    if (decision === 'local') {
+      processPlan.value = candidate;
+      processWorkspace.value?.restoreLocalDirty(candidate);
+    } else if (decision === 'conflict') {
+      processDraftConflict.value = candidate;
+    }
   }
   draftSyncState.value = "local";
 }
 
 function scheduleAutoSave() {
-  if (!hydrated.value || readOnly.value || suppressAutoSave) return;
+  if (!hydrated.value || readOnly.value || suppressAutoSave || processDraftConflict.value) return;
   persistLocalDraft();
   if (autoSaveTimer) window.clearTimeout(autoSaveTimer);
   autoSaveTimer = window.setTimeout(() => void autoSave(), 1500);
+}
+
+function confirmLocalRecovery() {
+  if (resolvingProcessConflict.value || !processDraftConflict.value) return;
+  Modal.confirm({
+    title: '确认以本地内容继续修改？',
+    content: '请先查看本地工艺内容并与服务器版本核对。确认后将作为当前草稿保存，不会覆盖已提交的正式版本。原本地缓存会单独备份。',
+    okText: '已核对，保留本地内容', cancelText: '返回核对',
+    onOk: () => resolveProcessConflict(true),
+  });
+}
+
+async function resolveProcessConflict(useLocal: boolean) {
+  const candidate = processDraftConflict.value;
+  const formId = detail.value?.currentExperimentForm?.id;
+  const generation = requestGeneration.capture();
+  if (!candidate || !formId || resolvingProcessConflict.value) return;
+  resolvingProcessConflict.value = true;
+  try {
+    const server = normalizeProcessPlan(await api.task.getProcessPlan(formId));
+    if (!requestGeneration.isCurrent(generation) || processDraftConflict.value !== candidate) return;
+    if (useLocal && (server.status !== 'DRAFT' || server.versionNo !== processPlan.value.versionNo)) {
+      processPlan.value = server;
+      serverProcessHydrationToken.value++;
+      message.warning('服务器版本已再次变化，请重新核对');
+      return;
+    }
+    const original = readExperimentDraft<ReturnType<typeof draftSnapshot>>(localStorage, localDraftKey.value);
+    if (original) writeExperimentDraft(localStorage, `${localDraftKey.value}:conflict-backup`, original.value, original.savedAt);
+    processPlan.value = server;
+    serverProcessHydrationToken.value++;
+    await nextTick();
+    if (!requestGeneration.isCurrent(generation)) return;
+    processDraftConflict.value = undefined;
+    if (useLocal) {
+      processPlan.value = normalizeProcessPlan({...candidate, id:server.id, experimentFormId:formId,
+        versionNo:server.versionNo, status:'DRAFT', legacy:server.legacy, sourceRevisionId:server.sourceRevisionId});
+      processWorkspace.value?.restoreLocalDirty(processPlan.value);
+    }
+    persistLocalDraft();
+    await saveDraft();
+  } catch (error) {
+    if (requestGeneration.isCurrent(generation)) message.error(error instanceof Error ? error.message : '无法恢复草稿');
+  } finally {
+    resolvingProcessConflict.value = false;
+  }
 }
 
 async function autoSave() {
@@ -621,6 +690,10 @@ async function autoSave() {
 watch([form, materials, processSteps, yieldCalculationMode, experimentPhase], scheduleAutoSave, { deep: true });
 
 async function saveDraft(options: { silent?: boolean } = {}) {
+  if (processDraftConflict.value) {
+    if (!options.silent) message.warning('请先核对本地草稿与服务器版本');
+    return false;
+  }
   const generation = requestGeneration.capture();
   const taskId = activeTaskId.value;
   const finishedOutputQuantity = validateFinishedOutputQuantity();
@@ -770,5 +843,10 @@ function download(blob: Blob, filename: string) {
 </script>
 
 <style scoped>
+.workflow-status { order: -1; }
+.workflow-side-card :deep(.ant-card-body) { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.workflow-side-card :deep(.ant-divider) { display: none; }
+.workflow-side-card :deep(.ant-space) { width: auto !important; flex-direction: row !important; flex-wrap: wrap; margin-left: auto; }
+.experiment-layout > :deep(.ant-col) { min-width: 0; }
 .mode-chooser-card{max-width:920px;margin:24px auto}.mode-choice{width:100%;min-height:180px;padding:24px;text-align:left;background:#fff;border:1px solid #dbe3ef;border-radius:8px}.mode-choice--recommended{border:2px solid #246bfe;background:#f7faff}.mode-choice span,.mode-choice strong,.mode-choice small{display:block}.mode-choice span{margin-bottom:14px;color:#246bfe;font-size:12px;font-weight:700}.mode-choice strong{margin-bottom:8px;font-size:22px}.mode-choice small{color:#64748b;font-size:14px;line-height:1.7}
 </style>

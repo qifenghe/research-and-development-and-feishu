@@ -19,10 +19,10 @@
         </a-col>
       </a-row>
 
-      <a-card title="最近待办任务" class="page-card" style="margin-top: 16px">
+      <a-card v-if="auth.role !== 'FINANCE'" title="最近待办任务" class="page-card" style="margin-top: 16px">
         <a-table
           :columns="taskColumns"
-          :data-source="overview?.recentTasks ?? []"
+          :data-source="visibleTasks"
           row-key="taskId"
           :pagination="false"
           size="middle"
@@ -34,19 +34,19 @@
               </a-tag>
             </template>
             <template v-else-if="column.key === 'action'">
-              <a-button type="link" size="small" @click="router.push(`/rnd/tasks/${record.taskId}`)">
+              <a-button type="link" size="small" @click="router.push(isTester ? `/rnd/tasks/${record.taskId}/test` : `/rnd/tasks/${record.taskId}`)">
                 {{ taskActionLabel(record.status) }}
               </a-button>
             </template>
           </template>
         </a-table>
-        <a-empty v-if="!loading && !(overview?.recentTasks?.length)" description="暂无进行中的研发任务" />
+        <a-empty v-if="!loading && !visibleTasks.length" description="暂无本角色待办任务" />
       </a-card>
 
       <a-card v-if="showPricingSection" title="待核价文件" class="page-card">
         <a-table
           :columns="pricingColumns"
-          :data-source="overview?.pendingPricingFiles ?? []"
+          :data-source="visiblePricingFiles"
           row-key="pricingFileId"
           :pagination="false"
           size="middle"
@@ -76,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { canAccessRoute, roleLabel, RND_TASK_STATUS_LABELS, type DashboardOverview, type RndTaskStatus } from "@rnd/shared";
 import { useAuthStore } from "../stores/auth";
@@ -86,6 +86,11 @@ const router = useRouter();
 const auth = useAuthStore();
 const loading = ref(false);
 const overview = ref<DashboardOverview | null>(null);
+const visibleTasks = ref<DashboardOverview['recentTasks']>([]);
+const visiblePricingFiles = ref<DashboardOverview['pendingPricingFiles']>([]);
+const isTester = computed(() => ['TESTER', 'QA_TESTER'].includes(auth.role));
+let disposed = false;
+onUnmounted(() => { disposed = true; });
 
 const dashboardSubtitle = computed(() => {
   const label = roleLabel(auth.role);
@@ -131,7 +136,8 @@ const visibleStats = computed(() => {
 const actionCatalog = [
   { label: "寄样反馈", description: "查看待反馈样品，登记客户是否通过或继续打样", path: "/shipment/list", roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER"] },
   { label: "录入客户反馈", description: "登记寄样并录入客户试吃后的通过、复打样或停止结论", path: "/shipment/record", roles: ["RND_ASSISTANT", "RND_DIRECTOR"] },
-  { label: "录入样品需求", description: "研发内勤录入业务员或客户提出的样品清单", path: "/demand/new", roles: ["RND_ASSISTANT", "RND_DIRECTOR"] },
+  { label: "录入样品需求", description: "研发内勤录入业务员或客户提出的样品清单", path: "/demand/new", roles: ["RND_ASSISTANT"] },
+  { label: "财务核价收件箱", description: "查看已审核移交的核价文件并确认接收", path: "/finance", roles: ["FINANCE"] },
   { label: "核价文件", description: "样品通过后生成核价文件并通知财务", path: "/pricing/list", roles: ["RND_ASSISTANT", "RND_DIRECTOR", "FINANCE", "MANAGER"] },
   { label: "需求审核", description: "研发总监判断资料是否完整，通过后进入任务池", path: "/demand/review", roles: ["RND_DIRECTOR", "MANAGER"] },
   { label: "任务分发", description: "研发总监分发给具体研发人员", path: "/rnd/assign", roles: ["RND_DIRECTOR"] },
@@ -142,7 +148,7 @@ const actionCatalog = [
 const primaryActions = computed(() => {
   const role = auth.role ?? "";
   return actionCatalog
-    .filter((item) => canAccessRoute(role, item.path, "pc"))
+    .filter((item) => (item.roles.includes(role) || ['ADMIN', 'SYSTEM_ADMIN'].includes(role)) && canAccessRoute(role, item.path, "pc"))
     .sort((left, right) => {
       const leftPriority = left.roles.indexOf(role);
       const rightPriority = right.roles.indexOf(role);
@@ -165,7 +171,7 @@ const drilldowns = computed(() =>
 );
 
 const showPricingSection = computed(() =>
-  canAccessRoute(auth.role, "/pricing/list", "pc") && (overview.value?.pendingPricingFiles?.length ?? 0) > 0,
+  visiblePricingFiles.value.length > 0,
 );
 
 const taskColumns = [
@@ -201,6 +207,8 @@ function taskStatusColor(status: string) {
 }
 
 function taskActionLabel(status: string) {
+  if (auth.role === 'RND_ASSISTANT') return '去跟进';
+  if (auth.role === 'MANAGER') return '查看';
   if (status === "PENDING_ACCEPTANCE") return "去接单";
   if (status === "SAMPLING") return auth.role === "RND_ASSISTANT" ? "去跟进" : "去打样";
   if (status === "PENDING_TEST") return "去测试";
@@ -212,11 +220,44 @@ function pricingStatusLabel(status: string) {
 }
 
 onMounted(async () => {
+  const token = auth.token;
+  const current = () => !disposed && token === auth.token;
   loading.value = true;
   try {
-    overview.value = await api.dashboard.overview();
+    const data = await api.dashboard.overview();
+    if (!current()) return;
+    overview.value = data;
+    if (auth.role === 'FINANCE') {
+      const files = await api.shipment.pricingFiles({ status: 'FINANCE_NOTIFIED' });
+      if (!current()) return;
+      visiblePricingFiles.value = (Array.isArray(files) ? files : files.items).map(file => ({...file, pricingFileId: file.id}));
+    } else {
+      visiblePricingFiles.value = canAccessRoute(auth.role, '/pricing/list', 'pc') ? data.pendingPricingFiles : [];
+      if (isTester.value) {
+        const tasks = await api.task.list({ status: 'PENDING_TEST' });
+        if (!current()) return;
+        const assigned = await Promise.all((Array.isArray(tasks) ? tasks : tasks.items).map(async task => {
+          try {
+            const item = await api.task.detail(task.id);
+            const assignment = item.currentTestAssignment;
+            const mine = assignment?.testerUserId ? assignment.testerUserId === (auth.principal?.userId ?? auth.user?.id) : assignment?.testerName === auth.displayName;
+            return mine ? {...task, taskId:task.id} : null;
+          } catch { return null; }
+        }));
+        if (!current()) return;
+        visibleTasks.value = assigned.filter((task): task is NonNullable<typeof task> => task !== null);
+      } else if (auth.role === 'RND_ENGINEER') {
+        const tasks = await api.task.list({ assigneeName: auth.displayName });
+        if (!current()) return;
+        visibleTasks.value = (Array.isArray(tasks) ? tasks : tasks.items)
+          .filter(task => task.assigneeName === auth.displayName && ['PENDING_ACCEPTANCE', 'SAMPLING', 'PENDING_TEST'].includes(task.status))
+          .slice(0, 3).map(task => ({...task, taskId:task.id}));
+      } else {
+        visibleTasks.value = data.recentTasks;
+      }
+    }
   } finally {
-    loading.value = false;
+    if (current()) loading.value = false;
   }
 });
 </script>

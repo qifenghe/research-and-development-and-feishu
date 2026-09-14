@@ -100,6 +100,7 @@ import {
 } from "@rnd/shared";
 import { confirmProcessPlanRepair, copyMajorProcess, type RemovedFlowConsumer } from "./processPlanFlow";
 import { cloneVueValue } from "./cloneVueValue";
+import { templateProcessCode } from "./processDraftRecovery";
 
 const props = defineProps<{ modelValue: ProcessPlanDraft; readonly?: boolean; selectedKey?: string }>();
 const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft]; select: [key: string] }>();
@@ -129,7 +130,7 @@ const clonePlan = (value: ProcessPlanDraft) => cloneVueValue(value);
 
 function blankMajor(name = ""): MajorProcessDraft {
   return {
-    key: nextProcessKey("major"), sequence: plan.value.majorProcesses.length + 1, processCode: "",
+    key: nextProcessKey("major"), sequence: plan.value.majorProcesses.length + 1, processCode: templateProcessCode(name),
     processName: name, description: templates.find(item => item.name === name)?.description || "",
     yieldBasis: "PRIMARY_INPUT", remark: "", steps: [], inputs: [], outputs: [],
   };
@@ -260,11 +261,12 @@ function percent(value: number | null) { return value == null ? "待补充" : `$
 .empty span { color: #86909c; }
 .major-card { margin-bottom: 10px; border: 1px solid #e5e6eb; border-radius: 10px; background: #fff; overflow: hidden; }
 .major-card.selected { border-color: #1677ff; box-shadow: 0 0 0 2px #e6f4ff; }
-.major-card header { display: grid; grid-template-columns: 20px 36px minmax(160px, 1fr) 72px 90px auto; align-items: center; gap: 10px; padding: 12px; }
+.major-card header { display: grid; grid-template-columns: 20px 36px minmax(0, 1fr) 72px 90px; align-items: center; gap: 10px; padding: 12px; }
+.major-card header :deep(.ant-space) { grid-column: 3 / -1; flex-wrap: wrap; }
 .handle { color: #bfbfbf; cursor: grab; }
 .sequence { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: #e6f4ff; color: #1677ff; font-weight: 700; }
 .name b, .metric b { display: block; }
-.major-card footer { display: flex; gap: 16px; align-items: center; padding: 8px 12px; background: #fafafa; border-top: 1px solid #f0f0f0; color: #595959; font-size: 12px; }
+.major-card footer { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; padding: 8px 12px; background: #fafafa; border-top: 1px solid #f0f0f0; color: #595959; font-size: 12px; }
 .major-card footer .ant-btn { margin-left: auto; }
 .warn { color: #d4380d; }
 .drop-zone { width: 100%; min-height: 48px; border: 1px dashed #91caff; border-radius: 10px; background: #fff; color: #1677ff; cursor: pointer; }

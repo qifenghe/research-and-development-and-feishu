@@ -17,7 +17,6 @@ export function setUnauthorizedHandler(handler: () => void) {
 const client = createApiClient({
   getToken: getAccessToken,
   onUnauthorized: () => unauthorizedHandler?.(),
-  onForbidden: () => unauthorizedHandler?.(),
 });
 
 export const api: RndApi = createRndApi(client);

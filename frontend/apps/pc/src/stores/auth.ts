@@ -6,6 +6,7 @@ import {
   type UserAccount,
 } from "@rnd/shared";
 import { api, logout as clearSession, persistLogin } from "../services/api";
+import { useAdminContext } from "../composables/adminContext";
 
 interface AuthState {
   token: string | null;
@@ -28,6 +29,8 @@ export const useAuthStore = defineStore("auth", {
   },
   actions: {
     async loginWithPassword(username: string, password: string) {
+      useAdminContext().clearPanel();
+      this.principal = null;
       this.loading = true;
       try {
         const result = await api.session.login(username, password);
@@ -40,6 +43,8 @@ export const useAuthStore = defineStore("auth", {
       }
     },
     async loginWithFeishuCode(code: string) {
+      useAdminContext().clearPanel();
+      this.principal = null;
       this.loading = true;
       try {
         const result = await api.session.feishuCallback(code);
@@ -66,6 +71,7 @@ export const useAuthStore = defineStore("auth", {
       }
     },
     signOut() {
+      useAdminContext().clearPanel();
       clearSession();
       this.token = null;
       this.user = null;

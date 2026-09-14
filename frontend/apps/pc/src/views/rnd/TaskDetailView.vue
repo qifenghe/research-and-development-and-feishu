@@ -105,7 +105,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Modal, message } from "ant-design-vue";
 import {
@@ -127,6 +127,8 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const { setPanel, clearPanel } = useAdminContext();
+let disposed = false;
+let loadGeneration = 0;
 const loading = ref(false);
 const detail = ref<RndTaskDetailView | null>(null);
 const relatedShipment = ref<ShipmentRecord | null>(null);
@@ -147,7 +149,7 @@ const permissionHint = computed(() => {
   if (!detail.value) return "";
   const { task } = detail.value;
   if ((task.status === "PENDING_ACCEPTANCE" || task.status === "SAMPLING")
-    && ["RND_ENGINEER", "RND_DIRECTOR", "RND"].includes(auth.role)
+    && ["RND_ENGINEER", "RND"].includes(auth.role)
     && task.assigneeName
     && task.assigneeName !== auth.displayName) {
     return `该任务已分发给 ${task.assigneeName}，当前账号 ${auth.displayName} 不能代为操作。`;
@@ -162,10 +164,24 @@ const permissionHint = computed(() => {
 });
 
 async function load() {
+  const generation = ++loadGeneration;
+  const token = auth.token;
+  const taskId = String(route.params.id);
+  const current = () => !disposed && generation === loadGeneration && token === auth.token && taskId === String(route.params.id);
   loading.value = true;
+  detail.value = null;
+  relatedShipment.value = null;
+  testRecords.value = [];
+  clearPanel();
   try {
-    detail.value = await api.task.detail(String(route.params.id), auth.role, auth.displayName);
-    if (canViewTestRecords.value) testRecords.value = await api.task.testRecords(String(route.params.id));
+    const loaded = await api.task.detail(taskId, auth.role, auth.displayName);
+    if (!current()) return;
+    detail.value = loaded;
+    if (canViewTestRecords.value) {
+      const records = await api.task.testRecords(taskId);
+      if (!current()) return;
+      testRecords.value = records;
+    }
     if (detail.value) {
       setPanel({
         title: detail.value.task.productName,
@@ -174,17 +190,29 @@ async function load() {
         statusTone: detail.value.task.status === "SAMPLING" ? "success" : "processing",
         rows: buildTaskSummaryRows(detail.value).slice(0, 6),
       });
-      const shipments = await api.shipment.list({ keyword: detail.value.task.sampleNo });
-      relatedShipment.value =
-        shipments.find((item) => item.versionId === detail.value!.version.id) ?? shipments[0] ?? null;
+      if (["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", "ADMIN", "SYSTEM_ADMIN"].includes(auth.role)) {
+        const shipments = await api.shipment.list({ keyword: loaded.task.sampleNo });
+        if (!current()) return;
+        relatedShipment.value = shipments.find((item) => item.versionId === loaded.version.id) ?? null;
+      }
     }
+  } catch (error) {
+    if (current()) message.error(error instanceof Error ? error.message : '无法加载任务');
   } finally {
-    loading.value = false;
+    if (current()) loading.value = false;
   }
 }
 
 async function loadEngineers() {
-  const users = await api.task.assignees();
+  if (!["RND_DIRECTOR", "ADMIN", "SYSTEM_ADMIN"].includes(auth.role)) return;
+  const token = auth.token;
+  let users: UserAccount[];
+  try { users = await api.task.assignees(); }
+  catch (error) {
+    if (!disposed && token === auth.token) message.error(error instanceof Error ? error.message : '无法加载研发人员');
+    return;
+  }
+  if (disposed || token !== auth.token) return;
   engineerOptions.value = users
     .filter((user: UserAccount) => user.status === "ACTIVE" && isRndAssigneeRole(user.role))
     .map((user) => ({
@@ -198,6 +226,7 @@ function filterEngineer(input: string, option?: { label: string; value: string }
 }
 
 function openExperimentForm() {
+  if (auth.role === 'RND_ASSISTANT') { openHistory(); return; }
   router.push(`/rnd/tasks/${route.params.id}/experiment`);
 }
 
@@ -283,8 +312,11 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  disposed = true;
+  loadGeneration++;
   clearPanel();
 });
+watch(() => route.params.id, () => { if (!disposed) void load(); });
 </script>
 
 <style scoped>

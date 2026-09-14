@@ -297,8 +297,8 @@ function percent(value: number | null) { return value == null ? "待补充" : `$
 .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; color: #595959; font-size: 13px; }
 .hint { margin: 0 0 8px; }
 .material-row, .output-row { display: grid; gap: 6px; align-items: center; margin-top: 6px; }
-.material-row { grid-template-columns: 118px 110px 100px 90px minmax(120px, 1fr) 120px 45px; }
-.output-row { grid-template-columns: 110px minmax(120px, 1fr) 82px 120px 82px 82px 130px 45px; }
+.material-row, .output-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.material-row > *, .output-row > *, .step-editor { min-width: 0; width: 100%; }
 .live { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #f0f7ff; }
 .live b, .live span { display: block; } .live span { margin-top: 3px; color: #1677ff; }
 .no-step { display: grid; place-content: center; min-height: 300px; color: #86909c; }

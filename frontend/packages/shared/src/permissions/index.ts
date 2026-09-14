@@ -30,7 +30,7 @@ const ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/rnd\/my-tasks$/, roles: ["RND_ENGINEER", "RND_DIRECTOR", ...ADMIN_ROLES] },
   { pattern: /^\/rnd\/pending-tests$/, roles: ["TESTER", "QA_TESTER", ...ADMIN_ROLES] },
   { pattern: /^\/rnd\/stopped$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
-  { pattern: /^\/rnd\/tasks\/[^/]+$/, roles: ["RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "MANAGER", ...ADMIN_ROLES] },
+  { pattern: /^\/rnd\/tasks\/[^/]+$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/rnd\/tasks\/[^/]+\/experiment$/, roles: ["RND_ENGINEER", "RND_DIRECTOR", ...ADMIN_ROLES] },
   { pattern: /^\/rnd\/tasks\/[^/]+\/test$/, roles: ["TESTER", "QA_TESTER", ...ADMIN_ROLES] },
   { pattern: /^\/rnd\/tasks\/[^/]+\/feedback$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", ...ADMIN_ROLES] },
