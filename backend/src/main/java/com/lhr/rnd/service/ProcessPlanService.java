@@ -69,6 +69,16 @@ public class ProcessPlanService {
     }
 
     private ProcessPlan saveInternal(String formId, ProcessPlan request) {
+        return saveInternal(formId, request, false);
+    }
+
+    /** Package-only promotion path: IDs were freshly allocated by the trusted trial graph remapper. */
+    @Transactional
+    ProcessPlan savePromotedTrial(String formId, ProcessPlan request) {
+        return saveInternal(formId, request, true);
+    }
+
+    private ProcessPlan saveInternal(String formId, ProcessPlan request, boolean preserveMaterialIds) {
         requireForm(formId);
         var balanceTolerance = requireBalanceTolerance(request.balanceToleranceKg());
         var current = jdbc.query("select id, version_no, status, balance_tolerance_kg, source_revision_id, change_reason from experiment_process_plan where experiment_form_id = ?",
@@ -103,7 +113,7 @@ public class ProcessPlanService {
             jdbc.update("delete from experiment_major_process where process_plan_id = ?", planId);
         }
         var majors = request.majorProcesses() == null ? List.<ProcessPlan.MajorProcess>of() : request.majorProcesses();
-        for (int index = 0; index < majors.size(); index++) saveMajor(planId, index + 1, majors.get(index));
+        for (int index = 0; index < majors.size(); index++) saveMajor(planId, index + 1, majors.get(index), preserveMaterialIds);
         return find(formId);
     }
 
@@ -337,6 +347,10 @@ public class ProcessPlanService {
     }
 
     private void saveMajor(String planId, int sequence, ProcessPlan.MajorProcess major) {
+        saveMajor(planId, sequence, major, false);
+    }
+
+    private void saveMajor(String planId, int sequence, ProcessPlan.MajorProcess major, boolean preserveMaterialIds) {
         if (major.processName() == null || major.processName().isBlank())
             throw new BusinessException("PROCESS_NAME_REQUIRED", "大工序名称不能为空");
         var majorId = valueOr(major.id(), id("MP"));
@@ -344,7 +358,7 @@ public class ProcessPlanService {
                 majorId, planId, sequence, major.processCode(), major.processName(), major.description(),
                 valueOr(major.yieldBasis(), "PRIMARY_INPUT"), major.remark());
         var steps = major.steps() == null ? List.<ProcessPlan.MinorStep>of() : major.steps();
-        for (int index = 0; index < steps.size(); index++) saveStep(majorId, index + 1, steps.get(index));
+        for (int index = 0; index < steps.size(); index++) saveStep(majorId, index + 1, steps.get(index), preserveMaterialIds);
         var inputs = major.inputs() == null ? List.<ProcessPlan.ProcessInput>of() : major.inputs();
         for (int index = 0; index < inputs.size(); index++) {
             var item = inputs.get(index);
@@ -372,7 +386,7 @@ public class ProcessPlanService {
         return value == null || value.isBlank();
     }
 
-    private void saveStep(String majorId, int sequence, ProcessPlan.MinorStep step) {
+    private void saveStep(String majorId, int sequence, ProcessPlan.MinorStep step, boolean preserveMaterialIds) {
         if (step.stepName() == null || step.stepName().isBlank())
             throw new BusinessException("STEP_NAME_REQUIRED", "小步骤名称不能为空");
         calculations.validateStep(step);
@@ -395,7 +409,7 @@ public class ProcessPlanService {
             var item = materials.get(index);
             requireNonNegative(item.weightKg());
             jdbc.update("insert into experiment_step_material(id, minor_step_id, sequence, material_role, material_code, material_name, material_state, weight_kg, formula_material_id, remark, source_type, source_step_output_id) values (?,?,?,?,?,?,?,?,?,?,?,?)",
-                    id("MAT"), stepId, index + 1, valueOr(item.materialRole(), "AUXILIARY"), item.materialCode(),
+                    preserveMaterialIds ? valueOr(item.id(), id("MAT")) : id("MAT"), stepId, index + 1, valueOr(item.materialRole(), "AUXILIARY"), item.materialCode(),
                     valueOr(item.materialName(), "未命名物料"), valueOr(item.materialState(), "SOLID"), item.weightKg(),
                     item.formulaMaterialId(), item.remark(), valueOr(item.sourceType(), "EXTERNAL"), item.sourceStepOutputId());
         }

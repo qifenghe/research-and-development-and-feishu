@@ -26,13 +26,17 @@ public class TrialSchemeService {
     private final ObjectMapper objectMapper;
     private final ProcessPlanService processPlanService;
     private final TrialSchemeCopyService copyService;
+    private final TrialControlEvidenceService evidence;
+    private final AuditLogService audit;
 
     public TrialSchemeService(JdbcTemplate jdbc, ObjectMapper objectMapper, ProcessPlanService processPlanService,
-                              TrialSchemeCopyService copyService) {
+                              TrialSchemeCopyService copyService, TrialControlEvidenceService evidence, AuditLogService audit) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.processPlanService = processPlanService;
         this.copyService = copyService;
+        this.evidence = evidence;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -115,7 +119,7 @@ public class TrialSchemeService {
         var normalized = copyService.normalizeForSave(command.plan(), command.plannedData(), stored.trial().plan(),
                 stored.trial().majorOrigins(), stored.inheritedMeasurementIds(), stored.inheritedMeasurementFingerprints());
         var nextVersion = command.versionNo() + 1;
-        var plan = trialPlan(normalized.plan(), formId);
+        var plan = trialPlan(evidence.preserveUnchanged(normalized.plan(), stored.trial().plan()), formId);
         var updated = jdbc.update("""
                 update experiment_trial_scheme set version_no=?, name=?, purpose=?, variables=?, conclusion=?, recommendation_reason=?,
                 quality_score=?, quality_notes=?, difficulty=?, plan_json=?, planned_data_json=?, major_origins_json=?, updated_by=?,
@@ -171,6 +175,34 @@ public class TrialSchemeService {
                 read(rs.getString("inherited_measurement_fingerprints_json"), new TypeReference<Set<String>>() {})), trialId, formId);
         if (rows.isEmpty()) throw invalid("TRIAL_NOT_FOUND", "试验方案不存在");
         return rows.get(0);
+    }
+
+    @Transactional
+    public TrialScheme confirm(String formId, String trialId, String pointId, ConfirmCommand command, SessionPrincipal principal) {
+        if (command == null) throw invalid("TRIAL_REQUEST_REQUIRED", "确认请求不能为空");
+        return confirmInternal(formId, trialId, pointId, command.trialVersionNo(), principal, false, null);
+    }
+
+    @Transactional
+    public TrialScheme confirmDeviation(String formId, String trialId, String pointId, ConfirmDeviationCommand command, SessionPrincipal principal) {
+        requireReadAccess(formId, principal);
+        if (!"RND_DIRECTOR".equals(principal.role())) throw invalid("TRIAL_DEVIATION_CONFIRMATION_FORBIDDEN", "偏差确认仅限研发总监");
+        if (command == null) throw invalid("TRIAL_REQUEST_REQUIRED", "确认请求不能为空");
+        return confirmInternal(formId, trialId, pointId, command.trialVersionNo(), principal, true, command.resolutionNote());
+    }
+
+    private TrialScheme confirmInternal(String formId, String trialId, String pointId, int version, SessionPrincipal principal, boolean deviation, String note) {
+        requireMutationAccess(formId, principal);
+        var current = findInternal(formId, trialId, true);
+        if (current.trial().versionNo() != version) throw conflict();
+        if (current.trial().archived()) throw invalid("TRIAL_ARCHIVED", "归档方案不能确认或提交");
+        var confirmed = evidence.confirm(current.trial().plan(), pointId, current.inheritedMeasurementFingerprints(), principal, deviation, note);
+        var updated = jdbc.update("update experiment_trial_scheme set version_no=version_no+1, plan_json=?, updated_by=?, updated_by_user_id=?, updated_at=? where id=? and experiment_form_id=? and version_no=?",
+                json(confirmed), principal.name(), principal.userId(), LocalDateTime.now(), trialId, formId, version);
+        if (updated != 1) throw conflict();
+        audit.record("TRIAL_CONTROL_POINT", trialId, deviation ? "TRIAL_CONTROL_DEVIATION_CONFIRMED" : "TRIAL_CONTROL_PASS_CONFIRMED",
+                principal.name(), principal.userId(), "formId=%s;pointId=%s;trialVersionNo=%d;resolutionNote=%s".formatted(formId, pointId, version + 1, note == null ? "" : note.trim()));
+        return findInternal(formId, trialId, false).trial();
     }
 
     private TrialScheme map(ResultSet rs, int row) throws SQLException {
@@ -261,4 +293,6 @@ public class TrialSchemeService {
                               ProcessPlan plan, TrialScheme.PlannedData plannedData) {}
     public record CopyCommand(int versionNo, String name, boolean includeActuals) {}
     public record ArchiveCommand(int versionNo, boolean archived) {}
+    public record ConfirmCommand(int trialVersionNo) {}
+    public record ConfirmDeviationCommand(int trialVersionNo, String resolutionNote) {}
 }

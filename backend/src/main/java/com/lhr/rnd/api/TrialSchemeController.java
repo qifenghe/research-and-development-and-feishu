@@ -4,6 +4,8 @@ import com.lhr.rnd.model.ProcessPlan;
 import com.lhr.rnd.model.TrialScheme;
 import com.lhr.rnd.service.SessionPrincipal;
 import com.lhr.rnd.service.TrialSchemeService;
+import com.lhr.rnd.service.TrialPromotionService;
+import com.lhr.rnd.model.ProcessRevision;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,9 +22,11 @@ import java.util.List;
 @RequestMapping("/api/v1/experiment-forms/{formId}/trials")
 public class TrialSchemeController {
     private final TrialSchemeService service;
+    private final TrialPromotionService promotion;
 
-    public TrialSchemeController(TrialSchemeService service) {
+    public TrialSchemeController(TrialSchemeService service, TrialPromotionService promotion) {
         this.service = service;
+        this.promotion = promotion;
     }
 
     @GetMapping
@@ -63,6 +67,30 @@ public class TrialSchemeController {
                                             @RequestBody ArchiveTrialRequest body, HttpServletRequest request) {
         return ApiResponse.success(service.archive(formId, trialId,
                 new TrialSchemeService.ArchiveCommand(body.versionNo(), body.archived()), principal(request)));
+    }
+
+    @PostMapping("/{trialId}/control-points/{pointId}/confirm")
+    public ApiResponse<TrialScheme> confirm(@PathVariable String formId, @PathVariable String trialId, @PathVariable String pointId,
+                                            @RequestBody TrialSchemeService.ConfirmCommand body, HttpServletRequest request) {
+        return ApiResponse.success(service.confirm(formId, trialId, pointId, body, principal(request)));
+    }
+
+    @PostMapping("/{trialId}/control-points/{pointId}/confirm-deviation")
+    public ApiResponse<TrialScheme> confirmDeviation(@PathVariable String formId, @PathVariable String trialId, @PathVariable String pointId,
+                                                     @RequestBody TrialSchemeService.ConfirmDeviationCommand body, HttpServletRequest request) {
+        return ApiResponse.success(service.confirmDeviation(formId, trialId, pointId, body, principal(request)));
+    }
+
+    @PostMapping("/{trialId}/submission-preview")
+    public ApiResponse<TrialPromotionService.Preview> preview(@PathVariable String formId, @PathVariable String trialId,
+                                                             @RequestBody TrialPromotionService.PreviewCommand body, HttpServletRequest request) {
+        return ApiResponse.success(promotion.preview(formId, trialId, body, principal(request)));
+    }
+
+    @PostMapping("/{trialId}/submit")
+    public ApiResponse<ProcessRevision> submit(@PathVariable String formId, @PathVariable String trialId,
+                                               @RequestBody TrialPromotionService.SubmitCommand body, HttpServletRequest request) {
+        return ApiResponse.success(promotion.submit(formId, trialId, body, principal(request)));
     }
 
     private SessionPrincipal principal(HttpServletRequest request) {
