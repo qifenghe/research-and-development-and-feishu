@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -64,7 +66,7 @@ public class TrialSchemeCopyService {
                         point.lowerLimit(), point.upperLimit(), point.unit(), point.method(), point.measurementTool(), point.frequency(),
                         point.deviationAction(), false, null, null, point.basisOrRemark(),
                         includeActuals ? values(point.measurements()).stream().map(measurement -> new ProcessPlan.ControlMeasurement(
-                                ids.id("TCM", measurement.id()), measurement.sequence(), measurement.measuredValue(), measurement.measuredAt(),
+                                ids.id("TCM", measurement.id()), measurement.sequence(), measurement.measuredValue(), measurementTime(measurement.measuredAt()),
                                 measurement.result(), measurement.deviationAction(), null, measurement.remark())).toList() : List.of())).toList();
                 return new ProcessPlan.MinorStep(ids.id("TSTEP", step.id()), step.sequence(), step.stepCode(), step.stepName(), step.stepType(),
                         step.parameter1Name(), includeActuals ? step.parameter1Value() : null, step.parameter1Unit(), step.parameter2Name(),
@@ -182,7 +184,7 @@ public class TrialSchemeCopyService {
     public String measurementFingerprint(ProcessPlan.ControlMeasurement measurement) {
         if (measurement == null) throw new IllegalArgumentException("measurement is required");
         var canonical = token(number(measurement.measuredValue()))
-                + token(measurement.measuredAt());
+                + token(measurementTime(measurement.measuredAt()));
         try {
             var digest = MessageDigest.getInstance("SHA-256").digest(canonical.getBytes(StandardCharsets.UTF_8));
             var result = new StringBuilder(digest.length * 2);
@@ -199,6 +201,15 @@ public class TrialSchemeCopyService {
 
     private String number(BigDecimal value) {
         return value == null ? null : value.stripTrailingZeros().toPlainString();
+    }
+
+    private String measurementTime(String value) {
+        if (blank(value)) return null;
+        try {
+            return LocalDateTime.parse(value).toString();
+        } catch (DateTimeParseException exception) {
+            throw new BusinessException("TRIAL_MEASUREMENT_TIME_INVALID", "试验实测时间必须是 ISO 本地日期时间");
+        }
     }
 
     private String token(String value) {

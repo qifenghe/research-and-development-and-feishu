@@ -146,6 +146,8 @@ Ordinary create/save also drops all client-supplied global control confirmation 
 
 For the stronger ID-independent handoff, Task 2 should use the authorized `inheritedMeasurementFingerprints(formId, trialId, principal)` or `classifyInheritedMeasurements(formId, trialId, plan, principal)` methods. The classifier returns `currentMeasurementId -> inherited` by comparing physical observation content to the immutable copy-time fingerprint set. Re-keying an unchanged measurement or changing only its interpreted result remains inherited, while changing measured value/time makes it distinguishable. Neither fingerprints nor classifications are accepted from public create/save requests, and saves never update the stored copy-time set.
 
+Measurement time uses the same ISO local-date-time convention as formal process persistence: examples include `2026-09-15T10:00`, `2026-09-15T10:00:00` and fractional seconds such as `2026-09-15T10:00:00.001`. The server parses with `LocalDateTime.parse` and persists/hashes the canonical `LocalDateTime.toString()` value, so `10:00:00` and `10:00:00.000` are identical observations. These are local wall-clock values: `Z` and numeric offsets are rejected instead of guessing a zone or applying an implicit conversion. Null/blank time remains null; it is never replaced with the current time. Other nonblank invalid input fails with `TRIAL_MEASUREMENT_TIME_INVALID`.
+
 Task 2 consideration: a trial has no normalized control-point row, so it must not call the existing `/process-plan/control-points/{id}/confirm-deviation` endpoint. Add a dedicated, versioned trial confirmation operation that updates the JSON under lock and derives the confirmer from the session. If subsequent general saves should preserve that trusted confirmation, extend the save sanitizer to carry it only when major/step/control location, control definition and measurement observations are semantically unchanged. Promotion must treat every measurement classified by the immutable observation fingerprints as inherited even if its ID was re-keyed; the ID set remains useful as audit metadata but is not a complete security boundary.
 
 ## Lifecycle and permissions
@@ -168,17 +170,17 @@ Focused final run:
 
 ```text
 mvn -q -Dtest=TrialSchemeServiceTest,TrialSchemeCopyServiceTest test
-14 tests, 0 failures, 0 errors, 0 skipped
+16 tests, 0 failures, 0 errors, 0 skipped
 ```
 
 Full final run:
 
 ```text
 mvn -q test
-323 tests, 0 failures, 0 errors, 0 skipped
+325 tests, 0 failures, 0 errors, 0 skipped
 ```
 
-The original 309-test baseline therefore gains 14 tests. Tests cover independent persistence, optimistic conflicts, server IDs, reference validation, malformed quality score, confirmation spoofing, assigned-owner/director authorization, forbidden roles and unassigned engineers, all locked-form mutations, missing form behavior, reversible archive, exact interceptor permissions, per-field default-copy merging, independent/transitive major lineage and immutable ID-independent inherited-measurement provenance.
+The original 309-test baseline therefore gains 16 tests. Tests cover independent persistence, optimistic conflicts, server IDs, reference validation, malformed quality score, confirmation spoofing, assigned-owner/director authorization, forbidden roles and unassigned engineers, all locked-form mutations, missing form behavior, reversible archive, exact interceptor permissions, per-field default-copy merging, independent/transitive major lineage, timestamp canonicalization/validation and immutable ID-independent inherited-measurement provenance.
 
 ### Review fix round 1 RED/GREEN evidence
 
@@ -192,6 +194,20 @@ mvn -q '-Dtest=TrialSchemeServiceTest#initializesIndependentServerMajorOriginsFo
 ```
 
 After restoring the fixes, the complete focused suite passed 14/14. The added service test also demonstrates that an unchanged copied measurement remains classified inherited after a client ID re-key/save, a result-only `PASS`/`FAIL` reinterpretation remains inherited, a changed measured value is not classified inherited, and the immutable stored fingerprint set does not change across saves. The result-only assertion was independently observed RED while `result` was still part of the fingerprint, then GREEN after narrowing the fingerprint to measured value plus measured time.
+
+### Review fix round 2 RED/GREEN evidence
+
+The timestamp regressions were added before production changes. The focused RED was:
+
+```text
+mvn -q -Dtest=TrialSchemeServiceTest,TrialSchemeCopyServiceTest test
+16 tests, 3 failures
+- 2026-09-15T10:00:00 and 2026-09-15T10:00:00.000 produced different fingerprints
+- whitespace measuredAt persisted instead of remaining missing/null
+- equivalent .000 formatting made the re-keyed copied observation classify as fresh
+```
+
+After canonical parsing was applied both when normalizing persisted trial measurements and when computing fingerprints, the focused suite passed 16/16. The service test then changed the time to `2026-09-15T10:00:00.001` and verified it classified as a genuinely different observation. A fresh full run passed 325/325.
 
 ## Self-review notes
 

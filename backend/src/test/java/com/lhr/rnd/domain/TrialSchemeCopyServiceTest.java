@@ -79,6 +79,27 @@ class TrialSchemeCopyServiceTest {
     }
 
     @Test
+    void canonicalizesEquivalentIsoLocalMeasurementTimesForFingerprinting() {
+        var seconds = measurement("2026-09-15T10:00:00");
+        var zeroMillis = measurement("2026-09-15T10:00:00.000");
+        var later = measurement("2026-09-15T10:00:00.001");
+
+        assertThat(service.measurementFingerprint(seconds)).isEqualTo(service.measurementFingerprint(zeroMillis));
+        assertThat(service.measurementFingerprint(later)).isNotEqualTo(service.measurementFingerprint(seconds));
+    }
+
+    @Test
+    void preservesMissingMeasurementTimeAndRejectsInvalidNonblankTime() {
+        var normalized = service.normalizeNew(withMeasurementTime(graph(), "   "), TrialScheme.PlannedData.empty());
+        var measurement = normalized.plan().majorProcesses().get(0).steps().get(0).controlPoints().get(0).measurements().get(0);
+
+        assertThat(measurement.measuredAt()).isNull();
+        assertThatThrownBy(() -> service.normalizeNew(withMeasurementTime(graph(), "2026/09/15 10:00"), TrialScheme.PlannedData.empty()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).code()).isEqualTo("TRIAL_MEASUREMENT_TIME_INVALID");
+    }
+
+    @Test
     void remapsAllIdsAndReferencesAndRejectsDanglingReferences() {
         var copy = service.copy(graph(), new TrialScheme.PlannedData(Map.of("MAT-SOURCE", BigDecimal.TEN), Map.of(), Map.of(), null, null), true, Map.of());
         var source = graph();
@@ -124,6 +145,30 @@ class TrialSchemeCopyServiceTest {
         var badMajor = new ProcessPlan.MajorProcess(major.id(), major.sequence(), major.processCode(), major.processName(), major.description(),
                 major.yieldBasis(), major.remark(), List.of(badStep), major.inputs(), major.outputs(), major.yield());
         return new ProcessPlan(plan.id(), plan.experimentFormId(), plan.versionNo(), plan.status(), List.of(badMajor), plan.batchYieldPercent(),
+                plan.balanceToleranceKg(), false);
+    }
+
+    private ProcessPlan.ControlMeasurement measurement(String measuredAt) {
+        return new ProcessPlan.ControlMeasurement("MEASUREMENT", 1, new BigDecimal("80"), measuredAt,
+                "PASS", null, null, null);
+    }
+
+    private ProcessPlan withMeasurementTime(ProcessPlan plan, String measuredAt) {
+        var major = plan.majorProcesses().get(0);
+        var step = major.steps().get(0);
+        var point = step.controlPoints().get(0);
+        var previous = point.measurements().get(0);
+        var measurement = new ProcessPlan.ControlMeasurement(previous.id(), previous.sequence(), previous.measuredValue(), measuredAt,
+                previous.result(), previous.deviationAction(), previous.retestResult(), previous.remark());
+        var changedPoint = new ProcessPlan.ControlPoint(point.id(), point.sequence(), point.controlType(), point.importance(), point.itemName(),
+                point.targetValue(), point.lowerLimit(), point.upperLimit(), point.unit(), point.method(), point.measurementTool(), point.frequency(),
+                point.deviationAction(), point.resolved(), point.confirmedBy(), point.confirmedAt(), point.basisOrRemark(), List.of(measurement));
+        var changedStep = new ProcessPlan.MinorStep(step.id(), step.sequence(), step.stepCode(), step.stepName(), step.stepType(), step.parameter1Name(),
+                step.parameter1Value(), step.parameter1Unit(), step.parameter2Name(), step.parameter2Value(), step.parameter2Unit(), step.equipment(),
+                step.instruction(), step.materials(), step.outputs(), List.of(changedPoint));
+        var changedMajor = new ProcessPlan.MajorProcess(major.id(), major.sequence(), major.processCode(), major.processName(), major.description(),
+                major.yieldBasis(), major.remark(), List.of(changedStep), major.inputs(), major.outputs(), major.yield());
+        return new ProcessPlan(plan.id(), plan.experimentFormId(), plan.versionNo(), plan.status(), List.of(changedMajor), plan.batchYieldPercent(),
                 plan.balanceToleranceKg(), false);
     }
 }

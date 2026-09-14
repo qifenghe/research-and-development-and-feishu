@@ -187,7 +187,8 @@ class TrialSchemeServiceTest {
         var copied = service.copy(FORM_ID, source.id(), new TrialSchemeService.CopyCommand(
                 source.versionNo(), "指纹副本", true), OWNER);
         var fingerprints = service.inheritedMeasurementFingerprints(FORM_ID, copied.id(), OWNER);
-        var rekeyedPlan = withMeasurement(copied.plan(), "CLIENT-REKEYED-MEASUREMENT", new BigDecimal("80"));
+        var rekeyedPlan = withMeasurement(copied.plan(), "CLIENT-REKEYED-MEASUREMENT", new BigDecimal("80"),
+                "2026-09-15T10:00:00.000", "PASS");
         var rekeyed = service.save(FORM_ID, copied.id(), new TrialSchemeService.SaveCommand(
                 copied.versionNo(), copied.name(), null, null, copied.conclusion(), null, null, null, null,
                 rekeyedPlan, copied.plannedData()), OWNER);
@@ -205,7 +206,8 @@ class TrialSchemeServiceTest {
         assertThat(service.classifyInheritedMeasurements(FORM_ID, copied.id(), reinterpreted.plan(), OWNER))
                 .containsEntry(rekeyedMeasurementId, true);
 
-        var changedPlan = withMeasurement(reinterpreted.plan(), rekeyedMeasurementId, new BigDecimal("81"), "PASS");
+        var changedPlan = withMeasurement(reinterpreted.plan(), rekeyedMeasurementId, new BigDecimal("80"),
+                "2026-09-15T10:00:00.001", "PASS");
         var changed = service.save(FORM_ID, copied.id(), new TrialSchemeService.SaveCommand(
                 reinterpreted.versionNo(), copied.name(), null, null, copied.conclusion(), null, null, null, null,
                 changedPlan, copied.plannedData()), OWNER);
@@ -327,17 +329,17 @@ class TrialSchemeServiceTest {
                 plan.balanceToleranceKg(), false, null, null);
     }
 
-    private ProcessPlan withMeasurement(ProcessPlan plan, String measurementId, BigDecimal measuredValue) {
+    private ProcessPlan withMeasurement(ProcessPlan plan, String measurementId, BigDecimal measuredValue, String result) {
         return withMeasurement(plan, measurementId, measuredValue,
-                plan.majorProcesses().get(0).steps().get(0).controlPoints().get(0).measurements().get(0).result());
+                plan.majorProcesses().get(0).steps().get(0).controlPoints().get(0).measurements().get(0).measuredAt(), result);
     }
 
-    private ProcessPlan withMeasurement(ProcessPlan plan, String measurementId, BigDecimal measuredValue, String result) {
+    private ProcessPlan withMeasurement(ProcessPlan plan, String measurementId, BigDecimal measuredValue, String measuredAt, String result) {
         var major = plan.majorProcesses().get(0);
         var step = major.steps().get(0);
         var point = step.controlPoints().get(0);
         var previous = point.measurements().get(0);
-        var measurement = new ProcessPlan.ControlMeasurement(measurementId, previous.sequence(), measuredValue, previous.measuredAt(),
+        var measurement = new ProcessPlan.ControlMeasurement(measurementId, previous.sequence(), measuredValue, measuredAt,
                 result, previous.deviationAction(), previous.retestResult(), previous.remark());
         var changedPoint = new ProcessPlan.ControlPoint(point.id(), point.sequence(), point.controlType(), point.importance(), point.itemName(),
                 point.targetValue(), point.lowerLimit(), point.upperLimit(), point.unit(), point.method(), point.measurementTool(), point.frequency(),
