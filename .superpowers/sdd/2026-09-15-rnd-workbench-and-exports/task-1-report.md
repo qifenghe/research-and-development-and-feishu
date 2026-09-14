@@ -139,11 +139,14 @@ Copy with actuals (`includeActuals:true`):
 - retains actual weights, parameters, measurements and calculated yields;
 - sets `inheritedActuals:true` permanently for that copied trial;
 - clears `resolved`, `confirmedBy`, `confirmedAt` and measurement `retestResult`; deviation-action observations remain part of the copied record;
-- records the newly mapped inherited measurement IDs in the server-only immutable `inherited_measurement_ids_json` column.
+- records newly mapped inherited measurement IDs in the server-only immutable `inherited_measurement_ids_json` column;
+- also records immutable SHA-256 observation fingerprints in `inherited_measurement_fingerprints_json`. A fingerprint covers canonical measured value and measured time: the physical observation identity. It deliberately excludes the mutable/client-rekeyable ID plus interpreted result, confirmation, retest, deviation-action and remark metadata. Changing only `FAIL`/`PASS` therefore cannot make a copied observation appear newly measured.
 
 Ordinary create/save also drops all client-supplied global control confirmation identity and retest release results. The public save request has no inheritance, origin, source or audit fields. `TrialSchemeService.inheritedMeasurementIds(formId, trialId, principal)` is the authorized server-side handoff for Task 2; the immutable stored ID set is not derived from the client `inheritedActuals` flag and is not cleared by later ordinary saves.
 
-Task 2 consideration: a trial has no normalized control-point row, so it must not call the existing `/process-plan/control-points/{id}/confirm-deviation` endpoint. Add a dedicated, versioned trial confirmation operation that updates the JSON under lock and derives the confirmer from the session. If subsequent general saves should preserve that trusted confirmation, extend the save sanitizer to carry it only when major/step/control location, control definition, measurement values, and the non-inherited measurement identity set are byte-for-byte/semantically unchanged. Promotion must reject/clear every confirmation associated with an ID in `inherited_measurement_ids_json`, even when the global flag remains true.
+For the stronger ID-independent handoff, Task 2 should use the authorized `inheritedMeasurementFingerprints(formId, trialId, principal)` or `classifyInheritedMeasurements(formId, trialId, plan, principal)` methods. The classifier returns `currentMeasurementId -> inherited` by comparing physical observation content to the immutable copy-time fingerprint set. Re-keying an unchanged measurement or changing only its interpreted result remains inherited, while changing measured value/time makes it distinguishable. Neither fingerprints nor classifications are accepted from public create/save requests, and saves never update the stored copy-time set.
+
+Task 2 consideration: a trial has no normalized control-point row, so it must not call the existing `/process-plan/control-points/{id}/confirm-deviation` endpoint. Add a dedicated, versioned trial confirmation operation that updates the JSON under lock and derives the confirmer from the session. If subsequent general saves should preserve that trusted confirmation, extend the save sanitizer to carry it only when major/step/control location, control definition and measurement observations are semantically unchanged. Promotion must treat every measurement classified by the immutable observation fingerprints as inherited even if its ID was re-keyed; the ID set remains useful as audit metadata but is not a complete security boundary.
 
 ## Lifecycle and permissions
 
@@ -165,17 +168,30 @@ Focused final run:
 
 ```text
 mvn -q -Dtest=TrialSchemeServiceTest,TrialSchemeCopyServiceTest test
-11 tests, 0 failures, 0 errors, 0 skipped
+14 tests, 0 failures, 0 errors, 0 skipped
 ```
 
 Full final run:
 
 ```text
 mvn -q test
-320 tests, 0 failures, 0 errors, 0 skipped
+323 tests, 0 failures, 0 errors, 0 skipped
 ```
 
-The original 309-test baseline therefore gains 11 tests. Tests cover independent persistence, optimistic conflicts, server IDs, reference validation, malformed quality score, confirmation spoofing, assigned-owner/director authorization, forbidden roles and unassigned engineers, all locked-form mutations, missing form behavior, reversible archive, exact interceptor permissions, default/actual copy semantics, transitive major lineage and immutable inherited-measurement provenance.
+The original 309-test baseline therefore gains 14 tests. Tests cover independent persistence, optimistic conflicts, server IDs, reference validation, malformed quality score, confirmation spoofing, assigned-owner/director authorization, forbidden roles and unassigned engineers, all locked-form mutations, missing form behavior, reversible archive, exact interceptor permissions, per-field default-copy merging, independent/transitive major lineage and immutable ID-independent inherited-measurement provenance.
+
+### Review fix round 1 RED/GREEN evidence
+
+The three review regressions were added before their implementations. The first focused RED stopped in test compilation because the new fingerprint accessors did not yet exist. After adding those method signatures, the two behavior regressions were also mutation-checked against the old implementations:
+
+```text
+mvn -q '-Dtest=TrialSchemeServiceTest#initializesIndependentServerMajorOriginsForRepeatedClientKeysAndCopiesThemTransitively,TrialSchemeCopyServiceTest#defaultCopyMergesStepParameterPlansPerField' test
+2 tests, 2 failures
+- independent create retained MAJOR-SHARED-KEY instead of durableMajorId -> itself
+- planned ('25', null) remained ('25', null) instead of merging actual parameter2 '95'
+```
+
+After restoring the fixes, the complete focused suite passed 14/14. The added service test also demonstrates that an unchanged copied measurement remains classified inherited after a client ID re-key/save, a result-only `PASS`/`FAIL` reinterpretation remains inherited, a changed measured value is not classified inherited, and the immutable stored fingerprint set does not change across saves. The result-only assertion was independently observed RED while `result` was still part of the fingerprint, then GREEN after narrowing the fingerprint to measured value plus measured time.
 
 ## Self-review notes
 

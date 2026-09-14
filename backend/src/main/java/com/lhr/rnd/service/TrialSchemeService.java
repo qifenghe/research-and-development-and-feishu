@@ -15,6 +15,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -57,6 +58,31 @@ public class TrialSchemeService {
         return findInternal(formId, trialId, false).inheritedMeasurementIds();
     }
 
+    /** Immutable observation fingerprints used by promotion to recognize inherited actuals even after client ID re-keying. */
+    @Transactional(readOnly = true)
+    public Set<String> inheritedMeasurementFingerprints(String formId, String trialId, SessionPrincipal principal) {
+        requireReadAccess(formId, principal);
+        requireForm(formId, false);
+        return findInternal(formId, trialId, false).inheritedMeasurementFingerprints();
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Boolean> classifyInheritedMeasurements(String formId, String trialId, ProcessPlan plan,
+                                                               SessionPrincipal principal) {
+        requireReadAccess(formId, principal);
+        requireForm(formId, false);
+        var inherited = findInternal(formId, trialId, false).inheritedMeasurementFingerprints();
+        var result = new LinkedHashMap<String, Boolean>();
+        if (plan == null || plan.majorProcesses() == null) return result;
+        for (var major : plan.majorProcesses()) for (var step : values(major.steps()))
+            for (var point : values(step.controlPoints())) for (var measurement : values(point.measurements())) {
+                if (!blank(measurement.id())) {
+                    result.put(measurement.id(), inherited.contains(copyService.measurementFingerprint(measurement)));
+                }
+            }
+        return Map.copyOf(result);
+    }
+
     @Transactional
     public TrialScheme create(String formId, CreateCommand command, SessionPrincipal principal) {
         requireMutationAccess(formId, principal);
@@ -70,12 +96,12 @@ public class TrialSchemeService {
         jdbc.update("""
                 insert into experiment_trial_scheme(id, experiment_form_id, version_no, name, source_trial_id, archived,
                 purpose, variables, conclusion, recommendation_reason, quality_score, quality_notes, difficulty,
-                plan_json, planned_data_json, inherited_actuals, inherited_measurement_ids_json, major_origins_json,
+                plan_json, planned_data_json, inherited_actuals, inherited_measurement_ids_json, inherited_measurement_fingerprints_json, major_origins_json,
                 created_by, created_by_user_id, created_at, updated_by, updated_by_user_id, updated_at)
-                values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, id, formId, 1, clean(command.name()), null, false, cleanNullable(command.purpose()), cleanNullable(command.variables()),
                 TrialScheme.Conclusion.PENDING.name(), null, null, null, null, json(plan), json(normalized.plannedData()), false,
-                json(Set.of()), json(normalized.majorOrigins()), principal.name(), principal.userId(), now, principal.name(), principal.userId(), now);
+                json(Set.of()), json(Set.of()), json(normalized.majorOrigins()), principal.name(), principal.userId(), now, principal.name(), principal.userId(), now);
         return findInternal(formId, id, false).trial();
     }
 
@@ -87,7 +113,7 @@ public class TrialSchemeService {
         var stored = findInternal(formId, trialId, true);
         if (stored.trial().versionNo() != command.versionNo()) throw conflict();
         var normalized = copyService.normalizeForSave(command.plan(), command.plannedData(), stored.trial().plan(),
-                stored.trial().majorOrigins(), stored.inheritedMeasurementIds());
+                stored.trial().majorOrigins(), stored.inheritedMeasurementIds(), stored.inheritedMeasurementFingerprints());
         var nextVersion = command.versionNo() + 1;
         var plan = trialPlan(normalized.plan(), formId);
         var updated = jdbc.update("""
@@ -116,12 +142,12 @@ public class TrialSchemeService {
         jdbc.update("""
                 insert into experiment_trial_scheme(id, experiment_form_id, version_no, name, source_trial_id, archived,
                 purpose, variables, conclusion, recommendation_reason, quality_score, quality_notes, difficulty,
-                plan_json, planned_data_json, inherited_actuals, inherited_measurement_ids_json, major_origins_json,
+                plan_json, planned_data_json, inherited_actuals, inherited_measurement_ids_json, inherited_measurement_fingerprints_json, major_origins_json,
                 created_by, created_by_user_id, created_at, updated_by, updated_by_user_id, updated_at)
-                values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, id, formId, 1, clean(command.name()), trialId, false, source.trial().purpose(), source.trial().variables(),
                 TrialScheme.Conclusion.PENDING.name(), null, null, null, null, json(plan), json(copied.plannedData()), command.includeActuals(),
-                json(copied.inheritedMeasurementIds()), json(copied.majorOrigins()), principal.name(), principal.userId(), now,
+                json(copied.inheritedMeasurementIds()), json(copied.inheritedMeasurementFingerprints()), json(copied.majorOrigins()), principal.name(), principal.userId(), now,
                 principal.name(), principal.userId(), now);
         return findInternal(formId, id, false).trial();
     }
@@ -140,7 +166,9 @@ public class TrialSchemeService {
 
     private StoredTrial findInternal(String formId, String trialId, boolean lock) {
         var sql = "select * from experiment_trial_scheme where id = ? and experiment_form_id = ?" + (lock ? " for update" : "");
-        var rows = jdbc.query(sql, (rs, row) -> new StoredTrial(map(rs, row), read(rs.getString("inherited_measurement_ids_json"), new TypeReference<Set<String>>() {})), trialId, formId);
+        var rows = jdbc.query(sql, (rs, row) -> new StoredTrial(map(rs, row),
+                read(rs.getString("inherited_measurement_ids_json"), new TypeReference<Set<String>>() {}),
+                read(rs.getString("inherited_measurement_fingerprints_json"), new TypeReference<Set<String>>() {})), trialId, formId);
         if (rows.isEmpty()) throw invalid("TRIAL_NOT_FOUND", "试验方案不存在");
         return rows.get(0);
     }
@@ -222,7 +250,10 @@ public class TrialSchemeService {
     private static BusinessException invalid(String code, String message) { return new BusinessException(code, message); }
     private static BusinessException conflict() { return invalid("TRIAL_VERSION_CONFLICT", "试验方案已被更新，请刷新后重试"); }
 
-    private record StoredTrial(TrialScheme trial, Set<String> inheritedMeasurementIds) {}
+    private static <T> List<T> values(List<T> values) { return values == null ? List.of() : values; }
+
+    private record StoredTrial(TrialScheme trial, Set<String> inheritedMeasurementIds,
+                               Set<String> inheritedMeasurementFingerprints) {}
 
     public record CreateCommand(String name, String purpose, String variables, ProcessPlan plan, TrialScheme.PlannedData plannedData) {}
     public record SaveCommand(int versionNo, String name, String purpose, String variables, TrialScheme.Conclusion conclusion,

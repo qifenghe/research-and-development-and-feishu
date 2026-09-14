@@ -6,6 +6,8 @@ import com.lhr.rnd.model.TrialScheme;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -26,22 +28,25 @@ public class TrialSchemeCopyService {
         var mapped = remapPlan(source, remapper, includeActuals);
         var origins = remapMajorOrigins(source, mapped, sourceMajorOrigins);
         var inheritedMeasurements = includeActuals ? mappedMeasurementIds(source, remapper) : Set.<String>of();
-        return new CopyResult(mapped, planned, origins, inheritedMeasurements);
+        var inheritedFingerprints = includeActuals ? measurementFingerprints(mapped) : Set.<String>of();
+        return new CopyResult(mapped, planned, origins, inheritedMeasurements, inheritedFingerprints);
     }
 
     public CopyResult normalizeNew(ProcessPlan source, TrialScheme.PlannedData plannedData) {
         var remapper = Remapper.allNew(source);
         var mapped = remapPlan(source, remapper, true);
         return new CopyResult(mapped, remapPlanned(plannedData, remapper, source),
-                remapMajorOrigins(source, mapped, Map.of()), Set.of());
+                selfMajorOrigins(mapped), Set.of(), Set.of());
     }
 
     public CopyResult normalizeForSave(ProcessPlan request, TrialScheme.PlannedData plannedData, ProcessPlan persisted,
-                                       Map<String, String> persistedOrigins, Set<String> inheritedMeasurementIds) {
+                                       Map<String, String> persistedOrigins, Set<String> inheritedMeasurementIds,
+                                       Set<String> inheritedMeasurementFingerprints) {
         var remapper = Remapper.preservePersisted(request, persisted);
         var mapped = remapPlan(request, remapper, true);
         return new CopyResult(mapped, remapPlanned(plannedData, remapper, request),
-                remapMajorOriginsForSave(request, mapped, persistedOrigins), Set.copyOf(inheritedMeasurementIds));
+                remapMajorOriginsForSave(request, mapped, persistedOrigins), Set.copyOf(inheritedMeasurementIds),
+                Set.copyOf(inheritedMeasurementFingerprints));
     }
 
     private ProcessPlan remapPlan(ProcessPlan source, Remapper ids, boolean includeActuals) {
@@ -89,8 +94,13 @@ public class TrialSchemeCopyService {
             }
             for (var step : values(major.steps())) {
                 var mappedStepId = ids.reference(step.id());
-                if (step.parameter1Value() != null || step.parameter2Value() != null) {
-                    parameters.putIfAbsent(mappedStepId, new TrialScheme.StepParameters(step.parameter1Value(), step.parameter2Value()));
+                var explicit = parameters.get(mappedStepId);
+                var parameter1 = plannedValue(explicit == null ? null : explicit.parameter1Value(), step.parameter1Value());
+                var parameter2 = plannedValue(explicit == null ? null : explicit.parameter2Value(), step.parameter2Value());
+                if (!blank(parameter1) || !blank(parameter2)) {
+                    parameters.put(mappedStepId, new TrialScheme.StepParameters(parameter1, parameter2));
+                } else {
+                    parameters.remove(mappedStepId);
                 }
                 for (var material : values(step.materials())) {
                     if (material.weightKg() != null) weights.putIfAbsent(ids.reference(material.id()), material.weightKg());
@@ -134,6 +144,12 @@ public class TrialSchemeCopyService {
         return result;
     }
 
+    private Map<String, String> selfMajorOrigins(ProcessPlan plan) {
+        var result = new LinkedHashMap<String, String>();
+        for (var major : values(plan.majorProcesses())) result.put(major.id(), major.id());
+        return result;
+    }
+
     private Map<String, String> remapMajorOriginsForSave(ProcessPlan request, ProcessPlan mapped, Map<String, String> existing) {
         var result = new LinkedHashMap<String, String>();
         var sourceMajors = values(request.majorProcesses());
@@ -153,6 +169,40 @@ public class TrialSchemeCopyService {
             for (var point : values(step.controlPoints())) for (var measurement : values(point.measurements()))
                 result.add(ids.reference(measurement.id()));
         return result;
+    }
+
+    public Set<String> measurementFingerprints(ProcessPlan plan) {
+        var result = new LinkedHashSet<String>();
+        for (var major : values(plan == null ? null : plan.majorProcesses())) for (var step : values(major.steps()))
+            for (var point : values(step.controlPoints())) for (var measurement : values(point.measurements()))
+                result.add(measurementFingerprint(measurement));
+        return Set.copyOf(result);
+    }
+
+    public String measurementFingerprint(ProcessPlan.ControlMeasurement measurement) {
+        if (measurement == null) throw new IllegalArgumentException("measurement is required");
+        var canonical = token(number(measurement.measuredValue()))
+                + token(measurement.measuredAt());
+        try {
+            var digest = MessageDigest.getInstance("SHA-256").digest(canonical.getBytes(StandardCharsets.UTF_8));
+            var result = new StringBuilder(digest.length * 2);
+            for (var value : digest) result.append(String.format("%02x", value));
+            return result.toString();
+        } catch (Exception exception) {
+            throw new IllegalStateException("试验实测指纹计算失败", exception);
+        }
+    }
+
+    private String plannedValue(String explicit, String actual) {
+        return blank(explicit) ? (blank(actual) ? null : actual) : explicit;
+    }
+
+    private String number(BigDecimal value) {
+        return value == null ? null : value.stripTrailingZeros().toPlainString();
+    }
+
+    private String token(String value) {
+        return value == null ? "-;" : value.length() + ":" + value + ";";
     }
 
     private Set<String> collectMajorIds(ProcessPlan plan) {
@@ -182,7 +232,7 @@ public class TrialSchemeCopyService {
     }
 
     public record CopyResult(ProcessPlan plan, TrialScheme.PlannedData plannedData, Map<String, String> majorOrigins,
-                             Set<String> inheritedMeasurementIds) {
+                             Set<String> inheritedMeasurementIds, Set<String> inheritedMeasurementFingerprints) {
     }
 
     private static final class Remapper {

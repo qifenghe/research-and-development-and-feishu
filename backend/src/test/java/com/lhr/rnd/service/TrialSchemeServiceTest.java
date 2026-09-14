@@ -164,6 +164,57 @@ class TrialSchemeServiceTest {
     }
 
     @Test
+    void initializesIndependentServerMajorOriginsForRepeatedClientKeysAndCopiesThemTransitively() {
+        var first = service.create(FORM_ID, new TrialSchemeService.CreateCommand(
+                "共享UI键-A", null, null, graph("SHARED-KEY", "10.2"), TrialScheme.PlannedData.empty()), OWNER);
+        var second = service.create(FORM_ID, new TrialSchemeService.CreateCommand(
+                "共享UI键-B", null, null, graph("SHARED-KEY", "10.2"), TrialScheme.PlannedData.empty()), OWNER);
+        var firstMajorId = first.plan().majorProcesses().get(0).id();
+        var secondMajorId = second.plan().majorProcesses().get(0).id();
+        var copied = service.copy(FORM_ID, first.id(), new TrialSchemeService.CopyCommand(first.versionNo(), "A副本", false), OWNER);
+        var copiedMajorId = copied.plan().majorProcesses().get(0).id();
+
+        assertThat(first.majorOrigins()).containsEntry(firstMajorId, firstMajorId);
+        assertThat(second.majorOrigins()).containsEntry(secondMajorId, secondMajorId);
+        assertThat(first.majorOrigins().get(firstMajorId)).isNotEqualTo(second.majorOrigins().get(secondMajorId));
+        assertThat(copied.majorOrigins()).containsEntry(copiedMajorId, firstMajorId);
+    }
+
+    @Test
+    void classifiesInheritedMeasurementsByImmutableObservationFingerprintAfterClientRekeysIds() {
+        var source = service.create(FORM_ID, new TrialSchemeService.CreateCommand(
+                "指纹来源", null, null, graph("FINGERPRINT", "10.2"), TrialScheme.PlannedData.empty()), OWNER);
+        var copied = service.copy(FORM_ID, source.id(), new TrialSchemeService.CopyCommand(
+                source.versionNo(), "指纹副本", true), OWNER);
+        var fingerprints = service.inheritedMeasurementFingerprints(FORM_ID, copied.id(), OWNER);
+        var rekeyedPlan = withMeasurement(copied.plan(), "CLIENT-REKEYED-MEASUREMENT", new BigDecimal("80"));
+        var rekeyed = service.save(FORM_ID, copied.id(), new TrialSchemeService.SaveCommand(
+                copied.versionNo(), copied.name(), null, null, copied.conclusion(), null, null, null, null,
+                rekeyedPlan, copied.plannedData()), OWNER);
+        var rekeyedMeasurementId = rekeyed.plan().majorProcesses().get(0).steps().get(0).controlPoints().get(0).measurements().get(0).id();
+
+        assertThat(rekeyedMeasurementId).isNotEqualTo("CLIENT-REKEYED-MEASUREMENT");
+        assertThat(service.classifyInheritedMeasurements(FORM_ID, copied.id(), rekeyed.plan(), OWNER))
+                .containsEntry(rekeyedMeasurementId, true);
+        assertThat(service.inheritedMeasurementFingerprints(FORM_ID, copied.id(), OWNER)).isEqualTo(fingerprints);
+
+        var reinterpretedPlan = withMeasurement(rekeyed.plan(), rekeyedMeasurementId, new BigDecimal("80"), "FAIL");
+        var reinterpreted = service.save(FORM_ID, copied.id(), new TrialSchemeService.SaveCommand(
+                rekeyed.versionNo(), copied.name(), null, null, copied.conclusion(), null, null, null, null,
+                reinterpretedPlan, copied.plannedData()), OWNER);
+        assertThat(service.classifyInheritedMeasurements(FORM_ID, copied.id(), reinterpreted.plan(), OWNER))
+                .containsEntry(rekeyedMeasurementId, true);
+
+        var changedPlan = withMeasurement(reinterpreted.plan(), rekeyedMeasurementId, new BigDecimal("81"), "PASS");
+        var changed = service.save(FORM_ID, copied.id(), new TrialSchemeService.SaveCommand(
+                reinterpreted.versionNo(), copied.name(), null, null, copied.conclusion(), null, null, null, null,
+                changedPlan, copied.plannedData()), OWNER);
+        assertThat(service.classifyInheritedMeasurements(FORM_ID, copied.id(), changed.plan(), OWNER))
+                .containsEntry(rekeyedMeasurementId, false);
+        assertThat(service.inheritedMeasurementFingerprints(FORM_ID, copied.id(), OWNER)).isEqualTo(fingerprints);
+    }
+
+    @Test
     void enforcesOwnerRolesAndDraftLifecycleForEveryMutation() {
         var created = service.create(FORM_ID, new TrialSchemeService.CreateCommand(
                 "权限方案", null, null, graph("AUTH", "10.2"), TrialScheme.PlannedData.empty()), OWNER);
@@ -270,6 +321,30 @@ class TrialSchemeServiceTest {
         var changedStep = new ProcessPlan.MinorStep(step.id(), step.sequence(), step.stepCode(), step.stepName(), step.stepType(), step.parameter1Name(),
                 step.parameter1Value(), step.parameter1Unit(), step.parameter2Name(), step.parameter2Value(), step.parameter2Unit(), step.equipment(),
                 step.instruction(), step.materials(), step.outputs(), List.of(forgedPoint));
+        var changedMajor = new ProcessPlan.MajorProcess(major.id(), major.sequence(), major.processCode(), major.processName(), major.description(),
+                major.yieldBasis(), major.remark(), List.of(changedStep), major.inputs(), major.outputs(), major.yield());
+        return new ProcessPlan(plan.id(), plan.experimentFormId(), plan.versionNo(), plan.status(), List.of(changedMajor), plan.batchYieldPercent(),
+                plan.balanceToleranceKg(), false, null, null);
+    }
+
+    private ProcessPlan withMeasurement(ProcessPlan plan, String measurementId, BigDecimal measuredValue) {
+        return withMeasurement(plan, measurementId, measuredValue,
+                plan.majorProcesses().get(0).steps().get(0).controlPoints().get(0).measurements().get(0).result());
+    }
+
+    private ProcessPlan withMeasurement(ProcessPlan plan, String measurementId, BigDecimal measuredValue, String result) {
+        var major = plan.majorProcesses().get(0);
+        var step = major.steps().get(0);
+        var point = step.controlPoints().get(0);
+        var previous = point.measurements().get(0);
+        var measurement = new ProcessPlan.ControlMeasurement(measurementId, previous.sequence(), measuredValue, previous.measuredAt(),
+                result, previous.deviationAction(), previous.retestResult(), previous.remark());
+        var changedPoint = new ProcessPlan.ControlPoint(point.id(), point.sequence(), point.controlType(), point.importance(), point.itemName(),
+                point.targetValue(), point.lowerLimit(), point.upperLimit(), point.unit(), point.method(), point.measurementTool(), point.frequency(),
+                point.deviationAction(), point.resolved(), point.confirmedBy(), point.confirmedAt(), point.basisOrRemark(), List.of(measurement));
+        var changedStep = new ProcessPlan.MinorStep(step.id(), step.sequence(), step.stepCode(), step.stepName(), step.stepType(), step.parameter1Name(),
+                step.parameter1Value(), step.parameter1Unit(), step.parameter2Name(), step.parameter2Value(), step.parameter2Unit(), step.equipment(),
+                step.instruction(), step.materials(), step.outputs(), List.of(changedPoint));
         var changedMajor = new ProcessPlan.MajorProcess(major.id(), major.sequence(), major.processCode(), major.processName(), major.description(),
                 major.yieldBasis(), major.remark(), List.of(changedStep), major.inputs(), major.outputs(), major.yield());
         return new ProcessPlan(plan.id(), plan.experimentFormId(), plan.versionNo(), plan.status(), List.of(changedMajor), plan.batchYieldPercent(),

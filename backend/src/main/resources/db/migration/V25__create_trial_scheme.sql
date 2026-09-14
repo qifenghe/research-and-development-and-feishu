@@ -16,6 +16,7 @@ create table experiment_trial_scheme (
     planned_data_json text not null,
     inherited_actuals boolean not null default false,
     inherited_measurement_ids_json text not null,
+    inherited_measurement_fingerprints_json text not null,
     major_origins_json text not null,
     created_by varchar(100) not null,
     created_by_user_id varchar(64) not null,

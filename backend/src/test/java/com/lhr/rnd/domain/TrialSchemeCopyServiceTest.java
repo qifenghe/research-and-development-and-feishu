@@ -51,6 +51,20 @@ class TrialSchemeCopyServiceTest {
     }
 
     @Test
+    void defaultCopyMergesStepParameterPlansPerField() {
+        var plans = new TrialScheme.PlannedData(Map.of(),
+                Map.of("STEP-SOURCE", new TrialScheme.StepParameters("25", null)), Map.of(), null, null);
+
+        var copy = service.copy(graph(), plans, false, Map.of());
+        var copiedStep = copy.plan().majorProcesses().get(0).steps().get(0);
+
+        assertThat(copy.plannedData().stepParameters().get(copiedStep.id()))
+                .isEqualTo(new TrialScheme.StepParameters("25", "95"));
+        assertThat(copiedStep.parameter1Value()).isNull();
+        assertThat(copiedStep.parameter2Value()).isNull();
+    }
+
+    @Test
     void copyWithActualsMarksEveryMeasurementAsInheritedButClearsConfirmationAndRelease() {
         var copy = service.copy(graph(), TrialScheme.PlannedData.empty(), true, Map.of());
         var point = copy.plan().majorProcesses().get(0).steps().get(0).controlPoints().get(0);
