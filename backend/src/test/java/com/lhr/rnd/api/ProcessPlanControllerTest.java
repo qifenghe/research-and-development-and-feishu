@@ -50,13 +50,13 @@ class ProcessPlanControllerTest {
         }
         var now = LocalDateTime.now();
         jdbc.update("insert into sample_request(id,sample_no,product_name,product_type,customer_name,specification,creator_name,status,created_at) values (?,?,?,?,?,?,?,?,?)",
-                "REQ-PROCESS-CONTROLLER", "S-PROCESS-CONTROLLER", "牛腩", "预制菜", "客户", "1kg", "研发", "APPROVED", now);
+                "REQ-PROCESS-CONTROLLER", "S-PROCESS-CONTROLLER", "牛腩", "预制菜", "客户", "1kg", "研发", "PENDING_ASSIGNMENT", now);
         jdbc.update("insert into sample_project(id,request_id,sample_no,product_name,product_type,customer_name,specification,status,created_at) values (?,?,?,?,?,?,?,?,?)",
                 "PRJ-PROCESS-CONTROLLER", "REQ-PROCESS-CONTROLLER", "S-PROCESS-CONTROLLER", "牛腩", "预制菜", "客户", "1kg", "ACTIVE", now);
         jdbc.update("insert into sample_version(id,project_id,sample_no,product_name,product_type,specification,version_no,version_number,version_code,created_at) values (?,?,?,?,?,?,?,?,?,?)",
                 "VER-PROCESS-CONTROLLER", "PRJ-PROCESS-CONTROLLER", "S-PROCESS-CONTROLLER", "牛腩", "预制菜", "1kg", "1", 1, "V1", now);
         jdbc.update("insert into rnd_task(id,project_id,version_id,sample_no,product_name,version_code,status,created_at) values (?,?,?,?,?,?,?,?)",
-                "TASK-PROCESS-CONTROLLER", "PRJ-PROCESS-CONTROLLER", "VER-PROCESS-CONTROLLER", "S-PROCESS-CONTROLLER", "牛腩", "V1", "IN_PROGRESS", now);
+                "TASK-PROCESS-CONTROLLER", "PRJ-PROCESS-CONTROLLER", "VER-PROCESS-CONTROLLER", "S-PROCESS-CONTROLLER", "牛腩", "V1", "SAMPLING", now);
         jdbc.update("update rnd_task set assignee_name = ?, assignee_user_id = ? where id = ?", "会话研发", "USER-PROCESS", "TASK-PROCESS-CONTROLLER");
         jdbc.update("insert into experiment_form(id,task_id,project_id,version_id,sample_no,product_name,version_code,status,operator_name,saved_at) values (?,?,?,?,?,?,?,?,?,?)",
                 FORM_ID, "TASK-PROCESS-CONTROLLER", "PRJ-PROCESS-CONTROLLER", "VER-PROCESS-CONTROLLER", "S-PROCESS-CONTROLLER", "牛腩", "V1", "DRAFT", "研发", now);
@@ -445,6 +445,49 @@ class ProcessPlanControllerTest {
                 .andExpect(jsonPath("$.data[0].generatedByUserId").doesNotExist())
                 .andExpect(jsonPath("$.data[0].failureReason").doesNotExist())
                 .andExpect(jsonPath("$..failureReason", org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("SECRET FAILURE"))));
+    }
+
+    @Test
+    void confirmsPassingCriticalPointWithSessionIdentityAndPreservesItOnSave() throws Exception {
+        var draft = criticalDeviationDraft("正常实测")
+                .replace("\"measuredValue\":72", "\"measuredValue\":80")
+                .replace("\"result\":\"FAIL\"", "\"result\":\"PASS\"")
+                .replace("伪造总监", "__SESSION_CONFIRMATION_REQUESTED__");
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree = mapper.readTree(draft);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) tree.at("/majorProcesses/0/steps/0/controlPoints/0"))
+                .put("confirmedBy", "__SESSION_CONFIRMATION_REQUESTED__");
+        var saved = mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                .contentType(MediaType.APPLICATION_JSON).content(tree.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").value("会话研发"))
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedAt").isNotEmpty())
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                .contentType(MediaType.APPLICATION_JSON).content(mapper.readTree(saved).get("data").toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].controlPoints[0].confirmedBy").value("会话研发"));
+    }
+
+    @Test
+    void comparisonUsesFormalSnapshotsAndReturnsMeasuredWeights() throws Exception {
+        saveReadyDraft();
+        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions/comparison", FORM_ID)
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(0));
+        mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/submit", FORM_ID)
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"versionNo\":1,\"confirmed\":true}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan/revisions/comparison", FORM_ID)
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].processCode").value("COOK"))
+                .andExpect(jsonPath("$.data[0].inputKg").value(10))
+                .andExpect(jsonPath("$.data[0].outputKg").value(10))
+                .andExpect(jsonPath("$.data[0].yieldPercent").value(100));
     }
 
     private void saveReadyDraft() throws Exception {

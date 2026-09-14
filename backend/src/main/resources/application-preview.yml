@@ -1,0 +1,27 @@
+# Persistent local trial data. The local/test profiles remain isolated and ephemeral.
+spring:
+  datasource:
+    url: jdbc:h2:file:${RND_PREVIEW_DATA_DIR:./data/preview}/rnd_sample;MODE=PostgreSQL;DATABASE_TO_LOWER=FALSE;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+server:
+  address: 127.0.0.1
+  port: ${RND_PREVIEW_BACKEND_PORT:8082}
+rnd:
+  cors:
+    allowed-origin-patterns: http://127.0.0.1:5183,http://127.0.0.1:5184
+  feishu:
+    enabled: false
+    bootstrap-users: true
+  feedback:
+    bootstrap-demo: true
+  archive:
+    local-root: ${RND_PREVIEW_DATA_DIR:./data/preview}/archive

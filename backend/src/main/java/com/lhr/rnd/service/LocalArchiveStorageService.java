@@ -11,11 +11,20 @@ import java.nio.file.AtomicMoveNotSupportedException;
 
 @Service
 public class LocalArchiveStorageService {
-    private static final Path ROOT = Path.of("target", "rnd-archive");
+    private final Path root;
+
+    public LocalArchiveStorageService() {
+        this("target/rnd-archive");
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public LocalArchiveStorageService(@org.springframework.beans.factory.annotation.Value("${rnd.archive.local-root:target/rnd-archive}") String root) {
+        this.root = Path.of(root).normalize();
+    }
 
     public String store(String relativePath, byte[] content) {
-        var target = ROOT.resolve(relativePath).normalize();
-        if (!target.startsWith(ROOT)) {
+        var target = root.resolve(relativePath).normalize();
+        if (!target.startsWith(root)) {
             throw new BusinessException("ARCHIVE_PATH_ILLEGAL", "归档路径不合法");
         }
         Path temporary = null;
@@ -42,8 +51,8 @@ public class LocalArchiveStorageService {
     }
 
     public byte[] read(String relativePath) {
-        var target = ROOT.resolve(relativePath).normalize();
-        if (!target.startsWith(ROOT)) {
+        var target = root.resolve(relativePath).normalize();
+        if (!target.startsWith(root)) {
             throw new BusinessException("ARCHIVE_PATH_ILLEGAL", "归档路径不合法");
         }
         if (!Files.exists(target)) {
@@ -58,8 +67,8 @@ public class LocalArchiveStorageService {
 
     /** Removes a server-generated archive key after a database transaction cannot retain its metadata. */
     public void delete(String relativePath) {
-        var target = ROOT.resolve(relativePath).normalize();
-        if (!target.startsWith(ROOT)) {
+        var target = root.resolve(relativePath).normalize();
+        if (!target.startsWith(root)) {
             throw new BusinessException("ARCHIVE_PATH_ILLEGAL", "归档路径不合法");
         }
         try {

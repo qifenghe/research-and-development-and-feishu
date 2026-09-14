@@ -80,7 +80,7 @@ test("submission requires explicit confirmation/reason and output center never o
   const submit = source("components/process/ProcessSubmitDialog.vue");
   const output = source("components/process/RndOutputCenter.vue");
   for (const marker of ["getProcessSubmissionCheck", "confirmed", "changeReason", "revisionNo"]) assert.ok(submit.includes(marker), `submit ${marker}`);
-  assert.match(output, /等待包装确认后由现有核价流程生成/);
+  assert.match(output, /包装确认后生成，可在“寄样核价”查看进度与文件/);
   assert.ok(!/generate.*pricing/i.test(output));
   const taskApi = fs.readFileSync(new URL("../packages/shared/src/api/task.ts", import.meta.url), "utf8");
   assert.match(taskApi, /getProcessSubmissionCheck/);

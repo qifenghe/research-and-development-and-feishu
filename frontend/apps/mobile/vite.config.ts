@@ -13,6 +13,7 @@ export default defineConfig({
     }),
   ],
   resolve: {
+    extensions: [".mjs", ".ts", ".tsx", ".js", ".jsx", ".json"],
     alias: {
       "@": resolve(__dirname, "src"),
       "@rnd/shared": resolve(__dirname, "../../packages/shared/src"),
@@ -24,7 +25,7 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target: process.env.RND_BACKEND_URL || "http://localhost:8080",
         changeOrigin: true,
       },
     },
@@ -35,7 +36,7 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target: process.env.RND_BACKEND_URL || "http://localhost:8080",
         changeOrigin: true,
       },
     },

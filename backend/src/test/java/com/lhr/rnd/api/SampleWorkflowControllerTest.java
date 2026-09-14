@@ -172,6 +172,27 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
+    void restartDoesNotOverwriteExistingDemandProjectVersionOrTask() throws Exception {
+        var firstTask = createApprovedRequest();
+        var before = jdbcTemplate.queryForMap("select * from rnd_task where id = ?", firstTask);
+        clearWorkflowServiceMemory(); // database retained, exactly as after process restart
+        var secondTask = createApprovedRequest();
+        assertThat(secondTask).isNotEqualTo(firstTask);
+        assertThat(jdbcTemplate.queryForMap("select * from rnd_task where id = ?", firstTask)).isEqualTo(before);
+        for (var table : List.of("sample_request", "sample_project", "sample_version", "rnd_task"))
+            assertThat(jdbcTemplate.queryForObject("select count(*) from " + table, Integer.class)).isEqualTo(2);
+        var pending = createPendingSampleRequest();
+        clearWorkflowServiceMemory();
+        assertThat(workflowService.requests()).hasSize(3);
+        assertThat(workflowService.taskPool()).hasSize(2);
+        workflowService.approveRequest(pending, "研发总监");
+        clearWorkflowServiceMemory();
+        assignTask(firstTask);
+        clearWorkflowServiceMemory();
+        assertThat(workflowService.acceptTask(firstTask, "张研发").id()).isEqualTo(firstTask);
+    }
+
+    @Test
     void createsRequestApprovesToProjectAndAssignsTask() throws Exception {
         var taskId = createApprovedRequest();
         var sampleNo = valueById("rnd_task", taskId, "sample_no");

@@ -30,13 +30,13 @@ class ProcessPlanServiceTest {
         if (jdbc.queryForObject("select count(*) from experiment_form where id='FORM-PROCESS'", Integer.class) > 0) return;
         var now = LocalDateTime.now();
         jdbc.update("insert into sample_request(id,sample_no,product_name,product_type,customer_name,specification,creator_name,status,created_at) values (?,?,?,?,?,?,?,?,?)",
-                "REQ-PROCESS", "S-PROCESS", "牛腩", "预制菜", "客户", "1kg", "研发", "APPROVED", now);
+                "REQ-PROCESS", "S-PROCESS", "牛腩", "预制菜", "客户", "1kg", "研发", "PENDING_ASSIGNMENT", now);
         jdbc.update("insert into sample_project(id,request_id,sample_no,product_name,product_type,customer_name,specification,status,created_at) values (?,?,?,?,?,?,?,?,?)",
                 "PRJ-PROCESS", "REQ-PROCESS", "S-PROCESS", "牛腩", "预制菜", "客户", "1kg", "ACTIVE", now);
         jdbc.update("insert into sample_version(id,project_id,sample_no,product_name,product_type,specification,version_no,version_number,version_code,created_at) values (?,?,?,?,?,?,?,?,?,?)",
                 "VER-PROCESS", "PRJ-PROCESS", "S-PROCESS", "牛腩", "预制菜", "1kg", "1", 1, "V1", now);
         jdbc.update("insert into rnd_task(id,project_id,version_id,sample_no,product_name,version_code,status,created_at) values (?,?,?,?,?,?,?,?)",
-                "TASK-PROCESS", "PRJ-PROCESS", "VER-PROCESS", "S-PROCESS", "牛腩", "V1", "IN_PROGRESS", now);
+                "TASK-PROCESS", "PRJ-PROCESS", "VER-PROCESS", "S-PROCESS", "牛腩", "V1", "SAMPLING", now);
         jdbc.update("insert into experiment_form(id,task_id,project_id,version_id,sample_no,product_name,version_code,status,operator_name,saved_at) values (?,?,?,?,?,?,?,?,?,?)",
                 "FORM-PROCESS", "TASK-PROCESS", "PRJ-PROCESS", "VER-PROCESS", "S-PROCESS", "牛腩", "V1", "DRAFT", "研发", now);
     }

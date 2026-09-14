@@ -30,8 +30,7 @@ public final class ProcessSubmissionValidator {
         }
 
         var steps = flatten(majors);
-        validateFlow(steps, errors);
-        validatePrimaryChains(majors, steps, errors);
+        errors.addAll(flowIssues(plan));
         var hasExternalPrimary = false;
         for (var major : majors) {
             validateWeights(major, errors);
@@ -49,6 +48,15 @@ public final class ProcessSubmissionValidator {
             errors.add(error("EXTERNAL_MATERIAL_WEIGHT_REQUIRED", "外部物料总重量必须大于0", null, null));
         }
         return new ProcessSubmissionCheck(errors.isEmpty(), errors, warnings);
+    }
+
+    public List<ProcessSubmissionCheck.Issue> flowIssues(ProcessPlan plan) {
+        var errors = new ArrayList<ProcessSubmissionCheck.Issue>();
+        var majors = values(plan == null ? null : plan.majorProcesses());
+        var steps = flatten(majors);
+        validateFlow(steps, errors);
+        validatePrimaryChains(majors, steps, errors);
+        return errors;
     }
 
     private void validateFlow(List<StepRef> steps, List<ProcessSubmissionCheck.Issue> errors) {
@@ -72,6 +80,10 @@ public final class ProcessSubmissionValidator {
                             || ("PRIMARY".equals(material.materialRole()) && !output.output.primaryOutput())) {
                         errors.add(flowBroken(step));
                         continue;
+                    }
+                    if ("PRIMARY".equals(material.materialRole()) && (material.weightKg() == null
+                            || output.output.weightKg() == null || material.weightKg().compareTo(output.output.weightKg()) != 0)) {
+                        errors.add(error("FLOW_WEIGHT_MISMATCH", "主料承接重量必须与前序产出一致；取样和损耗请在前序步骤单独记录", step.major.sequence(), step.step.sequence()));
                     }
                     for (var target : values(step.step.outputs())) {
                         if (!blank(target.id())) graph.computeIfAbsent(source, ignored -> new ArrayList<>()).add(target.id());
@@ -109,10 +121,14 @@ public final class ProcessSubmissionValidator {
             }
         });
 
-        for (var major : majors) {
-            String currentTip = null;
-            boolean started = false;
+        String currentTip = null;
+        boolean started = false;
+        for (var major : majors.stream().sorted(java.util.Comparator.comparingInt(ProcessPlan.MajorProcess::sequence)).toList()) {
             var ordered = values(major.steps()).stream().sorted(java.util.Comparator.comparingInt(ProcessPlan.MinorStep::sequence)).toList();
+            if (!"NONE".equals(major.yieldBasis()) && ordered.stream().noneMatch(step ->
+                    values(step.materials()).stream().anyMatch(item -> "PRIMARY".equals(item.materialRole())))) {
+                errors.add(error("MAJOR_PRIMARY_CHAIN_REQUIRED", "参与得率的大工序必须在小步骤中记录连续主料流转，旧汇总数据请先补齐步骤", major.sequence(), null));
+            }
             for (var step : ordered) {
                 var primaryInputs = values(step.materials()).stream().filter(item -> "PRIMARY".equals(item.materialRole())).toList();
                 var primaryOutputs = values(step.outputs()).stream().filter(ProcessPlan.StepOutput::primaryOutput).toList();
@@ -127,6 +143,9 @@ public final class ProcessSubmissionValidator {
                     errors.add(error("PRIMARY_FLOW_BROKEN", "主料链步骤必须同时记录主料投入和主料产出", major.sequence(), step.sequence()));
                     continue;
                 }
+                if (!positive(input.weightKg()) || !positive(output.weightKg())) {
+                    errors.add(error("PRIMARY_STEP_WEIGHT_REQUIRED", "每个主料步骤的投入和产出重量必须大于0", major.sequence(), step.sequence()));
+                }
                 if (!started) {
                     if ("STEP_OUTPUT".equals(input.sourceType())) {
                         var source = outputs.get(input.sourceStepOutputId());
@@ -138,7 +157,11 @@ public final class ProcessSubmissionValidator {
                     }
                     started = true;
                 } else if (!"STEP_OUTPUT".equals(input.sourceType()) || !java.util.Objects.equals(currentTip, input.sourceStepOutputId())) {
-                    errors.add(error("PRIMARY_FLOW_BROKEN", "主料链必须逐步承接上一主料产出，不能分叉或跳链", major.sequence(), step.sequence()));
+                    errors.add(error("BATCH_PRIMARY_CHAIN_REQUIRED", "成品得率需要同一条连续主料链，请承接上一主料产出；独立路线请分开打样", major.sequence(), step.sequence()));
+                }
+                if ("NONE".equals(major.yieldBasis()) && input.weightKg() != null && output.weightKg() != null
+                        && input.weightKg().compareTo(output.weightKg()) != 0) {
+                    errors.add(error("EXCLUDED_PRIMARY_WEIGHT_CHANGED", "主料重量发生变化的工序必须参与得率计算", major.sequence(), step.sequence()));
                 }
                 currentTip = output.id();
             }

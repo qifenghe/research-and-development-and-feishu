@@ -573,13 +573,13 @@ class SessionAuthenticationInterceptorTest {
         var suffix = formId.substring("FORM-AUTH-".length());
         var now = LocalDateTime.now();
         jdbc.update("insert into sample_request(id,sample_no,product_name,product_type,customer_name,specification,creator_name,status,created_at) values (?,?,?,?,?,?,?,?,?)",
-                "REQ-" + suffix, "S-" + suffix, "牛腩", "预制菜", "客户", "1kg", "研发", "APPROVED", now);
+                "REQ-" + suffix, "S-" + suffix, "牛腩", "预制菜", "客户", "1kg", "研发", "PENDING_ASSIGNMENT", now);
         jdbc.update("insert into sample_project(id,request_id,sample_no,product_name,product_type,customer_name,specification,status,created_at) values (?,?,?,?,?,?,?,?,?)",
                 "PRJ-" + suffix, "REQ-" + suffix, "S-" + suffix, "牛腩", "预制菜", "客户", "1kg", "ACTIVE", now);
         jdbc.update("insert into sample_version(id,project_id,sample_no,product_name,product_type,specification,version_no,version_number,version_code,created_at) values (?,?,?,?,?,?,?,?,?,?)",
                 "VER-" + suffix, "PRJ-" + suffix, "S-" + suffix, "牛腩", "预制菜", "1kg", "1", 1, "V1", now);
         jdbc.update("insert into rnd_task(id,project_id,version_id,sample_no,product_name,version_code,status,assignee_name,created_at) values (?,?,?,?,?,?,?,?,?)",
-                "TASK-" + suffix, "PRJ-" + suffix, "VER-" + suffix, "S-" + suffix, "牛腩", "V1", "IN_PROGRESS", assigneeName, now);
+                "TASK-" + suffix, "PRJ-" + suffix, "VER-" + suffix, "S-" + suffix, "牛腩", "V1", "SAMPLING", assigneeName, now);
         jdbc.update("insert into experiment_form(id,task_id,project_id,version_id,sample_no,product_name,version_code,status,operator_name,saved_at) values (?,?,?,?,?,?,?,?,?,?)",
                 formId, "TASK-" + suffix, "PRJ-" + suffix, "VER-" + suffix, "S-" + suffix, "牛腩", "V1", "DRAFT", assigneeName, now);
     }

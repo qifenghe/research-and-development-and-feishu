@@ -41,8 +41,10 @@ public final class ProcessPlanCalculationService {
         var firstPrimaryInput = firstPrimaryInput(steps);
         var lastPrimaryOutput = lastPrimaryOutput(steps);
         var primaryInput = firstPrimaryInput == null ? BigDecimal.ZERO : safe(firstPrimaryInput.material().weightKg());
+        var internalOutputIds = steps.stream().flatMap(step -> values(step.outputs()).stream())
+                .map(ProcessPlan.StepOutput::id).filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
         var externalInput = materials.stream()
-                .filter(item -> !"STEP_OUTPUT".equals(item.sourceType()))
+                .filter(item -> !"STEP_OUTPUT".equals(item.sourceType()) || !internalOutputIds.contains(item.sourceStepOutputId()))
                 .map(ProcessPlan.StepMaterial::weightKg).map(this::safe).reduce(BigDecimal.ZERO, BigDecimal::add);
         var consumedOutputIds = new HashSet<String>();
         materials.stream().filter(item -> "STEP_OUTPUT".equals(item.sourceType()) && item.sourceStepOutputId() != null)
@@ -54,6 +56,7 @@ public final class ProcessPlanCalculationService {
         var totalOutput = terminalOutputs.stream().map(ProcessPlan.StepOutput::weightKg).map(this::safe)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         var validPrimaryFlow = firstPrimaryInput != null && lastPrimaryOutput != null
+                && primaryOutput != null
                 && firstPrimaryInput.step().sequence() <= lastPrimaryOutput.step().sequence();
         return result(primaryInput, externalInput, safe(primaryOutput), reusable, totalOutput, validPrimaryFlow);
     }
@@ -73,11 +76,13 @@ public final class ProcessPlanCalculationService {
 
     public BigDecimal calculateBatch(ProcessPlan plan) {
         if (plan == null || plan.majorProcesses() == null || plan.majorProcesses().isEmpty()) return null;
+        if (!new ProcessSubmissionValidator().flowIssues(plan).isEmpty()) return null;
         var ratio = BigDecimal.ONE;
         var hasRate = false;
         for (var major : plan.majorProcesses()) {
             if ("NONE".equals(major.yieldBasis())) continue;
             var value = calculate(major).mainYieldPercent();
+            if (value == null) return null;
             if (value != null) {
                 ratio = ratio.multiply(value.divide(BigDecimal.valueOf(100)));
                 hasRate = true;
@@ -121,7 +126,7 @@ public final class ProcessPlanCalculationService {
 
     private PrimaryInput firstPrimaryInput(List<ProcessPlan.MinorStep> steps) {
         return steps.stream().flatMap(step -> values(step.materials()).stream()
-                        .filter(material -> "PRIMARY".equals(material.materialRole()) && material.weightKg() != null)
+                        .filter(material -> "PRIMARY".equals(material.materialRole()))
                         .map(material -> new PrimaryInput(step, material)))
                 .min(java.util.Comparator.comparingInt((PrimaryInput value) -> value.step().sequence())
                         .thenComparingInt(value -> value.material().sequence())).orElse(null);
@@ -129,7 +134,7 @@ public final class ProcessPlanCalculationService {
 
     private PrimaryOutput lastPrimaryOutput(List<ProcessPlan.MinorStep> steps) {
         return steps.stream().flatMap(step -> values(step.outputs()).stream()
-                        .filter(output -> output.primaryOutput() && output.weightKg() != null)
+                        .filter(ProcessPlan.StepOutput::primaryOutput)
                         .map(output -> new PrimaryOutput(step, output)))
                 .max(java.util.Comparator.comparingInt((PrimaryOutput value) -> value.step().sequence())
                         .thenComparingInt(value -> value.output().sequence())).orElse(null);

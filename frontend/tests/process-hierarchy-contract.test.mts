@@ -19,17 +19,30 @@ test("calculates chained batch yield from primary material flow while skipping N
   const plan = createEmptyProcessPlan();
   plan.majorProcesses.push(
     majorWithFlow("10", "9"),
-    { ...majorWithFlow("9", "1"), key: "major-none", yieldBasis: "NONE" },
+    { ...majorWithFlow("9", "9"), key: "major-none", yieldBasis: "NONE", steps: [] },
     majorWithFlow("9", "7.2"),
     majorWithFlow("7.2", "5.04"),
   );
 
+  let previousOutput: string | undefined;
+  plan.majorProcesses.forEach((major, index) => {
+    major.sequence = index + 1;
+    for (const step of major.steps) {
+      const input = step.materials[0]!;
+      input.sourceType = previousOutput ? 'STEP_OUTPUT' : 'EXTERNAL';
+      input.sourceStepOutputId = previousOutput;
+      const output = step.outputs![0]!;
+      output.id = output.key = `output-${index}-${step.sequence}`;
+      output.continueFlow = true;
+      previousOutput = output.key;
+    }
+  });
   assert.equal(calculateMinorStepYield(plan.majorProcesses[0]!.steps[1]!).mainYieldPercent, 90);
   assert.equal(calculateMajorProcessYield(plan.majorProcesses[0]!).mainYieldPercent, 90);
   assert.equal(calculateBatchYield(plan), 50.4);
 });
 
-test("skips an incomplete primary flow instead of treating it as zero yield", () => {
+test("withholds final yield while a primary flow is incomplete", () => {
   const plan = createEmptyProcessPlan();
   plan.majorProcesses.push({
     key: "major-incomplete", sequence: 1, processName: "静置", yieldBasis: "PRIMARY_INPUT", inputs: [], outputs: [],
@@ -40,7 +53,7 @@ test("skips an incomplete primary flow instead of treating it as zero yield", ()
   }, majorWithFlow("10", "8"));
 
   assert.equal(calculateMajorProcessYield(plan.majorProcesses[0]!).mainYieldPercent, null);
-  assert.equal(calculateBatchYield(plan), 80);
+  assert.equal(calculateBatchYield(plan), null);
 });
 
 test("keeps historical major summary yields when a layered step only contains auxiliary material", () => {

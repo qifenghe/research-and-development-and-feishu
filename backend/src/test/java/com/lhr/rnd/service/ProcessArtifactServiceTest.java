@@ -74,10 +74,10 @@ class ProcessArtifactServiceTest {
         jdbc.update("update rnd_task set assignee_name = ?, assignee_user_id = null where id = 'TASK-PROCESS-ARTIFACT'", ENGINEER.name());
         if (jdbc.queryForObject("select count(*) from experiment_form where id = ?", Integer.class, FORM_ID) == 0) {
             var now = LocalDateTime.now();
-            jdbc.update("insert into sample_request(id,sample_no,product_name,product_type,customer_name,specification,creator_name,status,created_at) values (?,?,?,?,?,?,?,?,?)", "REQ-PROCESS-ARTIFACT", "S-PROCESS-ARTIFACT", "牛腩", "预制菜", "客户", "1kg", "研发", "APPROVED", now);
+            jdbc.update("insert into sample_request(id,sample_no,product_name,product_type,customer_name,specification,creator_name,status,created_at) values (?,?,?,?,?,?,?,?,?)", "REQ-PROCESS-ARTIFACT", "S-PROCESS-ARTIFACT", "牛腩", "预制菜", "客户", "1kg", "研发", "PENDING_ASSIGNMENT", now);
             jdbc.update("insert into sample_project(id,request_id,sample_no,product_name,product_type,customer_name,specification,status,created_at) values (?,?,?,?,?,?,?,?,?)", "PRJ-PROCESS-ARTIFACT", "REQ-PROCESS-ARTIFACT", "S-PROCESS-ARTIFACT", "牛腩", "预制菜", "客户", "1kg", "ACTIVE", now);
             jdbc.update("insert into sample_version(id,project_id,sample_no,product_name,product_type,specification,version_no,version_number,version_code,created_at) values (?,?,?,?,?,?,?,?,?,?)", "VER-PROCESS-ARTIFACT", "PRJ-PROCESS-ARTIFACT", "S-PROCESS-ARTIFACT", "牛腩", "预制菜", "1kg", "1", 1, "V1", now);
-            jdbc.update("insert into rnd_task(id,project_id,version_id,sample_no,product_name,version_code,status,assignee_name,created_at) values (?,?,?,?,?,?,?,?,?)", "TASK-PROCESS-ARTIFACT", "PRJ-PROCESS-ARTIFACT", "VER-PROCESS-ARTIFACT", "S-PROCESS-ARTIFACT", "牛腩", "V1", "IN_PROGRESS", "制品研发", now);
+            jdbc.update("insert into rnd_task(id,project_id,version_id,sample_no,product_name,version_code,status,assignee_name,created_at) values (?,?,?,?,?,?,?,?,?)", "TASK-PROCESS-ARTIFACT", "PRJ-PROCESS-ARTIFACT", "VER-PROCESS-ARTIFACT", "S-PROCESS-ARTIFACT", "牛腩", "V1", "SAMPLING", "制品研发", now);
             jdbc.update("insert into experiment_form(id,task_id,project_id,version_id,sample_no,product_name,version_code,status,operator_name,saved_at) values (?,?,?,?,?,?,?,?,?,?)", FORM_ID, "TASK-PROCESS-ARTIFACT", "PRJ-PROCESS-ARTIFACT", "VER-PROCESS-ARTIFACT", "S-PROCESS-ARTIFACT", "牛腩", "V1", "DRAFT", "研发", now);
         }
     }

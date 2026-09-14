@@ -6,6 +6,7 @@ export default defineConfig({
   base: "/admin/",
   plugins: [vue()],
   resolve: {
+    extensions: [".mjs", ".ts", ".tsx", ".js", ".jsx", ".json"],
     alias: {
       "@": resolve(__dirname, "src"),
       "@rnd/shared": resolve(__dirname, "../../packages/shared/src"),
@@ -17,9 +18,13 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target: process.env.RND_BACKEND_URL || "http://localhost:8080",
         changeOrigin: true,
       },
     },
+  },
+  preview: {
+    host: "127.0.0.1", port: 5183,
+    proxy: { "/api": { target: process.env.RND_BACKEND_URL || "http://localhost:8080", changeOrigin: true } },
   },
 });

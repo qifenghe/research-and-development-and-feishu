@@ -260,26 +260,32 @@ export function calculateMinorStepYield(step: MinorProcessStepDraft): ProcessYie
 }
 
 export function calculateBatchYield(plan: ProcessPlanDraft): number | null {
+  const errors: ProcessSubmissionIssuePreview[] = [];
+  const steps = plan.majorProcesses.flatMap(major => (major.steps || []).map(step => ({major, step})));
+  previewFlow(steps, errors);
+  previewPrimaryChains(plan.majorProcesses, steps, errors);
+  if (errors.length) return null;
   const rates = plan.majorProcesses
     .filter((major) => major.yieldBasis !== "NONE")
     .map(calculateMajorProcessYield)
-    .map((result) => result.mainYieldPercent)
-    .filter((value): value is number => value != null);
-  return rates.length ? rates.reduce((value, rate) => value * rate / 100, 100) : null;
+    .map((result) => result.mainYieldPercent);
+  if (rates.some(value => value == null)) return null;
+  return rates.length ? (rates as number[]).reduce((value, rate) => value * rate / 100, 100) : null;
 }
 
 function calculateProcessYieldFromStepFlow(process: MajorProcessDraft): ProcessYieldResult {
   const allMaterials = process.steps.flatMap((step) => step.materials || []);
   const firstPrimaryInput = process.steps.flatMap((step) => (step.materials || [])
-    .filter((item) => item.materialRole === "PRIMARY" && item.weightKg != null)
+    .filter((item) => item.materialRole === "PRIMARY")
     .map((material) => ({ step, material })))
     .sort((left, right) => left.step.sequence - right.step.sequence || left.material.sequence - right.material.sequence)[0];
   const lastPrimaryOutput = process.steps.flatMap((step) => (step.outputs || [])
-    .filter((item) => item.primaryOutput && item.weightKg != null)
+    .filter((item) => item.primaryOutput)
     .map((output) => ({ step, output })))
     .sort((left, right) => right.step.sequence - left.step.sequence || right.output.sequence - left.output.sequence)[0];
   const primaryInput = firstPrimaryInput?.material.weightKg || 0;
-  const externalInput = sumWeight(allMaterials.filter((item) => item.sourceType !== "STEP_OUTPUT"));
+  const internalOutputIds = new Set(process.steps.flatMap(step => step.outputs || []).map(output => output.id || output.key));
+  const externalInput = sumWeight(allMaterials.filter((item) => item.sourceType !== "STEP_OUTPUT" || !internalOutputIds.has(item.sourceStepOutputId || '')));
   const consumedOutputIds = new Set(allMaterials
     .filter((item) => item.sourceType === "STEP_OUTPUT" && item.sourceStepOutputId)
     .map((item) => item.sourceStepOutputId));
@@ -287,6 +293,7 @@ function calculateProcessYieldFromStepFlow(process: MajorProcessDraft): ProcessY
     .filter((output) => !consumedOutputIds.has(output.id || output.key));
   const primaryOutput = lastPrimaryOutput?.output;
   const validPrimaryFlow = Boolean(firstPrimaryInput && lastPrimaryOutput
+    && primaryOutput?.weightKg != null
     && firstPrimaryInput.step.sequence <= lastPrimaryOutput.step.sequence);
   return processYield(
     primaryInput,
@@ -509,6 +516,10 @@ function previewFlow(steps: StepPreviewRef[], errors: ProcessSubmissionIssuePrev
           errors.push(flowIssue(ref));
           continue;
         }
+        if (material.materialRole === 'PRIMARY' && (material.weightKg == null || output.output.weightKg == null
+          || Math.abs(material.weightKg - output.output.weightKg) > 0.00000001)) {
+          errors.push(issue('FLOW_WEIGHT_MISMATCH', '主料承接重量必须与前序产出一致；取样和损耗请在前序步骤单独记录', ref.major.sequence, ref.step.sequence));
+        }
         for (const target of ref.step.outputs || []) {
           const targetId = target.id || target.key;
           graph.set(source, [...(graph.get(source) || []), targetId]);
@@ -539,9 +550,11 @@ function previewPrimaryChains(majors: MajorProcessDraft[], steps: StepPreviewRef
     if (count > 1) errors.push(flowIssue(outputs.get(id)!));
   }
 
-  for (const major of majors) {
-    let currentTip: string | undefined;
-    let started = false;
+  let currentTip: string | undefined;
+  let started = false;
+  for (const major of [...majors].sort((a,b) => a.sequence - b.sequence)) {
+    if (major.yieldBasis !== 'NONE' && !(major.steps || []).some(step => (step.materials || []).some(item => item.materialRole === 'PRIMARY')))
+      errors.push(issue('MAJOR_PRIMARY_CHAIN_REQUIRED', '参与得率的大工序必须在小步骤中记录连续主料流转，旧汇总数据请先补齐步骤', major.sequence, null));
     for (const step of [...(major.steps || [])].sort((left, right) => left.sequence - right.sequence)) {
       const primaryInputs = (step.materials || []).filter((item) => item.materialRole === "PRIMARY");
       const primaryOutputs = (step.outputs || []).filter((item) => item.primaryOutput);
@@ -556,6 +569,8 @@ function previewPrimaryChains(majors: MajorProcessDraft[], steps: StepPreviewRef
         errors.push(issue("PRIMARY_FLOW_BROKEN", "主料链步骤必须同时记录主料投入和主料产出", major.sequence, step.sequence));
         continue;
       }
+      if (!(Number(input.weightKg) > 0) || !(Number(output.weightKg) > 0))
+        errors.push(issue('PRIMARY_STEP_WEIGHT_REQUIRED', '每个主料步骤的投入和产出重量必须大于0', major.sequence, step.sequence));
       if (!started) {
         if (input.sourceType === "STEP_OUTPUT") {
           const source = outputs.get(input.sourceStepOutputId || "");
@@ -565,8 +580,10 @@ function previewPrimaryChains(majors: MajorProcessDraft[], steps: StepPreviewRef
         }
         started = true;
       } else if (input.sourceType !== "STEP_OUTPUT" || input.sourceStepOutputId !== currentTip) {
-        errors.push(issue("PRIMARY_FLOW_BROKEN", "主料链必须逐步承接上一主料产出，不能分叉或跳链", major.sequence, step.sequence));
+        errors.push(issue("BATCH_PRIMARY_CHAIN_REQUIRED", "成品得率需要同一条连续主料链，请承接上一主料产出；独立路线请分开打样", major.sequence, step.sequence));
       }
+      if (major.yieldBasis === 'NONE' && input.weightKg != null && output.weightKg != null && Math.abs(input.weightKg - output.weightKg) > 0.00000001)
+        errors.push(issue('EXCLUDED_PRIMARY_WEIGHT_CHANGED', '主料重量发生变化的工序必须参与得率计算', major.sequence, step.sequence));
       currentTip = output.id || output.key;
     }
   }

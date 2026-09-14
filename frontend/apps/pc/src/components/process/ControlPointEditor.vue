@@ -41,7 +41,7 @@
         <div class="confirmation">
           <span v-if="point.confirmedBy">已由 {{ displayConfirmedBy(point.confirmedBy) }}确认<span v-if="point.confirmedAt"> · {{ point.confirmedAt }}</span></span>
           <span v-else>尚未确认；确认身份与时间由系统记录</span>
-          <a-button v-if="!readonly && point.importance === 'CRITICAL' && !hasDeviation(point) && !point.confirmedBy" size="small" @click="requestConfirmation(index)">本人确认</a-button>
+          <a-button v-if="!readonly && point.importance === 'CRITICAL' && !hasDeviation(point) && !point.confirmedBy" size="small" :disabled="!point.measurements.length || point.measurements.some(item => item.measuredValue == null || item.result !== 'PASS')" title="全部实测记录判定合格后可确认" @click="requestConfirmation(index)">本人确认</a-button>
           <a-button v-if="!readonly && point.importance === 'CRITICAL' && hasDeviation(point) && !point.resolved" size="small" danger @click="requestDeviationConfirmation(point)">负责人确认偏差</a-button>
         </div>
         <a-input v-model:value="point.basisOrRemark" :disabled="readonly" placeholder="依据或备注" @update:value="publish" />

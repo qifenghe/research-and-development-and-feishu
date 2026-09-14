@@ -18,7 +18,7 @@
           <a-button v-if="artifactFor(type.value)?.status === 'READY'" size="small" type="link" @click="download(artifactFor(type.value)!.id, type.value)">下载</a-button>
         </a-space>
       </div>
-      <div class="pricing-wait"><b>生产核价</b><span>等待包装确认后由现有核价流程生成</span></div>
+      <div class="pricing-wait"><b>生产核价</b><span>包装确认后生成，可在“寄样核价”查看进度与文件</span></div>
     </template>
   </section>
 </template>
@@ -37,7 +37,7 @@ const generating = ref<ProcessArtifactType>();
 const loadError = ref("");
 const listGeneration = new RequestGeneration();
 const mutationGeneration = new RequestGeneration();
-const artifactTypes = [{ label: "标准配方 Formula", value: "FORMULA_XLSX" as const }, { label: "生产 SOP", value: "SOP_DOCX" as const }];
+const artifactTypes = [{ label: "标准配方 Formula", value: "FORMULA_XLSX" as const }, { label: "研发 SOP", value: "SOP_DOCX" as const }];
 const revisionOptions = computed(() => props.revisions.map(item => ({ label: `正式版本 R${item.revisionNo}`, value: item.id })));
 
 watch(() => props.formId, () => {

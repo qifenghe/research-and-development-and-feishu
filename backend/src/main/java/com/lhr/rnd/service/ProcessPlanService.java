@@ -65,7 +65,7 @@ public class ProcessPlanService {
     @Transactional
     public ProcessPlan save(String formId, ProcessPlan request, SessionPrincipal principal) {
         requireDraftAccess(formId, principal);
-        return saveInternal(formId, sanitizeControlConfirmations(formId, request));
+        return saveInternal(formId, sanitizeControlConfirmations(formId, request, principal));
     }
 
     private ProcessPlan saveInternal(String formId, ProcessPlan request) {
@@ -141,34 +141,39 @@ public class ProcessPlanService {
         return find(formId);
     }
 
-    private ProcessPlan sanitizeControlConfirmations(String formId, ProcessPlan request) {
+    private ProcessPlan sanitizeControlConfirmations(String formId, ProcessPlan request, SessionPrincipal principal) {
         var majors = values(request.majorProcesses()).stream().map(major -> new ProcessPlan.MajorProcess(
                 major.id(), major.sequence(), major.processCode(), major.processName(), major.description(), major.yieldBasis(), major.remark(),
                 values(major.steps()).stream().map(step -> new ProcessPlan.MinorStep(step.id(), step.sequence(), step.stepCode(), step.stepName(),
                         step.stepType(), step.parameter1Name(), step.parameter1Value(), step.parameter1Unit(), step.parameter2Name(),
                         step.parameter2Value(), step.parameter2Unit(), step.equipment(), step.instruction(), step.materials(), step.outputs(),
-                        values(step.controlPoints()).stream().map(point -> sanitizeControlConfirmation(formId, major, step, point)).toList())).toList(),
+                        values(step.controlPoints()).stream().map(point -> sanitizeControlConfirmation(formId, major, step, point, principal)).toList())).toList(),
                 major.inputs(), major.outputs(), major.yield())).toList();
         return new ProcessPlan(request.id(), request.experimentFormId(), request.versionNo(), request.status(), majors,
                 request.batchYieldPercent(), request.balanceToleranceKg(), request.legacy(), request.sourceRevisionId(), request.changeReason());
     }
 
     private ProcessPlan.ControlPoint sanitizeControlConfirmation(String formId, ProcessPlan.MajorProcess major,
-                                                                 ProcessPlan.MinorStep step, ProcessPlan.ControlPoint point) {
+                                                                 ProcessPlan.MinorStep step, ProcessPlan.ControlPoint point, SessionPrincipal principal) {
         var persisted = persistedControlPoint(formId, point.id());
-        var inheritConfirmation = hasDeviation(point)
-                && persisted != null
-                && persisted.point().resolved()
+        var inheritConfirmation = persisted != null
+                && (!hasDeviation(point) || persisted.point().resolved())
                 && !blank(persisted.point().confirmedBy())
                 && !blank(persisted.point().confirmedAt())
                 && sameControlLocation(major, step, persisted)
                 && sameControlDefinition(point, persisted.point())
                 && sameMeasurements(point.measurements(), persisted.point().measurements());
-        var trustedBy = inheritConfirmation ? persisted.point().confirmedBy() : null;
-        var trustedAt = inheritConfirmation ? persisted.point().confirmedAt() : null;
+        var confirmPassing = "CRITICAL".equals(point.importance()) && !hasDeviation(point)
+                && "__SESSION_CONFIRMATION_REQUESTED__".equals(point.confirmedBy())
+                && !values(point.measurements()).isEmpty()
+                && values(point.measurements()).stream().allMatch(item -> item.measuredValue() != null && "PASS".equals(item.result()));
+        var trustedBy = confirmPassing ? principal.name() : inheritConfirmation ? persisted.point().confirmedBy() : null;
+        var trustedAt = confirmPassing ? LocalDateTime.now().toString() : inheritConfirmation ? persisted.point().confirmedAt() : null;
+        if (confirmPassing) auditLogService.record("PROCESS_CONTROL_POINT", point.id(), "CRITICAL_PASS_CONFIRMED",
+                principal.name(), principal.userId(), "formId=" + formId);
         return new ProcessPlan.ControlPoint(point.id(), point.sequence(), point.controlType(), point.importance(), point.itemName(),
                 point.targetValue(), point.lowerLimit(), point.upperLimit(), point.unit(), point.method(), point.measurementTool(),
-                point.frequency(), point.deviationAction(), inheritConfirmation, trustedBy, trustedAt, point.basisOrRemark(), point.measurements());
+                point.frequency(), point.deviationAction(), inheritConfirmation && persisted.point().resolved(), trustedBy, trustedAt, point.basisOrRemark(), point.measurements());
     }
 
     private PersistedControlPoint persistedControlPoint(String formId, String controlPointId) {
@@ -272,6 +277,15 @@ public class ProcessPlanService {
         var owner = owners.get(0);
         var allowed = !blank(owner[0]) ? owner[0].equals(principal.userId()) : legacyOwnerMatches(owner[1], principal.userId());
         if (!allowed) throw new BusinessException("PROCESS_PLAN_FORM_FORBIDDEN", "当前用户无权操作该工艺单");
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canReadForComparison(String formId, SessionPrincipal principal) {
+        try { requireDraftAccess(formId, principal); return true; }
+        catch (BusinessException ex) {
+            if ("PROCESS_PLAN_FORM_FORBIDDEN".equals(ex.code())) return false;
+            throw ex;
+        }
     }
 
     @Transactional

@@ -58,7 +58,7 @@ class ProcessPlanCalculationServiceTest {
     @Test
     void calculatesBatchYieldByMultiplyingMajorProcessYields() {
         var plan = new ProcessPlan(null, "FORM-1", 1, "DRAFT", List.of(
-                majorWithFlow("10", "9"), majorWithFlow("9", "7.2"), majorWithFlow("7.2", "5.04")), null, false);
+                connectedMajor(1, null, "10", "9"), connectedMajor(2, "OUT-1", "9", "7.2"), connectedMajor(3, "OUT-2", "7.2", "5.04")), null, false);
 
         assertThat(service.calculateBatch(plan)).isEqualByComparingTo("50.400000");
     }
@@ -81,22 +81,22 @@ class ProcessPlanCalculationServiceTest {
 
     @Test
     void skipsMajorProcessesWhoseYieldBasisIsNoneWhenCalculatingBatchYield() {
-        var skipped = majorWithFlow("10", "2");
+        var skipped = major(List.of());
         skipped = new ProcessPlan.MajorProcess(skipped.id(), skipped.sequence(), skipped.processCode(), skipped.processName(),
-                skipped.description(), "NONE", skipped.remark(), skipped.steps(), skipped.inputs(), skipped.outputs(), skipped.yield());
+                skipped.description(), "NONE", "检查包装", skipped.steps(), skipped.inputs(), skipped.outputs(), skipped.yield());
         var plan = new ProcessPlan(null, "FORM-1", 1, "DRAFT", List.of(skipped, majorWithFlow("10", "8")), null, false);
 
         assertThat(service.calculateBatch(plan)).isEqualByComparingTo("80.000000");
     }
 
     @Test
-    void skipsIncompleteMajorProcessesInsteadOfTreatingMissingPrimaryOutputAsZeroYield() {
+    void withholdsBatchYieldWhenAnyRequiredMajorIsIncomplete() {
         var incomplete = major(List.of(new ProcessPlan.MinorStep(null, 1, "HOLD", "静置", "NORMAL", null, null, null,
                 null, null, null, null, null, List.of(material("PRIMARY", "EXTERNAL", null, "牛肉", "10")), List.of(), List.of())));
         var plan = new ProcessPlan(null, "FORM-1", 1, "DRAFT", List.of(incomplete, majorWithFlow("10", "8")), null, false);
 
         assertThat(service.calculate(incomplete).mainYieldPercent()).isNull();
-        assertThat(service.calculateBatch(plan)).isEqualByComparingTo("80.000000");
+        assertThat(service.calculateBatch(plan)).isNull();
     }
 
     @Test
@@ -141,6 +141,13 @@ class ProcessPlanCalculationServiceTest {
 
         assertThatThrownBy(() -> service.calculateStep(invalid)).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("at most one primary output");
+    }
+
+    private ProcessPlan.MajorProcess connectedMajor(int sequence, String source, String input, String output) {
+        var step = new ProcessPlan.MinorStep(null, 1, "COOK", "熟制", "NORMAL", null, null, null, null, null,
+                null, null, null, List.of(material("PRIMARY", source == null ? "EXTERNAL" : "STEP_OUTPUT", source, "牛肉", input)),
+                List.of(new ProcessPlan.StepOutput("OUT-" + sequence, 1, "INTERMEDIATE", "牛肉", "SOLID", new BigDecimal(output), true, true, null)), List.of());
+        return new ProcessPlan.MajorProcess(null, sequence, "HEAT", "热加工", null, "PRIMARY_INPUT", null, List.of(step), List.of(), List.of(), null);
     }
 
     private ProcessPlan.MajorProcess majorWithFlow(String inputWeight, String outputWeight) {

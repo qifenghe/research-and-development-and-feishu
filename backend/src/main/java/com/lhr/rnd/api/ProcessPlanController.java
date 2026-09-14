@@ -32,12 +32,15 @@ public class ProcessPlanController {
     private final ProcessPlanService service;
     private final ProcessRevisionService revisionService;
     private final ProcessArtifactService artifactService;
+    private final com.lhr.rnd.service.ProcessYieldComparisonService comparisons;
     private final ProcessSubmissionValidator submissionValidator = new ProcessSubmissionValidator();
 
-    public ProcessPlanController(ProcessPlanService service, ProcessRevisionService revisionService, ProcessArtifactService artifactService) {
+    public ProcessPlanController(ProcessPlanService service, ProcessRevisionService revisionService, ProcessArtifactService artifactService,
+                                 com.lhr.rnd.service.ProcessYieldComparisonService comparisons) {
         this.service = service;
         this.revisionService = revisionService;
         this.artifactService = artifactService;
+        this.comparisons = comparisons;
     }
 
     @GetMapping
@@ -87,6 +90,11 @@ public class ProcessPlanController {
     @GetMapping("/revisions")
     public ApiResponse<List<ProcessRevision.ProcessRevisionSummary>> revisions(@PathVariable String formId, HttpServletRequest servletRequest) {
         return ApiResponse.success(revisionService.list(formId, requiredSessionPrincipal(servletRequest)));
+    }
+
+    @GetMapping("/revisions/comparison")
+    public ApiResponse<?> comparison(@PathVariable String formId, HttpServletRequest request) {
+        return ApiResponse.success(comparisons.compare(formId, requiredSessionPrincipal(request)));
     }
 
     @GetMapping("/revisions/{revisionId}")

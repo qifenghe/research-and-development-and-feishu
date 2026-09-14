@@ -12,6 +12,7 @@
         <span>最终得率 <b>{{ percent(finalYield) }}</b></span>
       </div>
       <a-space>
+        <ProcessYieldComparison :form-id="formId" />
         <a-button :disabled="readonly || plan.status !== 'DRAFT'" :loading="saveState === 'saving'" @click="saveNow()">保存草稿</a-button>
         <a-button type="primary" :disabled="readonly || !formId || plan.status !== 'DRAFT' || saveState === 'saving'" @click="openSubmit">正式提交</a-button>
       </a-space>
@@ -93,6 +94,7 @@ import MinorStepWorkspace from "./MinorStepWorkspace.vue";
 import ProcessSubmitDialog from "./ProcessSubmitDialog.vue";
 import ProcessPlanSnapshot from "./ProcessPlanSnapshot.vue";
 import RndOutputCenter from "./RndOutputCenter.vue";
+import ProcessYieldComparison from "./ProcessYieldComparison.vue";
 import { diffProcessPlans } from "./processPlanDiff";
 import { ProcessPlanSaveCoordinator, type ProcessPlanSaveState } from "./processPlanAutosave";
 import { RequestGeneration } from "./requestGeneration";

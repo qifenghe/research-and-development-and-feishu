@@ -275,9 +275,10 @@ public class SampleWorkflowService {
 
     @Transactional
     public synchronized SampleRequest createRequest(CreateSampleRequestCommand command) {
-        var sampleNo = "YP20260618" + "%04d".formatted(requestSequence);
+        var requestId = nextAvailableId("REQ", requestSequence++, requests, sampleRequestRepository);
+        var sampleNo = "YP20260618" + requestId.substring(4);
         var request = new SampleRequest(
-                "REQ-%04d".formatted(requestSequence),
+                requestId,
                 sampleNo,
                 command.productName(),
                 command.productType(),
@@ -289,7 +290,7 @@ public class SampleWorkflowService {
                 SampleStatus.PENDING_REVIEW,
                 now()
         );
-        requestSequence++;
+
         requests.put(request.id(), request);
         persistRequest(request);
         return request;
@@ -297,10 +298,7 @@ public class SampleWorkflowService {
 
     @Transactional
     public synchronized ApproveSampleRequestResult approveRequest(String requestId, String reviewerName) {
-        var request = requests.get(requestId);
-        if (request == null) {
-            throw new BusinessException("SAMPLE_REQUEST_NOT_FOUND", "样品需求不存在");
-        }
+        var request = requestDetail(requestId);
         if (request.status() != SampleStatus.PENDING_REVIEW) {
             throw new BusinessException("SAMPLE_REQUEST_STATUS_ILLEGAL", "当前需求状态不可审核");
         }
@@ -320,7 +318,7 @@ public class SampleWorkflowService {
                 request.createdAt()
         );
         var project = new SampleProject(
-                "PROJ-%04d".formatted(projects.size() + 1),
+                nextAvailableId("PROJ", projects.size() + 1, projects, sampleProjectRepository),
                 request.sampleNo(),
                 request.productName(),
                 request.productType(),
@@ -333,7 +331,7 @@ public class SampleWorkflowService {
         );
         var versionCode = SampleVersionCode.fromNumber(0).code();
         var version = SampleVersion.builder()
-                .id("VER-%04d".formatted(versions.size() + 1))
+                .id(nextAvailableId("VER", versions.size() + 1, versions, sampleVersionRepository))
                 .projectId(project.id())
                 .sampleNo(request.sampleNo())
                 .productName(request.productName())
@@ -349,7 +347,7 @@ public class SampleWorkflowService {
                 .createdAt(now())
                 .build();
         var task = new RndTask(
-                "TASK-%04d".formatted(taskSequence),
+                nextAvailableId("TASK", taskSequence, tasks, rndTaskRepository),
                 project.id(),
                 version.id(),
                 request.sampleNo(),
@@ -373,6 +371,7 @@ public class SampleWorkflowService {
     }
 
     public synchronized List<RndTask> taskPool() {
+        restoreTaskCache();
         return tasks.values().stream()
                 .filter(task -> task.status() == RndTaskStatus.PENDING_ASSIGNMENT)
                 .toList();
@@ -390,10 +389,7 @@ public class SampleWorkflowService {
             String productOwnerName,
             LocalDate dueDate
     ) {
-        var task = tasks.get(taskId);
-        if (task == null) {
-            throw new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在");
-        }
+        var task = requiredTask(taskId);
         if (task.status() != RndTaskStatus.PENDING_ASSIGNMENT) {
             throw new BusinessException("RND_TASK_STATUS_ILLEGAL", "当前任务状态不可分发");
         }
@@ -409,10 +405,7 @@ public class SampleWorkflowService {
 
     @Transactional
     public synchronized RndTask acceptTask(String taskId, String acceptedBy) {
-        var task = tasks.get(taskId);
-        if (task == null) {
-            throw new BusinessException("RND_TASK_NOT_FOUND", "研发任务不存在");
-        }
+        var task = requiredTask(taskId);
         if (task.status() != RndTaskStatus.PENDING_ACCEPTANCE) {
             throw new BusinessException("RND_TASK_STATUS_ILLEGAL", "当前任务状态不可接受");
         }
@@ -714,6 +707,8 @@ public class SampleWorkflowService {
     }
 
     public synchronized List<SampleRequest> requests(String status, String keyword) {
+        if (sampleRequestRepository != null) sampleRequestRepository.findAll().stream()
+                .map(this::hydrateRequest).forEach(value -> requests.putIfAbsent(value.id(), value));
         return requests.values().stream()
                 .filter(request -> matchesStatus(status, request.status().name()))
                 .filter(request -> matchesKeyword(
@@ -746,6 +741,7 @@ public class SampleWorkflowService {
     }
 
     public synchronized List<RndTask> tasks(String status, String keyword, String assigneeName) {
+        restoreTaskCache();
         return tasks.values().stream()
                 .filter(task -> matchesStatus(status, task.status().name()))
                 .filter(task -> matchesAssignee(assigneeName, task.assigneeName()))
@@ -1157,6 +1153,15 @@ public class SampleWorkflowService {
         return false;
     }
 
+    // Single-instance workflow: persisted rows remain reserved after a process restart.
+    private String nextAvailableId(String prefix, int start, Map<String, ?> cache,
+                                   org.springframework.data.repository.CrudRepository<?, String> repository) {
+        for (int candidate = start; ; candidate++) {
+            var id = "%s-%04d".formatted(prefix, candidate);
+            if (!cache.containsKey(id) && (repository == null || !repository.existsById(id))) return id;
+        }
+    }
+
     private String nextExperimentFormId() {
         while (true) {
             var id = "EXP-%04d".formatted(experimentSequence++);
@@ -1336,10 +1341,25 @@ public class SampleWorkflowService {
 
     public synchronized SampleRequest requestDetail(String requestId) {
         var request = requests.get(requestId);
+        if (request == null && sampleRequestRepository != null) {
+            request = sampleRequestRepository.findById(requestId).map(this::hydrateRequest).orElse(null);
+            if (request != null) requests.put(request.id(), request);
+        }
         if (request == null) {
             throw new BusinessException("SAMPLE_REQUEST_NOT_FOUND", "样品需求不存在");
         }
         return request;
+    }
+
+    private SampleRequest hydrateRequest(SampleRequestEntity entity) {
+        return new SampleRequest(entity.id(), entity.sampleNo(), entity.productName(), entity.productType(),
+                entity.customerName(), entity.specification(), entity.applicationScenario(), entity.flavorRequirement(),
+                entity.creatorName(), SampleStatus.valueOf(entity.status()), entity.createdAt());
+    }
+
+    private void restoreTaskCache() {
+        if (rndTaskRepository != null) rndTaskRepository.findAll().stream().map(this::hydrateRndTask)
+                .forEach(value -> tasks.putIfAbsent(value.id(), value));
     }
 
     private PricingFileRecord requiredPricingFile(String pricingFileId) {
@@ -1806,7 +1826,7 @@ public class SampleWorkflowService {
         var version = requiredVersion(command.versionId());
         ensureReadyForShipment(command.versionId());
         var shipment = new ShipmentRecord(
-                "SHIP-%04d".formatted(shipmentSequence++),
+                nextAvailableId("SHIP", shipmentSequence++, shipments, shipmentRecordRepository),
                 version.id(),
                 version.sampleNo(),
                 version.productName(),
@@ -1843,7 +1863,7 @@ public class SampleWorkflowService {
         shipments.put(updatedShipment.id(), updatedShipment);
 
         var feedback = new CustomerFeedback(
-                "CFB-%04d".formatted(customerFeedbackSequence++),
+                nextAvailableId("CFB", customerFeedbackSequence++, customerFeedbacks, customerFeedbackRepository),
                 shipment.id(),
                 command.feedbackBy(),
                 command.result(),
@@ -1904,7 +1924,7 @@ public class SampleWorkflowService {
                 ? projects.get(version.projectId()).customerName()
                 : "LHYC";
         var record = new PricingFileRecord(
-                "PRICE-%04d".formatted(pricingFileSequence++),
+                nextAvailableId("PRICE", pricingFileSequence++, pricingFiles, pricingFileRepository),
                 version.id(),
                 version.sampleNo(),
                 version.productName(),
@@ -2103,7 +2123,7 @@ public class SampleWorkflowService {
         var notifiedPricingFile = pricingFile.withStatus(PricingFileStatus.FINANCE_NOTIFIED);
         pricingFiles.put(notifiedPricingFile.id(), notifiedPricingFile);
         var notification = new FinanceNotification(
-                "FIN-%04d".formatted(financeNotificationSequence++),
+                nextAvailableId("FIN", financeNotificationSequence++, financeNotifications, financeNotificationRepository),
                 pricingFile.id(),
                 recipientName,
                 remark,
@@ -2187,7 +2207,7 @@ public class SampleWorkflowService {
         if (approved) {
             result = reviewed.withStatus(PricingFileStatus.FINANCE_NOTIFIED);
             financeNotification = new FinanceNotification(
-                    "FIN-%04d".formatted(financeNotificationSequence++),
+                    nextAvailableId("FIN", financeNotificationSequence++, financeNotifications, financeNotificationRepository),
                     reviewed.id(),
                     DEFAULT_FINANCE_RECIPIENT,
                     AUTO_FINANCE_REMARK,
@@ -2389,7 +2409,7 @@ public class SampleWorkflowService {
         var nextNumber = currentVersion.versionNumber() == null ? 1 : currentVersion.versionNumber() + 1;
         var nextCode = SampleVersionCode.fromNumber(nextNumber).code();
         var nextVersion = SampleVersion.builder()
-                .id("VER-%04d".formatted(versions.size() + 1))
+                .id(nextAvailableId("VER", versions.size() + 1, versions, sampleVersionRepository))
                 .projectId(currentVersion.projectId())
                 .sampleNo(currentVersion.sampleNo())
                 .productName(currentVersion.productName())
@@ -2409,7 +2429,7 @@ public class SampleWorkflowService {
         var previousTask = taskByVersionId(currentVersion.id());
         var nextTaskStatus = taskStatusAfter(SampleStatus.RESAMPLING_REQUIRED, SampleAction.CREATE_NEXT_VERSION);
         var nextTask = new RndTask(
-                "TASK-%04d".formatted(taskSequence++),
+                nextAvailableId("TASK", taskSequence++, tasks, rndTaskRepository),
                 nextVersion.projectId(),
                 nextVersion.id(),
                 nextVersion.sampleNo(),

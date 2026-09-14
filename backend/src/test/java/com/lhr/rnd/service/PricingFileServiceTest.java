@@ -225,7 +225,7 @@ class PricingFileServiceTest {
     }
 
     @Test
-    void preservesUnavailableZeroHundredAndOverHundredFormalYields() throws Exception {
+    void withholdsIncompleteFormalYieldsAndPreservesValidHundredAndOverHundredYields() throws Exception {
         var version = pricingVersionWithCustomMaterials(List.of(
                 new ExperimentMaterial("原料", 1, "RAW-001", "旧主料", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg")));
         var unavailable = new PricingFileService().generate(version, "V1", "LHYC",
@@ -240,6 +240,11 @@ class PricingFileServiceTest {
                     formalRevision("PREV-YIELD-" + expected, 1, "RAW-001", "正式主料", "100", expected), List.of());
             try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
                 var sheet = workbook.getSheetAt(0);
+                if ("0".equals(expected)) {
+                    assertThat(sheet.getRow(8).getCell(6).getStringCellValue()).contains("finishedYield=UNAVAILABLE");
+                    assertThat(sheet.getRow(15).getCell(6).getCellType()).isEqualTo(CellType.BLANK);
+                    continue;
+                }
                 assertThat(sheet.getRow(8).getCell(6).getStringCellValue())
                         .contains("finishedYield=" + new BigDecimal(expected).setScale(6) + "%");
                 assertThat(sheet.getRow(15).getCell(6).getNumericCellValue())

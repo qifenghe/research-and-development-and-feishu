@@ -30,3 +30,5 @@ node_modules/
 generated/node_modules
 dist/
 build/
+data/preview/
+backend/data/preview/

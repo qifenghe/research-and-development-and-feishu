@@ -122,11 +122,11 @@
 
         <a-col :span="8">
           <a-card title="打样状态" class="page-card workflow-side-card">
-            <a-tag color="green">打样中</a-tag>
+            <a-tag color="green">{{ detail?.currentExperimentForm?.status === 'LOCKED' ? '已完成并锁定' : detail?.currentExperimentForm?.status === 'SUBMITTED_FOR_TEST' ? '待内部测试' : '打样中' }}</a-tag>
             <a-tag v-if="draftStatusLabel" color="blue" style="margin-left: 8px">{{ draftStatusLabel }}</a-tag>
             <a-descriptions :column="1" size="small" style="margin-top: 12px">
               <a-descriptions-item label="样品版本">{{ detail?.task.versionCode }}</a-descriptions-item>
-              <a-descriptions-item label="录入人">{{ auth.displayName }}</a-descriptions-item>
+              <a-descriptions-item label="录入人">{{ detail?.currentExperimentForm?.operatorName || auth.displayName }}</a-descriptions-item>
             </a-descriptions>
             <a-divider />
             <a-typography-text type="secondary">
