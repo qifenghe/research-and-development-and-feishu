@@ -1,6 +1,6 @@
 # 研发试验工作台与导出文件合并设计
 
-状态：合并设计待确认，尚未实施。关联设计：`2026-09-15-rnd-trial-workbench-design.md`。
+状态：用户已确认进入实施。实施进度见 `../plans/2026-09-15-rnd-workbench-and-exports.md`；未完成的条目不代表已上线。关联设计：`2026-09-15-rnd-trial-workbench-design.md`。
 
 ## 1. 本轮范围
 
