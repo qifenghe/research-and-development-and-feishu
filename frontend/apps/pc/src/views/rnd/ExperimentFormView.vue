@@ -85,15 +85,31 @@
                 </a-space>
               </template>
             </a-alert>
-            <ProcessPlanWorkspace
-              ref="processWorkspace"
-              v-model="processPlan"
-              :form-id="detail?.currentExperimentForm?.id"
-              :readonly="readOnly || !!processDraftConflict"
-              :server-hydration-token="serverProcessHydrationToken"
-              @request-save="saveDraft"
-              @saved="persistLocalDraft"
-            />
+            <a-tabs v-model:active-key="workspaceMode">
+              <a-tab-pane key="formal" tab="正式工艺">
+                <ProcessPlanWorkspace
+                  ref="processWorkspace"
+                  v-model="processPlan"
+                  :form-id="detail?.currentExperimentForm?.id"
+                  :readonly="readOnly || !!processDraftConflict"
+                  :server-hydration-token="serverProcessHydrationToken"
+                  :can-recover-displaced-draft="canUseTrials"
+                  @request-save="saveDraft"
+                  @saved="persistLocalDraft"
+                  @trial-created="onRecoveredTrialCreated"
+                />
+              </a-tab-pane>
+              <a-tab-pane v-if="canUseTrials" key="trials" tab="试验方案">
+                <TrialWorkbench
+                  ref="trialWorkbench"
+                  :form-id="detail?.currentExperimentForm?.id"
+                  :user-id="auth.principal?.userId || auth.user?.id || auth.displayName"
+                  :formal-plan="processPlan"
+                  :readonly="readOnly || !!processDraftConflict"
+                  @promoted="onTrialPromoted"
+                />
+              </a-tab-pane>
+            </a-tabs>
             <a-collapse v-if="showLegacyProcessEditor" ghost style="margin-top:12px">
               <a-collapse-panel key="legacy" header="历史兼容数据（旧版工序编辑器）">
                 <ProcessTabsEditor v-model="processSteps" :readonly="editingBlocked" :create-row="blankProcess" />
@@ -189,6 +205,7 @@ import ProcessTabsEditor from "../../components/ProcessTabsEditor.vue";
 import { cloneVueValue } from "../../components/process/cloneVueValue";
 import ProcessPlanWorkspace from "../../components/process/ProcessPlanWorkspace.vue";
 import ProcessPlanSnapshot from "../../components/process/ProcessPlanSnapshot.vue";
+import TrialWorkbench from "../../components/trials/TrialWorkbench.vue";
 import { RequestGeneration } from "../../components/process/requestGeneration";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
@@ -261,8 +278,11 @@ const processDraftConflict = ref<ProcessPlanDraft>();
 const resolvingProcessConflict = ref(false);
 const editingBlocked = computed(() => readOnly.value || !!processDraftConflict.value || resolvingProcessConflict.value);
 const serverProcessHydrationToken = ref(0);
+const workspaceMode = ref<"formal" | "trials">("formal");
 const processWorkspace = ref<{ flushSave: (silent?: boolean) => Promise<void>; restoreLocalDirty: (plan: ProcessPlanDraft) => void }>();
+const trialWorkbench = ref<{ openCreatedTrial: (trialId: string) => Promise<void> }>();
 const showLegacyProcessEditor = computed(() => processPlan.value.legacy && !processPlan.value.majorProcesses.some((item) => item.steps.length));
+const canUseTrials = computed(() => ["RND_ENGINEER", "RND_DIRECTOR"].includes(auth.role) && Boolean(detail.value?.currentExperimentForm?.id));
 const processRecipe = computed(() => aggregateProcessRecipe(processPlan.value));
 const hasProcessPlanData = computed(() => hasLayeredProcessData(processPlan.value));
 const effectiveMaterials = computed<MaterialRow[]>(() => hasProcessPlanData.value ? processRecipe.value.map((item, index) => ({
@@ -420,6 +440,7 @@ function confirmArrangement() {
     });
   }
   experimentPhase.value = "form";
+  workspaceMode.value = "formal";
 }
 
 function categoryLabel(category: MaterialCategory) {
@@ -733,6 +754,19 @@ async function saveDraft(options: { silent?: boolean } = {}) {
   } finally {
     if (requestGeneration.isCurrent(generation)) saving.value = false;
   }
+}
+
+function onTrialPromoted(revision: { snapshot: ProcessPlanDraft }) {
+  processPlan.value = normalizeProcessPlan(cloneVueValue(revision.snapshot));
+  serverProcessHydrationToken.value++;
+  workspaceMode.value = "formal";
+  persistLocalDraft();
+}
+
+async function onRecoveredTrialCreated(trialId: string) {
+  workspaceMode.value = "trials";
+  await nextTick();
+  await trialWorkbench.value?.openCreatedTrial(trialId);
 }
 
 async function onFileChange(event: Event) {

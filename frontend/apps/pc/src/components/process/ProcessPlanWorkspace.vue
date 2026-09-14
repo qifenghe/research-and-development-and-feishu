@@ -55,6 +55,10 @@
           <a-descriptions-item label="配方总重">{{ revisionRecipeWeight.toFixed(3) }} kg</a-descriptions-item>
           <a-descriptions-item label="成品得率">{{ percent(revisionFinalYield) }}</a-descriptions-item>
         </a-descriptions>
+        <a-alert v-if="revisionSource" type="info" show-icon class="revision-source">
+          <template #message>来源：试验方案 {{ revisionSource.trialName }} · v{{ revisionSource.trialVersionNo }}</template>
+          <template #description>由 {{ revisionSource.promotedBy }} 于 {{ formatDate(revisionSource.promotedAt) }} 提交；来源快照 {{ revisionSource.trialSnapshotHash.slice(0, 12) }}…</template>
+        </a-alert>
         <section class="revision-diff">
           <h3>版本差异</h3>
           <p v-if="!selectedRevisionSource">首次正式版本，无来源版本可比较。</p>
@@ -65,6 +69,11 @@
           </div>
         </section>
         <ProcessPlanSnapshot :plan="selectedRevision.snapshot" />
+        <section v-if="canRecoverDisplacedDraft && revisionSource" class="recovery">
+          <div class="side-title"><div><b>提交前被替换草稿</b><small>研发内部数据，仅按需读取</small></div><a-button size="small" :loading="recoveryLoading" @click="loadDisplacedDraft">读取草稿</a-button></div>
+          <a-empty v-if="recoveryLoaded && !displacedDraft" :image="false" description="本次提交未替换不同的正式草稿" />
+          <template v-if="displacedDraft"><ProcessPlanSnapshot :plan="displacedDraft" /><a-button block @click="copyRecoveredDraft">复制为新试验方案</a-button></template>
+        </section>
         <a-button v-if="!readonly" block type="primary" @click="openNewDraft">从该版本新建草稿</a-button>
       </template>
     </a-drawer>
@@ -86,9 +95,11 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import { message } from "ant-design-vue";
+import { message, Modal } from "ant-design-vue";
 import { aggregateProcessRecipe, calculateBatchYield, normalizeProcessPlan, type ControlPointDraft, type ProcessPlanDraft, type ProcessRevision, type ProcessRevisionSummary } from "@rnd/shared";
 import { api } from "../../services/api";
+import { trialApi, type TrialPromotionSource } from "../../services/trialApi";
+import { prepareTrialPlanForSave } from "../trials/trialDraft";
 import MajorProcessBoard from "./MajorProcessBoard.vue";
 import MinorStepWorkspace from "./MinorStepWorkspace.vue";
 import ProcessSubmitDialog from "./ProcessSubmitDialog.vue";
@@ -105,8 +116,9 @@ const props = defineProps<{
   formId?: string;
   readonly?: boolean;
   serverHydrationToken?: number;
+  canRecoverDisplacedDraft?: boolean;
 }>();
-const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft]; "request-save": []; saved: [value: ProcessPlanDraft] }>();
+const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft]; "request-save": []; saved: [value: ProcessPlanDraft]; "trial-created": [trialId: string] }>();
 const clonePlan = (value: ProcessPlanDraft) => cloneVueValue(value);
 const plan = ref(normalizeProcessPlan(clonePlan(props.modelValue)));
 const activeMajorKey = ref<string>();
@@ -120,8 +132,14 @@ const showSubmit = ref(false);
 const newDraftOpen = ref(false);
 const newDraftReason = ref("");
 const newDraftConfirmed = ref(false);
+const revisionSource = ref<TrialPromotionSource | null>();
+const displacedDraft = ref<ProcessPlanDraft | null>();
+const recoveryLoaded = ref(false);
+const recoveryLoading = ref(false);
 const listRequests = new RequestGeneration();
 const detailRequests = new RequestGeneration();
+const sourceRequests = new RequestGeneration();
+const recoveryRequests = new RequestGeneration();
 
 const coordinator = new ProcessPlanSaveCoordinator<ProcessPlanDraft>({
   formId: props.formId,
@@ -153,7 +171,7 @@ const revisionDifferences = computed(() => selectedRevision.value && selectedRev
   : []);
 
 watch(() => props.formId, (formId, previous) => {
-  listRequests.invalidate(); detailRequests.invalidate(); revisions.value = []; selectedRevision.value = undefined; selectedRevisionSource.value = undefined; selectedOutputRevisionId.value = undefined; revisionDrawerOpen.value = false; activeMajorKey.value = undefined; showSubmit.value = false; newDraftOpen.value = false;
+  listRequests.invalidate(); detailRequests.invalidate(); sourceRequests.invalidate(); recoveryRequests.invalidate(); revisions.value = []; selectedRevision.value = undefined; selectedRevisionSource.value = undefined; revisionSource.value = undefined; displacedDraft.value = undefined; recoveryLoaded.value = false; selectedOutputRevisionId.value = undefined; revisionDrawerOpen.value = false; activeMajorKey.value = undefined; showSubmit.value = false; newDraftOpen.value = false;
   const incoming = normalizeProcessPlan(clonePlan(props.modelValue));
   const preservePreIdDraft = !previous && !!formId && plan.value.majorProcesses.length > 0;
   plan.value = incoming;
@@ -170,6 +188,8 @@ watch(() => props.serverHydrationToken, (token, previous) => {
 onBeforeUnmount(() => {
   listRequests.invalidate();
   detailRequests.invalidate();
+  sourceRequests.invalidate();
+  recoveryRequests.invalidate();
   coordinator.dispose();
 });
 
@@ -261,10 +281,61 @@ async function loadRevision(id: string) {
     if (!detailRequests.isCurrent(generation) || formId !== props.formId) return;
     selectedRevision.value = revision;
     selectedRevisionSource.value = source;
+    recoveryRequests.invalidate();
+    revisionSource.value = undefined;
+    displacedDraft.value = undefined;
+    recoveryLoaded.value = false;
     revisionDrawerOpen.value = true;
+    void loadRevisionSource(formId, id);
   } catch (error) {
     if (detailRequests.isCurrent(generation)) message.error(error instanceof Error ? error.message : "无法读取版本详情");
   }
+}
+
+async function loadRevisionSource(formId: string, revisionId: string) {
+  const generation = sourceRequests.next();
+  try {
+    const value = await trialApi.revisionSource(formId, revisionId);
+    if (!sourceRequests.isCurrent(generation) || props.formId !== formId || selectedRevision.value?.id !== revisionId) return;
+    revisionSource.value = value;
+  } catch (error) {
+    if (sourceRequests.isCurrent(generation)) message.error(error instanceof Error ? error.message : "无法读取版本来源");
+  }
+}
+
+async function loadDisplacedDraft() {
+  const formId = props.formId;
+  const revisionId = selectedRevision.value?.id;
+  if (!props.canRecoverDisplacedDraft || !formId || !revisionId) return;
+  const generation = recoveryRequests.next();
+  recoveryLoading.value = true;
+  try {
+    const value = await trialApi.displacedDraft(formId, revisionId);
+    if (!recoveryRequests.isCurrent(generation) || props.formId !== formId || selectedRevision.value?.id !== revisionId) return;
+    displacedDraft.value = value ? normalizeProcessPlan(value) : null;
+    recoveryLoaded.value = true;
+  } catch (error) {
+    if (recoveryRequests.isCurrent(generation)) message.error(error instanceof Error ? error.message : "无法读取被替换草稿");
+  } finally {
+    if (recoveryRequests.isCurrent(generation)) recoveryLoading.value = false;
+  }
+}
+
+function copyRecoveredDraft() {
+  const formId = props.formId;
+  const recovered = displacedDraft.value;
+  if (!formId || !recovered || !props.canRecoverDisplacedDraft) return;
+  Modal.confirm({
+    title: "将被替换草稿复制为新试验方案？",
+    content: "这不会恢复或覆盖当前正式工艺，只会创建一个独立试验方案。",
+    okText: "创建试验方案",
+    onOk: async () => {
+      const value = await trialApi.create(formId, { name: `恢复草稿 · R${selectedRevision.value?.revisionNo || ""}`, purpose: "保留正式提交前草稿", variables: "来自被替换草稿", plan: prepareTrialPlanForSave(recovered), plannedData: { materialWeightsKg: {}, stepParameters: {}, majorYieldTargets: {}, batchYieldTarget: null, yieldBasisNote: null } });
+      if (props.formId !== formId) return;
+      emit("trial-created", value.id);
+      message.success("已复制为独立试验方案");
+    },
+  });
 }
 
 function openNewDraft() {
@@ -314,6 +385,7 @@ function formatDate(value: string) { return value ? new Date(value).toLocaleStri
 .top-summary { display: flex; gap: 16px; flex: 1; color: #595959; font-size: 13px; } .top-summary b { display: block; color: #262626; font-size: 17px; } .workspace-main { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 12px; } .view, .side-card { padding: 12px; border: 1px solid #e5e6eb; border-radius: 12px; background: #fff; } .view-bar { display: flex; justify-content: space-between; margin-bottom: 10px; } .view-bar small { display: block; color: #86909c; font-size: 12px; margin-top: 3px; } .breadcrumb { display: flex; align-items: center; gap: 6px; margin-bottom: 9px; color: #86909c; font-size: 12px; } .side { display: grid; align-content: start; gap: 12px; } .side-title { display: flex; justify-content: space-between; align-items: center; }
 .revision { display: grid; width: 100%; grid-template-columns: 36px 1fr; text-align: left; padding: 9px 0; border: 0; border-top: 1px solid #f0f0f0; background: #fff; cursor: pointer; } .revision span, .revision small { font-size: 12px; color: #86909c; } .revision small { grid-column: 2; }
 .revision-diff { margin: 12px 0; padding: 12px; border: 1px solid #e5e6eb; border-radius: 8px; background: #fafafa; } .revision-diff h3 { margin: 0 0 8px; } .revision-diff-line { display: flex; align-items: start; gap: 6px; margin-top: 6px; } .revision-diff-line span, .revision-diff-line small { display: block; } .revision-diff-line small { color: #595959; font-weight: 400; }
+.revision-source, .recovery { margin: 12px 0; } .recovery { padding: 12px; border: 1px solid #d6e4ff; border-radius: 8px; background: #f6f9ff; } .recovery small { display: block; color: #86909c; font-size: 12px; }
 .workspace, .view, .side { min-width: 0; }
 .workspace-main { grid-template-columns: minmax(0, 1fr); }
 .side { grid-template-columns: repeat(2, minmax(0, 1fr)); }

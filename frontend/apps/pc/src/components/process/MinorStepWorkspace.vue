@@ -51,6 +51,8 @@
         </a-form>
       </section>
 
+      <slot name="selected-step-extension" :major="major" :step="selectedStep" />
+
       <section class="section">
         <div class="section-title"><b>本步骤投料</b><a-button v-if="!readonly" type="link" size="small" @click="addMaterial">＋ 添加投料</a-button></div>
         <p class="hint">外部物料可填写物料/配方 ID；中间产物仅可选择前序步骤继续流转的产出，<b>不进入物料库</b>。</p>
@@ -81,7 +83,7 @@
       </section>
 
       <section class="section live"><div><b>得率摘要</b><span>小步骤 {{ percent(stepYield.mainYieldPercent) }} · 大工序 {{ percent(majorYield.mainYieldPercent) }} · 最终 {{ percent(finalYield) }}</span></div><div><b>配方汇总</b><span>外部物料 {{ recipeTotal.toFixed(3) }} kg</span></div></section>
-      <ControlPointEditor :model-value="selectedStep.controlPoints || []" :readonly="readonly" @update:model-value="replaceControls" @confirm-deviation="confirmDeviation" />
+      <ControlPointEditor :model-value="selectedStep.controlPoints || []" :readonly="readonly" :confirmation-mode="confirmationMode" @update:model-value="replaceControls" @confirm-pass="confirmPass" @confirm-deviation="confirmDeviation" />
     </main>
     <main v-else class="no-step">先添加一个小步骤</main>
   </div>
@@ -99,8 +101,10 @@ import ControlPointEditor from "./ControlPointEditor.vue";
 import { confirmProcessPlanRepair, previousFlowOutputs, type RemovedFlowConsumer } from "./processPlanFlow";
 import { cloneVueValue } from "./cloneVueValue";
 
-const props = defineProps<{ modelValue: ProcessPlanDraft; majorKey: string; readonly?: boolean }>();
-const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft]; "confirm-deviation": [point: ControlPointDraft] }>();
+const props = withDefaults(defineProps<{ modelValue: ProcessPlanDraft; majorKey: string; readonly?: boolean; confirmationMode?: "legacy-sentinel" | "external" }>(), {
+  confirmationMode: "legacy-sentinel",
+});
+const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft]; "confirm-pass": [point: ControlPointDraft]; "confirm-deviation": [point: ControlPointDraft] }>();
 const clonePlan = (value: ProcessPlanDraft) => cloneVueValue(value);
 const localPlan = ref(clonePlan(props.modelValue));
 const selectedStepKey = ref("");
@@ -254,6 +258,7 @@ function removeMaterial(index: number) { selectedStep.value?.materials.splice(in
 function addOutput() { if (!selectedStep.value) return; const id = nextProcessKey("output"); (selectedStep.value.outputs ||= []).push({ id, key: id, sequence: selectedStep.value.outputs.length + 1, outputType: "INTERMEDIATE", outputName: "", materialState: "SOLID", primaryOutput: false, continueFlow: true }); publishLocal(); }
 function removeOutput(index: number) { if (!selectedStep.value) return; selectedStep.value.outputs?.splice(index, 1); void publish(clonePlan(localPlan.value)); }
 function replaceControls(value: ControlPointDraft[]) { if (!selectedStep.value) return; selectedStep.value.controlPoints = cloneVueValue(value); publishLocal(); }
+function confirmPass(point: ControlPointDraft) { emit("confirm-pass", cloneVueValue(point)); }
 function confirmDeviation(point: ControlPointDraft) { emit("confirm-deviation", cloneVueValue(point)); }
 function onSourceChange(material: ProcessStepMaterialDraft) {
   if (material.sourceType === "EXTERNAL") publishLocal();

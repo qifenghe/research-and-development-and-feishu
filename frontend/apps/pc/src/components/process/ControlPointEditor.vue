@@ -56,8 +56,10 @@ import { ref, watch } from "vue";
 import { nextProcessKey, type ControlMeasurementDraft, type ControlPointDraft } from "@rnd/shared";
 import { cloneVueValue } from "./cloneVueValue";
 
-const props = defineProps<{ modelValue: ControlPointDraft[]; readonly?: boolean }>();
-const emit = defineEmits<{ "update:modelValue": [value: ControlPointDraft[]]; "confirm-deviation": [point: ControlPointDraft] }>();
+const props = withDefaults(defineProps<{ modelValue: ControlPointDraft[]; readonly?: boolean; confirmationMode?: "legacy-sentinel" | "external" }>(), {
+  confirmationMode: "legacy-sentinel",
+});
+const emit = defineEmits<{ "update:modelValue": [value: ControlPointDraft[]]; "confirm-pass": [point: ControlPointDraft]; "confirm-deviation": [point: ControlPointDraft] }>();
 const clonePoints = (value: ControlPointDraft[]) => cloneVueValue(value);
 const points = ref<ControlPointDraft[]>(clonePoints(props.modelValue || []));
 watch(() => props.modelValue, value => { points.value = clonePoints(value || []); });
@@ -76,7 +78,12 @@ function hasDeviation(point: ControlPointDraft) { return point.measurements.some
 function unresolvedDeviation(point: ControlPointDraft) { return point.measurements.some(item => (item.result === "FAIL" || outside(point, item.measuredValue)) && (!item.deviationAction?.trim() || !item.retestResult || item.retestResult === "PENDING" || item.retestResult === "FAIL")); }
 function isBlocking(point: ControlPointDraft) { return point.importance === "CRITICAL" && (!point.measurements.some(item => item.measuredValue != null) || !point.confirmedBy?.trim() || (hasDeviation(point) && (!point.resolved || unresolvedDeviation(point)))); }
 function missingFields(point: ControlPointDraft) { const missing = []; if (!point.measurements.some(item => item.measuredValue != null)) missing.push("实测值"); if (!point.confirmedBy?.trim()) missing.push("确认人"); if (hasDeviation(point) && !point.resolved) missing.push("偏差闭环"); if (unresolvedDeviation(point)) missing.push("偏差处理/复测"); return `需补充：${missing.join("、")}`; }
-function requestConfirmation(index: number) { const point = points.value[index]; if (!point) return; point.confirmedBy = "__SESSION_CONFIRMATION_REQUESTED__"; publish(); }
+function requestConfirmation(index: number) {
+  const point = points.value[index];
+  if (!point) return;
+  if (props.confirmationMode === "external") emit("confirm-pass", clonePoints([point])[0]!);
+  else { point.confirmedBy = "__SESSION_CONFIRMATION_REQUESTED__"; publish(); }
+}
 function requestDeviationConfirmation(point: ControlPointDraft) { emit("confirm-deviation", clonePoints([point])[0]!); }
 function displayConfirmedBy(value: string) { return value === "__SESSION_CONFIRMATION_REQUESTED__" ? "当前登录人（待保存）" : value; }
 function importanceLabel(value: ControlPointDraft["importance"]) { return value === "CRITICAL" ? "极重要" : value === "IMPORTANT" ? "重要" : "一般"; }
