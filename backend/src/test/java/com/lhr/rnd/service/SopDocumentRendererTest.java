@@ -23,7 +23,7 @@ class SopDocumentRendererTest {
                 LocalDateTime.of(2026, 8, 20, 9, 10, 11), false);
 
         var bytes = new SopDocumentRenderer().render(view, metadata);
-        var output = Path.of("target", "task-5-export-qa", "two-major-control-heavy-rnd-sop-v3.docx");
+        var output = Path.of("target", "task-5-export-qa", "two-major-control-heavy-rnd-sop-v4.docx");
         Files.createDirectories(output.getParent());
         Files.write(output, bytes);
         try (var document = new XWPFDocument(new ByteArrayInputStream(bytes))) {
@@ -41,7 +41,9 @@ class SopDocumentRendererTest {
                     "承接 1.1 预处理与复合调味", "流向 1.2 慢火熟制",
                     "承接 1.2 慢火熟制", "流向 2.1 冷却与包装", "工艺用水超长名称",
                     "中心温度", "数字探针检测", "每锅检测", "继续加热并复测",
-                    "79.9", "2026-08-19 22:00:22", "符合");
+                    "目标：78℃", "允许范围：75 至 82℃", "目标：0℃", "允许范围：无下限 至 0℃",
+                    "79.9", "2026-08-19 22:00:22", "符合", "实测值：待填写", "实测值：0℃");
+            assertThat(allTables).doesNotContain("实测值：℃");
             assertThat(content).doesNotContain("OUT-RAW-123", "MAT-RAW-456", "PRIMARY", "FROZEN_SOLID",
                     "FOOD_SAFETY", "CRITICAL", "PASS", "PACKED", "2026-08-19T22:00:22", ".123456");
             assertThat(allTables).doesNotContain("固定数据来源", "正式工艺修订");
@@ -96,10 +98,18 @@ class SopDocumentRendererTest {
                 List.of(first, second), List.of(), List.of(), null);
         var packageMeasurement = new ProcessPlan.ControlMeasurement("CM-PACK", 1, new BigDecimal("18.5"),
                 "2026-08-19T22:15:22.123456", "PASS", null, null, null);
+        var missingPackageMeasurement = new ProcessPlan.ControlMeasurement("CM-PACK-MISSING", 2, null,
+                "2026-08-19T22:16:22.123456", "PENDING", null, null, "本次未记录实测值");
+        var zeroPackageMeasurement = new ProcessPlan.ControlMeasurement("CM-PACK-ZERO", 3, BigDecimal.ZERO,
+                "2026-08-19T22:17:22.123456", "PASS", null, null, "真实零值记录");
         var packageControl = new ProcessPlan.ControlPoint("CP-PACK", 1, "PROCESS", "IMPORTANT", "装袋前温度",
                 new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("22"), "℃", "数字探针检测",
                 "校准温度探针", "每批检测", "继续冷却并复测", true, "研发王五",
-                "2026-08-19T22:20:11.654321", "本次研发记录", withMeasurement ? List.of(packageMeasurement) : List.of());
+                "2026-08-19T22:20:11.654321", "本次研发记录",
+                withMeasurement ? List.of(packageMeasurement, missingPackageMeasurement, zeroPackageMeasurement) : List.of());
+        var zeroLimitControl = new ProcessPlan.ControlPoint("CP-ZERO", 2, "PROCESS", "NORMAL", "零值控制验证",
+                BigDecimal.ZERO, null, BigDecimal.ZERO, "℃", "记录核对", null, "每批", "记录并核对",
+                false, null, null, null, List.of());
         var third = new ProcessPlan.MinorStep("STEP-RAW-3", 1, "PACK", "冷却与包装", "NORMAL",
                 "本次实验实际装袋温度", "18.5", "℃", null, null, null, "冷却台与封口机",
                 "冷却至记录温度后装袋",
@@ -107,7 +117,7 @@ class SopDocumentRendererTest {
                         new ProcessPlan.StepMaterial("MAT-STEP-2", 1, "PRIMARY", null, "熟制牛腩", "COOKED", new BigDecimal("80"), null, null, "STEP_OUTPUT", "OUT-FINAL"),
                         new ProcessPlan.StepMaterial("MAT-WATER", 2, "AUXILIARY", "WATER-003", "工艺用水超长名称", "LIQUID", new BigDecimal("1"), "F-WATER", null, "EXTERNAL", null)),
                 List.of(new ProcessPlan.StepOutput("OUT-PACKED", 1, "FINISHED", "包装熟制牛腩", "PACKED", new BigDecimal("72"), true, false, null)),
-                List.of(packageControl));
+                List.of(packageControl, zeroLimitControl));
         var finishing = new ProcessPlan.MajorProcess("MAJOR-PACK", 2, "PACK", "冷却包装工序", null, "PRIMARY_INPUT", null,
                 List.of(third), List.of(), List.of(), null);
         var plan = new ProcessPlan("PLAN-RAW", "FORM-RAW", 7, "DRAFT", List.of(major, finishing), new BigDecimal("72"), false);

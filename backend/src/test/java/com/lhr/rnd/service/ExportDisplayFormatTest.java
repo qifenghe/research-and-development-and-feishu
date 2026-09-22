@@ -3,6 +3,7 @@ package com.lhr.rnd.service;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -23,6 +24,10 @@ class ExportDisplayFormatTest {
         assertThat(ExportDisplayFormat.materialState("FROZEN_SOLID")).isEqualTo("冷冻固态");
         assertThat(ExportDisplayFormat.measurementResult("PASS")).isEqualTo("符合");
         assertThat(ExportDisplayFormat.materialState("LAB_STATE_X")).isEqualTo("待核对");
+        assertThat(List.of("INTERMEDIATE", "FINISHED", "QUALIFIED", "REUSABLE", "TAILING", "SAMPLE", "WASTE", "HOLD")
+                .stream().map(ExportDisplayFormat::outputType).toList())
+                .containsExactly("中间产物", "成品", "合格产出", "余料", "尾料", "取样", "废弃", "留存待处理");
+        assertThat(ExportDisplayFormat.outputType("BYPRODUCT_X")).isEqualTo("待核对");
     }
 
     @Test

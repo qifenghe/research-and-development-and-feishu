@@ -611,8 +611,10 @@ class ProcessArtifactServiceTest {
                     .findFirst().orElseThrow();
             var standardRow = productionStandards.getRow(1);
             assertThat(standardRow.getCell(0).getText()).isEqualTo("中心温度控制项目-SOP");
-            assertThat(standardRow.getCell(1).getText()).contains("类型：食品安全", "重要性：关键", "70.1 至 88.8℃-CONTROL-SOP",
+            assertThat(standardRow.getCell(1).getText()).contains("类型：食品安全", "重要性：关键",
+                    "目标：77.7℃-CONTROL-SOP", "允许范围：70.1 至 88.8℃-CONTROL-SOP",
                     "探针检测方法-SOP", "数字探针工具-SOP", "每锅检测频次-SOP", "继续加热偏差处理-SOP", "研发依据-SOP-唯一");
+            assertThat(text + tablesText).contains("前段修割损耗-SOP", "废弃 / 固态");
             assertThat(productionStandards.getText()).doesNotContain(
                     "追溯确认人-SOP", "2026-08-19T22:05:11", "79.9000", "2026-08-19T22:00:22", "PASS",
                     "测量偏差处理-SOP", "复测结果-SOP", "实测备注-SOP");

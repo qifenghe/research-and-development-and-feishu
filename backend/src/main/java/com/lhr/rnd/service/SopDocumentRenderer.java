@@ -183,7 +183,7 @@ public final class SopDocumentRenderer {
             var details = new ArrayList<String>();
             details.add("类型：" + ExportDisplayFormat.controlType(control.controlType()));
             details.add("重要性：" + ExportDisplayFormat.importance(control.importance()));
-            details.add("目标或范围：" + controlRange(control));
+            details.add(controlRange(control));
             details.add("检测方法：" + ExportDisplayFormat.required(control.method()));
             if (!ExportDisplayFormat.blank(control.measurementTool())) details.add("工具：" + control.measurementTool());
             details.add("频次：" + ExportDisplayFormat.required(control.frequency()));
@@ -200,7 +200,9 @@ public final class SopDocumentRenderer {
                 for (var control : sorted(step.controlPoints(), ProcessPlan.ControlPoint::sequence)) {
                     for (var measurement : sorted(control.measurements(), ProcessPlan.ControlMeasurement::sequence)) {
                         var details = new ArrayList<String>();
-                        details.add("实测值：" + ExportDisplayFormat.number(measurement.measuredValue()) + ExportDisplayFormat.optional(control.unit()));
+                        details.add("实测值：" + (measurement.measuredValue() == null
+                                ? "待填写"
+                                : ExportDisplayFormat.number(measurement.measuredValue()) + ExportDisplayFormat.optional(control.unit())));
                         details.add("测量时间：" + ExportDisplayFormat.required(ExportDisplayFormat.dateTime(measurement.measuredAt())));
                         details.add("结果：" + ExportDisplayFormat.measurementResult(measurement.result()));
                         if (!ExportDisplayFormat.blank(control.confirmedBy())) details.add("确认人：" + control.confirmedBy());
@@ -375,11 +377,15 @@ public final class SopDocumentRenderer {
     }
 
     private String controlRange(ProcessPlan.ControlPoint control) {
-        if (control.lowerLimit() != null || control.upperLimit() != null) {
-            return (control.lowerLimit() == null ? "无下限" : ExportDisplayFormat.number(control.lowerLimit())) + " 至 "
-                    + (control.upperLimit() == null ? "无上限" : ExportDisplayFormat.number(control.upperLimit())) + ExportDisplayFormat.optional(control.unit());
+        var values = new ArrayList<String>();
+        if (control.targetValue() != null) {
+            values.add("目标：" + ExportDisplayFormat.number(control.targetValue()) + ExportDisplayFormat.optional(control.unit()));
         }
-        return control.targetValue() == null ? "待填写" : ExportDisplayFormat.number(control.targetValue()) + ExportDisplayFormat.optional(control.unit());
+        if (control.lowerLimit() != null || control.upperLimit() != null) {
+            values.add("允许范围：" + (control.lowerLimit() == null ? "无下限" : ExportDisplayFormat.number(control.lowerLimit())) + " 至 "
+                    + (control.upperLimit() == null ? "无上限" : ExportDisplayFormat.number(control.upperLimit())) + ExportDisplayFormat.optional(control.unit()));
+        }
+        return values.isEmpty() ? "目标或范围：待填写" : String.join("；", values);
     }
     private String parameter(String name, String value, String unit) {
         return ExportDisplayFormat.blank(name) ? "" : name.trim() + " " + ExportDisplayFormat.required(value) + ExportDisplayFormat.optional(unit);

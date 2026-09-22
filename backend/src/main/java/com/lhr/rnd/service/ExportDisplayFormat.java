@@ -18,9 +18,10 @@ public final class ExportDisplayFormat {
             Map.entry("MARINATED", "腌制状态"), Map.entry("COOKED", "熟制状态"),
             Map.entry("FINISHED", "成品状态"));
     private static final Map<String, String> OUTPUT_TYPES = Map.ofEntries(
-            Map.entry("INTERMEDIATE", "中间产出"), Map.entry("FINISHED", "成品产出"),
-            Map.entry("WASTE", "损耗"), Map.entry("QUALIFIED", "合格产出"),
-            Map.entry("REUSABLE", "可回用产出"), Map.entry("BYPRODUCT", "副产品"));
+            Map.entry("INTERMEDIATE", "中间产物"), Map.entry("FINISHED", "成品"),
+            Map.entry("QUALIFIED", "合格产出"), Map.entry("REUSABLE", "余料"),
+            Map.entry("TAILING", "尾料"), Map.entry("SAMPLE", "取样"),
+            Map.entry("WASTE", "废弃"), Map.entry("HOLD", "留存待处理"));
     private static final Map<String, String> CONTROL_TYPES = Map.ofEntries(
             Map.entry("FOOD_SAFETY", "食品安全"), Map.entry("QUALITY", "质量"),
             Map.entry("PROCESS", "工艺"), Map.entry("SENSORY", "感官"));

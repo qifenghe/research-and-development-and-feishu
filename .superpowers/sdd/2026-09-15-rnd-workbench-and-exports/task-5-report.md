@@ -56,7 +56,7 @@ Existing environment warnings remain non-failures: Flyway notes H2 2.2.224 is ne
 
 Application POI code generated the artifacts; no office file was manually recreated. The controller used the bundled artifact runtime and bundled headless LibreOffice, with every generated page inspected rather than desktop LibreOffice.
 
-- Final SOP fixture: `backend/target/task-5-export-qa/two-major-control-heavy-rnd-sop-v3.docx`. It covers two major processes, three steps, two controls, producer/consumer references, long names, optional-column omission, and two trace records. Controller inspected all 3 pages in `/private/tmp/rnd-export-qa-0922.8zDblM/sop-v3`: no overlap/cropping, correct widths, steps/controls together, major 2 with step 2.1, unknown shown only as `待核对`, and legible source/page footer.
+- Final SOP fixture: `backend/target/task-5-export-qa/two-major-control-heavy-rnd-sop-v4.docx`. It covers two major processes, three steps, simultaneous targets/ranges, missing and zero measurements, producer/consumer references, long names, and optional-column omission. Controller inspected all 4 pages in `/private/tmp/rnd-export-qa-0922.8zDblM/sop-v4`: target and range both visible, missing/zero distinct, controls adjacent to their steps, appendix continuation header repeated, source/page footer legible, and no overlap or clipping.
 - Matched 102-kg formula fixture: `backend/target/task-5-export-qa/two-major-102kg-rnd-formula-v2.xlsx`. Controller verified the one-page print, compact merged metadata, correct 102-kg actual total and 100-kg normalization, and no error tokens.
 - Multi-page formula fixture: `backend/target/task-5-export-qa/long-30-material-rnd-formula-v4.xlsx`. It contains 30 long-name external materials across two major processes and totals 102 kg. Its `本次实际投料` and `每100kg折算` sheets each carry the correct repeat row and no manual row break. Controller imported/rendered both sheets without error tokens and inspected all 6 LibreOffice print pages in `/private/tmp/rnd-export-qa-0922.8zDblM/formula-v4`: every page repeats the correct sheet-specific header, source/footer/page number; actual 102 and normalized 100 are correct; long names and padded numeric/step columns have no overlap or clipping.
 
@@ -85,3 +85,27 @@ Not staged by this task: `DemandDetailView.vue`, task-3 review, overall plan cha
 - This is an R&D record/export, not a production approval workflow, material-library expansion, or validation of real food-process limits.
 - Trial observations are not promoted into standards by rendering. No missing actual is replaced with a planned value.
 - Runtime/browser acceptance remains Task 6; the existing blocked old IAB tab was not reused or bypassed, and preview services were not restarted.
+
+## Review fix round 1 — 2026-09-22
+
+Base `fa85c04`; implemented only the findings recorded in `task-5-fix-1.md`. Formula rendering, frontend, runtime, dependencies, logging policy, and approved SOP layout were not changed.
+
+- A control now renders a recorded target and allowable range independently instead of choosing the range and dropping the target. Missing bounds remain explicit (`无下限` / `无上限`), and genuine zero values remain `0`.
+- SOP output-type labels now match the shared supported business values and editor choices: 中间产物、成品、合格产出、余料、尾料、取样、废弃、留存待处理. Unknown values remain `待核对`; the unsupported formatter-only `BYPRODUCT` label was removed.
+- A missing appendix measurement now renders `实测值：待填写` without a dangling unit. An observed zero remains `实测值：0<单位>`.
+- The new SOP-only fixture is `backend/target/task-5-export-qa/two-major-control-heavy-rnd-sop-v4.docx`; it adds simultaneous target/range, a missing measurement, an observed zero, and zero/missing-limit coverage without overwriting the approved v3 artifact.
+- Controller rendered the latest fixture with the bundled document runtime and inspected all 4 pages at `/private/tmp/rnd-export-qa-0922.8zDblM/sop-v4`; the target/range, missing/zero distinction, nearby controls, repeated appendix header, source/footer, and clipping checks all passed.
+
+Focused TDD command from `backend`:
+
+```text
+mvn -q -Dtest=ExportDisplayFormatTest,SopDocumentRendererTest,ProcessArtifactServiceTest test
+RED: exit 1; tests=29, failures=3, errors=0.
+  Formatter labels were stale/missing; target was absent when range existed;
+  missing measured value rendered only its unit.
+GREEN: exit 0; tests=29, failures=0, errors=0.
+Fresh final focused run after zero/missing-limit assertion: exit 0; tests=29, failures=0, errors=0.
+git diff --check: exit 0.
+```
+
+The expected fault-injection stack trace from `failedCommitConfirmationLeavesARecoverableReservationAndNeverDeletesReadyBytes` remains a passing test path. Existing Flyway/JVM warnings are unchanged. Per review scope, whole suites and frontend checks were not rerun; the earlier 359/155 results belong to commit `fa85c04`, not this focused fix round. Formula v4 was not regenerated or visually rechecked.
