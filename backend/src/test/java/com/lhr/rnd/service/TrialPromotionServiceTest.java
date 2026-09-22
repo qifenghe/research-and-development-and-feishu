@@ -179,7 +179,7 @@ class TrialPromotionServiceTest {
     }
 
     @Test void invalidFormalGraphRollsBackDraftAndPromotionRows() {
-        var before = plans.save(form, new ProcessPlan(null, form, plans.find(form).versionNo(), "DRAFT", List.of(), null, false));
+        var before = populatedDraft();
         var trial = confirm(create());
         // The formal storage validates names; preview uses the existing formal submission validator.
         var invalid = save(trial, edit(trial.plan(), node -> ((ObjectNode)node.path("majorProcesses").get(0)).put("processName", "")));
@@ -188,6 +188,56 @@ class TrialPromotionServiceTest {
         assertThat(plans.find(form)).usingRecursiveComparison().isEqualTo(before);
         assertThat(jdbc.queryForObject("select count(*) from experiment_trial_promotion where experiment_form_id=?", Integer.class, form)).isZero();
         assertThat(revisions.list(form)).isEmpty();
+    }
+
+    @Test void promotionInsertFailureAfterRevisionCreationRollsBackPopulatedGraphAndAudit() {
+        // A database constraint fails only at the final promotion insert, after graph/revision/audit writes.
+        var before = populatedDraft();
+        var trial = confirm(create());
+        var preview = preview(trial);
+        var auditBefore = jdbc.queryForList("select * from audit_log order by id");
+        var constraint = "reject_promotion_" + form.substring(2);
+        jdbc.execute("alter table experiment_trial_promotion add constraint " + constraint
+                + " check (experiment_form_id <> '" + form + "')");
+        try {
+            assertThatThrownBy(() -> promotion.submit(form, trial.id(), command(trial, preview, true, "late-rollback"), owner))
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            assertThat(plans.find(form)).usingRecursiveComparison().isEqualTo(before);
+            assertThat(revisions.list(form)).isEmpty();
+            assertThat(jdbc.queryForObject("select count(*) from experiment_trial_promotion where experiment_form_id=?", Integer.class, form)).isZero();
+            assertThat(jdbc.queryForList("select * from audit_log order by id")).isEqualTo(auditBefore);
+            assertThat(trials.find(form, trial.id(), owner)).usingRecursiveComparison().isEqualTo(trial);
+        } finally {
+            jdbc.execute("alter table experiment_trial_promotion drop constraint " + constraint);
+        }
+        // The earlier preview survives; removing the fault permits exactly the original request.
+        var revision = promotion.submit(form, trial.id(), command(trial, preview, true, "late-rollback"), owner);
+        assertThat(promotion.displacedDraft(form, revision.id(), owner)).usingRecursiveComparison().isEqualTo(before);
+    }
+
+    private ProcessPlan populatedDraft() {
+        var graph = edit(graph(), node -> {
+            var major = (ObjectNode) node.path("majorProcesses").get(0);
+            major.put("processName", "保留的完整草稿");
+            var steps = (com.fasterxml.jackson.databind.node.ArrayNode) major.path("steps");
+            var first = (ObjectNode) steps.get(0);
+            ((ObjectNode) first.path("outputs").get(0)).put("outputType", "INTERMEDIATE").put("continueFlow", true);
+            var second = first.deepCopy();
+            second.put("id", "step-two").put("sequence", 2).put("stepCode", "PACK").put("stepName", "包装");
+            ((ObjectNode) second.path("materials").get(0)).put("id", "mat-two").put("sourceType", "STEP_OUTPUT").put("sourceStepOutputId", "out").putNull("materialCode");
+            ((ObjectNode) second.path("outputs").get(0)).put("id", "out-two").put("outputType", "FINISHED").put("continueFlow", false);
+            second.putArray("controlPoints");
+            steps.add(second);
+            ((com.fasterxml.jackson.databind.node.ArrayNode) major.path("inputs")).add(mapper.createObjectNode()
+                    .put("id", "input").put("sequence", 1).put("inputRole", "PRIMARY").put("materialCode", "BEEF")
+                    .put("materialName", "牛腩").put("weightKg", 10).put("sourceStepMaterialId", "mat"));
+        });
+        var mapped = new com.lhr.rnd.domain.TrialSchemeCopyService().normalizeNew(graph, TrialScheme.PlannedData.empty()).plan();
+        var saved = plans.savePromotedTrial(form, new ProcessPlan(null, form, plans.find(form).versionNo(), "DRAFT", mapped.majorProcesses(), null, false));
+        var major = saved.majorProcesses().get(0);
+        assertThat(major.inputs().get(0).sourceStepMaterialId()).isEqualTo(major.steps().get(0).materials().get(0).id());
+        assertThat(major.steps().get(1).materials().get(0).sourceStepOutputId()).isEqualTo(major.steps().get(0).outputs().get(0).id());
+        return saved;
     }
 
     @Test void actualGraphReferencesSurviveFormalMaterialIdAllocation() {
