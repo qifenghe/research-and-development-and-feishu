@@ -2,6 +2,7 @@ package com.lhr.rnd.service;
 
 import com.lhr.rnd.domain.ProcessRecipeService;
 import com.lhr.rnd.model.ProcessArtifact;
+import com.lhr.rnd.model.ProcessExportView;
 import com.lhr.rnd.model.ProcessPlan;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
@@ -89,15 +90,17 @@ class ProcessArtifactServiceTest {
         var trial = trials.create(FORM_ID, new TrialSchemeService.CreateCommand("空方案软件测试", null, null, saved, null), ENGINEER);
         for (var view : List.of(service.draftView(FORM_ID, saved.versionNo(), ENGINEER), service.trialView(FORM_ID, trial.id(), trial.versionNo(), ENGINEER))) {
             try (var book = new XSSFWorkbook(new ByteArrayInputStream(service.preview(view, "FORMULA_XLSX").content()))) {
-                assertThat(book.getSheetAt(0).getRow(2).getCell(1).getStringCellValue()).isEqualTo("待填写");
-                assertThat(book.getSheetAt(0).getRow(2).getCell(3).getStringCellValue()).isEqualTo("待填写");
+                var sheet = book.getSheetAt(0);
+                assertThat(sheet.getRow(findRow(sheet, "外部原料实际总投入")).getCell(2).getStringCellValue()).isEqualTo("待填写");
+                assertThat(sheet.getRow(findRow(sheet, "主流程实际得率")).getCell(2).getStringCellValue()).isEqualTo("待填写");
             }
             try (var book = new XSSFWorkbook(new ByteArrayInputStream(service.preview(view, "PRICING_XLSX").content()))) {
                 assertThat(book.getSheetAt(0).getRow(3).getCell(1).getStringCellValue()).isEqualTo("待填写");
             }
             try (var doc = new XWPFDocument(new ByteArrayInputStream(service.preview(view, "SOP_DOCX").content()))) {
-                var text = doc.getParagraphs().stream().map(org.apache.poi.xwpf.usermodel.XWPFParagraph::getText).collect(java.util.stream.Collectors.joining("\n"));
-                assertThat(text).contains("打样外部投入 待填写").doesNotContain("打样外部投入 0.0000kg");
+                var text = doc.getParagraphs().stream().map(org.apache.poi.xwpf.usermodel.XWPFParagraph::getText).collect(java.util.stream.Collectors.joining("\n"))
+                        + doc.getTables().stream().map(org.apache.poi.xwpf.usermodel.XWPFTable::getText).collect(java.util.stream.Collectors.joining("\n"));
+                assertThat(text).contains("外部原料实际总投入：待填写").doesNotContain("外部原料实际总投入：0 kg");
             }
         }
     }
@@ -110,8 +113,9 @@ class ProcessArtifactServiceTest {
         var p = new ProcessPlan("p", FORM_ID, 1, "DRAFT", List.of(new ProcessPlan.MajorProcess("m", 1, "COOK", "熟制", null, "PRIMARY_INPUT", null, List.of(step), List.of(), List.of(), null)), null, false);
         var view = new ProcessExportCheckService().view("软件测试", "试验A V1", p, null, List.of());
         try (var doc = new XWPFDocument(new ByteArrayInputStream(service.preview(view, "SOP_DOCX").content()))) {
-            var text = doc.getParagraphs().stream().map(org.apache.poi.xwpf.usermodel.XWPFParagraph::getText).collect(java.util.stream.Collectors.joining("\n"));
-            assertThat(text).contains("打样外部投入 待填写", "主料得率：待填写").doesNotContain("打样外部投入 0.0000kg");
+            var text = doc.getParagraphs().stream().map(org.apache.poi.xwpf.usermodel.XWPFParagraph::getText).collect(java.util.stream.Collectors.joining("\n"))
+                    + doc.getTables().stream().map(org.apache.poi.xwpf.usermodel.XWPFTable::getText).collect(java.util.stream.Collectors.joining("\n"));
+            assertThat(text).contains("外部原料实际总投入：待填写", "主流程实际得率：待填写").doesNotContain("外部原料实际总投入：0 kg");
         }
     }
 
@@ -165,29 +169,27 @@ class ProcessArtifactServiceTest {
 
         var artifact = service.generate(FORM_ID, revision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.download(FORM_ID, revision.id(), artifact.id(), ENGINEER).content()))) {
-            var sheet = workbook.getSheetAt(0);
+            var sheet = workbook.getSheet("每100kg折算");
+            var normalizedHeader = findRow(sheet, "每100kg外部投入折算 kg");
             BigDecimal ratioTotal = BigDecimal.ZERO;
             BigDecimal hundredTotal = BigDecimal.ZERO;
-            for (int row = 5; row < 10; row++) {
-                assertThat(sheet.getRow(row).getCell(5).getNumericCellValue()).isNotNegative();
-                assertThat(sheet.getRow(row).getCell(6).getNumericCellValue()).isNotNegative();
-                ratioTotal = ratioTotal.add(BigDecimal.valueOf(sheet.getRow(row).getCell(5).getNumericCellValue()));
-                hundredTotal = hundredTotal.add(BigDecimal.valueOf(sheet.getRow(row).getCell(6).getNumericCellValue()));
+            for (int row = normalizedHeader + 1; row < normalizedHeader + 6; row++) {
+                assertThat(sheet.getRow(row).getCell(4).getNumericCellValue()).isNotNegative();
+                ratioTotal = ratioTotal.add(BigDecimal.valueOf(sheet.getRow(row).getCell(4).getNumericCellValue()));
+                hundredTotal = hundredTotal.add(BigDecimal.valueOf(sheet.getRow(row).getCell(4).getNumericCellValue()));
             }
             assertThat(ratioTotal).isEqualByComparingTo("100.0000");
             assertThat(hundredTotal).isEqualByComparingTo("100.0000");
-            assertThat(sheet.getRow(10).getCell(5).getNumericCellValue()).isEqualTo(100.0000);
-            assertThat(sheet.getRow(10).getCell(6).getNumericCellValue()).isEqualTo(100.0000);
+            assertThat(sheet.getRow(normalizedHeader + 6).getCell(4).getNumericCellValue()).isEqualTo(100.0000);
         }
 
         revisionService.createDraftFromRevision(FORM_ID, revision.id(), "三等分测试草稿", ENGINEER);
         var equalRevision = formalRevisionWithExternalWeights(List.of(BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE));
         var equalArtifact = service.generate(FORM_ID, equalRevision.id(), ProcessArtifact.FORMULA_XLSX, ENGINEER);
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(service.download(FORM_ID, equalRevision.id(), equalArtifact.id(), ENGINEER).content()))) {
-            var sheet = workbook.getSheetAt(0);
-            assertThat(List.of(5, 6, 7).stream().map(row -> sheet.getRow(row).getCell(5).getNumericCellValue()).toList())
-                    .containsExactly(33.3334, 33.3333, 33.3333);
-            assertThat(List.of(5, 6, 7).stream().map(row -> sheet.getRow(row).getCell(6).getNumericCellValue()).toList())
+            var sheet = workbook.getSheet("每100kg折算");
+            var normalizedHeader = findRow(sheet, "每100kg外部投入折算 kg");
+            assertThat(List.of(1, 2, 3).stream().map(offset -> sheet.getRow(normalizedHeader + offset).getCell(4).getNumericCellValue()).toList())
                     .containsExactly(33.3334, 33.3333, 33.3333);
         }
     }
@@ -553,16 +555,34 @@ class ProcessArtifactServiceTest {
 
         assertThat(artifact.status()).isEqualTo("READY");
         assertThat(download.contentType()).isEqualTo("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        var output = Path.of("target", "task-5-export-qa", "formal-rnd-formula-actual-and-100kg.xlsx");
+        Files.createDirectories(output.getParent());
+        Files.write(output, download.content());
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(download.content()))) {
-            var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getRow(4).getCell(1).getStringCellValue()).isEqualTo("物料编码");
-            assertThat(sheet.getRow(5).getCell(1).getStringCellValue()).isEqualTo("BEEF");
-            assertThat(sheet.getRow(5).getCell(4).getNumericCellValue()).isEqualTo(10d);
-            assertThat(sheet.getRow(5).getCell(6).getNumericCellValue()).isEqualTo(100d);
-            assertThat(sheet.getRow(5).getCell(7).getStringCellValue()).contains("腌制");
-            assertThat(sheet.getRow(6).getCell(0).getStringCellValue()).isEqualTo("合计");
-            assertThat(sheet.getRow(6).getCell(6).getNumericCellValue()).isEqualTo(100d);
-            assertThat(workbook.getSheetName(0)).doesNotContain("中间");
+            assertThat(workbook.getNumberOfSheets()).isEqualTo(2);
+            var actual = workbook.getSheet("本次实际投料");
+            var normalized = workbook.getSheet("每100kg折算");
+            assertThat(actual.getRow(0).getCell(0).getStringCellValue()).isEqualTo("研发配方—本次实验实际外部投入");
+            assertThat(normalized.getRow(0).getCell(0).getStringCellValue()).isEqualTo("研发配方—每100kg外部投入折算");
+            var actualHeader = findRow(actual, "本次实验实际 kg");
+            assertThat(actual.getRow(actualHeader).getCell(1).getStringCellValue()).isEqualTo("物料编码");
+            assertThat(actual.getRow(actualHeader + 1).getCell(1).getStringCellValue()).isEqualTo("BEEF");
+            assertThat(actual.getRow(actualHeader + 1).getCell(3).getStringCellValue()).isEqualTo("主料");
+            assertThat(actual.getRow(actualHeader + 1).getCell(4).getNumericCellValue()).isEqualTo(10d);
+            assertThat(actual.getRow(actualHeader + 1).getCell(5).getStringCellValue()).contains("腌制");
+            var normalizedHeader = findRow(normalized, "每100kg外部投入折算 kg");
+            assertThat(normalized.getRow(normalizedHeader + 1).getCell(4).getNumericCellValue()).isEqualTo(100d);
+            assertThat(normalized.getRow(normalizedHeader + 2).getCell(4).getNumericCellValue()).isEqualTo(100d);
+            for (var sheet : List.of(actual, normalized)) {
+                assertThat(sheet.getFooter().getCenter()).contains("&P", "&N");
+                assertThat(sheet.getRepeatingRows().getFirstRow()).isEqualTo(findRow(sheet,
+                        sheet == actual ? "本次实验实际 kg" : "每100kg外部投入折算 kg"));
+                var externalTotalRow = findRow(sheet, "外部原料实际总投入");
+                assertThat(sheet.getMergedRegions()).anySatisfy(region -> assertThat(region.formatAsString()).isEqualTo("A" + (externalTotalRow + 1) + ":B" + (externalTotalRow + 1)));
+                assertThat(sheet.getMergedRegions()).anySatisfy(region -> assertThat(region.formatAsString()).isEqualTo("C" + (externalTotalRow + 1) + ":F" + (externalTotalRow + 1)));
+                assertThat(sheet.getSheetName()).doesNotContain("标准", "中间");
+                assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).doesNotContain("标准");
+            }
         }
     }
 
@@ -577,60 +597,151 @@ class ProcessArtifactServiceTest {
         assertThat(download.contentType()).isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
         try (var document = new XWPFDocument(new ByteArrayInputStream(download.content()))) {
             var text = document.getParagraphs().stream().map(paragraph -> paragraph.getText()).collect(java.util.stream.Collectors.joining("\n"));
-            assertThat(text).contains(
-                    "来源工艺版本：V2", "文件版本：V1", "来源版本标识：" + fixture.sourceRevisionId(),
-                    "版本变更：SOP-REV2-变更原因唯一值", "变更原因：SOP-REV2-变更原因唯一值",
-                    "生成信息：" + ENGINEER.name() + " / " + DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").format(LocalDateTime.parse(artifact.generatedAt())),
-                    "适用批量：打样外部投入 12.5000kg", "100kg 标准配方", "大工序 1：热加工大工序-SOP",
-                    "大工序描述-SOP-唯一", "大工序备注-SOP-唯一", "大工序得率：64.0000%", "主料得率：64.0000%",
-                    "终端产出合计：10.5000kg", "物料平衡差：2.0000kg",
-                    "测量记录追溯附录（不作为生产指令标准）");
-            var stepTable = document.getTables().stream()
-                    .filter(table -> "步骤".equals(table.getRow(0).getCell(0).getText()))
-                    .findFirst().orElseThrow();
-            assertThat(stepTable.getRow(1).getCell(0).getText()).isEqualTo("1 / 腌制步骤-SOP");
-            assertThat(stepTable.getRow(1).getCell(1).getText()).contains(
-                    "外部鲜牛腩-SOP", "BEEF-SOP-001", "PRIMARY", "FROZEN-SOLID-SOP", "12.5000kg", "外部投料备注-SOP");
-            assertThat(stepTable.getRow(1).getCell(2).getText()).contains(
-                    fixture.outputId(), "腌制中间产物-SOP", "MARINATED-STATE-SOP", "10.0000kg", "中间产出备注-SOP");
-            assertThat(stepTable.getRow(1).getCell(3).getText()).contains(
-                    "时长参数-SOP=31.7min-SOP", "真空参数-SOP=-0.08MPa-SOP", "滚揉设备-SOP-唯一");
-            assertThat(stepTable.getRow(1).getCell(4).getText()).isEqualTo("均匀腌制操作要求-SOP-唯一");
-            assertThat(stepTable.getRow(1).getCell(5).getText()).contains(
-                    "腌制中间产物-SOP", "MARINATED-STATE-SOP", "10.0000kg", "中间产出备注-SOP");
-            assertThat(stepTable.getRow(1).getCell(6).getText()).isEqualTo("80.0000%");
-            assertThat(stepTable.getRow(2).getCell(0).getText()).isEqualTo("2 / 熟制步骤-SOP");
-            assertThat(stepTable.getRow(2).getCell(2).getText()).contains(
-                    fixture.outputId(), "1.1 腌制步骤-SOP", "1.2 熟制步骤-SOP", "10.0000kg", "中间投入备注-SOP");
-            assertThat(stepTable.getRow(2).getCell(3).getText()).contains("中心温度参数-SOP=88.8℃-SOP", "夹层锅设备-SOP-唯一");
-            assertThat(stepTable.getRow(2).getCell(4).getText()).isEqualTo("加热至中心温度达标-SOP-唯一");
-            assertThat(stepTable.getRow(2).getCell(5).getText()).contains(
-                    "最终熟制成品-SOP", "FINISHED-STATE-SOP", "8.0000kg", "最终成品备注-SOP");
-            assertThat(stepTable.getRow(2).getCell(6).getText()).isEqualTo("80.0000%");
+            var tablesText = document.getTables().stream().map(org.apache.poi.xwpf.usermodel.XWPFTable::getText).collect(java.util.stream.Collectors.joining("\n"));
+            assertThat(text + tablesText).contains(
+                    "研发 SOP", "正式工艺修订：R2", "文件版本：V1", "变更原因：SOP-REV2-变更原因唯一值",
+                    "编制人：" + ENGINEER.name(), "外部原料实际总投入：12.5 kg", "主流程实际得率：64%",
+                    "大工序 1 热加工大工序-SOP", "1.1 腌制步骤-SOP", "1.2 熟制步骤-SOP",
+                    "外部鲜牛腩-SOP", "BEEF-SOP-001", "主料", "12.5 kg", "均匀腌制操作要求-SOP-唯一",
+                    "中心温度参数-SOP 88.8℃-SOP", "夹层锅设备-SOP-唯一", "最终熟制成品-SOP", "8 kg",
+                    "测量记录追溯附录", "附录为本次实验实测与审计记录，不作为生产指令标准。");
+            assertThat(text + tablesText).doesNotContain(fixture.sourceRevisionId(), fixture.outputId(), "PRIMARY", "FOOD_SAFETY", "CRITICAL", "PASS", "生产 SOP", "100kg 标准配方");
             var productionStandards = document.getTables().stream()
                     .filter(table -> table.getRow(0).getTableCells().stream().map(cell -> cell.getText()).collect(java.util.stream.Collectors.joining()).contains("控制项目"))
                     .findFirst().orElseThrow();
             var standardRow = productionStandards.getRow(1);
-            assertThat(standardRow.getCell(0).getText()).contains("1.2", "熟制步骤-SOP");
-            assertThat(standardRow.getCell(1).getText()).isEqualTo("FOOD_SAFETY / CRITICAL");
-            assertThat(standardRow.getCell(2).getText()).isEqualTo("中心温度控制项目-SOP");
-            assertThat(standardRow.getCell(3).getText()).isEqualTo("77.7000");
-            assertThat(standardRow.getCell(4).getText()).isEqualTo("70.1000");
-            assertThat(standardRow.getCell(5).getText()).isEqualTo("88.8000");
-            assertThat(standardRow.getCell(6).getText()).isEqualTo("℃-CONTROL-SOP");
-            assertThat(standardRow.getCell(7).getText()).isEqualTo("探针检测方法-SOP");
-            assertThat(standardRow.getCell(8).getText()).isEqualTo("数字探针工具-SOP");
-            assertThat(standardRow.getCell(9).getText()).isEqualTo("每锅检测频次-SOP");
-            assertThat(standardRow.getCell(10).getText()).isEqualTo("继续加热偏差处理-SOP");
-            assertThat(standardRow.getCell(11).getText()).isEqualTo("研发依据-SOP-唯一");
+            assertThat(standardRow.getCell(0).getText()).isEqualTo("中心温度控制项目-SOP");
+            assertThat(standardRow.getCell(1).getText()).contains("类型：食品安全", "重要性：关键", "70.1 至 88.8℃-CONTROL-SOP",
+                    "探针检测方法-SOP", "数字探针工具-SOP", "每锅检测频次-SOP", "继续加热偏差处理-SOP", "研发依据-SOP-唯一");
             assertThat(productionStandards.getText()).doesNotContain(
                     "追溯确认人-SOP", "2026-08-19T22:05:11", "79.9000", "2026-08-19T22:00:22", "PASS",
                     "测量偏差处理-SOP", "复测结果-SOP", "实测备注-SOP");
-            var appendix = document.getTables().stream().filter(table -> table.getRow(0).getTableCells().stream().map(cell -> cell.getText()).collect(java.util.stream.Collectors.joining()).contains("实测值")).findFirst().orElseThrow().getText();
+            var appendix = document.getTables().stream().filter(table -> table.getRow(0).getTableCells().stream().map(cell -> cell.getText()).collect(java.util.stream.Collectors.joining()).contains("实测与追溯信息")).findFirst().orElseThrow().getText();
             assertThat(appendix).contains(
-                    "追溯确认人-SOP", "2026-08-19T22:05:11", "79.9000", "2026-08-19T22:00:22", "PASS",
+                    "追溯确认人-SOP", "2026-08-19 22:05:11", "79.9", "2026-08-19 22:00:22", "符合",
                     "测量偏差处理-SOP", "复测结果-SOP", "实测备注-SOP");
         }
+    }
+
+    @Test
+    void rendersTwoMajorFormulaFromOnlyThreeExternalInputsAndWritesQaSample() throws Exception {
+        var firstOutputId = "OUT-QA-PREP";
+        var secondOutputId = "OUT-QA-COOK";
+        var preparation = new ProcessPlan.MinorStep(
+                "STEP-QA-1", 1, "PREP", "预处理与复合调味", "NORMAL", null, null, null,
+                null, null, null, "真空滚揉机", "按本次试验记录完成复合调味",
+                List.of(
+                        new ProcessPlan.StepMaterial("MAT-QA-BEEF", 1, "PRIMARY", "BEEF-001", "特级超长名称冷冻牛腩主料", "FROZEN_SOLID", new BigDecimal("100"), "F-BEEF", null, "EXTERNAL", null),
+                        new ProcessPlan.StepMaterial("MAT-QA-SPICE", 2, "AUXILIARY", "SPICE-002", "复合香辛料超长添加物名称", "POWDER", new BigDecimal("1"), "F-SPICE", null, "EXTERNAL", null)),
+                List.of(new ProcessPlan.StepOutput(firstOutputId, 1, "INTERMEDIATE", "调味牛腩", "MARINATED", new BigDecimal("100"), true, true, null)), List.of());
+        var cooking = new ProcessPlan.MinorStep(
+                "STEP-QA-2", 2, "COOK", "慢火熟制", "NORMAL", null, null, null,
+                null, null, null, "夹层锅", "按本次试验记录完成熟制",
+                List.of(new ProcessPlan.StepMaterial("MAT-QA-PREP", 1, "PRIMARY", null, "调味牛腩", "MARINATED", new BigDecimal("100"), null, null, "STEP_OUTPUT", firstOutputId)),
+                List.of(new ProcessPlan.StepOutput(secondOutputId, 1, "INTERMEDIATE", "熟制牛腩", "COOKED", new BigDecimal("80"), true, true, null)), List.of());
+        var packaging = new ProcessPlan.MinorStep(
+                "STEP-QA-3", 1, "PACK", "冷却与包装", "NORMAL", null, null, null,
+                null, null, null, "冷却台与封口机", "按本次试验记录完成冷却包装",
+                List.of(
+                        new ProcessPlan.StepMaterial("MAT-QA-COOK", 1, "PRIMARY", null, "熟制牛腩", "COOKED", new BigDecimal("80"), null, null, "STEP_OUTPUT", secondOutputId),
+                        new ProcessPlan.StepMaterial("MAT-QA-WATER", 2, "AUXILIARY", "WATER-003", "工艺用水超长名称", "LIQUID", new BigDecimal("1"), "F-WATER", null, "EXTERNAL", null)),
+                List.of(new ProcessPlan.StepOutput("OUT-QA-PACKED", 1, "FINISHED", "包装熟制牛腩", "PACKED", new BigDecimal("72"), true, false, null)), List.of());
+        var plan = new ProcessPlan("PLAN-QA-TWO-MAJOR", FORM_ID, 1, "DRAFT", List.of(
+                new ProcessPlan.MajorProcess("MAJOR-QA-1", 1, "HEAT", "复合调味牛腩热加工序", null, "PRIMARY_INPUT", null, List.of(preparation, cooking), List.of(), List.of(), null),
+                new ProcessPlan.MajorProcess("MAJOR-QA-2", 2, "PACK", "冷却包装工序", null, "PRIMARY_INPUT", null, List.of(packaging), List.of(), List.of(), null)),
+                new BigDecimal("72"), false);
+        var view = new ProcessExportCheckService().view(
+                "超长产品名称复合调味牛腩样品", "试验方案 长名方案 V7", plan, null, List.of())
+                .withMetadata(new ProcessExportView.Metadata("1 kg 袋装", "研发张三", "2026-08-20"));
+
+        var bytes = service.preview(view, ProcessArtifact.FORMULA_XLSX).content();
+        var output = Path.of("target", "task-5-export-qa", "two-major-102kg-rnd-formula-v2.xlsx");
+        Files.createDirectories(output.getParent());
+        Files.write(output, bytes);
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+            var actual = workbook.getSheet("本次实际投料");
+            var normalized = workbook.getSheet("每100kg折算");
+            var actualHeader = findRow(actual, "本次实验实际 kg");
+            assertThat(actual.getRow(actualHeader + 1).getCell(4).getNumericCellValue()).isEqualTo(100d);
+            assertThat(actual.getRow(actualHeader + 2).getCell(4).getNumericCellValue()).isEqualTo(1d);
+            assertThat(actual.getRow(actualHeader + 3).getCell(4).getNumericCellValue()).isEqualTo(1d);
+            assertThat(actual.getRow(actualHeader + 4).getCell(4).getNumericCellValue()).isEqualTo(102d);
+            var normalizedHeader = findRow(normalized, "每100kg外部投入折算 kg");
+            assertThat(normalized.getRow(normalizedHeader + 4).getCell(4).getNumericCellValue()).isEqualTo(100d);
+            var allText = new StringBuilder();
+            for (var sheet : List.of(actual, normalized)) for (var row : sheet) for (var cell : row) allText.append(cell.toString()).append('\n');
+            assertThat(allText.toString()).contains(
+                    "特级超长名称冷冻牛腩主料", "复合香辛料超长添加物名称", "工艺用水超长名称",
+                    "1.1 预处理与复合调味", "2.1 冷却与包装")
+                    .doesNotContain("调味牛腩\n", "熟制牛腩\n", "包装熟制牛腩");
+        }
+    }
+
+    @Test
+    void rendersMultiPageFormulaWithCorrectSectionContinuationHeadersAndCellSpacing() throws Exception {
+        var firstMaterials = new java.util.ArrayList<ProcessPlan.StepMaterial>();
+        var secondMaterials = new java.util.ArrayList<ProcessPlan.StepMaterial>();
+        for (int index = 0; index < 30; index++) {
+            var material = new ProcessPlan.StepMaterial(
+                    "MAT-LONG-" + index, index + 1, index == 0 ? "PRIMARY" : "AUXILIARY",
+                    "LONG-" + String.format("%02d", index + 1), "超长研发辅料名称" + String.format("%02d", index + 1) + "用于多页配方打印验证",
+                    index % 2 == 0 ? "POWDER" : "LIQUID", index == 0 ? new BigDecimal("73") : BigDecimal.ONE,
+                    "FORMULA-LONG-" + index, null, "EXTERNAL", null);
+            (index < 15 ? firstMaterials : secondMaterials).add(material);
+        }
+        var intermediateId = "OUT-LONG-INTERMEDIATE";
+        var preparation = new ProcessPlan.MinorStep(
+                "STEP-LONG-1", 1, "PREP", "复合调味长名称原料预处理", "NORMAL", null, null, null,
+                null, null, null, "混合机", "按本次试验记录混合", firstMaterials,
+                List.of(new ProcessPlan.StepOutput(intermediateId, 1, "INTERMEDIATE", "复合调味中间物", "MARINATED", new BigDecimal("91"), true, true, null)), List.of());
+        secondMaterials.add(0, new ProcessPlan.StepMaterial(
+                "MAT-LONG-STEP", 1, "PRIMARY", null, "复合调味中间物", "MARINATED", new BigDecimal("91"),
+                null, null, "STEP_OUTPUT", intermediateId));
+        var finishing = new ProcessPlan.MinorStep(
+                "STEP-LONG-2", 1, "FINISH", "长名称冷却包装与完成步骤", "NORMAL", null, null, null,
+                null, null, null, "冷却包装线", "按本次试验记录完成", secondMaterials,
+                List.of(new ProcessPlan.StepOutput("OUT-LONG-FINAL", 1, "FINISHED", "研发样品成品", "FINISHED", new BigDecimal("72"), true, false, null)), List.of());
+        var plan = new ProcessPlan("PLAN-LONG-FORMULA", FORM_ID, 1, "DRAFT", List.of(
+                new ProcessPlan.MajorProcess("MAJOR-LONG-1", 1, "PREP", "多辅料预处理工序", null, "PRIMARY_INPUT", null, List.of(preparation), List.of(), List.of(), null),
+                new ProcessPlan.MajorProcess("MAJOR-LONG-2", 2, "FINISH", "冷却包装工序", null, "PRIMARY_INPUT", null, List.of(finishing), List.of(), List.of(), null)),
+                new BigDecimal("72"), false);
+        var view = new ProcessExportCheckService().view(
+                "超长产品名称复合调味牛腩样品", "试验方案 多页配方 V8", plan, null, List.of())
+                .withMetadata(new ProcessExportView.Metadata("1 kg 袋装", "研发张三", "2026-08-20"));
+
+        var bytes = service.preview(view, ProcessArtifact.FORMULA_XLSX).content();
+        var output = Path.of("target", "task-5-export-qa", "long-30-material-rnd-formula-v4.xlsx");
+        Files.createDirectories(output.getParent());
+        Files.write(output, bytes);
+        try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+            assertThat(workbook.sheetIterator()).toIterable().extracting(org.apache.poi.ss.usermodel.Sheet::getSheetName)
+                    .containsExactly("本次实际投料", "每100kg折算");
+            var actual = workbook.getSheet("本次实际投料");
+            var normalized = workbook.getSheet("每100kg折算");
+            var actualHeader = findRow(actual, "本次实验实际 kg");
+            var normalizedHeader = findRow(normalized, "每100kg外部投入折算 kg");
+            assertThat(actual.getRepeatingRows().getFirstRow()).isEqualTo(actualHeader);
+            assertThat(normalized.getRepeatingRows().getFirstRow()).isEqualTo(normalizedHeader);
+            assertThat(actual.getRow(actualHeader + 1).getCell(4).getCellStyle().getIndention()).isEqualTo((short) 1);
+            assertThat(actual.getRow(actualHeader + 1).getCell(5).getCellStyle().getIndention()).isEqualTo((short) 1);
+            assertThat(actual.getRowBreaks()).isEmpty();
+            assertThat(normalized.getRowBreaks()).isEmpty();
+            for (var sheet : List.of(actual, normalized)) {
+                assertThat(sheet.getRow(findRow(sheet, "外部原料实际总投入")).getCell(2).getStringCellValue()).isEqualTo("102 kg");
+                assertThat(sheet.getFooter().getCenter()).contains("&P", "&N");
+            }
+        }
+    }
+
+    private int findRow(org.apache.poi.ss.usermodel.Sheet sheet, String value) {
+        for (var row : sheet) for (var cell : row) if (value.equals(cell.toString())) return row.getRowNum();
+        throw new AssertionError("Missing row value: " + value);
+    }
+
+    private List<Integer> findRows(org.apache.poi.ss.usermodel.Sheet sheet, String value) {
+        var matches = new java.util.ArrayList<Integer>();
+        for (var row : sheet) for (var cell : row) if (value.equals(cell.toString())) matches.add(row.getRowNum());
+        return matches;
     }
 
     @Test

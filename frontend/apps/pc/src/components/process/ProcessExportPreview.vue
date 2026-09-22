@@ -21,7 +21,7 @@ const open = ref(false), loading = ref(false), error = ref("");
 const checks = ref<Partial<Record<ExportType, ExportCheck>>>({});
 const downloading = ref<ExportType>();
 const fence = new RequestGeneration();
-const types = [{ value: "FORMULA_XLSX" as const, label: "配方" }, { value: "SOP_DOCX" as const, label: "SOP" }, { value: "PRICING_XLSX" as const, label: "核价基础数据" }];
+const types = [{ value: "FORMULA_XLSX" as const, label: "研发配方" }, { value: "SOP_DOCX" as const, label: "研发SOP" }, { value: "PRICING_XLSX" as const, label: "核价基础数据" }];
 watch(() => [props.formId, props.trialId, props.versionNo, props.sourceLabel, props.disabled], reset);
 onBeforeUnmount(reset);
 function reset() { fence.invalidate(); open.value = false; checks.value = {}; downloading.value = undefined; loading.value = false; error.value = ""; }
@@ -44,7 +44,8 @@ async function download(type: ExportType) {
     const blob = await exportApi.preview(saved, type);
     if (!fence.isCurrent(token)) return;
     const url = URL.createObjectURL(blob); const link = document.createElement("a");
-    link.href = url; link.download = `${label}-研发预览-${type}.${type === "SOP_DOCX" ? "docx" : "xlsx"}`;
+    const artifactName = types.find(item => item.value === type)?.label || type;
+    link.href = url; link.download = `${label}-研发预览-${artifactName}.${type === "SOP_DOCX" ? "docx" : "xlsx"}`;
     document.body.append(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url));
   } catch (e) { if (fence.isCurrent(token)) error.value = e instanceof Error ? e.message : "预览失败"; }
   finally { if (fence.isCurrent(token)) downloading.value = undefined; }

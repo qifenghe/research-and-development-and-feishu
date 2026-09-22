@@ -8,14 +8,15 @@ import com.lhr.rnd.model.ProcessArtifactPublic;
 import com.lhr.rnd.model.ProcessPlan;
 import com.lhr.rnd.model.ProcessRevision;
 import com.lhr.rnd.model.ProcessExportView;
-import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.BorderStyle;
+import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.VerticalAlignment;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.apache.poi.xwpf.usermodel.XWPFDocument;
-import org.apache.poi.xwpf.usermodel.XWPFParagraph;
-import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -113,13 +114,14 @@ public class ProcessArtifactService {
         try {
             byte[] bytes;
             if ("PRICING_XLSX".equals(type)) bytes = new PricingFileService().renderBasis(view, true);
-            else if (ProcessArtifact.FORMULA_XLSX.equals(type)) bytes = previewFormulaBytes(view);
+            else if (ProcessArtifact.FORMULA_XLSX.equals(type)) bytes = formulaBytes(view, null, null, null,
+                    LocalDateTime.now(), view.metadata() == null ? null : view.metadata().compiledBy(), true);
             else {
-                var plan = view.snapshot();
-                var revision = new ProcessRevision(null, plan.id(), plan.experimentFormId(), plan.versionNo(), null, null, null, null, null, plan);
-                bytes = sopBytes(view.productName() + "（预览·非正式归档）", revision, "预览", LocalDateTime.now(), view.sourceLabel(), view);
+                bytes = new SopDocumentRenderer().render(view, new SopDocumentRenderer.Metadata(null, null, null,
+                        view.metadata() == null ? null : view.metadata().compiledBy(), LocalDateTime.now(), true));
             }
-            return new ArtifactDownload(view.productName() + "-" + view.sourceLabel().replace('/', '-') + "-预览." + ("SOP_DOCX".equals(type) ? "docx" : "xlsx"),
+            var label = "SOP_DOCX".equals(type) ? "研发SOP" : "FORMULA_XLSX".equals(type) ? "研发配方" : "核价基础数据";
+            return new ArtifactDownload(view.productName() + "-" + view.sourceLabel().replace('/', '-') + "-" + label + "-预览." + ("SOP_DOCX".equals(type) ? "docx" : "xlsx"),
                     "SOP_DOCX".equals(type) ? DOCX_CONTENT_TYPE : XLSX_CONTENT_TYPE, bytes);
         } catch (java.io.IOException e) { throw new IllegalStateException("Failed to render preview", e); }
         catch (Exception e) { if (e instanceof RuntimeException runtime) throw runtime; throw new IllegalStateException("Failed to render preview", e); }
@@ -127,27 +129,6 @@ public class ProcessArtifactService {
 
     private void requireVersion(int expected, int actual) {
         if (expected != actual) throw new BusinessException("PROCESS_EXPORT_VERSION_CONFLICT", "保存版本已变化，请重新加载后预览");
-    }
-
-    private byte[] previewFormulaBytes(ProcessExportView view) throws Exception {
-        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
-            var sheet = book.createSheet("配方预览");
-            set(sheet.createRow(0), 0, "配方预览 · 非正式归档", view.productName());
-            set(sheet.createRow(1), 0, "来源", view.sourceLabel());
-            set(sheet.createRow(2), 0, "实际外部批量 kg", view.externalInputKg() == null ? "待填写" : value(view.externalInputKg()),
-                    "主料得率 %", view.mainYieldPercent() == null ? "待填写" : value(view.mainYieldPercent()));
-            set(sheet.createRow(3), 0, "工序/步骤", "物料编码", "名称", "角色", "实际 kg", "100kg归一化 kg");
-            int row = 4;
-            for (var i : view.ingredients()) {
-                var normalized = view.externalInputKg() == null || view.externalInputKg().signum() <= 0 || i.weightKg() == null ? null : i.weightKg().multiply(BigDecimal.valueOf(100)).divide(view.externalInputKg(), 4, RoundingMode.HALF_UP);
-                set(sheet.createRow(row++), 0, i.majorSequence() + "." + i.stepSequence(), value(i.materialCode()), value(i.materialName()), value(i.role()), i.weightKg() == null ? "待填写" : value(i.weightKg()), normalized == null ? "待填写" : value(normalized));
-            }
-            for (var issue : exportChecks.check(view, "FORMULA_XLSX").issues()) set(sheet.createRow(row++), 0, "待补充", issue.message());
-            for (int c = 0; c < 6; c++) sheet.setColumnWidth(c, (c == 1 || c == 2 ? 35 : 23) * 256);
-            sheet.setRepeatingRows(new org.apache.poi.ss.util.CellRangeAddress(0, 3, -1, -1));
-            sheet.setFitToPage(true); sheet.getPrintSetup().setLandscape(true); sheet.getPrintSetup().setFitWidth((short)1); sheet.getPrintSetup().setFitHeight((short)0);
-            book.setPrintArea(0, 0, 5, 0, row - 1); book.write(out); return out.toByteArray();
-        }
     }
 
     @Transactional(readOnly = true)
@@ -202,8 +183,9 @@ public class ProcessArtifactService {
         byte[] bytes = null;
         try {
             bytes = ProcessArtifact.FORMULA_XLSX.equals(artifactType)
-                    ? formulaBytes(productName, revision, documentVersion, generatedAt, principal.name(), exportView)
-                    : sopBytes(productName, revision, documentVersion, generatedAt, principal.name(), exportView);
+                    ? formulaBytes(exportView, "R" + revision.revisionNo(), "V" + documentVersion, revision.changeReason(), generatedAt, principal.name(), false)
+                    : new SopDocumentRenderer().render(exportView, new SopDocumentRenderer.Metadata("R" + revision.revisionNo(), "V" + documentVersion,
+                            revision.changeReason(), principal.name(), generatedAt, false));
             cleanupLedger.renew(reservation);
             storage.store(storageKey, bytes);
             if (!cleanupLedger.lockForReady(reservation)) {
@@ -273,127 +255,129 @@ public class ProcessArtifactService {
                 rs.getString("generated_by_user_id"), rs.getString("content_sha256"), (Long) rs.getObject("byte_size"));
     }
 
-    private byte[] formulaBytes(String productName, ProcessRevision revision, String documentVersion, LocalDateTime generatedAt, String generatedBy, ProcessExportView view) throws Exception {
+    private byte[] formulaBytes(ProcessExportView view, String formalRevision, String documentVersion, String changeReason,
+                                LocalDateTime generatedAt, String generatedBy, boolean preview) throws Exception {
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
-            var sheet = workbook.createSheet("标准配方");
-            var header = workbook.createCellStyle();
-            header.setAlignment(HorizontalAlignment.CENTER);
-            var number = workbook.createCellStyle();
-            number.setDataFormat(workbook.createDataFormat().getFormat("0.0000"));
-            set(sheet.createRow(0), 0, "标准配方");
-            set(sheet.createRow(1), 0, "产品", productName, "来源工艺版本", "V" + revision.revisionNo(), "文件版本", "V" + documentVersion);
-            set(sheet.createRow(2), 0, "变更原因", value(revision.changeReason()), "生成信息", generatedBy + " / " + TIME.format(generatedAt), "主料得率", percent(view.mainYieldPercent()));
-            set(sheet.createRow(3), 0, "数据来源", view.sourceLabel());
-            var titles = List.of("序号", "物料编码", "物料名称", "角色", "打样重量kg", "配方占比%", "100kg折算kg", "加入步骤");
-            var title = sheet.createRow(4);
-            for (int column = 0; column < titles.size(); column++) {
-                var cell = title.createCell(column);
-                cell.setCellValue(titles.get(column));
-                cell.setCellStyle(header);
-            }
-            var lines = recipeService.aggregate(revision.snapshot());
+            var titleStyle = formulaStyle(workbook, true, 16, HorizontalAlignment.CENTER, IndexedColors.WHITE, IndexedColors.DARK_BLUE, false);
+            var sectionStyle = formulaStyle(workbook, true, 11, HorizontalAlignment.LEFT, IndexedColors.BLACK, IndexedColors.LIGHT_CORNFLOWER_BLUE, false);
+            var header = formulaStyle(workbook, true, 10, HorizontalAlignment.CENTER, IndexedColors.BLACK, IndexedColors.LIGHT_CORNFLOWER_BLUE, true);
+            var label = formulaStyle(workbook, true, 10, HorizontalAlignment.LEFT, IndexedColors.BLACK, null, true);
+            var text = formulaStyle(workbook, false, 10, HorizontalAlignment.LEFT, IndexedColors.BLACK, null, true);
+            var sourceText = formulaStyle(workbook, false, 10, HorizontalAlignment.LEFT, IndexedColors.BLACK, null, true);
+            var number = formulaStyle(workbook, false, 10, HorizontalAlignment.RIGHT, IndexedColors.BLACK, null, true);
+            sourceText.setIndention((short) 1);
+            number.setIndention((short) 1);
+            number.setDataFormat(workbook.createDataFormat().getFormat("0.####"));
+
+            var lines = recipeService.aggregate(view.snapshot());
             var totalWeight = lines.stream().map(ProcessRecipeService.RecipeLine::weightKg).map(this::safe)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
-            if (totalWeight.signum() <= 0) throw new BusinessException("EXTERNAL_MATERIAL_WEIGHT_REQUIRED", "外部物料总重量必须大于0");
-            var displayedPercentages = allocatePercent(lines.stream().map(ProcessRecipeService.RecipeLine::weightKg).map(this::safe).toList(), totalWeight);
-            var rowIndex = 5;
-            BigDecimal displayedHundredKg = BigDecimal.ZERO;
+            if (!preview && totalWeight.signum() <= 0) throw new BusinessException("EXTERNAL_MATERIAL_WEIGHT_REQUIRED", "外部物料总重量必须大于0");
+            var displayedPercentages = totalWeight.signum() <= 0 ? List.<BigDecimal>of() : allocatePercent(lines.stream().map(ProcessRecipeService.RecipeLine::weightKg).map(this::safe).toList(), totalWeight);
+
+            var actualSheet = workbook.createSheet("本次实际投料");
+            var actualRowIndex = formulaPreamble(actualSheet, "研发配方—本次实验实际外部投入", view, formalRevision,
+                    documentVersion, changeReason, generatedAt, generatedBy, preview, titleStyle, sectionStyle, label, text);
+            var actualSection = actualSheet.createRow(actualRowIndex++); set(actualSection, 0, "本次实验实际外部投入"); actualSection.getCell(0).setCellStyle(sectionStyle); actualSheet.addMergedRegion(new CellRangeAddress(actualSection.getRowNum(), actualSection.getRowNum(), 0, 5));
+            var actualHeader = actualRowIndex;
+            formulaHeader(actualSheet.createRow(actualRowIndex++), header, "序号", "物料编码", "物料名称", "角色", "本次实验实际 kg", "加入步骤");
             for (int index = 0; index < lines.size(); index++) {
                 var line = lines.get(index);
-                var row = sheet.createRow(rowIndex++);
-                setNumber(row, 0, index + 1, number);
-                set(row, 1, value(line.materialCode()));
-                set(row, 2, value(line.materialName()));
-                set(row, 3, line.canonicalMaterialRole());
-                setNumber(row, 4, line.weightKg(), number);
-                var hundredKg = displayedPercentages.get(index);
-                setNumber(row, 5, hundredKg, number);
-                displayedHundredKg = displayedHundredKg.add(hundredKg);
-                setNumber(row, 6, hundredKg, number);
-                set(row, 7, joinSteps(revision.snapshot(), line.sources()));
+                var row = actualSheet.createRow(actualRowIndex++);
+                formulaNumber(row, 0, index + 1, number); formulaText(row, 1, line.materialCode(), text); formulaText(row, 2, line.materialName(), text);
+                formulaText(row, 3, ExportDisplayFormat.materialRole(line.canonicalMaterialRole()), text);
+                var incomplete = line.sources().stream().anyMatch(source -> source.weightKg() == null);
+                if (incomplete) formulaText(row, 4, "待填写", text); else formulaNumber(row, 4, line.weightKg(), number);
+                formulaText(row, 5, joinSteps(view.snapshot(), line.sources()), sourceText); formulaRowHeight(row, line.materialName(), joinSteps(view.snapshot(), line.sources()));
             }
-            var total = sheet.createRow(rowIndex);
-            set(total, 0, "合计");
-            setNumber(total, 4, lines.stream().map(ProcessRecipeService.RecipeLine::weightKg).reduce(BigDecimal.ZERO, BigDecimal::add), number);
-            setNumber(total, 5, BigDecimal.valueOf(100), number);
-            setNumber(total, 6, displayedHundredKg, number);
-            for (int column = 0; column < titles.size(); column++) sheet.autoSizeColumn(column);
+            var actualTotal = actualSheet.createRow(actualRowIndex++); formulaText(actualTotal, 0, "合计", label);
+            if (view.externalInputKg() == null) formulaText(actualTotal, 4, "待填写", text); else formulaNumber(actualTotal, 4, view.externalInputKg(), number);
+            var issues = exportChecks.check(view, "FORMULA_XLSX").issues();
+            if (!issues.isEmpty()) {
+                actualRowIndex++; var issueSection = actualSheet.createRow(actualRowIndex++); set(issueSection, 0, "待核实项"); issueSection.getCell(0).setCellStyle(sectionStyle); actualSheet.addMergedRegion(new CellRangeAddress(issueSection.getRowNum(), issueSection.getRowNum(), 0, 5));
+                for (var issue : issues) { var row = actualSheet.createRow(actualRowIndex++); formulaText(row, 0, "待核实", label); formulaText(row, 1, issue.message(), text); actualSheet.addMergedRegion(new CellRangeAddress(row.getRowNum(), row.getRowNum(), 1, 5)); }
+            }
+            configureFormulaSheet(workbook, actualSheet, view, actualHeader, actualRowIndex, "本次实际投料");
+
+            var normalizedSheet = workbook.createSheet("每100kg折算");
+            var normalizedRowIndex = formulaPreamble(normalizedSheet, "研发配方—每100kg外部投入折算", view, formalRevision,
+                    documentVersion, changeReason, generatedAt, generatedBy, preview, titleStyle, sectionStyle, label, text);
+            var normalizedSection = normalizedSheet.createRow(normalizedRowIndex++); set(normalizedSection, 0, "每 100 kg 外部投入折算"); normalizedSection.getCell(0).setCellStyle(sectionStyle); normalizedSheet.addMergedRegion(new CellRangeAddress(normalizedSection.getRowNum(), normalizedSection.getRowNum(), 0, 5));
+            normalizedRowIndex = formulaMetadataRow(normalizedSheet, normalizedRowIndex, "折算分母", view.externalInputKg() == null ? "待填写（本次实验外部原料实际总投入）" : ExportDisplayFormat.actualKg(view.externalInputKg()) + "（不含中间投入和成品重量）", label, text);
+            var normalizedHeader = normalizedRowIndex;
+            formulaHeader(normalizedSheet.createRow(normalizedRowIndex++), header, "序号", "物料编码", "物料名称", "角色", "每100kg外部投入折算 kg", "加入步骤");
+            BigDecimal displayedHundredKg = BigDecimal.ZERO;
+            for (int index = 0; index < lines.size(); index++) {
+                var line = lines.get(index); var row = normalizedSheet.createRow(normalizedRowIndex++);
+                formulaNumber(row, 0, index + 1, number); formulaText(row, 1, line.materialCode(), text); formulaText(row, 2, line.materialName(), text);
+                formulaText(row, 3, ExportDisplayFormat.materialRole(line.canonicalMaterialRole()), text);
+                var incomplete = view.externalInputKg() == null || line.sources().stream().anyMatch(source -> source.weightKg() == null);
+                if (incomplete || displayedPercentages.isEmpty()) formulaText(row, 4, "待填写", text);
+                else { var normalized = displayedPercentages.get(index); formulaNumber(row, 4, normalized, number); displayedHundredKg = displayedHundredKg.add(normalized); }
+                formulaText(row, 5, joinSteps(view.snapshot(), line.sources()), sourceText); formulaRowHeight(row, line.materialName(), joinSteps(view.snapshot(), line.sources()));
+            }
+            var normalizedTotal = normalizedSheet.createRow(normalizedRowIndex++); formulaText(normalizedTotal, 0, "合计", label);
+            if (view.externalInputKg() == null) formulaText(normalizedTotal, 4, "待填写", text); else formulaNumber(normalizedTotal, 4, displayedHundredKg, number);
+            configureFormulaSheet(workbook, normalizedSheet, view, normalizedHeader, normalizedRowIndex, "每100kg折算");
             workbook.write(output);
             return output.toByteArray();
         }
     }
 
-    private byte[] sopBytes(String productName, ProcessRevision revision, String documentVersion, LocalDateTime generatedAt, String generatedBy, ProcessExportView view) throws Exception {
-        try (var document = new XWPFDocument(); var output = new ByteArrayOutputStream()) {
-            heading(document, "研发版生产 SOP：" + productName);
-            paragraph(document, "来源工艺版本：V" + revision.revisionNo() + "；文件版本：V" + documentVersion);
-            paragraph(document, "来源版本标识：" + value(revision.sourceRevisionId()) + "；版本变更：" + value(revision.changeReason()));
-            paragraph(document, "变更原因：" + value(revision.changeReason()) + "；生成信息：" + generatedBy + " / " + TIME.format(generatedAt));
-            paragraph(document, "数据来源：" + view.sourceLabel());
-            paragraph(document, "主料得率：" + percent(view.mainYieldPercent()));
-            for (var issue : exportChecks.check(view, "SOP_DOCX").issues()) paragraph(document, "待补充：" + issue.message());
-            var externalTotal = view.externalInputKg();
-            paragraph(document, "适用批量：打样外部投入 " + kg(externalTotal) + "；100kg 标准配方（无独立批量字段，不推定实际生产批量）");
-            for (var major : sorted(revision.snapshot().majorProcesses(), ProcessPlan.MajorProcess::sequence)) {
-                heading(document, "大工序 " + major.sequence() + "：" + value(major.processName()));
-                paragraph(document, "工序说明：" + value(major.description()) + "；备注：" + value(major.remark()));
-                var yield = calculationService.calculate(major);
-                var measured = view.majors().stream().filter(m -> m.sequence() == major.sequence()).findFirst().orElseThrow();
-                boolean completeWeights = values(major.steps()).stream().allMatch(s -> values(s.materials()).stream().allMatch(m -> m.weightKg() != null)
-                        && values(s.outputs()).stream().allMatch(o -> o.weightKg() != null));
-                paragraph(document, "大工序得率：" + percent(measured.mainYieldPercent())
-                        + "；主料首端投入：" + kg(measured.primaryInputKg())
-                        + "；末端产出：" + kg(measured.primaryOutputKg())
-                        + "；终端产出合计：" + kg(completeWeights ? yield.totalOutputWeightKg() : null)
-                        + "；物料平衡差：" + kg(completeWeights ? yield.balanceDifferenceKg() : null));
-                var table = table(document, "步骤", "外部投料", "中间流转", "操作参数/设备工具", "操作要求", "产出状态/重量", "步骤得率");
-                for (var step : sorted(major.steps(), ProcessPlan.MinorStep::sequence)) {
-                    var row = table.createRow();
-                    cell(row, 0, step.sequence() + " / " + value(step.stepName()));
-                    cell(row, 1, materials(step, "EXTERNAL"));
-                    cell(row, 2, intermediateFlow(revision.snapshot(), step));
-                    cell(row, 3, parameters(step));
-                    cell(row, 4, value(step.instruction()));
-                    cell(row, 5, outputs(step));
-                    cell(row, 6, percent(calculationService.calculateStep(step).mainYieldPercent()));
-                }
-                var controls = major.steps() == null ? List.<ProcessPlan.ControlPoint>of() : major.steps().stream()
-                        .flatMap(step -> values(step.controlPoints()).stream()).toList();
-                if (!controls.isEmpty()) {
-                    paragraph(document, "关键控制标准与偏差处理");
-                    var controlTable = table(document, "大工序/步骤", "类型/重要性", "控制项目", "目标", "下限", "上限", "单位", "方法", "工具", "频次", "偏差处理", "依据或备注");
-                    for (var step : sorted(major.steps(), ProcessPlan.MinorStep::sequence)) for (var control : values(step.controlPoints())) {
-                        var row = controlTable.createRow();
-                        cell(row, 0, major.sequence() + "." + step.sequence() + " " + value(step.stepName()));
-                        cell(row, 1, join(" / ", control.controlType(), control.importance()));
-                        cell(row, 2, value(control.itemName())); cell(row, 3, value(control.targetValue()));
-                        cell(row, 4, value(control.lowerLimit())); cell(row, 5, value(control.upperLimit())); cell(row, 6, value(control.unit()));
-                        cell(row, 7, value(control.method())); cell(row, 8, value(control.measurementTool())); cell(row, 9, value(control.frequency()));
-                        cell(row, 10, value(control.deviationAction())); cell(row, 11, value(control.basisOrRemark()));
-                    }
-                }
-            }
-            heading(document, "测量记录追溯附录（不作为生产指令标准）");
-            var appendix = table(document, "大工序/步骤", "控制项目", "确认人/时间", "实测值", "测量时间", "结果", "复测/偏差处理", "工具/依据/备注");
-            for (var major : sorted(revision.snapshot().majorProcesses(), ProcessPlan.MajorProcess::sequence)) {
-                for (var step : sorted(major.steps(), ProcessPlan.MinorStep::sequence)) {
-                    for (var control : values(step.controlPoints())) {
-                        for (var measurement : values(control.measurements())) {
-                            var row = appendix.createRow();
-                            cell(row, 0, major.sequence() + "." + step.sequence() + " " + value(step.stepName()));
-                            cell(row, 1, value(control.itemName()));
-                            cell(row, 2, join(" / ", control.confirmedBy(), control.confirmedAt()));
-                            cell(row, 3, value(measurement.measuredValue())); cell(row, 4, value(measurement.measuredAt()));
-                            cell(row, 5, value(measurement.result())); cell(row, 6, join(" / ", measurement.retestResult(), measurement.deviationAction()));
-                            cell(row, 7, join(" / ", control.measurementTool(), control.basisOrRemark(), measurement.remark()));
-                        }
-                    }
-                }
-            }
-            document.write(output);
-            return output.toByteArray();
+    private int formulaPreamble(org.apache.poi.ss.usermodel.Sheet sheet, String titleText, ProcessExportView view,
+                                String formalRevision, String documentVersion, String changeReason,
+                                LocalDateTime generatedAt, String generatedBy, boolean preview,
+                                CellStyle titleStyle, CellStyle sectionStyle, CellStyle label, CellStyle text) {
+        var rowIndex = 0;
+        var title = sheet.createRow(rowIndex++); set(title, 0, titleText); title.getCell(0).setCellStyle(titleStyle); sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 5)); title.setHeightInPoints(28);
+        if (preview) {
+            var banner = sheet.createRow(rowIndex++); set(banner, 0, "研发预览  非正式归档"); banner.getCell(0).setCellStyle(sectionStyle); sheet.addMergedRegion(new CellRangeAddress(banner.getRowNum(), banner.getRowNum(), 0, 5));
         }
+        rowIndex = formulaMetadataRow(sheet, rowIndex, "产品", view.productName(), label, text);
+        if (view.metadata() != null && !blank(view.metadata().specification())) rowIndex = formulaMetadataRow(sheet, rowIndex, "规格", view.metadata().specification(), label, text);
+        rowIndex = formulaMetadataRow(sheet, rowIndex, "固定数据来源", view.sourceLabel(), label, text);
+        if (!blank(formalRevision)) rowIndex = formulaMetadataRow(sheet, rowIndex, "正式工艺修订", formalRevision, label, text);
+        if (!blank(documentVersion)) rowIndex = formulaMetadataRow(sheet, rowIndex, "文件版本", documentVersion, label, text);
+        if (!blank(changeReason)) rowIndex = formulaMetadataRow(sheet, rowIndex, "变更原因", changeReason, label, text);
+        if (!blank(generatedBy)) rowIndex = formulaMetadataRow(sheet, rowIndex, "编制人", generatedBy, label, text);
+        rowIndex = formulaMetadataRow(sheet, rowIndex, "编制时间", generatedAt == null ? view.metadata() == null ? "" : view.metadata().date() : TIME.format(generatedAt), label, text);
+        rowIndex = formulaMetadataRow(sheet, rowIndex, "外部原料实际总投入", view.externalInputKg() == null ? "待填写" : ExportDisplayFormat.actualKg(view.externalInputKg()), label, text);
+        rowIndex = formulaMetadataRow(sheet, rowIndex, "主流程实际得率", ExportDisplayFormat.percent(view.mainYieldPercent()), label, text);
+        return rowIndex + 1;
     }
+
+    private void configureFormulaSheet(XSSFWorkbook workbook, org.apache.poi.ss.usermodel.Sheet sheet, ProcessExportView view,
+                                       int headerRow, int lastRow, String footerLabel) {
+        int[] widths = {8, 19, 34, 14, 23, 38};
+        for (int column = 0; column < widths.length; column++) sheet.setColumnWidth(column, widths[column] * 256);
+        sheet.setRepeatingRows(new CellRangeAddress(headerRow, headerRow, -1, -1));
+        sheet.createFreezePane(0, headerRow + 1);
+        sheet.setFitToPage(true); sheet.getPrintSetup().setPaperSize(org.apache.poi.ss.usermodel.PrintSetup.A4_PAPERSIZE); sheet.getPrintSetup().setLandscape(true); sheet.getPrintSetup().setFitWidth((short)1); sheet.getPrintSetup().setFitHeight((short)0);
+        sheet.setAutobreaks(true); sheet.setMargin(org.apache.poi.ss.usermodel.Sheet.LeftMargin, 0.35); sheet.setMargin(org.apache.poi.ss.usermodel.Sheet.RightMargin, 0.35);
+        sheet.getFooter().setLeft(view.productName()); sheet.getFooter().setCenter(view.sourceLabel() + "  第 &P 页 / 共 &N 页"); sheet.getFooter().setRight(footerLabel);
+        workbook.setPrintArea(workbook.getSheetIndex(sheet), 0, 5, 0, lastRow - 1);
+    }
+
+    private CellStyle formulaStyle(XSSFWorkbook workbook, boolean bold, int fontSize, HorizontalAlignment alignment,
+                                   IndexedColors foreground, IndexedColors fill, boolean border) {
+        var style = workbook.createCellStyle(); style.setAlignment(alignment); style.setVerticalAlignment(VerticalAlignment.CENTER); style.setWrapText(true);
+        var font = workbook.createFont(); font.setFontName(ExportDisplayFormat.CJK_FONT); font.setFontHeightInPoints((short) fontSize); font.setBold(bold); font.setColor(foreground.getIndex()); style.setFont(font);
+        if (fill != null) { style.setFillForegroundColor(fill.getIndex()); style.setFillPattern(FillPatternType.SOLID_FOREGROUND); }
+        if (border) { style.setBorderTop(BorderStyle.THIN); style.setBorderBottom(BorderStyle.THIN); style.setBorderLeft(BorderStyle.THIN); style.setBorderRight(BorderStyle.THIN); style.setTopBorderColor(IndexedColors.GREY_25_PERCENT.getIndex()); style.setBottomBorderColor(IndexedColors.GREY_25_PERCENT.getIndex()); style.setLeftBorderColor(IndexedColors.GREY_25_PERCENT.getIndex()); style.setRightBorderColor(IndexedColors.GREY_25_PERCENT.getIndex()); }
+        return style;
+    }
+
+    private int formulaMetadataRow(org.apache.poi.ss.usermodel.Sheet sheet, int rowIndex, String name, String content, CellStyle label, CellStyle text) {
+        var row = sheet.createRow(rowIndex); formulaText(row, 0, name, label); formulaText(row, 2, content, text);
+        sheet.addMergedRegion(new CellRangeAddress(rowIndex, rowIndex, 0, 1));
+        sheet.addMergedRegion(new CellRangeAddress(rowIndex, rowIndex, 2, 5));
+        row.setHeightInPoints(21);
+        return rowIndex + 1;
+    }
+    private void formulaHeader(Row row, CellStyle style, String... labels) { for (int i = 0; i < labels.length; i++) formulaText(row, i, labels[i], style); row.setHeightInPoints(28); }
+    private void formulaText(Row row, int column, String content, CellStyle style) { var cell = row.createCell(column); cell.setCellValue(value(content)); cell.setCellStyle(style); }
+    private void formulaNumber(Row row, int column, Number number, CellStyle style) { var cell = row.createCell(column); cell.setCellValue(number.doubleValue()); cell.setCellStyle(style); }
+    private void formulaRowHeight(Row row, String... values) { var length = java.util.Arrays.stream(values).filter(java.util.Objects::nonNull).mapToInt(String::length).max().orElse(0); row.setHeightInPoints(Math.max(22, (float)Math.ceil(length / 18.0) * 15)); }
 
     private void requireWriteAccess(String formId, SessionPrincipal principal) {
         requirePrincipal(principal);
@@ -436,7 +420,7 @@ public class ProcessArtifactService {
 
     private void validateType(String type) {
         if (!ProcessArtifact.FORMULA_XLSX.equals(type) && !ProcessArtifact.SOP_DOCX.equals(type)) {
-            throw new BusinessException("PROCESS_ARTIFACT_TYPE_INVALID", "只支持生成标准配方或生产SOP");
+            throw new BusinessException("PROCESS_ARTIFACT_TYPE_INVALID", "只支持生成研发配方或研发SOP");
         }
     }
 
@@ -456,33 +440,13 @@ public class ProcessArtifactService {
     }
 
     private String fileName(String productName, int revisionNo, ProcessArtifact artifact) {
-        var label = ProcessArtifact.FORMULA_XLSX.equals(artifact.artifactType()) ? "标准配方" : "生产SOP";
+        var label = ProcessArtifact.FORMULA_XLSX.equals(artifact.artifactType()) ? "研发配方" : "研发SOP";
         var ext = ProcessArtifact.FORMULA_XLSX.equals(artifact.artifactType()) ? ".xlsx" : ".docx";
         return productName + "-工艺V" + revisionNo + "-" + label + "V" + artifact.documentVersion() + ext;
     }
 
     private String contentType(String type) {
         return ProcessArtifact.FORMULA_XLSX.equals(type) ? XLSX_CONTENT_TYPE : DOCX_CONTENT_TYPE;
-    }
-
-    private void heading(XWPFDocument document, String text) {
-        var paragraph = document.createParagraph();
-        paragraph.setStyle("Heading1");
-        paragraph.createRun().setText(text);
-    }
-
-    private void paragraph(XWPFDocument document, String text) {
-        document.createParagraph().createRun().setText(text);
-    }
-
-    private XWPFTable table(XWPFDocument document, String... headers) {
-        var table = document.createTable(1, headers.length);
-        for (int index = 0; index < headers.length; index++) cell(table.getRow(0), index, headers[index]);
-        return table;
-    }
-
-    private void cell(org.apache.poi.xwpf.usermodel.XWPFTableRow row, int index, String text) {
-        row.getCell(index).setText(value(text));
     }
 
     private void set(Row row, int start, String... values) {
@@ -493,12 +457,6 @@ public class ProcessArtifactService {
         row.createCell(index).setCellValue(value(value));
     }
 
-    private void setNumber(Row row, int index, Number value, CellStyle style) {
-        var cell = row.createCell(index);
-        cell.setCellValue(value == null ? 0d : value.doubleValue());
-        cell.setCellStyle(style);
-    }
-
     private String joinSteps(ProcessPlan plan, List<ProcessRecipeService.RecipeSource> sources) {
         var names = new LinkedHashMap<String, String>();
         for (var major : values(plan.majorProcesses())) for (var step : values(major.steps())) {
@@ -506,83 +464,6 @@ public class ProcessArtifactService {
         }
         return sources.stream().map(source -> names.getOrDefault(source.majorSequence() + "." + source.stepSequence(),
                 source.majorSequence() + "." + source.stepSequence())).distinct().collect(Collectors.joining("；"));
-    }
-
-    private String materials(ProcessPlan.MinorStep step, String sourceType) {
-        return values(step.materials()).stream().filter(material -> sourceType.equals(material.sourceType()))
-                .map(material -> "名称：" + value(material.materialName())
-                        + "；编码：" + value(material.materialCode())
-                        + "；角色：" + value(material.materialRole())
-                        + "；状态：" + value(material.materialState())
-                        + "；重量：" + kg(material.weightKg())
-                        + (blank(material.remark()) ? "" : "；备注：" + material.remark()))
-                .collect(Collectors.joining("；"));
-    }
-
-    private String intermediateFlow(ProcessPlan plan, ProcessPlan.MinorStep step) {
-        var flows = new ArrayList<String>();
-        for (var material : values(step.materials()).stream().filter(item -> "STEP_OUTPUT".equals(item.sourceType())).toList()) {
-            var producer = findOutputProducer(plan, material.sourceStepOutputId());
-            var consumer = findStepLabel(plan, step);
-            flows.add("接收产出ID：" + value(material.sourceStepOutputId())
-                    + (blank(producer) ? "" : "；流转：" + producer + " → " + consumer)
-                    + "；名称：" + value(material.materialName())
-                    + "；状态：" + value(material.materialState())
-                    + "；重量：" + kg(material.weightKg())
-                    + (blank(material.remark()) ? "" : "；备注：" + material.remark()));
-        }
-        for (var output : values(step.outputs()).stream().filter(item -> "INTERMEDIATE".equals(item.outputType()) || item.continueFlow()).toList()) {
-            flows.add("产出ID：" + value(output.id())
-                    + "；名称：" + value(output.outputName())
-                    + "；状态：" + value(output.materialState())
-                    + "；重量：" + kg(output.weightKg())
-                    + (blank(output.remark()) ? "" : "；备注：" + output.remark()));
-        }
-        return String.join("；", flows);
-    }
-
-    private String findOutputProducer(ProcessPlan plan, String outputId) {
-        for (var major : values(plan.majorProcesses())) for (var step : values(major.steps()))
-            for (var output : values(step.outputs())) if (outputId != null && outputId.equals(output.id()))
-                return major.sequence() + "." + step.sequence() + " " + value(step.stepName()) + " / " + value(output.outputName());
-        return "";
-    }
-
-    private String findStepLabel(ProcessPlan plan, ProcessPlan.MinorStep target) {
-        for (var major : values(plan.majorProcesses())) for (var step : values(major.steps()))
-            if (step == target || (step.id() != null && step.id().equals(target.id())))
-                return major.sequence() + "." + step.sequence() + " " + value(step.stepName());
-        return value(target.stepName());
-    }
-
-    private String parameters(ProcessPlan.MinorStep step) {
-        return join("；", parameter(step.parameter1Name(), step.parameter1Value(), step.parameter1Unit()),
-                parameter(step.parameter2Name(), step.parameter2Value(), step.parameter2Unit()),
-                blank(step.equipment()) ? null : "设备工具：" + step.equipment());
-    }
-
-    private String outputs(ProcessPlan.MinorStep step) {
-        return values(step.outputs()).stream().map(output -> "名称：" + value(output.outputName())
-                        + "；类型：" + value(output.outputType())
-                        + "；状态：" + value(output.materialState())
-                        + "；重量：" + kg(output.weightKg())
-                        + (blank(output.remark()) ? "" : "；备注：" + output.remark()))
-                .collect(Collectors.joining("；"));
-    }
-
-    private String limits(ProcessPlan.ControlPoint control) {
-        if (control.lowerLimit() != null || control.upperLimit() != null) {
-            return value(control.lowerLimit()) + "–" + value(control.upperLimit()) + value(control.unit());
-        }
-        return value(control.targetValue()) + value(control.unit());
-    }
-
-    private String parameter(String name, String val, String unit) {
-        return blank(name) ? null : name + "=" + value(val) + value(unit);
-    }
-
-    private String kg(BigDecimal value) {
-        return value == null ? "待填写" : value.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString() + "kg";
     }
 
     private String percent(BigDecimal value) {
@@ -614,9 +495,7 @@ public class ProcessArtifactService {
     private String truncate(String value) { return value == null ? "生成失败" : value.substring(0, Math.min(value.length(), 900)); }
     private String value(Object value) { return value == null ? "" : String.valueOf(value); }
     private boolean blank(String value) { return value == null || value.isBlank(); }
-    private String join(String separator, String... values) { return java.util.Arrays.stream(values).filter(value -> !blank(value)).collect(Collectors.joining(separator)); }
     private <T> List<T> values(List<T> values) { return values == null ? List.of() : values; }
-    private <T> List<T> sorted(List<T> values, java.util.function.ToIntFunction<T> sequence) { return values(values).stream().sorted(Comparator.comparingInt(sequence)).toList(); }
 
     public record ArtifactDownload(String fileName, String contentType, byte[] content) { }
 }

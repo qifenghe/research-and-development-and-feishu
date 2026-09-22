@@ -86,3 +86,11 @@ test("submission requires explicit confirmation/reason and output center never o
   assert.match(taskApi, /getProcessSubmissionCheck/);
   assert.match(taskApi, /submission-check/);
 });
+
+test("operator-facing exports consistently use R&D formula and SOP names", () => {
+  const output = source("components/process/RndOutputCenter.vue");
+  const preview = source("components/process/ProcessExportPreview.vue");
+  for (const marker of ["研发配方", "研发 SOP"]) assert.ok(output.includes(marker), `output missing ${marker}`);
+  for (const marker of ["研发配方", "研发SOP"]) assert.ok(preview.includes(marker), `preview missing ${marker}`);
+  for (const obsolete of ["标准配方 Formula", "生产SOP"]) assert.ok(!output.includes(obsolete), `obsolete output name ${obsolete}`);
+});

@@ -40,7 +40,7 @@ const generating = ref<ProcessArtifactType>();
 const loadError = ref("");
 const listGeneration = new RequestGeneration();
 const mutationGeneration = new RequestGeneration();
-const artifactTypes = [{ label: "标准配方 Formula", value: "FORMULA_XLSX" as const }, { label: "研发 SOP", value: "SOP_DOCX" as const }];
+const artifactTypes = [{ label: "研发配方", value: "FORMULA_XLSX" as const }, { label: "研发 SOP", value: "SOP_DOCX" as const }];
 const revisionOptions = computed(() => props.revisions.map(item => ({ label: `正式版本 R${item.revisionNo}`, value: item.id })));
 
 watch(() => props.formId, () => {
@@ -132,7 +132,7 @@ async function download(id: string, type: ProcessArtifactType) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${type === "FORMULA_XLSX" ? "标准配方" : "生产SOP"}-R${props.revisions.find(item => item.id === revisionId)?.revisionNo || ""}.${type === "FORMULA_XLSX" ? "xlsx" : "docx"}`;
+    link.download = `${type === "FORMULA_XLSX" ? "研发配方" : "研发SOP"}-R${props.revisions.find(item => item.id === revisionId)?.revisionNo || ""}.${type === "FORMULA_XLSX" ? "xlsx" : "docx"}`;
     document.body.append(link);
     link.click();
     link.remove();
