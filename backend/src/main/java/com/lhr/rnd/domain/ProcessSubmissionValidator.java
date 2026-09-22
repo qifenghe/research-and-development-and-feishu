@@ -59,6 +59,24 @@ public final class ProcessSubmissionValidator {
         return errors;
     }
 
+    /** Preview may display a genuine measured terminal zero; submission remains strictly positive. */
+    public List<ProcessSubmissionCheck.Issue> previewFlowIssues(ProcessPlan plan) {
+        var steps = flatten(values(plan == null ? null : plan.majorProcesses()));
+        return flowIssues(plan).stream().filter(issue -> {
+            if (!"PRIMARY_STEP_WEIGHT_REQUIRED".equals(issue.code())) return true;
+            return steps.stream().filter(ref -> java.util.Objects.equals(issue.majorSequence(), ref.major.sequence())
+                    && java.util.Objects.equals(issue.stepSequence(), ref.step.sequence())).noneMatch(ref -> {
+                var inputs = values(ref.step.materials()).stream().filter(m -> "PRIMARY".equals(m.materialRole())).toList();
+                var outputs = values(ref.step.outputs()).stream().filter(ProcessPlan.StepOutput::primaryOutput).toList();
+                if (inputs.size() != 1 || outputs.size() != 1 || !positive(inputs.get(0).weightKg())) return false;
+                var output = outputs.get(0);
+                return output.weightKg() != null && output.weightKg().signum() == 0 && !output.continueFlow()
+                        && steps.stream().flatMap(s -> values(s.step.materials()).stream()).noneMatch(m ->
+                        "STEP_OUTPUT".equals(m.sourceType()) && java.util.Objects.equals(output.id(), m.sourceStepOutputId()));
+            });
+        }).toList();
+    }
+
     private void validateFlow(List<StepRef> steps, List<ProcessSubmissionCheck.Issue> errors) {
         var outputs = new HashMap<String, OutputRef>();
         var duplicateOutputIds = new HashSet<String>();

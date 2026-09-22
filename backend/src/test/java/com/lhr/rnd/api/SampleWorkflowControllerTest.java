@@ -1751,7 +1751,7 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("pricing_file", pricingFileId, "pricing_version")).isEqualTo("A0-核价V1");
         assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("PENDING_PRICING_REVIEW");
         assertThat(valueById("pricing_file", pricingFileId, "file_name"))
-                .matches("500g香卤大肠头-LHYC（核价）原料清单A0 \\d{4}\\.\\d{2}\\.\\d{2}\\.xlsx");
+                .matches("500g香卤大肠头-产品核价基础数据表-R1\\.xlsx");
         var generatedFileName = valueById("pricing_file", pricingFileId, "file_name");
         assertThat(countByColumn("archive_file", "business_id", pricingFileId)).isEqualTo(1);
         assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "business_type")).isEqualTo("PRICING_FILE");
@@ -1900,7 +1900,7 @@ class SampleWorkflowControllerTest {
         var formId = valueByColumn("experiment_form", "version_id", versionId, "id");
         insertFormalPricingRevision(formId, "PREV-TAMPERED", 1, "80");
         var pricingFileId = createPricingDraft(versionId);
-        var items = workflowService.pricingPackagingItems(pricingFileId);
+        var items = packagingWithExplicitUnits(pricingFileId);
         var packagingBefore = pricingPackagingRows(pricingFileId);
         var filesBefore = pricingArchiveFiles(versionId);
         var cachedBefore = cachedPricingFile(pricingFileId);
@@ -1931,7 +1931,7 @@ class SampleWorkflowControllerTest {
         ReflectionTestUtils.setField(workflowService, "pricingFileSequence",
                 100_000 + (int) (System.nanoTime() % 800_000));
         var pricingFileId = createPricingDraft(versionId);
-        var items = workflowService.pricingPackagingItems(pricingFileId);
+        var items = packagingWithExplicitUnits(pricingFileId);
         var packagingBefore = pricingPackagingRows(pricingFileId);
         var filesBefore = pricingArchiveFiles(versionId);
         var cachedBefore = cachedPricingFile(pricingFileId);
@@ -1956,7 +1956,7 @@ class SampleWorkflowControllerTest {
         var formId = valueByColumn("experiment_form", "version_id", versionId, "id");
         insertFormalPricingRevision(formId, "PREV-ATTEMPT-A", 1, "80");
         var pricingFileId = createPricingDraft(versionId);
-        var items = workflowService.pricingPackagingItems(pricingFileId);
+        var items = packagingWithExplicitUnits(pricingFileId);
         var firstStored = new CountDownLatch(1);
         var releaseFirstStore = new CountDownLatch(1);
         var secondStarted = new CountDownLatch(1);
@@ -2101,23 +2101,32 @@ class SampleWorkflowControllerTest {
     }
 
     @Test
-    void formalRevisionWithUnavailableYieldLeavesWorkbookAndDetailNull() throws Exception {
+    void incompleteHistoricalRevisionCannotCreateANewFormalPricingArtifact() throws Exception {
         var versionId = createLockedSampleVersion();
         var formId = valueByColumn("experiment_form", "version_id", versionId, "id");
         insertFormalPricingRevision(formId, "PREV-YIELD-NULL", 1, null, "NONE");
 
-        var pricingFileId = generatePricingFile(versionId);
+        var pricingFileId = createPricingDraft(versionId);
+        assertThatThrownBy(() -> workflowService.confirmPricingPackaging(pricingFileId, packagingWithExplicitUnits(pricingFileId), "张研发", "RND_ENGINEER"))
+                .isInstanceOf(BusinessException.class).extracting(e -> ((BusinessException)e).code()).isEqualTo("PROCESS_EXPORT_NOT_READY");
+        assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("DRAFT_PACKAGING");
+        assertThat(countByColumn("archive_file", "business_id", pricingFileId)).isZero();
+    }
 
-        var bytes = workflowService.downloadPricingFile(pricingFileId).content();
-        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
-            var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getRow(8).getCell(6).getStringCellValue()).contains("finishedYield=UNAVAILABLE");
-            assertThat(sheet.getRow(15).getCell(6).getCellType()).isEqualTo(CellType.BLANK);
+    @Test
+    void packagingDraftStaysEditableWhenUnitMissingThenPersistsExplicitUnitsAndIndependentFinishedWeight() throws Exception {
+        var versionId = createLockedSampleVersion();
+        var pricingId = createPricingDraft(versionId);
+        assertThatThrownBy(() -> workflowService.confirmPricingPackaging(pricingId, workflowService.pricingPackagingItems(pricingId), "张研发", "RND_ENGINEER"))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("数量单位");
+        assertThat(valueById("pricing_file", pricingId, "status")).isEqualTo("DRAFT_PACKAGING");
+        assertThat(countByColumn("archive_file", "business_id", pricingId)).isZero();
+        workflowService.confirmPricingPackaging(pricingId, packagingWithExplicitUnits(pricingId), "张研发", "RND_ENGINEER");
+        assertThat(workflowService.pricingPackagingItems(pricingId)).allMatch(i -> "测试单位".equals(i.quantityUnit()));
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(workflowService.downloadPricingFile(pricingId).content()))) {
+            assertThat(workbook.getSheetAt(2).getRow(6).getCell(2).getNumericCellValue()).isEqualTo(8.5);
+            assertThat(workbook.getSheetAt(2).getRow(7).getCell(2).getNumericCellValue()).isEqualTo(17);
         }
-        mockMvc.perform(get("/api/v1/pricing-files/{id}/detail", pricingFileId)
-                        .requestAttr("sessionPrincipal", principal("研发内勤", "RND_ASSISTANT")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.source.finishedYieldPercent").value(nullValue()));
     }
 
     @Test
@@ -2129,7 +2138,7 @@ class SampleWorkflowControllerTest {
             insertFormalPricingRevision(formId, "PREV-RACE-" + currentRound + "-1", 1, "80");
             insertFormalPricingRevision(formId, "PREV-RACE-" + currentRound + "-2", 2, "70");
             var pricingFileId = createPricingDraft(versionId);
-            var items = workflowService.pricingPackagingItems(pricingFileId);
+            var items = packagingWithExplicitUnits(pricingFileId);
             var ready = new CountDownLatch(3);
             var go = new CountDownLatch(1);
             var first = CompletableFuture.supplyAsync(() -> confirmTogether(pricingFileId, items, ready, go));
@@ -3177,6 +3186,7 @@ class SampleWorkflowControllerTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         var items = objectMapper.readTree(packagingItems).path("data");
+        items.forEach(item -> ((com.fasterxml.jackson.databind.node.ObjectNode)item).put("quantityUnit", "测试单位"));
         mockMvc.perform(put("/api/v1/pricing-files/{id}/packaging-items", pricingFileId)
                         .requestAttr("sessionPrincipal", owner)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -3420,7 +3430,7 @@ class SampleWorkflowControllerTest {
         result.set(0, new com.lhr.rnd.model.PricingPackagingItem(
                 first.id(), first.pricingFileId(), first.sequence(), first.source(), first.materialCode(),
                 first.materialName(), first.quantity().add(BigDecimal.ONE), first.packageSpec(),
-                first.conversionRule(), first.remark(), first.confirmationStatus(), first.modificationReason()));
+                first.conversionRule(), first.remark(), first.confirmationStatus(), first.modificationReason(), first.quantityUnit()));
         return List.copyOf(result);
     }
 
@@ -3486,12 +3496,17 @@ class SampleWorkflowControllerTest {
     private void assertPricingWorkbookRevision(byte[] bytes, String revisionId, String finishedYield) throws Exception {
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
             var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getRow(8).getCell(6).getStringCellValue())
-                    .contains("revisionId=" + revisionId,
-                            "finishedYield=" + new BigDecimal(finishedYield).setScale(6) + "%");
-            assertThat(sheet.getRow(15).getCell(6).getNumericCellValue())
-                    .isEqualTo(new BigDecimal(finishedYield).movePointLeft(2).doubleValue());
+            var revisionNo = valueById("experiment_process_revision", revisionId, "revision_no");
+            assertThat(sheet.getRow(2).getCell(1).getStringCellValue()).contains("正式工艺 R" + revisionNo).doesNotContain("revisionId=");
+            assertThat(workbook.getSheetAt(1).getRow(7).getCell(1).getNumericCellValue())
+                    .isEqualTo(new BigDecimal(finishedYield).doubleValue());
         }
+    }
+
+    private List<com.lhr.rnd.model.PricingPackagingItem> packagingWithExplicitUnits(String pricingFileId) {
+        return workflowService.pricingPackagingItems(pricingFileId).stream().map(item -> new com.lhr.rnd.model.PricingPackagingItem(
+                item.id(), item.pricingFileId(), item.sequence(), item.source(), item.materialCode(), item.materialName(),
+                item.quantity(), item.packageSpec(), item.conversionRule(), item.remark(), item.confirmationStatus(), item.modificationReason(), "测试单位")).toList();
     }
 
     private void insertFormalPricingRevision(String formId, String revisionId, int revisionNo, String outputWeightKg) throws Exception {

@@ -32,6 +32,7 @@
                 <template v-else-if="column.key === 'packageSpec'">
                   <a-input v-model:value="record.packageSpec" :disabled="!canEditPackaging" placeholder="如 500g/袋" />
                 </template>
+                <template v-else-if="column.key === 'quantityUnit'"><a-input :value="record.quantityUnit ?? ''" @update:value="record.quantityUnit = $event" :disabled="!canEditPackaging" placeholder="明确填写，如 个、张、米" /></template>
                 <template v-else-if="column.key === 'remark'">
                   <a-input v-model:value="record.remark" :disabled="!canEditPackaging" placeholder="可选" />
                 </template>
@@ -105,6 +106,7 @@ const packagingColumns = [
   { title: "物料编码", key: "materialCode", width: 130 },
   { title: "包装名称", key: "materialName", width: 190 },
   { title: "数量", key: "quantity", width: 110 },
+  { title: "数量单位", key: "quantityUnit", width: 150 },
   { title: "规格", key: "packageSpec", width: 130 },
   { title: "备注", key: "remark" },
   { title: "操作", key: "action", width: 70 },

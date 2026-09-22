@@ -31,7 +31,7 @@ public class PricingPackagingService {
             items.add(new PricingPackagingItem(
                     nextId(), pricingFileId, template.sequence(), PricingPackagingSource.TEMPLATE,
                     blankToNull(template.materialCode()), template.materialName(), quantity, template.packageSpec(),
-                    conversionRule(template), template.remark(), PricingPackagingStatus.PENDING_CONFIRMATION, null
+                    conversionRule(template), template.remark(), PricingPackagingStatus.PENDING_CONFIRMATION, null, template.quantityUnit()
             ));
             nextSequence = Math.max(nextSequence, template.sequence() + 10);
         }
@@ -68,7 +68,7 @@ public class PricingPackagingService {
         return new PricingPackagingItem(
                 nextId(), pricingFileId, sequence, PricingPackagingSource.SYSTEM_LABEL,
                 null, name, quantity, packageSpec, packageSpec, null,
-                PricingPackagingStatus.PENDING_CONFIRMATION, null
+                PricingPackagingStatus.PENDING_CONFIRMATION, null, "张"
         );
     }
 

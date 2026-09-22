@@ -10,6 +10,11 @@ public record PackagingTemplateItem(
         String conversionType,
         BigDecimal unitsPerParent,
         String packageSpec,
-        String remark
+        String remark,
+        String quantityUnit
 ) {
+    public PackagingTemplateItem(String templateCode, int sequence, String materialCode, String materialName,
+            String conversionType, BigDecimal unitsPerParent, String packageSpec, String remark) {
+        this(templateCode, sequence, materialCode, materialName, conversionType, unitsPerParent, packageSpec, remark, null);
+    }
 }

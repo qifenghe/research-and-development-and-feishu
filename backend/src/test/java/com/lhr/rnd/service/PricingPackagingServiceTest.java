@@ -48,6 +48,16 @@ class PricingPackagingServiceTest {
     }
 
     @Test
+    void copiesOnlyExplicitTemplateUnitsAndNeverInfersFromPackagingName() {
+        var items = service.createSuggestedItems("P", "产品", BigDecimal.TEN, BigDecimal.ONE, 5,
+                List.of(new PackagingTemplateItem("T", 1, "A", "名字含袋但按米计", "PER_BAG", BigDecimal.ONE, null, null, "米"),
+                        template("B", "空白袋", "PER_BAG", "1")));
+        assertThat(items.get(0).quantityUnit()).isEqualTo("米");
+        assertThat(items.get(1).quantityUnit()).isNull();
+        assertThat(items.get(2).quantityUnit()).isEqualTo("张");
+    }
+
+    @Test
     void rejectsSubmissionWhenAnyPackagingRowIsUnconfirmed() {
         var pending = new PricingPackagingItem("PKG-1", "PRICE-1", 1, PricingPackagingSource.MANUAL,
                 null, "手动包装", BigDecimal.ONE, "1个/袋", null, null,

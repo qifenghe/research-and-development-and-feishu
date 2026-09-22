@@ -13,6 +13,7 @@
       </div>
       <a-space>
         <ProcessYieldComparison :form-id="formId" />
+        <ProcessExportPreview :form-id="formId" :version-no="plan.versionNo" :source-label="`正式工艺草稿 V${plan.versionNo}`" :disabled="plan.status !== 'DRAFT' || saveState === 'dirty' || saveState === 'saving' || saveState === 'error'" @locate="locateExportIssue" />
         <a-button :disabled="readonly || plan.status !== 'DRAFT'" :loading="saveState === 'saving'" @click="saveNow()">保存草稿</a-button>
         <a-button type="primary" :disabled="readonly || !formId || plan.status !== 'DRAFT' || saveState === 'saving'" @click="openSubmit">正式提交</a-button>
       </a-space>
@@ -106,6 +107,8 @@ import ProcessSubmitDialog from "./ProcessSubmitDialog.vue";
 import ProcessPlanSnapshot from "./ProcessPlanSnapshot.vue";
 import RndOutputCenter from "./RndOutputCenter.vue";
 import ProcessYieldComparison from "./ProcessYieldComparison.vue";
+import ProcessExportPreview from "./ProcessExportPreview.vue";
+import type { ExportIssue } from "../../services/processExportApi";
 import { diffProcessPlans } from "./processPlanDiff";
 import { ProcessPlanSaveCoordinator, type ProcessPlanSaveState } from "./processPlanAutosave";
 import { RequestGeneration } from "./requestGeneration";
@@ -122,6 +125,7 @@ const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft]; "requ
 const clonePlan = (value: ProcessPlanDraft) => cloneVueValue(value);
 const plan = ref(normalizeProcessPlan(clonePlan(props.modelValue)));
 const activeMajorKey = ref<string>();
+function locateExportIssue(issue: ExportIssue) { activeMajorKey.value = plan.value.majorProcesses.find(m => m.sequence === issue.majorSequence)?.key; }
 const saveState = ref<ProcessPlanSaveState>("idle");
 const revisions = ref<ProcessRevisionSummary[]>([]);
 const selectedRevision = ref<ProcessRevision>();

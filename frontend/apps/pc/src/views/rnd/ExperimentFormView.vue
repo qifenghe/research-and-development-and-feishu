@@ -128,11 +128,11 @@
             <a-form-item label="备注"><a-textarea v-model:value="form.remark" :rows="2" :disabled="editingBlocked" /></a-form-item>
           </a-card>
 
-          <a-card title="核价数据预览" class="page-card">
+          <a-card title="正式工艺 / 实验单基础数据预览（非当前试验方案）" class="page-card">
             <a-table :columns="previewMaterialColumns" :data-source="pricingPreviewMaterials" row-key="key" :pagination="false" size="small" />
             <a-descriptions :column="2" size="small" bordered style="margin-top:12px">
               <a-descriptions-item label="总投入">{{ pricingPreview.totalInputWeightKg.toFixed(3) }}kg</a-descriptions-item>
-              <a-descriptions-item label="成品重量">{{ Number(form.finishedOutputWeightKg ?? 0).toFixed(3) }}kg</a-descriptions-item>
+              <a-descriptions-item label="成品重量">{{ form.finishedOutputWeightKg == null ? '待填写' : `${Number(form.finishedOutputWeightKg).toFixed(3)}kg` }}</a-descriptions-item>
               <a-descriptions-item label="成品数量">{{ pricingPreview.referenceQuantity }}{{ form.finishedOutputUnit }}</a-descriptions-item>
               <a-descriptions-item :label="`平均每${form.finishedOutputUnit}重量`">{{ pricingPreview.averageUnitWeightKg.toFixed(3) }}kg</a-descriptions-item>
               <a-descriptions-item label="得率基准">{{ pricingPreview.yieldBasisWeightKg.toFixed(3) }}kg</a-descriptions-item>

@@ -12,10 +12,11 @@
           <b>{{ type.label }}</b>
           <small>{{ artifactFor(type.value)?.documentVersion || "尚未生成" }} · {{ statusLabel(artifactFor(type.value)?.status) }}</small>
           <small v-if="artifactFor(type.value)?.status === 'FAILED'" class="failure">{{ artifactFor(type.value)?.failureReason || "生成失败，请重试" }}</small>
+          <small v-for="(issue,index) in checks[type.value]?.issues || []" :key="`${issue.code}-${issue.path}-${index}`" class="failure">{{ issue.majorSequence ? `工序 ${issue.majorSequence}${issue.stepSequence ? ` / 步骤 ${issue.stepSequence}` : ""}：` : "" }}{{ issue.message }}</small>
         </div>
         <a-space>
-          <a-button v-if="!readonly" size="small" :loading="generating === type.value" :disabled="Boolean(generating)" @click="generate(type.value)">{{ artifactFor(type.value) ? "重新生成" : "生成" }}</a-button>
-          <a-button v-if="artifactFor(type.value)?.status === 'READY'" size="small" type="link" @click="download(artifactFor(type.value)!.id, type.value)">下载</a-button>
+          <a-button v-if="!readonly" size="small" :loading="generating === type.value" :disabled="Boolean(generating) || !checks[type.value]?.ready" @click="generate(type.value)">{{ artifactFor(type.value) ? "重新生成" : "生成" }}</a-button>
+          <a-button v-if="readyArtifactFor(type.value)" size="small" type="link" @click="download(readyArtifactFor(type.value)!.id, type.value)">下载已归档版本 {{ readyArtifactFor(type.value)!.documentVersion }}</a-button>
         </a-space>
       </div>
       <div class="pricing-wait"><b>生产核价</b><span>包装确认后生成，可在“寄样核价”查看进度与文件</span></div>
@@ -29,10 +30,12 @@ import { message } from "ant-design-vue";
 import type { ProcessArtifact, ProcessArtifactType, ProcessRevisionSummary } from "@rnd/shared";
 import { api } from "../../services/api";
 import { RequestGeneration } from "./requestGeneration";
+import { exportApi, type ExportCheck } from "../../services/processExportApi";
 
 const props = defineProps<{ formId?: string; revisions: ProcessRevisionSummary[]; selectedRevisionId?: string; readonly?: boolean }>();
 const emit = defineEmits<{ "update:selectedRevisionId": [value: string | undefined] }>();
 const artifacts = ref<ProcessArtifact[]>([]);
+const checks = ref<Partial<Record<ProcessArtifactType, ExportCheck>>>({});
 const generating = ref<ProcessArtifactType>();
 const loadError = ref("");
 const listGeneration = new RequestGeneration();
@@ -44,6 +47,7 @@ watch(() => props.formId, () => {
   listGeneration.invalidate();
   mutationGeneration.invalidate();
   artifacts.value = [];
+  checks.value = {};
   loadError.value = "";
   generating.value = undefined;
   emit("update:selectedRevisionId", undefined);
@@ -52,6 +56,7 @@ watch(() => props.selectedRevisionId, () => {
   listGeneration.invalidate();
   mutationGeneration.invalidate();
   artifacts.value = [];
+  checks.value = {};
   loadError.value = "";
   generating.value = undefined;
   void loadArtifacts();
@@ -71,9 +76,14 @@ async function loadArtifacts() {
     const value = await api.task.getProcessArtifacts(formId, revisionId);
     if (!listGeneration.isCurrent(generation) || formId !== props.formId || revisionId !== props.selectedRevisionId) return;
     artifacts.value = value;
+    if (!props.readonly) {
+      const results = await Promise.all(artifactTypes.map(async type => [type.value, await exportApi.revisionCheck(formId, revisionId, type.value)] as const));
+      if (!listGeneration.isCurrent(generation) || formId !== props.formId || revisionId !== props.selectedRevisionId) return;
+      checks.value = Object.fromEntries(results);
+    }
   } catch (error) {
     if (!listGeneration.isCurrent(generation) || formId !== props.formId || revisionId !== props.selectedRevisionId) return;
-    artifacts.value = [];
+    checks.value = {};
     loadError.value = error instanceof Error ? error.message : "无法加载成果文件";
   }
 }
@@ -81,6 +91,7 @@ async function loadArtifacts() {
 function artifactFor(type: ProcessArtifactType) {
   return artifacts.value.find(item => item.artifactType === type);
 }
+function readyArtifactFor(type: ProcessArtifactType) { return artifacts.value.find(item => item.artifactType === type && item.status === "READY"); }
 
 function statusLabel(status?: string) {
   return status === "READY" ? "已就绪" : status === "FAILED" ? "生成失败" : "待生成";
@@ -89,7 +100,7 @@ function statusLabel(status?: string) {
 async function generate(type: ProcessArtifactType) {
   const formId = props.formId;
   const revisionId = props.selectedRevisionId;
-  if (!formId || !revisionId || generating.value) return;
+  if (!formId || !revisionId || generating.value || props.readonly || !checks.value[type]?.ready) return;
   const generation = mutationGeneration.next();
   generating.value = type;
   try {

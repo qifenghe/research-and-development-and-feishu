@@ -145,6 +145,7 @@ public class SampleWorkflowService {
     private final PricingArchiveCleanupLedgerService pricingArchiveCleanupLedger;
     @Autowired(required = false) private UserAccountRepository userAccountRepository;
     @Autowired(required = false) private ProcessRevisionService processRevisionService;
+    @Autowired(required = false) private TrialPromotionService trialPromotionService;
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
     private final Map<String, SampleProject> projects = new LinkedHashMap<>();
     private final Map<String, SampleVersion> versions = new LinkedHashMap<>();
@@ -1989,7 +1990,10 @@ public class SampleWorkflowService {
                         pricingFile.pricingVersion().replace(version.versionNo() + "-核价", ""),
                         customerName,
                         revision,
-                        confirmedItems);
+                        confirmedItems,
+                        new com.lhr.rnd.model.ProcessExportView.FinishedQuantity(lockedForm.finishedOutputWeightKg(),
+                                lockedForm.finishedOutputQuantity(), lockedForm.finishedOutputUnit(), "已锁定实验单独立实测"),
+                        trialPromotionService == null ? null : trialPromotionService.sourceForLockedPricing(lockedForm, revision));
         var generatedRecord = pricingFile.generated(generated.fileName(), generated.content().length);
         if (revision != null) {
             generatedRecord = generatedRecord.withProcessRevision(revision.id());
@@ -2056,7 +2060,8 @@ public class SampleWorkflowService {
                     item.conversionRule(),
                     item.remark(),
                     PricingPackagingStatus.CONFIRMED,
-                    blankToNull(item.modificationReason())
+                    blankToNull(item.modificationReason()),
+                    blankToNull(item.quantityUnit())
             ));
         }
         return normalized;
@@ -3125,11 +3130,15 @@ public class SampleWorkflowService {
         }
         pricingPackagingItemRepository.deleteByPricingFileId(pricingFileId);
         pricingPackagingItemRepository.saveAll(items.stream()
-                .map(item -> new PricingPackagingItemEntity(
+                .map(item -> {
+                    var entity = new PricingPackagingItemEntity(
                         item.id(), item.pricingFileId(), item.sequence(), item.source().name(),
                         item.materialCode(), item.materialName(), item.quantity(), item.packageSpec(),
                         item.conversionRule(), item.remark(), item.confirmationStatus().name(),
-                        item.modificationReason()))
+                        item.modificationReason());
+                    entity.setQuantityUnit(item.quantityUnit());
+                    return entity;
+                })
                 .toList());
     }
 
@@ -3493,7 +3502,7 @@ public class SampleWorkflowService {
                 PricingPackagingSource.valueOf(entity.getSource()), entity.getMaterialCode(),
                 entity.getMaterialName(), entity.getQuantity(), entity.getPackageSpec(),
                 entity.getConversionRule(), entity.getRemark(),
-                PricingPackagingStatus.valueOf(entity.getConfirmationStatus()), entity.getModificationReason()
+                PricingPackagingStatus.valueOf(entity.getConfirmationStatus()), entity.getModificationReason(), entity.getQuantityUnit()
         );
     }
 
@@ -3501,7 +3510,7 @@ public class SampleWorkflowService {
         return new PackagingTemplateItem(
                 entity.getTemplateCode(), entity.getSequence(), entity.getMaterialCode(),
                 entity.getMaterialName(), entity.getConversionType(), entity.getUnitsPerParent(),
-                entity.getPackageSpec(), entity.getRemark()
+                entity.getPackageSpec(), entity.getRemark(), entity.getQuantityUnit()
         );
     }
 

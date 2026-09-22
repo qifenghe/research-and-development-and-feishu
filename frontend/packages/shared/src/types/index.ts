@@ -349,6 +349,7 @@ export interface PricingPackagingItem {
   materialCode?: string;
   materialName: string;
   quantity: number;
+  quantityUnit?: string | null;
   packageSpec?: string;
   conversionRule?: string;
   remark?: string;

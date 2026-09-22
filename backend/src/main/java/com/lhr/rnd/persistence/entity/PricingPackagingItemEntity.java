@@ -30,6 +30,9 @@ public class PricingPackagingItemEntity {
 
     private BigDecimal quantity;
 
+    @Column(name = "quantity_unit")
+    private String quantityUnit;
+
     @Column(name = "package_spec")
     private String packageSpec;
 
@@ -66,6 +69,8 @@ public class PricingPackagingItemEntity {
     }
 
     public String getId() { return id; }
+    public String getQuantityUnit() { return quantityUnit; }
+    public void setQuantityUnit(String quantityUnit) { this.quantityUnit = quantityUnit; }
     public String getPricingFileId() { return pricingFileId; }
     public Integer getSequence() { return sequence; }
     public String getSource() { return source; }

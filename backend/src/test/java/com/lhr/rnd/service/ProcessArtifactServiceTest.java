@@ -54,6 +54,7 @@ class ProcessArtifactServiceTest {
     @Autowired ProcessPlanService planService;
     @Autowired ProcessRevisionService revisionService;
     @Autowired ProcessArtifactService service;
+    @Autowired TrialSchemeService trials;
     @SpyBean ProcessArtifactCleanupLedgerService cleanupLedger;
     @Autowired PlatformTransactionManager transactionManager;
     @Autowired JdbcTemplate jdbc;
@@ -80,6 +81,41 @@ class ProcessArtifactServiceTest {
             jdbc.update("insert into rnd_task(id,project_id,version_id,sample_no,product_name,version_code,status,assignee_name,created_at) values (?,?,?,?,?,?,?,?,?)", "TASK-PROCESS-ARTIFACT", "PRJ-PROCESS-ARTIFACT", "VER-PROCESS-ARTIFACT", "S-PROCESS-ARTIFACT", "牛腩", "V1", "SAMPLING", "制品研发", now);
             jdbc.update("insert into experiment_form(id,task_id,project_id,version_id,sample_no,product_name,version_code,status,operator_name,saved_at) values (?,?,?,?,?,?,?,?,?,?)", FORM_ID, "TASK-PROCESS-ARTIFACT", "PRJ-PROCESS-ARTIFACT", "VER-PROCESS-ARTIFACT", "S-PROCESS-ARTIFACT", "牛腩", "V1", "DRAFT", "研发", now);
         }
+    }
+
+    @Test
+    void incompleteSopPreviewLabelsMissingExternalBatchAndDoesNotInventZero() throws Exception {
+        var step = new ProcessPlan.MinorStep("s", 1, "COOK", "熟制", "NORMAL", null, null, null, null, null, null, null, null,
+                List.of(new ProcessPlan.StepMaterial("m", 1, "PRIMARY", "BEEF", "牛肉", "SOLID", null, "BEEF", null)),
+                List.of(new ProcessPlan.StepOutput("o", 1, "FINISHED", "成品", "SOLID", new BigDecimal("72"), true, false, null)), List.of());
+        var p = new ProcessPlan("p", FORM_ID, 1, "DRAFT", List.of(new ProcessPlan.MajorProcess("m", 1, "COOK", "熟制", null, "PRIMARY_INPUT", null, List.of(step), List.of(), List.of(), null)), null, false);
+        var view = new ProcessExportCheckService().view("软件测试", "试验A V1", p, null, List.of());
+        try (var doc = new XWPFDocument(new ByteArrayInputStream(service.preview(view, "SOP_DOCX").content()))) {
+            var text = doc.getParagraphs().stream().map(org.apache.poi.xwpf.usermodel.XWPFParagraph::getText).collect(java.util.stream.Collectors.joining("\n"));
+            assertThat(text).contains("打样外部投入 待填写", "主料得率：待填写").doesNotContain("打样外部投入 0.0000kg");
+        }
+    }
+
+    @Test
+    void savedTrialAndDraftPreviewsAreVersionBoundAuthorizedAndNeverWriteArtifactsOrApprovals() throws Exception {
+        var saved = planService.save(FORM_ID, ProcessExportCheckServiceTest.plan("72", "90", "PRIMARY_INPUT"));
+        var trial = trials.create(FORM_ID, new TrialSchemeService.CreateCommand("软件测试A", null, null, saved, null), ENGINEER);
+        var counts = List.of("experiment_process_artifact", "process_artifact_cleanup_ledger", "experiment_process_revision", "experiment_trial_submission_preview", "experiment_trial_promotion", "audit_log");
+        var before = counts.stream().map(t -> jdbc.queryForObject("select count(*) from " + t, Integer.class)).toList();
+        var draftView = service.draftView(FORM_ID, saved.versionNo(), ENGINEER);
+        assertThat(draftView.metadata().compiledBy()).isEqualTo(ENGINEER.name());
+        assertThat(draftView.metadata().specification()).isEqualTo("1kg");
+        var trialView = service.trialView(FORM_ID, trial.id(), trial.versionNo(), ENGINEER);
+        assertThat(trialView.finishedQuantity()).isNull();
+        for (var type : List.of("FORMULA_XLSX", "SOP_DOCX", "PRICING_XLSX")) {
+            assertThat(service.preview(trialView, type).content()).isNotEmpty();
+            assertThat(service.preview(draftView, type).fileName()).contains("预览");
+        }
+        assertThat(counts.stream().map(t -> jdbc.queryForObject("select count(*) from " + t, Integer.class)).toList()).isEqualTo(before);
+        assertThatThrownBy(() -> service.trialView(FORM_ID, trial.id(), trial.versionNo() + 1, ENGINEER)).hasMessageContaining("版本");
+        assertThatThrownBy(() -> service.draftView(FORM_ID, saved.versionNo() + 1, ENGINEER)).hasMessageContaining("版本");
+        assertThatThrownBy(() -> service.draftView(FORM_ID, saved.versionNo(), new SessionPrincipal("F", "f", "财务", null, "FINANCE", null))).isInstanceOf(com.lhr.rnd.api.BusinessException.class);
+        assertThat(trials.find(FORM_ID, trial.id(), ENGINEER).versionNo()).isEqualTo(trial.versionNo());
     }
 
     @Test
@@ -527,7 +563,7 @@ class ProcessArtifactServiceTest {
                     "版本变更：SOP-REV2-变更原因唯一值", "变更原因：SOP-REV2-变更原因唯一值",
                     "生成信息：" + ENGINEER.name() + " / " + DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").format(LocalDateTime.parse(artifact.generatedAt())),
                     "适用批量：打样外部投入 12.5000kg", "100kg 标准配方", "大工序 1：热加工大工序-SOP",
-                    "大工序描述-SOP-唯一", "大工序备注-SOP-唯一", "大工序得率：64.0000%", "成品得率：64.0000%",
+                    "大工序描述-SOP-唯一", "大工序备注-SOP-唯一", "大工序得率：64.0000%", "主料得率：64.0000%",
                     "终端产出合计：10.5000kg", "物料平衡差：2.0000kg",
                     "测量记录追溯附录（不作为生产指令标准）");
             var stepTable = document.getTables().stream()

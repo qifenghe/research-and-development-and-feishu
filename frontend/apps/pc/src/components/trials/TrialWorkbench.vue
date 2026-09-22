@@ -11,6 +11,7 @@
         <a-button size="small" :disabled="!editable" @click="openCopy">复制</a-button>
         <a-button size="small" :disabled="readonly || busy || !currentTrial" @click="toggleArchive">{{ currentTrial?.archived ? "恢复" : "归档" }}</a-button>
         <a-button size="small" :loading="saving" :disabled="!editable || !dirty" @click="saveTrial()">保存方案</a-button>
+        <ProcessExportPreview v-if="currentTrial" :form-id="formId" :trial-id="currentTrial.id" :version-no="currentTrial.versionNo" :source-label="`${currentTrial.name} V${currentTrial.versionNo}`" :disabled="dirty || busy" @locate="activeMajorKey = currentTrial?.plan.majorProcesses.find(m => m.sequence === $event.majorSequence)?.key" />
         <a-button size="small" type="primary" :disabled="!editable" @click="openPromotionPreview">提交为正式工艺</a-button>
       </a-space>
     </header>
@@ -122,6 +123,7 @@
 </template>
 
 <script setup lang="ts">
+import ProcessExportPreview from "../process/ProcessExportPreview.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from "vue-router";
 import { message, Modal } from "ant-design-vue";

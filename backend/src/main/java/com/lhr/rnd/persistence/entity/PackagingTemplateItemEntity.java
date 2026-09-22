@@ -31,6 +31,9 @@ public class PackagingTemplateItemEntity {
     @Column(name = "units_per_parent", nullable = false)
     private BigDecimal unitsPerParent;
 
+    @Column(name = "quantity_unit")
+    private String quantityUnit;
+
     @Column(name = "package_spec")
     private String packageSpec;
 
@@ -43,6 +46,7 @@ public class PackagingTemplateItemEntity {
     }
 
     public String getId() { return id; }
+    public String getQuantityUnit() { return quantityUnit; }
     public String getTemplateCode() { return templateCode; }
     public Integer getSequence() { return sequence; }
     public String getMaterialCode() { return materialCode; }

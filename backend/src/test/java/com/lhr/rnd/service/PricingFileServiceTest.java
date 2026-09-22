@@ -115,142 +115,25 @@ class PricingFileServiceTest {
     }
 
     @Test
-    void usesFormalRevisionRecipeAndFinishedYieldInsteadOfLegacyInputs() throws Exception {
-        var legacyVersion = pricingVersionWithCustomMaterials(List.of(
-                new ExperimentMaterial("旧配方", 1, "RAW-001", "旧配方主料", new BigDecimal("10"),
-                        new BigDecimal("0.75"), null, "RAW", true, null, "kg")));
-        var revision = formalRevision("PREV-2", 2, "RAW-001", "正式配方主料", "100", "80");
-
-        var result = new PricingFileService().generate(legacyVersion, "V1", "LHYC", revision, List.of());
-
-        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
-            var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getRow(8).getCell(6).getStringCellValue())
-                    .contains("source=FORMAL_PROCESS_REVISION", "revisionNo=2", "revisionId=PREV-2", "finishedYield=80.000000%");
-            assertThat(sheet.getRow(12).getCell(3).getStringCellValue()).isEqualTo("RAW-001");
-            assertThat(sheet.getRow(12).getCell(4).getStringCellValue()).isEqualTo("正式配方主料");
-            assertThat(sheet.getRow(12).getCell(6).getNumericCellValue()).isEqualTo(100D);
-            assertThat(sheet.getRow(12).getCell(7).getNumericCellValue()).isEqualTo(0.75D);
-            assertThat(sheet.getRow(15).getCell(6).getNumericCellValue()).isEqualTo(0.8D);
+    void formalModeIgnoresLegacyCostRowsUnitsAndReferenceOutput() throws Exception {
+        var legacy = pricingVersionWithCustomMaterials(List.of(
+                new ExperimentMaterial("旧料", 1, "OTHER", "旧料", new BigDecimal("999"), new BigDecimal("0.8"), null, "RAW", true, null, "g"),
+                new ExperimentMaterial("旧料", 2, "OTHER", "旧料", new BigDecimal("999"), new BigDecimal("0.9"), null, "RAW", true, null, "kg")));
+        var view = ProcessExportCheckServiceTest.view(ProcessExportCheckServiceTest.plan("72", "90", "PRIMARY_INPUT"));
+        var revision = new ProcessRevision("FIXED", "P", "F", 2, null, null, "研发", "2026-09-22T10:00:00", "hash", view.snapshot());
+        var result = new PricingFileService().generate(legacy, "V1", "LHYC", revision, view.packaging(), view.finishedQuantity(), null);
+        try (var book = new XSSFWorkbook(new ByteArrayInputStream(result.content()))) {
+            assertThat(book.getSheetAt(0).getRow(6).getCell(1).getStringCellValue()).isEqualTo("BEEF");
+            assertThat(book.getSheetAt(0).getRow(6).getCell(4).getNumericCellValue()).isEqualTo(100);
+            assertThat(book.getSheetAt(2).getRow(6).getCell(2).getNumericCellValue()).isEqualTo(74);
         }
     }
 
     @Test
-    void rejectsFormalExternalMaterialWithoutStableCostIdentity() {
-        var revision = formalRevision("PREV-NO-COST", 1, null, "随时可改名的物料", "100", "80");
-
-        assertThatThrownBy(() -> new PricingFileService().generate(
-                pricingVersionWithCustomMaterials(List.of(material("旧物料", "RAW", true, "10"))),
-                "V1", "LHYC", revision, List.of()))
-                .isInstanceOf(BusinessException.class)
-                .extracting(error -> ((BusinessException) error).code())
-                .isEqualTo("PROCESS_REVISION_PRICING_MATERIAL_UNPRICED");
-    }
-
-    @Test
-    void rejectsDuplicateLegacyCostRowsForTheSameStableCode() {
-        var revision = formalRevision("PREV-DUPLICATE", 1, "RAW-001", "正式主料", "100", "80");
-        var version = pricingVersionWithCustomMaterials(List.of(
-                new ExperimentMaterial("原料", 1, "RAW-001", "旧主料A", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg"),
-                new ExperimentMaterial("原料", 2, "RAW-001", "旧主料B", new BigDecimal("10"), new BigDecimal("0.9"), null, "RAW", true, null, "kg")));
-
-        assertThatThrownBy(() -> new PricingFileService().generate(version, "V1", "LHYC", revision, List.of()))
-                .isInstanceOf(BusinessException.class)
-                .extracting(error -> ((BusinessException) error).code())
-                .isEqualTo("PROCESS_REVISION_PRICING_MATERIAL_MAPPING_AMBIGUOUS");
-    }
-
-    @Test
-    void rejectsDuplicateLegacyCostRowsWithConflictingUnits() {
-        var revision = formalRevision("PREV-DUPLICATE-UNIT", 1, "RAW-001", "正式主料", "100", "80");
-        var version = pricingVersionWithCustomMaterials(List.of(
-                new ExperimentMaterial("原料", 1, "RAW-001", "旧主料A", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg"),
-                new ExperimentMaterial("原料", 2, "RAW-001", "旧主料B", new BigDecimal("10000"), new BigDecimal("0.8"), null, "RAW", true, null, "g")));
-
-        assertThatThrownBy(() -> new PricingFileService().generate(version, "V1", "LHYC", revision, List.of()))
-                .isInstanceOf(BusinessException.class)
-                .extracting(error -> ((BusinessException) error).code())
-                .isEqualTo("PROCESS_REVISION_PRICING_MATERIAL_MAPPING_AMBIGUOUS");
-    }
-
-    @Test
-    void rejectsFormulaIdAndMaterialCodeThatResolveToDifferentLegacyRows() {
-        var revision = formalRevision("PREV-CONFLICT", 1, "ERP-001", "FORMULA-001", "正式主料", "100", "80", "PRIMARY_INPUT");
-        var version = pricingVersionWithCustomMaterials(List.of(
-                new ExperimentMaterial("原料", 1, "FORMULA-001", "公式物料", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg"),
-                new ExperimentMaterial("原料", 2, "ERP-001", "ERP物料", new BigDecimal("10"), new BigDecimal("0.9"), null, "RAW", true, null, "kg")));
-
-        assertThatThrownBy(() -> new PricingFileService().generate(version, "V1", "LHYC", revision, List.of()))
-                .isInstanceOf(BusinessException.class)
-                .extracting(error -> ((BusinessException) error).code())
-                .isEqualTo("PROCESS_REVISION_PRICING_MATERIAL_MAPPING_AMBIGUOUS");
-    }
-
-    @Test
-    void aggregatesCanonicalExternalMaterialsAndPreservesLegacyRatioScale() throws Exception {
-        var revision = formalRevisionWithMixedCanonicalInputs();
-        var version = pricingVersionWithCustomMaterials(List.of(
-                new ExperimentMaterial("原料", 1, "ERP-001", "成本主料", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg")));
-        var service = new PricingFileService();
-
-        var materials = service.resolveFormalPricingMaterials(version, revision);
-
-        assertThat(materials).singleElement().satisfies(material -> {
-            assertThat(material.materialCode()).isEqualTo("ERP-001");
-            assertThat(material.weightKg()).isEqualByComparingTo("100.0000");
-            assertThat(material.formulaRatio()).isEqualByComparingTo("1.000000");
-            assertThat(material.inputUnit()).isEqualTo("kg");
-        });
-        var result = service.generate(version, "V1", "LHYC", revision, List.of());
-        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
-            var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getRow(12).getCell(3).getStringCellValue()).isEqualTo("ERP-001");
-            assertThat(sheet.getRow(12).getCell(6).getNumericCellValue()).isEqualTo(100D);
-            assertThat(sheet.getRow(13).getCell(3).getStringCellValue()).isEqualTo("总计");
-        }
-    }
-
-    @Test
-    void canonicalizesMixedRolesWithinOneFormalMaterialWithPrimaryPrecedence() {
-        var revision = formalRevisionWithConflictingRoles();
-        var version = pricingVersionWithCustomMaterials(List.of(
-                new ExperimentMaterial("原料", 1, "ERP-001", "成本主料", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg")));
-
-        var materials = new PricingFileService().resolveFormalPricingMaterials(version, revision);
-
-        assertThat(materials).singleElement().satisfies(material -> {
-            assertThat(material.primaryMaterial()).isTrue();
-            assertThat(material.materialCategory()).isEqualTo("RAW");
-        });
-    }
-
-    @Test
-    void withholdsIncompleteFormalYieldsAndPreservesValidHundredAndOverHundredYields() throws Exception {
-        var version = pricingVersionWithCustomMaterials(List.of(
-                new ExperimentMaterial("原料", 1, "RAW-001", "旧主料", new BigDecimal("10"), new BigDecimal("0.8"), null, "RAW", true, null, "kg")));
-        var unavailable = new PricingFileService().generate(version, "V1", "LHYC",
-                formalRevision("PREV-YIELD-NULL", 1, "RAW-001", "RAW-001", "正式主料", "100", null, "NONE"), List.of());
-        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(unavailable.content()))) {
-            var sheet = workbook.getSheetAt(0);
-            assertThat(sheet.getRow(8).getCell(6).getStringCellValue()).contains("finishedYield=UNAVAILABLE");
-            assertThat(sheet.getRow(15).getCell(6).getCellType()).isEqualTo(CellType.BLANK);
-        }
-        for (var expected : List.of("0", "100", "125")) {
-            var result = new PricingFileService().generate(version, "V1", "LHYC",
-                    formalRevision("PREV-YIELD-" + expected, 1, "RAW-001", "正式主料", "100", expected), List.of());
-            try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.content()))) {
-                var sheet = workbook.getSheetAt(0);
-                if ("0".equals(expected)) {
-                    assertThat(sheet.getRow(8).getCell(6).getStringCellValue()).contains("finishedYield=UNAVAILABLE");
-                    assertThat(sheet.getRow(15).getCell(6).getCellType()).isEqualTo(CellType.BLANK);
-                    continue;
-                }
-                assertThat(sheet.getRow(8).getCell(6).getStringCellValue())
-                        .contains("finishedYield=" + new BigDecimal(expected).setScale(6) + "%");
-                assertThat(sheet.getRow(15).getCell(6).getNumericCellValue())
-                        .isEqualTo(new BigDecimal(expected).divide(new BigDecimal("100")).doubleValue());
-            }
-        }
+    void formalModeDoesNotAcceptReferenceOutputAsIndependentPacking() {
+        assertThatThrownBy(() -> new PricingFileService().generate(pricingVersionWithMaterials(2), "V1", "LHYC",
+                formalRevision("PREV", 1, "RAW", "主料", "100", "80"), List.of()))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("独立实测");
     }
 
     @Test

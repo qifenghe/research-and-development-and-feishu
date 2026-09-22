@@ -7,6 +7,7 @@ import com.lhr.rnd.model.ProcessArtifact;
 import com.lhr.rnd.model.ProcessArtifactPublic;
 import com.lhr.rnd.model.ProcessPlan;
 import com.lhr.rnd.model.ProcessRevision;
+import com.lhr.rnd.model.ProcessExportView;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
@@ -47,6 +48,10 @@ public class ProcessArtifactService {
     private final LocalArchiveStorageService storage;
     private final AuditLogService auditLogService;
     private final ProcessArtifactCleanupLedgerService cleanupLedger;
+    private final ProcessPlanService plans;
+    private final TrialSchemeService trials;
+    private final TrialPromotionService promotions;
+    private final ProcessExportCheckService exportChecks;
     private final ProcessRecipeService recipeService = new ProcessRecipeService();
     private final ProcessPlanCalculationService calculationService = new ProcessPlanCalculationService();
 
@@ -55,13 +60,93 @@ public class ProcessArtifactService {
             ProcessRevisionService revisionService,
             LocalArchiveStorageService storage,
             AuditLogService auditLogService,
-            ProcessArtifactCleanupLedgerService cleanupLedger
+            ProcessArtifactCleanupLedgerService cleanupLedger,
+            ProcessPlanService plans, TrialSchemeService trials, TrialPromotionService promotions,
+            ProcessExportCheckService exportChecks
     ) {
         this.jdbc = jdbc;
         this.revisionService = revisionService;
         this.storage = storage;
         this.auditLogService = auditLogService;
         this.cleanupLedger = cleanupLedger;
+        this.plans = plans;
+        this.trials = trials;
+        this.promotions = promotions;
+        this.exportChecks = exportChecks;
+    }
+
+    @Transactional(readOnly = true)
+    public ProcessExportView revisionView(String formId, String revisionId, SessionPrincipal principal) {
+        var revision = revisionService.find(formId, revisionId, principal);
+        var source = promotions.source(formId, revisionId, principal);
+        return exportChecks.view(productName(formId), "正式工艺 R" + revision.revisionNo()
+                + (source == null ? "" : " / 试验方案 " + source.trialName() + " V" + source.trialVersionNo()),
+                revision.snapshot(), null, List.of()).withMetadata(exportMetadata(formId, principal));
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public ProcessExportView draftView(String formId, int versionNo, SessionPrincipal principal) {
+        plans.requireDraftReadAccess(formId, principal);
+        var plan = plans.find(formId);
+        requireVersion(versionNo, plan.versionNo());
+        return exportChecks.view(productName(formId), "已保存正式工艺草稿 V" + plan.versionNo(), plan, null, List.of()).withMetadata(exportMetadata(formId, principal));
+    }
+
+    @Transactional(readOnly = true)
+    public ProcessExportView trialView(String formId, String trialId, int versionNo, SessionPrincipal principal) {
+        var trial = trials.find(formId, trialId, principal);
+        requireVersion(versionNo, trial.versionNo());
+        // A/B schemes do not own a packed-finished measurement; never borrow the shared experiment's value.
+        return exportChecks.view(productName(formId), "试验方案 " + trial.name() + " V" + trial.versionNo(), trial.plan(), null, List.of()).withMetadata(exportMetadata(formId, principal));
+    }
+
+    private ProcessExportView.Metadata exportMetadata(String formId, SessionPrincipal principal) {
+        var specification = jdbc.queryForObject("select version.specification from experiment_form form join sample_version version on version.id = form.version_id where form.id = ?", String.class, formId);
+        return new ProcessExportView.Metadata(specification, principal.name(), java.time.LocalDate.now().toString());
+    }
+
+    public ProcessExportView.Check check(ProcessExportView view, String type) { return exportChecks.check(view, type); }
+
+    /** Render only: no archive storage, artifact rows, audit records, cleanup ledger or promotion previews. */
+    public ArtifactDownload preview(ProcessExportView view, String type) {
+        exportChecks.validateType(type);
+        try {
+            byte[] bytes;
+            if ("PRICING_XLSX".equals(type)) bytes = new PricingFileService().renderBasis(view, true);
+            else if (ProcessArtifact.FORMULA_XLSX.equals(type)) bytes = previewFormulaBytes(view);
+            else {
+                var plan = view.snapshot();
+                var revision = new ProcessRevision(null, plan.id(), plan.experimentFormId(), plan.versionNo(), null, null, null, null, null, plan);
+                bytes = sopBytes(view.productName() + "（预览·非正式归档）", revision, "预览", LocalDateTime.now(), view.sourceLabel(), view);
+            }
+            return new ArtifactDownload(view.productName() + "-" + view.sourceLabel().replace('/', '-') + "-预览." + ("SOP_DOCX".equals(type) ? "docx" : "xlsx"),
+                    "SOP_DOCX".equals(type) ? DOCX_CONTENT_TYPE : XLSX_CONTENT_TYPE, bytes);
+        } catch (java.io.IOException e) { throw new IllegalStateException("Failed to render preview", e); }
+        catch (Exception e) { if (e instanceof RuntimeException runtime) throw runtime; throw new IllegalStateException("Failed to render preview", e); }
+    }
+
+    private void requireVersion(int expected, int actual) {
+        if (expected != actual) throw new BusinessException("PROCESS_EXPORT_VERSION_CONFLICT", "保存版本已变化，请重新加载后预览");
+    }
+
+    private byte[] previewFormulaBytes(ProcessExportView view) throws Exception {
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("配方预览");
+            set(sheet.createRow(0), 0, "配方预览 · 非正式归档", view.productName());
+            set(sheet.createRow(1), 0, "来源", view.sourceLabel());
+            set(sheet.createRow(2), 0, "实际外部批量 kg", value(view.externalInputKg()), "主料得率 %", value(view.mainYieldPercent()));
+            set(sheet.createRow(3), 0, "工序/步骤", "物料编码", "名称", "角色", "实际 kg", "100kg归一化 kg");
+            int row = 4;
+            for (var i : view.ingredients()) {
+                var normalized = view.externalInputKg() == null || view.externalInputKg().signum() <= 0 || i.weightKg() == null ? null : i.weightKg().multiply(BigDecimal.valueOf(100)).divide(view.externalInputKg(), 4, RoundingMode.HALF_UP);
+                set(sheet.createRow(row++), 0, i.majorSequence() + "." + i.stepSequence(), value(i.materialCode()), value(i.materialName()), value(i.role()), i.weightKg() == null ? "待填写" : value(i.weightKg()), normalized == null ? "待填写" : value(normalized));
+            }
+            for (var issue : exportChecks.check(view, "FORMULA_XLSX").issues()) set(sheet.createRow(row++), 0, "待补充", issue.message());
+            for (int c = 0; c < 6; c++) sheet.setColumnWidth(c, (c == 1 || c == 2 ? 35 : 23) * 256);
+            sheet.setRepeatingRows(new org.apache.poi.ss.util.CellRangeAddress(0, 3, -1, -1));
+            sheet.setFitToPage(true); sheet.getPrintSetup().setLandscape(true); sheet.getPrintSetup().setFitWidth((short)1); sheet.getPrintSetup().setFitHeight((short)0);
+            book.setPrintArea(0, 0, 5, 0, row - 1); book.write(out); return out.toByteArray();
+        }
     }
 
     @Transactional(readOnly = true)
@@ -88,6 +173,8 @@ public class ProcessArtifactService {
         requireWriteAccess(formId, principal);
         var revision = revisionService.find(formId, revisionId);
         validateType(artifactType);
+        var exportView = revisionView(formId, revisionId, principal);
+        exportChecks.requireReady(exportView, artifactType);
         if (recipeService.aggregate(revision.snapshot()).stream().map(ProcessRecipeService.RecipeLine::weightKg)
                 .reduce(BigDecimal.ZERO, BigDecimal::add).signum() <= 0) {
             throw new BusinessException("EXTERNAL_MATERIAL_WEIGHT_REQUIRED", "外部物料总重量必须大于0");
@@ -114,8 +201,8 @@ public class ProcessArtifactService {
         byte[] bytes = null;
         try {
             bytes = ProcessArtifact.FORMULA_XLSX.equals(artifactType)
-                    ? formulaBytes(productName, revision, documentVersion, generatedAt, principal.name())
-                    : sopBytes(productName, revision, documentVersion, generatedAt, principal.name());
+                    ? formulaBytes(productName, revision, documentVersion, generatedAt, principal.name(), exportView)
+                    : sopBytes(productName, revision, documentVersion, generatedAt, principal.name(), exportView);
             cleanupLedger.renew(reservation);
             storage.store(storageKey, bytes);
             if (!cleanupLedger.lockForReady(reservation)) {
@@ -185,7 +272,7 @@ public class ProcessArtifactService {
                 rs.getString("generated_by_user_id"), rs.getString("content_sha256"), (Long) rs.getObject("byte_size"));
     }
 
-    private byte[] formulaBytes(String productName, ProcessRevision revision, String documentVersion, LocalDateTime generatedAt, String generatedBy) throws Exception {
+    private byte[] formulaBytes(String productName, ProcessRevision revision, String documentVersion, LocalDateTime generatedAt, String generatedBy, ProcessExportView view) throws Exception {
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("标准配方");
             var header = workbook.createCellStyle();
@@ -194,7 +281,8 @@ public class ProcessArtifactService {
             number.setDataFormat(workbook.createDataFormat().getFormat("0.0000"));
             set(sheet.createRow(0), 0, "标准配方");
             set(sheet.createRow(1), 0, "产品", productName, "来源工艺版本", "V" + revision.revisionNo(), "文件版本", "V" + documentVersion);
-            set(sheet.createRow(2), 0, "变更原因", value(revision.changeReason()), "生成信息", generatedBy + " / " + TIME.format(generatedAt), "成品得率", percent(calculationService.calculateBatch(revision.snapshot())));
+            set(sheet.createRow(2), 0, "变更原因", value(revision.changeReason()), "生成信息", generatedBy + " / " + TIME.format(generatedAt), "主料得率", percent(view.mainYieldPercent()));
+            set(sheet.createRow(3), 0, "数据来源", view.sourceLabel());
             var titles = List.of("序号", "物料编码", "物料名称", "角色", "打样重量kg", "配方占比%", "100kg折算kg", "加入步骤");
             var title = sheet.createRow(4);
             for (int column = 0; column < titles.size(); column++) {
@@ -234,24 +322,29 @@ public class ProcessArtifactService {
         }
     }
 
-    private byte[] sopBytes(String productName, ProcessRevision revision, String documentVersion, LocalDateTime generatedAt, String generatedBy) throws Exception {
+    private byte[] sopBytes(String productName, ProcessRevision revision, String documentVersion, LocalDateTime generatedAt, String generatedBy, ProcessExportView view) throws Exception {
         try (var document = new XWPFDocument(); var output = new ByteArrayOutputStream()) {
             heading(document, "研发版生产 SOP：" + productName);
             paragraph(document, "来源工艺版本：V" + revision.revisionNo() + "；文件版本：V" + documentVersion);
             paragraph(document, "来源版本标识：" + value(revision.sourceRevisionId()) + "；版本变更：" + value(revision.changeReason()));
             paragraph(document, "变更原因：" + value(revision.changeReason()) + "；生成信息：" + generatedBy + " / " + TIME.format(generatedAt));
-            paragraph(document, "成品得率：" + percent(calculationService.calculateBatch(revision.snapshot())));
-            var externalTotal = recipeService.aggregate(revision.snapshot()).stream().map(ProcessRecipeService.RecipeLine::weightKg).map(this::safe).reduce(BigDecimal.ZERO, BigDecimal::add);
+            paragraph(document, "数据来源：" + view.sourceLabel());
+            paragraph(document, "主料得率：" + percent(view.mainYieldPercent()));
+            for (var issue : exportChecks.check(view, "SOP_DOCX").issues()) paragraph(document, "待补充：" + issue.message());
+            var externalTotal = view.externalInputKg();
             paragraph(document, "适用批量：打样外部投入 " + kg(externalTotal) + "；100kg 标准配方（无独立批量字段，不推定实际生产批量）");
             for (var major : sorted(revision.snapshot().majorProcesses(), ProcessPlan.MajorProcess::sequence)) {
                 heading(document, "大工序 " + major.sequence() + "：" + value(major.processName()));
                 paragraph(document, "工序说明：" + value(major.description()) + "；备注：" + value(major.remark()));
                 var yield = calculationService.calculate(major);
-                paragraph(document, "大工序得率：" + percent(yield.mainYieldPercent())
-                        + "；主料首端投入：" + kg(yield.primaryInputWeightKg())
-                        + "；末端产出：" + kg(yield.qualifiedOutputWeightKg())
-                        + "；终端产出合计：" + kg(yield.totalOutputWeightKg())
-                        + "；物料平衡差：" + kg(yield.balanceDifferenceKg()));
+                var measured = view.majors().stream().filter(m -> m.sequence() == major.sequence()).findFirst().orElseThrow();
+                boolean completeWeights = values(major.steps()).stream().allMatch(s -> values(s.materials()).stream().allMatch(m -> m.weightKg() != null)
+                        && values(s.outputs()).stream().allMatch(o -> o.weightKg() != null));
+                paragraph(document, "大工序得率：" + percent(measured.mainYieldPercent())
+                        + "；主料首端投入：" + kg(measured.primaryInputKg())
+                        + "；末端产出：" + kg(measured.primaryOutputKg())
+                        + "；终端产出合计：" + kg(completeWeights ? yield.totalOutputWeightKg() : null)
+                        + "；物料平衡差：" + kg(completeWeights ? yield.balanceDifferenceKg() : null));
                 var table = table(document, "步骤", "外部投料", "中间流转", "操作参数/设备工具", "操作要求", "产出状态/重量", "步骤得率");
                 for (var step : sorted(major.steps(), ProcessPlan.MinorStep::sequence)) {
                     var row = table.createRow();
@@ -488,11 +581,11 @@ public class ProcessArtifactService {
     }
 
     private String kg(BigDecimal value) {
-        return value == null ? "" : value.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString() + "kg";
+        return value == null ? "待填写" : value.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString() + "kg";
     }
 
     private String percent(BigDecimal value) {
-        return value == null ? "" : value.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString() + "%";
+        return value == null ? "待填写" : value.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString() + "%";
     }
 
     private BigDecimal safe(BigDecimal value) { return value == null ? BigDecimal.ZERO : value; }

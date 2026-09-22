@@ -27,6 +27,7 @@
           <van-field v-model="item.materialName" label="包装名称" placeholder="如：内袋、外箱" :readonly="!canEditPackaging || item.source === 'SYSTEM_LABEL'" />
           <van-field v-model.number="item.quantity" label="数量" type="number" inputmode="decimal" placeholder="填写数量" :readonly="!canEditPackaging" />
           <van-field v-model="item.packageSpec" label="规格" placeholder="如：500g/袋、1张/箱" :readonly="!canEditPackaging" />
+          <van-field :model-value="item.quantityUnit ?? ''" @update:model-value="item.quantityUnit = String($event)" label="数量单位" placeholder="明确填写，如 个、张、米" :readonly="!canEditPackaging" />
           <van-field v-model="item.remark" label="备注" placeholder="可选" :readonly="!canEditPackaging" />
         </div>
         <van-button v-if="canEditPackaging" block plain @click="addPackagingItem">+ 添加包装</van-button>

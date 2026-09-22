@@ -121,6 +121,48 @@ class SessionAuthenticationInterceptorTest {
     }
 
     @Test
+    void exportChecksAndPreviewsUseRealOwnerSessionExactVersionAndNoArchiveWrites() throws Exception {
+        var required = sessionProperties.isAuthRequired(); var bypass = sessionProperties.isTestBusinessApiAuthenticationBypass();
+        sessionProperties.setAuthRequired(true); sessionProperties.setTestBusinessApiAuthenticationBypass(false);
+        try {
+            var form = "FORM-EXPORT-AUTH"; seedProcessForm(form, "预览归属研发");
+            var owner = tokenFor("预览归属研发", "ou_export_owner", "RND_ENGINEER");
+            var other = tokenFor("其他预览研发", "ou_export_other", "RND_ENGINEER");
+            var finance = tokenFor("预览财务", "ou_export_finance", "FINANCE");
+            var saved = processPlanService.save(form, readyPlan(form, processPlanService.find(form).versionNo()));
+            var before = jdbc.queryForObject("select count(*) from experiment_process_artifact", Integer.class);
+            mockMvc.perform(get("/api/v1/experiment-forms/{form}/process-plan/export-check", form).header("Authorization", "Bearer " + owner)
+                            .param("versionNo", Integer.toString(saved.versionNo())).param("artifactType", "SOP_DOCX"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.ready").value(true));
+            mockMvc.perform(get("/api/v1/experiment-forms/{form}/process-plan/export-preview", form).header("Authorization", "Bearer " + owner)
+                            .param("versionNo", Integer.toString(saved.versionNo())).param("artifactType", "FORMULA_XLSX"))
+                    .andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().contentType(com.lhr.rnd.service.ProcessArtifactService.XLSX_CONTENT_TYPE));
+            mockMvc.perform(get("/api/v1/experiment-forms/{form}/process-plan/export-preview", form).header("Authorization", "Bearer " + owner)
+                            .param("versionNo", "999").param("artifactType", "SOP_DOCX"))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("PROCESS_EXPORT_VERSION_CONFLICT"));
+            mockMvc.perform(get("/api/v1/experiment-forms/{form}/process-plan/export-preview", form).header("Authorization", "Bearer " + other)
+                            .param("versionNo", Integer.toString(saved.versionNo())).param("artifactType", "FORMULA_XLSX"))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("PROCESS_PLAN_FORM_FORBIDDEN"));
+            mockMvc.perform(get("/api/v1/experiment-forms/{form}/process-plan/export-preview", form).header("Authorization", "Bearer " + finance)
+                            .param("versionNo", Integer.toString(saved.versionNo())).param("artifactType", "FORMULA_XLSX"))
+                    .andExpect(status().isForbidden());
+            var created = mockMvc.perform(post("/api/v1/experiment-forms/{form}/trials", form).header("Authorization", "Bearer " + owner)
+                            .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(java.util.Map.of("name", "软件预览A", "plan", saved))))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            var trial = objectMapper.readTree(created).path("data");
+            mockMvc.perform(get("/api/v1/experiment-forms/{form}/trials/{trial}/export-check", form, trial.path("id").asText()).header("Authorization", "Bearer " + owner)
+                            .param("versionNo", trial.path("versionNo").asText()).param("artifactType", "PRICING_XLSX"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.ready").value(false))
+                    .andExpect(jsonPath("$.data.issues[*].code").value(org.hamcrest.Matchers.hasItem("FINISHED_QUANTITY_REQUIRED")));
+            mockMvc.perform(get("/api/v1/experiment-forms/{form}/trials/{trial}/export-preview", form, trial.path("id").asText()).header("Authorization", "Bearer " + owner)
+                            .param("versionNo", trial.path("versionNo").asText()).param("artifactType", "PRICING_XLSX"))
+                    .andExpect(status().isOk());
+            assertThat(jdbc.queryForObject("select count(*) from experiment_process_artifact", Integer.class)).isEqualTo(before);
+            assertThat(jdbc.queryForObject("select count(*) from experiment_trial_submission_preview where experiment_form_id=?", Integer.class, form)).isZero();
+        } finally { sessionProperties.setAuthRequired(required); sessionProperties.setTestBusinessApiAuthenticationBypass(bypass); }
+    }
+
+    @Test
     void enforcesRealSessionRolesAndFormOwnershipForFormalArtifactGenerationAndDownload() throws Exception {
         var authRequired = sessionProperties.isAuthRequired();
         var testBypass = sessionProperties.isTestBusinessApiAuthenticationBypass();
@@ -586,7 +628,7 @@ class SessionAuthenticationInterceptorTest {
 
     private ProcessPlan readyPlan(String formId, int versionNo) {
         var step = new ProcessPlan.MinorStep(null, 1, "COOK", "熟制", "NORMAL", null, null, null, null, null, null,
-                null, null, List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF", "鲜牛腩", "SOLID",
+                "软件测试设备", "软件测试完整操作说明", List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF", "鲜牛腩", "SOLID",
                 new BigDecimal("10"), "MAT-BEEF", null, "EXTERNAL", null)), List.of(
                 new ProcessPlan.StepOutput(null, 1, "FINISHED", "熟制牛腩", "SEMI_SOLID", new BigDecimal("10"), true, false, null)), List.of());
         var major = new ProcessPlan.MajorProcess(null, 1, "COOK", "熟制", null, "PRIMARY_INPUT", null,

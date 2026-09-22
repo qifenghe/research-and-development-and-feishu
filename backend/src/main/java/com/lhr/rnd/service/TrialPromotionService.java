@@ -103,6 +103,18 @@ public class TrialPromotionService {
     @Transactional(readOnly = true)
     public SourceMetadata source(String formId, String revisionId, SessionPrincipal principal) {
         revisions.find(formId, revisionId, principal);
+        return sourceMetadata(formId, revisionId);
+    }
+
+    /** Internal pricing workflow already authorized the operation and supplies the locked experiment. */
+    SourceMetadata sourceForLockedPricing(com.lhr.rnd.model.ExperimentForm form, ProcessRevision revision) {
+        if (form.status() != com.lhr.rnd.model.ExperimentFormStatus.LOCKED || !form.id().equals(revision.experimentFormId()))
+            throw error("PROCESS_PRICING_SOURCE_INVALID", "核价来源必须为同一已锁定实验单的正式版本");
+        revisions.find(form.id(), revision.id());
+        return sourceMetadata(form.id(), revision.id());
+    }
+
+    private SourceMetadata sourceMetadata(String formId, String revisionId) {
         var rows = jdbc.query("select id,trial_id,trial_name,trial_version_no,trial_snapshot_hash,promoted_by,promoted_at from experiment_trial_promotion where experiment_form_id=? and revision_id=?",
                 (rs, row) -> new SourceMetadata(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4), rs.getString(5), rs.getString(6), rs.getTimestamp(7).toLocalDateTime().toString()), formId, revisionId);
         return rows.isEmpty() ? null : rows.get(0);

@@ -77,6 +77,17 @@ public final class ProcessPlanCalculationService {
     public BigDecimal calculateBatch(ProcessPlan plan) {
         if (plan == null || plan.majorProcesses() == null || plan.majorProcesses().isEmpty()) return null;
         if (!new ProcessSubmissionValidator().flowIssues(plan).isEmpty()) return null;
+        return multiplyMajorYields(plan);
+    }
+
+    public BigDecimal calculatePreviewBatch(ProcessPlan plan) {
+        if (plan == null || plan.majorProcesses() == null || plan.majorProcesses().isEmpty()) return null;
+        if (!new ProcessSubmissionValidator().previewFlowIssues(plan).isEmpty()) return null;
+        if (plan.majorProcesses().stream().anyMatch(m -> !"PRIMARY_INPUT".equals(m.yieldBasis()) && !"NONE".equals(m.yieldBasis()))) return null;
+        return multiplyMajorYields(plan);
+    }
+
+    private BigDecimal multiplyMajorYields(ProcessPlan plan) {
         var ratio = BigDecimal.ONE;
         var hasRate = false;
         for (var major : plan.majorProcesses()) {
