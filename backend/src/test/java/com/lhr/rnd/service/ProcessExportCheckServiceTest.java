@@ -9,6 +9,27 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProcessExportCheckServiceTest {
     private final ProcessExportCheckService service = new ProcessExportCheckService();
 
+    @Test void emptyExternalObservationsArePendingButExplicitZeroIsMeasured() {
+        assertThat(view(new ProcessPlan("P", "F", 1, "DRAFT", List.of(), null, false)).externalInputKg()).isNull();
+        var zero = new ProcessPlan.MinorStep("S", 1, "S", "观察", "NORMAL", null, null, null, null, null, null, null, null,
+                List.of(material("SALT", "盐", "AUXILIARY", "0", "EXTERNAL", null)), List.of(), List.of());
+        var plan = new ProcessPlan("P", "F", 1, "DRAFT", List.of(new ProcessPlan.MajorProcess("M", 1, "M", "观察", null, "NONE", null, List.of(zero), List.of(), List.of(), null)), null, false);
+        assertThat(view(plan).externalInputKg()).isEqualByComparingTo("0");
+    }
+
+    @Test void excludedMajorWithoutPrimaryObservationsDoesNotInventWeights() {
+        var major = view(nonePlan(null)).majors().get(0);
+        assertThat(major.primaryInputKg()).isNull();
+        assertThat(major.primaryOutputKg()).isNull();
+        assertThat(major.mainYieldPercent()).isNull();
+        for (var weight : List.of("0", "5")) {
+            var observed = view(nonePlan(weight)).majors().get(0);
+            assertThat(observed.primaryInputKg()).isEqualByComparingTo(weight);
+            assertThat(observed.primaryOutputKg()).isEqualByComparingTo(weight);
+            assertThat(observed.mainYieldPercent()).isNull();
+        }
+    }
+
     @Test void measuresActualExternalMassAndPrimaryChainWithoutCountingIntermediateTwice() {
         var view = view(plan("72", "90", "PRIMARY_INPUT"));
         assertThat(view.externalInputKg()).isEqualByComparingTo("102");
@@ -66,6 +87,12 @@ class ProcessExportCheckServiceTest {
         var view = view(new ProcessPlan("P", "F", 1, "DRAFT", List.of(changed, p.majorProcesses().get(1)), null, false));
         assertThat(service.check(view, "SOP_DOCX").issues()).anyMatch(i -> i.code().equals("STEP_INSTRUCTION_REQUIRED") && i.path().contains("steps"));
         assertThat(service.check(view, "FORMULA_XLSX").ready()).isTrue();
+    }
+
+    static ProcessPlan nonePlan(String observedWeight) {
+        return new ProcessPlan("P", "F", 1, "DRAFT", List.of(new ProcessPlan.MajorProcess("M", 1, "PACK", "包装观察", null, "NONE", "不参与得率", List.of(),
+                observedWeight == null ? List.of() : List.of(new ProcessPlan.ProcessInput("I", 1, "PRIMARY", "BEEF", "牛肉", decimal(observedWeight), null)),
+                observedWeight == null ? List.of() : List.of(new ProcessPlan.ProcessOutput("O", 1, "QUALIFIED", decimal(observedWeight), null)), null)), null, false);
     }
 
     static ProcessPlan plan(String end, String carried, String basis) {

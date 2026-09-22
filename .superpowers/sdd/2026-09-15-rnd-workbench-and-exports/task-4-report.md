@@ -134,3 +134,41 @@ Not staged/changed by this task: pre-existing `DemandDetailView.vue`, task-3 rev
 - TOTAL_INPUT migration/interpretation remains intentionally unsupported, not silently converted.
 - Fixtures are software-only; no real food-process parameter validation or production acceptance is asserted.
 - Controller independent code review and browser acceptance are separate follow-up gates; no reviewer agent was spawned under the one-implementation-agent instruction.
+
+## Review fix round 1 — 2026-09-22
+
+Base `ac6410a`; implemented only the two reproduced missing-to-zero findings in `task-4-fix-1.md`, plus this log clarification. No Task 5 redesign, frontend changes, dependency upgrades, warning suppression, runtime restart or new agent.
+
+- Empty external observation sets now produce `externalInputKg = null`; explicit observed external zero remains numeric zero. Empty saved draft and trial previews show pending actual batch in formula/pricing XLSX and SOP DOCX.
+- When the existing calculator falls back to legacy totals for a NONE major, shared-view input/output weights are exposed only when corresponding actual observations exist and are complete. Missing totals remain null; explicitly recorded zero/nonzero remain actual values. Existing layered flow validation, yield formula and formal submission policy are unchanged.
+- The empty-preview regression also revealed that formula preview rendered newly preserved null as a blank. Its actual-batch/yield cells now explicitly show `待填写`; no layout structure changed.
+
+New regression tests:
+
+- `ProcessExportCheckServiceTest.emptyExternalObservationsArePendingButExplicitZeroIsMeasured`
+- `ProcessExportCheckServiceTest.excludedMajorWithoutPrimaryObservationsDoesNotInventWeights`
+- `ProcessArtifactServiceTest.emptySavedDraftAndTrialPreviewShowPendingExternalBatch` (saved-source draft and trial; all three renderers)
+- `PricingBasisTest.excludedUnobservedPrimaryWeightsRenderPendingWhileObservedZeroStaysNumeric`
+
+From `backend`, the same covering command was used throughout:
+
+```text
+mvn -q -Dtest=ProcessExportCheckServiceTest,ProcessArtifactServiceTest,PricingBasisTest test
+RED: exit 1; 34 tests, 4 failures, 0 errors.
+  Expected null, got 0 / 0.0000 in shared view;
+  expected 待填写, got 0 in empty formula and NONE pricing preview.
+  Log: /private/tmp/task4-fix1-red.log
+First fix verification: exit 1; 34 tests, 1 failure, 0 errors.
+  Empty formula preview expected 待填写, got blank (null formatter).
+  Log: /private/tmp/task4-fix1-green.log
+Final GREEN: exit 0; 34 tests, 0 failures, 0 errors, 0 skipped.
+  ProcessExportCheckServiceTest 8; ProcessArtifactServiceTest 22; PricingBasisTest 4.
+  Log: /private/tmp/task4-fix1-green-final.log
+git diff --check: exit 0, no whitespace errors.
+```
+
+Per controller instruction, this round ran focused covering tests only, not repeated whole suites. Earlier full-suite 348/154 results remain evidence for the pre-fix commit, not a claim of a fresh full run after this patch. Pricing test fixtures were regenerated at the same target paths; render structure is unchanged, so prior 12-page visual layout inspection was not repeated. New content assertions parse actual POI workbook/DOCX output. Preview runtime remains the prior build; browser policy limitation is unchanged.
+
+Log clarification for original verification and this round: passing does **not** mean warning-free output. Existing Flyway reports H2 2.2.224 newer than tested support (2.2.220); current JVM emits restricted native access and Mockito reflective final-field mutation warnings. Artifact rollback/cleanup tests deliberately log injected exceptions, including `IllegalStateException: injected confirm failure`. These are expected fault-injection paths with passing assertions, separate from test failures. Existing Vite chunk-size advisory was already noted. No dependency upgrade or log silencing was attempted.
+
+This fix commit contains only `ProcessExportCheckService.java`, `ProcessArtifactService.java`, the three covering test files above, and this report; unrelated dirty files remain preserved. Ready for controller re-review.

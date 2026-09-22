@@ -134,7 +134,8 @@ public class ProcessArtifactService {
             var sheet = book.createSheet("配方预览");
             set(sheet.createRow(0), 0, "配方预览 · 非正式归档", view.productName());
             set(sheet.createRow(1), 0, "来源", view.sourceLabel());
-            set(sheet.createRow(2), 0, "实际外部批量 kg", value(view.externalInputKg()), "主料得率 %", value(view.mainYieldPercent()));
+            set(sheet.createRow(2), 0, "实际外部批量 kg", view.externalInputKg() == null ? "待填写" : value(view.externalInputKg()),
+                    "主料得率 %", view.mainYieldPercent() == null ? "待填写" : value(view.mainYieldPercent()));
             set(sheet.createRow(3), 0, "工序/步骤", "物料编码", "名称", "角色", "实际 kg", "100kg归一化 kg");
             int row = 4;
             for (var i : view.ingredients()) {

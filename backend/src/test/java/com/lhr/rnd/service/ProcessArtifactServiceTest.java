@@ -84,6 +84,25 @@ class ProcessArtifactServiceTest {
     }
 
     @Test
+    void emptySavedDraftAndTrialPreviewShowPendingExternalBatch() throws Exception {
+        var saved = planService.save(FORM_ID, new ProcessPlan("P", FORM_ID, 1, "DRAFT", List.of(), null, false));
+        var trial = trials.create(FORM_ID, new TrialSchemeService.CreateCommand("空方案软件测试", null, null, saved, null), ENGINEER);
+        for (var view : List.of(service.draftView(FORM_ID, saved.versionNo(), ENGINEER), service.trialView(FORM_ID, trial.id(), trial.versionNo(), ENGINEER))) {
+            try (var book = new XSSFWorkbook(new ByteArrayInputStream(service.preview(view, "FORMULA_XLSX").content()))) {
+                assertThat(book.getSheetAt(0).getRow(2).getCell(1).getStringCellValue()).isEqualTo("待填写");
+                assertThat(book.getSheetAt(0).getRow(2).getCell(3).getStringCellValue()).isEqualTo("待填写");
+            }
+            try (var book = new XSSFWorkbook(new ByteArrayInputStream(service.preview(view, "PRICING_XLSX").content()))) {
+                assertThat(book.getSheetAt(0).getRow(3).getCell(1).getStringCellValue()).isEqualTo("待填写");
+            }
+            try (var doc = new XWPFDocument(new ByteArrayInputStream(service.preview(view, "SOP_DOCX").content()))) {
+                var text = doc.getParagraphs().stream().map(org.apache.poi.xwpf.usermodel.XWPFParagraph::getText).collect(java.util.stream.Collectors.joining("\n"));
+                assertThat(text).contains("打样外部投入 待填写").doesNotContain("打样外部投入 0.0000kg");
+            }
+        }
+    }
+
+    @Test
     void incompleteSopPreviewLabelsMissingExternalBatchAndDoesNotInventZero() throws Exception {
         var step = new ProcessPlan.MinorStep("s", 1, "COOK", "熟制", "NORMAL", null, null, null, null, null, null, null, null,
                 List.of(new ProcessPlan.StepMaterial("m", 1, "PRIMARY", "BEEF", "牛肉", "SOLID", null, "BEEF", null)),

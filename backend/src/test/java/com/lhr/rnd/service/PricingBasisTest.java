@@ -9,6 +9,20 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
 class PricingBasisTest {
+    @Test void excludedUnobservedPrimaryWeightsRenderPendingWhileObservedZeroStaysNumeric() throws Exception {
+        for (var weight : new String[]{null, "0", "5"}) {
+            var bytes = new PricingFileService().renderBasis(ProcessExportCheckServiceTest.view(ProcessExportCheckServiceTest.nonePlan(weight)), true);
+            try (var book = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+                var row = book.getSheetAt(1).getRow(6);
+                assertThat(row.getCell(1).getStringCellValue()).isEqualTo("不参与");
+                for (var col : List.of(2, 3)) {
+                    if (weight == null) assertThat(new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(row.getCell(col))).isEqualTo("待填写");
+                    else assertThat(row.getCell(col).getNumericCellValue()).isEqualTo(Double.parseDouble(weight));
+                }
+            }
+        }
+    }
+
     @Test void cleanBasisUsesFixedActualsAndIndependentPackingAndNoLegacyPriceMapping() throws Exception {
         var view = ProcessExportCheckServiceTest.view(ProcessExportCheckServiceTest.plan("72", "90", "PRIMARY_INPUT"))
                 .withMetadata(new ProcessExportView.Metadata("1kg/袋", "软件测试研发", "2026-09-22"));

@@ -41,8 +41,16 @@ public class ProcessExportCheckService {
             BigDecimal input = null, output = null, rate = null;
             if (validFlow) {
                 var result = calculations.calculate(major);
-                input = result.primaryInputWeightKg();
-                output = result.qualifiedOutputWeightKg();
+                boolean layered = values(major.steps()).stream().anyMatch(step ->
+                        values(step.materials()).stream().anyMatch(m -> "PRIMARY".equals(m.materialRole()))
+                                || values(step.outputs()).stream().anyMatch(ProcessPlan.StepOutput::primaryOutput));
+                var legacyInputs = values(major.inputs()).stream().filter(i -> "PRIMARY".equals(i.inputRole())).toList();
+                var legacyOutputs = values(major.outputs()).stream().filter(o -> "QUALIFIED".equals(o.outputType())).toList();
+                // The legacy calculator uses zero for absent totals; export actuals must retain absence.
+                if (layered || !legacyInputs.isEmpty() && legacyInputs.stream().allMatch(i -> i.weightKg() != null))
+                    input = result.primaryInputWeightKg();
+                if (layered || !legacyOutputs.isEmpty() && legacyOutputs.stream().allMatch(o -> o.weightKg() != null))
+                    output = result.qualifiedOutputWeightKg();
                 if (supported && !"NONE".equals(major.yieldBasis())) rate = result.mainYieldPercent();
             }
             majors.add(new ProcessExportView.Major(major.sequence(), major.processName(), major.yieldBasis(), input, output, rate));
@@ -50,7 +58,7 @@ public class ProcessExportCheckService {
         if (ingredients.isEmpty() || completeExternal && external.signum() <= 0)
             issues.add(issue("EXTERNAL_MATERIAL_WEIGHT_REQUIRED", "materials", "外部物料总重量必须大于0", null, null));
         var batch = calculations.calculatePreviewBatch(plan);
-        return new ProcessExportView(productName, sourceLabel, plan, completeExternal ? external : null, batch,
+        return new ProcessExportView(productName, sourceLabel, plan, completeExternal && !ingredients.isEmpty() ? external : null, batch,
                 List.copyOf(ingredients), List.copyOf(majors), finished, List.copyOf(values(packaging)), List.copyOf(issues), null);
     }
 
