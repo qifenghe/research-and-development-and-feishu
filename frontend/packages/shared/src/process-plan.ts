@@ -272,7 +272,7 @@ export function calculateBatchYield(plan: ProcessPlanDraft): number | null {
   const errors: ProcessSubmissionIssuePreview[] = [];
   const steps = plan.majorProcesses.flatMap(major => (major.steps || []).map(step => ({major, step})));
   previewFlow(steps, errors);
-  previewPrimaryChains(plan.majorProcesses, steps, errors);
+  previewPrimaryChains(plan.majorProcesses, steps, errors, "LIVE_PREVIEW");
   if (errors.length) return null;
   const rates = plan.majorProcesses
     .filter((major) => major.yieldBasis !== "NONE")
@@ -493,7 +493,7 @@ export function previewProcessSubmission(plan: ProcessPlanDraft): ProcessSubmiss
 
   const steps = majors.flatMap((major) => (major.steps || []).map((step) => ({ major, step })));
   previewFlow(steps, errors);
-  previewPrimaryChains(majors, steps, errors);
+  previewPrimaryChains(majors, steps, errors, "FORMAL_SUBMISSION");
   let externalPrimary = false;
   for (const major of majors) {
     previewWeights(major, errors);
@@ -556,7 +556,12 @@ function previewFlow(steps: StepPreviewRef[], errors: ProcessSubmissionIssuePrev
   if (hasFlowCycle(graph)) errors.push(issue("PRIMARY_FLOW_BROKEN", "主料中间产物流转存在断链或循环", null, null));
 }
 
-function previewPrimaryChains(majors: MajorProcessDraft[], steps: StepPreviewRef[], errors: ProcessSubmissionIssuePreview[]) {
+function previewPrimaryChains(
+  majors: MajorProcessDraft[],
+  steps: StepPreviewRef[],
+  errors: ProcessSubmissionIssuePreview[],
+  mode: "LIVE_PREVIEW" | "FORMAL_SUBMISSION",
+) {
   const outputs = new Map<string, OutputPreviewRef>();
   for (const ref of steps) for (const output of ref.step.outputs || []) {
     const id = output.id || output.key;
@@ -593,7 +598,10 @@ function previewPrimaryChains(majors: MajorProcessDraft[], steps: StepPreviewRef
         errors.push(issue("PRIMARY_FLOW_BROKEN", "主料链步骤必须同时记录主料投入和主料产出", major.sequence, step.sequence));
         continue;
       }
-      if (!(Number(input.weightKg) > 0) || !(Number(output.weightKg) > 0))
+      const terminalZeroPreview = mode === "LIVE_PREVIEW"
+        && output.weightKg === 0
+        && !primaryConsumerCounts.has(output.id || output.key);
+      if (!(Number(input.weightKg) > 0) || (!(Number(output.weightKg) > 0) && !terminalZeroPreview))
         errors.push(issue('PRIMARY_STEP_WEIGHT_REQUIRED', '每个主料步骤的投入和产出重量必须大于0', major.sequence, step.sequence));
       if (!started) {
         if (input.sourceType === "STEP_OUTPUT") {

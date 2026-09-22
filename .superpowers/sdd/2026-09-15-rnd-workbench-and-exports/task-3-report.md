@@ -138,3 +138,25 @@ Base: `025460d`
 - Workspace typecheck: `pnpm typecheck` → shared, PC and mobile passed, exit 0.
 - `git diff --check` → passed, exit 0.
 - Production build: `pnpm build` → PC and mobile passed, exit 0. The pre-existing PC large-chunk warning remains non-blocking. No additional browser run was performed; round 1 already records the unavailable browser surface, and this round adds no new workflow or backend behavior.
+
+## Fix round 3 — terminal-zero batch preview consistency
+
+Base: `811ce34`
+
+### RED evidence
+
+- Focused command: `node --experimental-strip-types --test tests/process-flow-regression.test.mts tests/trial-comparison.test.mts`.
+- The shared live batch preview returned `null` for a valid `10kg → 0kg` terminal observation, while the trial planned/actual batch row already returned complete `0%`; both new equality assertions failed with `null !== 0`.
+- The separate formal-submission regression was already green in the RED run: the same terminal-zero plan remained not ready and retained `PRIMARY_STEP_WEIGHT_REQUIRED`.
+
+### Resolution
+
+- Shared primary-chain validation now takes an explicit `LIVE_PREVIEW` or `FORMAL_SUBMISSION` mode. Live preview permits an observed zero only when that output is the unconsumed end of the primary chain. Missing observations and consumed/non-terminal zero outputs remain invalid.
+- Formal submission continues through `FORMAL_SUBMISSION`, so its positive-output requirement and rejection code are unchanged. `TOTAL_INPUT` behavior is unchanged and remains pending rather than producing a main-material rate.
+
+### GREEN verification
+
+- Covering suites: `node --experimental-strip-types --test tests/process-flow-regression.test.mts tests/process-hierarchy-contract.test.mts tests/trial-comparison.test.mts` → **42/42 passed**, 0 failed, exit 0.
+- Workspace typecheck: `pnpm typecheck` → shared, PC and mobile passed, exit 0.
+- `git diff --check` → passed, exit 0.
+- Per the round-3 boundary, no full build or browser run was performed; no backend or workflow behavior changed.

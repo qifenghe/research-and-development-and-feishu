@@ -46,8 +46,16 @@ test('a measured zero terminal output is 0% while an absent output remains pendi
   const zero = major(1, undefined, 10, 0);
   assert.equal(calculateMinorStepYield(zero.steps[0]).mainYieldPercent, 0);
   assert.equal(calculateMajorProcessYield(zero).mainYieldPercent, 0);
+  assert.equal(calculateBatchYield({versionNo: 1, status: 'DRAFT', majorProcesses: [zero]}), 0);
   const absent = {...zero, steps: [{...zero.steps[0], outputs: [{...zero.steps[0].outputs[0], weightKg: undefined}]}]};
   assert.equal(calculateMajorProcessYield(absent).mainYieldPercent, null);
+  assert.equal(calculateBatchYield({versionNo: 1, status: 'DRAFT', majorProcesses: [absent]}), null);
+});
+test('formal submission still rejects a measured zero terminal output', () => {
+  const plan = {versionNo: 1, status: 'DRAFT', majorProcesses: [major(1, undefined, 10, 0)]};
+  const preview = previewProcessSubmission(plan);
+  assert.equal(preview.ready, false);
+  assert.ok(preview.errors.some(item => item.code === 'PRIMARY_STEP_WEIGHT_REQUIRED'));
 });
 test('legacy total-input basis is explicitly unsupported for the shared main-yield summary', () => {
   const legacy = major(1, undefined, 10, 8);

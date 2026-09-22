@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ProcessPlanDraft } from "../packages/shared/src/process-plan.ts";
+import { calculateBatchYield, type ProcessPlanDraft } from "../packages/shared/src/process-plan.ts";
 import type { TrialScheme } from "../apps/pc/src/services/trialApi.ts";
 import {
   buildTrialComparison,
@@ -16,7 +16,7 @@ function trial(overrides: Partial<TrialScheme> = {}): TrialScheme {
       steps: [{
         id: "step-a", key: "step-a", sequence: 1, stepCode: "COOK-1", stepName: "煮制", stepType: "NORMAL",
         parameter1Name: "温度", parameter1Value: "92", parameter1Unit: "℃", parameter2Name: "时间", parameter2Value: "20", parameter2Unit: "min",
-        materials: [{ id: "material-a", key: "material-a", sequence: 1, materialRole: "PRIMARY", materialCode: "BEEF", formulaMaterialId: "FM-BEEF", materialName: "牛肉", materialState: "SOLID", weightKg: 10 }],
+        materials: [{ id: "material-a", key: "material-a", sequence: 1, materialRole: "PRIMARY", materialCode: "BEEF", formulaMaterialId: "FM-BEEF", materialName: "牛肉", materialState: "SOLID", weightKg: 10, sourceType: "EXTERNAL" }],
         outputs: [{ id: "output-a", key: "output-a", sequence: 1, outputType: "FINISHED", outputName: "熟牛肉", materialState: "SOLID", weightKg: 8, primaryOutput: true, continueFlow: false }],
         controlPoints: [],
       }],
@@ -297,6 +297,7 @@ test("a measured zero terminal output remains a complete 0% trial actual", () =>
   assert.equal(row.complete, true);
   assert.equal(batch.actual, 0);
   assert.equal(batch.complete, true);
+  assert.equal(calculateBatchYield(value.plan), 0);
   value.plan.majorProcesses[0]!.steps[0]!.outputs![0]!.weightKg = undefined;
   const missing = plannedActualRows(value).find(item => item.kind === "MAJOR_YIELD")!;
   assert.equal(missing.actual, null);
