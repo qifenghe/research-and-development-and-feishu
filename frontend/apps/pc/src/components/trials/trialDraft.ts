@@ -135,7 +135,6 @@ export function createStructureOnlyTrialSource(value: ProcessPlanDraft): { plan:
         point.resolved = false;
         point.confirmedBy = undefined;
         point.confirmedAt = undefined;
-        point.basisOrRemark = undefined;
         point.measurements = [];
       }
     }

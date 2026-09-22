@@ -82,7 +82,7 @@
         </div>
       </section>
 
-      <section class="section live"><div><b>得率摘要</b><span>小步骤 {{ percent(stepYield.mainYieldPercent) }} · 大工序 {{ percent(majorYield.mainYieldPercent) }} · 最终 {{ percent(finalYield) }}</span></div><div><b>配方汇总</b><span>外部物料 {{ recipeTotal.toFixed(3) }} kg</span></div></section>
+      <section class="section live"><div><b>得率摘要</b><span>小步骤 {{ percent(stepYield.mainYieldPercent) }} · 大工序 {{ percent(majorYield.mainYieldPercent) }} · 最终 {{ percent(finalYield) }}</span><em v-if="majorYieldReason">{{ majorYieldReason }}</em></div><div><b>配方汇总</b><span>外部物料 {{ recipeTotal.toFixed(3) }} kg</span></div></section>
       <ControlPointEditor :model-value="selectedStep.controlPoints || []" :readonly="readonly" :confirmation-mode="confirmationMode" @update:model-value="replaceControls" @confirm-pass="confirmPass" @confirm-deviation="confirmDeviation" />
     </main>
     <main v-else class="no-step">先添加一个小步骤</main>
@@ -94,6 +94,7 @@ import { computed, reactive, ref, watch } from "vue";
 import { Modal } from "ant-design-vue";
 import {
   aggregateProcessRecipe, calculateBatchYield, calculateMajorProcessYield, calculateMinorStepYield,
+  mainYieldUnavailableReason,
   nextProcessKey, normalizeProcessPlan, type ControlPointDraft, type MinorProcessStepDraft,
   type ProcessPlanDraft, type ProcessStepMaterialDraft, type StepOutputDraft,
 } from "@rnd/shared";
@@ -117,6 +118,7 @@ const selectedStep = computed(() => major.value?.steps.find(step => step.key ===
 const previousOutputs = computed(() => selectedStep.value ? previousFlowOutputs(localPlan.value, props.majorKey, selectedStep.value.key).map(item => ({ label: `${item.major.processName} / ${item.step.stepName} · ${item.output.outputName || "未命名产出"}（不进入物料库）`, value: item.output.id || item.output.key, output: item.output })) : []);
 const stepYield = computed(() => selectedStep.value ? calculateMinorStepYield(selectedStep.value) : { mainYieldPercent: null });
 const majorYield = computed(() => major.value ? calculateMajorProcessYield(major.value) : { mainYieldPercent: null });
+const majorYieldReason = computed(() => major.value ? mainYieldUnavailableReason(major.value) : null);
 const finalYield = computed(() => calculateBatchYield(localPlan.value));
 const recipeTotal = computed(() => aggregateProcessRecipe(localPlan.value).reduce((sum, line) => sum + line.weightKg, 0));
 
@@ -306,6 +308,7 @@ function percent(value: number | null) { return value == null ? "待补充" : `$
 .material-row > *, .output-row > *, .step-editor { min-width: 0; width: 100%; }
 .live { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #f0f7ff; }
 .live b, .live span { display: block; } .live span { margin-top: 3px; color: #1677ff; }
+.live em { display: block; margin-top: 4px; color: #d46b08; font-size: 11px; font-style: normal; line-height: 1.35; }
 .no-step { display: grid; place-content: center; min-height: 300px; color: #86909c; }
 button:focus-visible, :deep(.ant-btn:focus-visible) { outline: 3px solid #69b1ff; outline-offset: 2px; }
 @media (max-width: 1100px) { .minor-workspace { grid-template-columns: 180px minmax(0, 1fr); } .material-row, .output-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summary-grid { grid-template-columns: 1fr; } }

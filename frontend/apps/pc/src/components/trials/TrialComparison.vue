@@ -10,7 +10,7 @@
         <a-table :columns="plannedColumns" :data-source="plannedRows" row-key="key" size="small" :pagination="false">
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'planned'">{{ display(record.planned, record.kind) }}</template>
-            <template v-else-if="column.key === 'actual'"><span :class="{ missing: !record.complete }">{{ record.complete ? display(record.actual, record.kind) : "待补充" }}</span></template>
+            <template v-else-if="column.key === 'actual'"><span :class="{ missing: !record.complete }">{{ record.complete ? display(record.actual, record.kind) : record.reason || "待补充" }}</span></template>
             <template v-else-if="column.key === 'difference'">{{ record.difference == null ? "—" : signed(record.difference, record.kind) }}</template>
           </template>
         </a-table>

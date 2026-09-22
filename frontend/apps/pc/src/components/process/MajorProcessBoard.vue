@@ -45,7 +45,7 @@
             <small>{{ major.description || "请补充工序说明" }}</small>
           </div>
           <div class="metric"><small>小步骤</small><b>{{ major.steps.length }}</b></div>
-          <div class="metric"><small>工序得率</small><b>{{ percent(yieldOf(major).mainYieldPercent) }}</b></div>
+          <div class="metric"><small>工序得率</small><b>{{ percent(yieldOf(major).mainYieldPercent) }}</b><em v-if="mainYieldUnavailableReason(major)">{{ mainYieldUnavailableReason(major) }}</em></div>
           <a-space @click.stop>
             <a-button
               size="small"
@@ -93,6 +93,7 @@ import { computed, reactive, ref } from "vue";
 import { Modal } from "ant-design-vue";
 import {
   calculateMajorProcessYield,
+  mainYieldUnavailableReason,
   nextProcessKey,
   normalizeProcessPlan,
   type MajorProcessDraft,
@@ -266,6 +267,7 @@ function percent(value: number | null) { return value == null ? "待补充" : `$
 .handle { color: #bfbfbf; cursor: grab; }
 .sequence { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: #e6f4ff; color: #1677ff; font-weight: 700; }
 .name b, .metric b { display: block; }
+.metric em { display: block; max-width: 180px; margin-top: 2px; color: #d46b08; font-size: 10px; font-style: normal; line-height: 1.25; }
 .major-card footer { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; padding: 8px 12px; background: #fafafa; border-top: 1px solid #f0f0f0; color: #595959; font-size: 12px; }
 .major-card footer .ant-btn { margin-left: auto; }
 .warn { color: #d4380d; }

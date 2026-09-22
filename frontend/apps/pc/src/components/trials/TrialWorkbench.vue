@@ -437,7 +437,7 @@ function setRecordValue(record: Record<string, number>, key: string, value: numb
 function actualAndDifference(key: string, unit = "") {
   const trial = currentTrial.value;
   const row = trial ? plannedActualRows(trial).find(item => item.key === key) : undefined;
-  if (!row || !row.complete) return "实际：待补充 · 偏差：—";
+  if (!row || !row.complete) return `实际：待补充 · ${row?.reason || "偏差：—"}`;
   const actual = `${row.actual}${unit}`;
   if (row.kind === "PARAMETER") return `实际：${actual} · ${row.planned === row.actual ? "一致" : "不同"}`;
   const difference = row.difference == null ? "—" : `${row.difference > 0 ? "+" : ""}${row.difference}${deviationUnit(row.kind, unit)}`;

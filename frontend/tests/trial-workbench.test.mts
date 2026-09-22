@@ -87,6 +87,7 @@ test("trial workbench uses the isolated graph editors and explicit trial confirm
   const workbench = read("components/trials/TrialWorkbench.vue");
   const form = read("views/rnd/ExperimentFormView.vue");
   const minor = read("components/process/MinorStepWorkspace.vue");
+  const major = read("components/process/MajorProcessBoard.vue");
   const controls = read("components/process/ControlPointEditor.vue");
   const service = read("services/trialApi.ts");
 
@@ -105,6 +106,8 @@ test("trial workbench uses the isolated graph editors and explicit trial confirm
   assert.match(workbench, /onBeforeRouteUpdate\(prepareTransition\)/);
   assert.match(workbench, /deviationUnit\(row\.kind, unit\)/);
   assert.match(form, /processWorkspace\.value\?\.hydrateServer/);
+  assert.match(major, /mainYieldUnavailableReason/);
+  assert.match(minor, /mainYieldUnavailableReason/);
 });
 
 test("formal revision drawer loads public source separately from private recovered draft", () => {
@@ -133,7 +136,7 @@ test("structure-only creation moves observations into plans and clears all actua
       id: "step-1", key: "step-1", sequence: 1, stepCode: "COOK-1", stepName: "煮制", stepType: "NORMAL",
       parameter1Name: "温度", parameter1Value: "92", parameter1Unit: "℃", materials: [{ id: "material-1", key: "material-1", sequence: 1, materialRole: "PRIMARY", materialName: "牛肉", materialState: "SOLID", weightKg: 10 }],
       outputs: [{ id: "step-output-1", key: "step-output-1", sequence: 1, outputType: "FINISHED", outputName: "熟肉", materialState: "SOLID", weightKg: 8, primaryOutput: true, continueFlow: false }],
-      controlPoints: [{ id: "point-1", key: "point-1", sequence: 1, controlType: "PROCESS", importance: "CRITICAL", itemName: "中心温度", targetValue: "92", unit: "℃", resolved: true, confirmedBy: "old-user", confirmedAt: "2026-09-15T10:00:00", basisOrRemark: "历史证据", measurements: [{ id: "measurement-1", key: "measurement-1", sequence: 1, value: "92", measuredAt: "2026-09-15T10:00:00" }] }],
+      controlPoints: [{ id: "point-1", key: "point-1", sequence: 1, controlType: "PROCESS", importance: "CRITICAL", itemName: "中心温度", targetValue: "92", unit: "℃", resolved: true, confirmedBy: "old-user", confirmedAt: "2026-09-15T10:00:00", basisOrRemark: "ISO control standard reference", measurements: [{ id: "measurement-1", key: "measurement-1", sequence: 1, value: "92", measuredAt: "2026-09-15T10:00:00" }] }],
     }],
   }];
   const original = structuredClone(source);
@@ -149,7 +152,7 @@ test("structure-only creation moves observations into plans and clears all actua
   assert.equal(step.parameter1Value, undefined);
   assert.equal(step.controlPoints![0]!.resolved, false);
   assert.equal(step.controlPoints![0]!.confirmedBy, undefined);
-  assert.equal(step.controlPoints![0]!.basisOrRemark, undefined);
+  assert.equal(step.controlPoints![0]!.basisOrRemark, "ISO control standard reference", "control basis/reference is a reusable standard, not observation evidence");
   assert.deepEqual(step.controlPoints![0]!.measurements, []);
   assert.equal(step.controlPoints![0]!.targetValue, "92", "control standard is retained");
   assert.equal(result.plan.majorProcesses[0]!.inputs[0]!.weightKg, undefined);

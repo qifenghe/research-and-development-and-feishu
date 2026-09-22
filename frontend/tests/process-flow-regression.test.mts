@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {calculateMajorProcessYield, calculateBatchYield, previewProcessSubmission} from '../packages/shared/src/process-plan.ts';
+import {calculateMajorProcessYield, calculateMinorStepYield, calculateBatchYield, previewProcessSubmission} from '../packages/shared/src/process-plan.ts';
 const major = (sequence: number, source: string | undefined, input: number, output: number) => ({
   key: `g${sequence}`, sequence, processName: '工序', yieldBasis: 'PRIMARY_INPUT' as const, remark: '工艺损耗', inputs: [], outputs: [],
   steps: [{key: `s${sequence}`, sequence: 1, stepName: '操作', stepType: 'NORMAL',
@@ -41,4 +41,18 @@ test('a missing intermediate primary observation keeps the whole major yield pen
   tail.sequence = 2;
   const combined = {...first, steps: [first.steps[0], {...tail, materials: [{...tail.materials[0], weightKg: undefined}]}]};
   assert.equal(calculateMajorProcessYield(combined).mainYieldPercent, null);
+});
+test('a measured zero terminal output is 0% while an absent output remains pending', () => {
+  const zero = major(1, undefined, 10, 0);
+  assert.equal(calculateMinorStepYield(zero.steps[0]).mainYieldPercent, 0);
+  assert.equal(calculateMajorProcessYield(zero).mainYieldPercent, 0);
+  const absent = {...zero, steps: [{...zero.steps[0], outputs: [{...zero.steps[0].outputs[0], weightKg: undefined}]}]};
+  assert.equal(calculateMajorProcessYield(absent).mainYieldPercent, null);
+});
+test('legacy total-input basis is explicitly unsupported for the shared main-yield summary', () => {
+  const legacy = major(1, undefined, 10, 8);
+  legacy.yieldBasis = 'TOTAL_INPUT';
+  legacy.steps[0].materials.push({key:'aux',sequence:2,materialRole:'AUXILIARY',materialName:'辅料',materialState:'SOLID',weightKg:10,sourceType:'EXTERNAL'});
+  assert.equal(calculateMajorProcessYield(legacy).mainYieldPercent, null);
+  assert.equal(calculateBatchYield({versionNo:1,status:'DRAFT',majorProcesses:[legacy]}), null);
 });

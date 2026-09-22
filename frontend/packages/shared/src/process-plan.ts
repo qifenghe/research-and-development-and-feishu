@@ -230,17 +230,26 @@ export function createEmptyProcessPlan(): ProcessPlanDraft {
 
 export function calculateMajorProcessYield(process: MajorProcessDraft): ProcessYieldResult {
   (process.steps || []).forEach(validateMinorStep);
+  let result: ProcessYieldResult;
   if (hasLayeredPrimaryFlowData(process)) {
-    return calculateProcessYieldFromStepFlow(process);
+    result = calculateProcessYieldFromStepFlow(process);
+  } else {
+    const sum = (items: Array<{ weightKg?: number }>) => items.reduce((total, item) => total + Number(item.weightKg || 0), 0);
+    const primary = sum(process.inputs.filter((item) => item.inputRole === "PRIMARY"));
+    const totalInput = sum(process.inputs);
+    const qualified = sum(process.outputs.filter((item) => item.outputType === "QUALIFIED"));
+    const reusable = sum(process.outputs.filter((item) => item.outputType === "REUSABLE" || item.outputType === "TAILING"));
+    const totalOutput = sum(process.outputs);
+    result = processYield(primary, totalInput, qualified, reusable, totalOutput,
+      process.outputs.some((item) => item.outputType === "QUALIFIED" && item.weightKg != null));
   }
-  const sum = (items: Array<{ weightKg?: number }>) => items.reduce((total, item) => total + Number(item.weightKg || 0), 0);
-  const primary = sum(process.inputs.filter((item) => item.inputRole === "PRIMARY"));
-  const totalInput = sum(process.inputs);
-  const qualified = sum(process.outputs.filter((item) => item.outputType === "QUALIFIED"));
-  const reusable = sum(process.outputs.filter((item) => item.outputType === "REUSABLE" || item.outputType === "TAILING"));
-  const totalOutput = sum(process.outputs);
-  return processYield(primary, totalInput, qualified, reusable, totalOutput,
-    process.outputs.some((item) => item.outputType === "QUALIFIED" && item.weightKg != null));
+  return process.yieldBasis === "PRIMARY_INPUT" ? result : { ...result, mainYieldPercent: null };
+}
+
+export function mainYieldUnavailableReason(process: MajorProcessDraft) {
+  return process.yieldBasis === "TOTAL_INPUT"
+    ? "旧式总投入得率口径不支持主料得率计算，请先改为主料首端投入口径"
+    : null;
 }
 
 export function calculateMinorStepYield(step: MinorProcessStepDraft): ProcessYieldResult {
@@ -310,7 +319,8 @@ function completePrimaryFlow(flow: Array<{ step: MinorProcessStepDraft; inputs: 
     if (current.inputs.length !== 1 || current.outputs.length !== 1) return false;
     const input = current.inputs[0]!;
     const output = current.outputs[0]!;
-    if (input.weightKg == null || output.weightKg == null || input.weightKg <= 0 || output.weightKg <= 0) return false;
+    const terminal = index === flow.length - 1;
+    if (input.weightKg == null || output.weightKg == null || input.weightKg <= 0 || output.weightKg < 0 || (!terminal && output.weightKg === 0)) return false;
     if (index === 0) continue;
     const previousOutput = flow[index - 1]!.outputs[0]!;
     if (input.sourceType !== "STEP_OUTPUT" || input.sourceStepOutputId !== (previousOutput.id || previousOutput.key)) return false;

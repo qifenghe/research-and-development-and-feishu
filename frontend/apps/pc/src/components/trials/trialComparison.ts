@@ -1,4 +1,4 @@
-import { calculateMajorProcessYield } from "../../../../../packages/shared/src/process-plan.ts";
+import { calculateMajorProcessYield, mainYieldUnavailableReason } from "../../../../../packages/shared/src/process-plan.ts";
 import type {
   MajorProcessDraft,
   MinorProcessStepDraft,
@@ -33,6 +33,7 @@ export interface PlannedActualRow {
   actual: number | string | null;
   difference: number | null;
   complete: boolean;
+  reason?: string | null;
 }
 
 export interface TrialComparisonResult {
@@ -72,10 +73,12 @@ export function plannedActualRows(trial: TrialScheme): PlannedActualRow[] {
     const majorId = nodeId(major);
     const target = majorId ? nullableNumber(planned.majorYieldTargets[majorId]) : null;
     const actual = actualMajorYield(major);
-    if (target != null || actual != null) rows.push({ key: `yield:${majorId || major.key}`, kind: "MAJOR_YIELD", label: `${major.processName} / 得率`, planned: target, actual, difference: numericDifference(target, actual), complete: actual != null });
+    const reason = mainYieldUnavailableReason(major);
+    if (target != null || actual != null || reason) rows.push({ key: `yield:${majorId || major.key}`, kind: "MAJOR_YIELD", label: `${major.processName} / 得率`, planned: target, actual, difference: numericDifference(target, actual), complete: actual != null, reason });
   }
   const actualBatch = actualBatchYield(trial.plan.majorProcesses);
-  if (planned.batchYieldTarget != null || actualBatch != null) rows.push({ key: "yield:batch", kind: "BATCH_YIELD", label: "最终得率", planned: planned.batchYieldTarget, actual: actualBatch, difference: numericDifference(planned.batchYieldTarget, actualBatch), complete: actualBatch != null });
+  const batchReason = trial.plan.majorProcesses.map(mainYieldUnavailableReason).find(Boolean) || null;
+  if (planned.batchYieldTarget != null || actualBatch != null || batchReason) rows.push({ key: "yield:batch", kind: "BATCH_YIELD", label: "最终得率", planned: planned.batchYieldTarget, actual: actualBatch, difference: numericDifference(planned.batchYieldTarget, actualBatch), complete: actualBatch != null, reason: batchReason });
   return rows;
 }
 
@@ -119,6 +122,12 @@ export function buildTrialComparison(candidate: TrialScheme, baseline: TrialSche
       const reason = `主料标识不唯一或不同：${beforePrimary.identity || "未识别"} → ${afterPrimary.identity || "未识别"}`;
       majorComparisons.push({ candidateMajorId: nodeId(candidateMajor), baselineMajorId: nodeId(baselineMajor), label, comparable: false, reason });
       differences.push({ kind: "INCOMPARABLE", path: `${label} / 主料缺少唯一标识`, before: beforePrimary.identity, after: afterPrimary.identity });
+      continue;
+    }
+    const unsupportedReason = mainYieldUnavailableReason(baselineMajor) || mainYieldUnavailableReason(candidateMajor);
+    if (unsupportedReason) {
+      majorComparisons.push({ candidateMajorId: nodeId(candidateMajor), baselineMajorId: nodeId(baselineMajor), label, comparable: false, reason: unsupportedReason });
+      differences.push({ kind: "INCOMPARABLE", path: `${label} / 得率口径`, before: baselineMajor.yieldBasis, after: candidateMajor.yieldBasis });
       continue;
     }
     if (baselineMajor.yieldBasis !== candidateMajor.yieldBasis) {
@@ -354,6 +363,9 @@ function actualBatchYield(majors: MajorProcessDraft[]) {
 function hasContinuousPrimaryFlow(majors: MajorProcessDraft[]) {
   const orderedMajors = [...majors].sort((left, right) => left.sequence - right.sequence);
   const outputs = new Map<string, { output: NonNullable<MinorProcessStepDraft["outputs"]>[number]; majorSequence: number }>();
+  const consumedOutputIds = new Set(orderedMajors.flatMap(major => major.steps.flatMap(step => step.materials
+    .filter(item => item.sourceType === "STEP_OUTPUT" && item.sourceStepOutputId)
+    .map(item => item.sourceStepOutputId!))));
   for (const major of orderedMajors) for (const step of major.steps) for (const output of step.outputs || []) {
     const id = nodeId(output);
     if (outputs.has(id)) return false;
@@ -371,7 +383,8 @@ function hasContinuousPrimaryFlow(majors: MajorProcessDraft[]) {
       if (inputs.length !== 1 || stepOutputs.length !== 1) return false;
       const input = inputs[0]!;
       const output = stepOutputs[0]!;
-      if (nullableNumber(input.weightKg) == null || nullableNumber(output.weightKg) == null || Number(input.weightKg) <= 0 || Number(output.weightKg) <= 0) return false;
+      const terminal = !consumedOutputIds.has(nodeId(output));
+      if (nullableNumber(input.weightKg) == null || nullableNumber(output.weightKg) == null || Number(input.weightKg) <= 0 || Number(output.weightKg) < 0 || (!terminal && Number(output.weightKg) === 0)) return false;
       if (!started) {
         if (input.sourceType === "STEP_OUTPUT") {
           const source = outputs.get(input.sourceStepOutputId || "");

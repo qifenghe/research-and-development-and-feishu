@@ -112,3 +112,29 @@ The rebuilt preview is healthy, but a fresh post-fix CUA visual pass could not r
 - Existing legacy blank `stepCode` records remain explicitly incomparable; this fix does not invent backend lineage.
 - Full role/promotion/export acceptance remains Task 6 scope.
 - No backend/API semantics, tester/finance access, or unrelated user files were changed.
+
+## Fix round 2 — standards, terminal zero and legacy basis
+
+Base: `025460d`
+
+### RED evidence
+
+- Focused command: `node --experimental-strip-types --test tests/process-flow-regression.test.mts tests/trial-comparison.test.mts tests/trial-workbench.test.mts`.
+- The structure-only copy regression expected `ISO control standard reference` to survive but received `undefined`.
+- A measured terminal output of `0kg` returned `null` for both shared major yield and the trial major actual instead of a complete `0%`; an absent output remained pending.
+- A legacy `TOTAL_INPUT` major with primary `10kg`, auxiliary `10kg` and output `8kg` returned an apparently valid `80%` main yield instead of pending. The same occurred with a missing auxiliary actual, and both-basis A/B comparison remained comparable rather than explaining the unsupported legacy basis.
+- The live-summary source guard initially failed because neither the major board nor small-step workspace exposed an unsupported-basis reason.
+
+### Resolution
+
+1. **Control standard preservation:** structure-only copy still clears measurements, confirmer/time and resolved state, but preserves `basisOrRemark` because it may be the reusable control standard/reference. The source snapshot remains immutable.
+2. **Measured terminal zero:** within-major primary flow now requires positive inputs and positive intermediate outputs, while allowing a present, non-negative terminal output. Thus a real terminal `0kg` yields complete `0%`; an absent output remains pending, and intermediate zero/transfer validation is unchanged.
+3. **Legacy `TOTAL_INPUT`:** stored `yieldBasis` is neither changed nor migrated. Shared main-yield summaries only return a rate for `PRIMARY_INPUT`; `NONE` remains excluded. `TOTAL_INPUT` returns pending with the explicit reason `旧式总投入得率口径不支持主料得率计算，请先改为主料首端投入口径`. The reason is shown in major/batch planned-actual rows, A/B major comparability, the major board, and the selected small-step live summary. No alternate total-input formula was introduced.
+
+### GREEN verification
+
+- Focused suites above: **34/34 passed**, exit 0.
+- Full frontend: `node --experimental-strip-types --test tests/*.test.mts` → **151/151 passed**, 0 failed, exit 0.
+- Workspace typecheck: `pnpm typecheck` → shared, PC and mobile passed, exit 0.
+- `git diff --check` → passed, exit 0.
+- Production build: `pnpm build` → PC and mobile passed, exit 0. The pre-existing PC large-chunk warning remains non-blocking. No additional browser run was performed; round 1 already records the unavailable browser surface, and this round adds no new workflow or backend behavior.

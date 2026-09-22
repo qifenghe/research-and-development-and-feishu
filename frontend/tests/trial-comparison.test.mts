@@ -287,3 +287,42 @@ test("downstream primary identity traces through remapped outputs to the unique 
   comparison = buildTrialComparison(candidate, baseline);
   assert.equal(comparison.majorComparisons.find(item => item.label === "冷却")!.comparable, false);
 });
+
+test("a measured zero terminal output remains a complete 0% trial actual", () => {
+  const value = trial();
+  value.plan.majorProcesses[0]!.steps[0]!.outputs![0]!.weightKg = 0;
+  const row = plannedActualRows(value).find(item => item.kind === "MAJOR_YIELD")!;
+  const batch = plannedActualRows(value).find(item => item.kind === "BATCH_YIELD")!;
+  assert.equal(row.actual, 0);
+  assert.equal(row.complete, true);
+  assert.equal(batch.actual, 0);
+  assert.equal(batch.complete, true);
+  value.plan.majorProcesses[0]!.steps[0]!.outputs![0]!.weightKg = undefined;
+  const missing = plannedActualRows(value).find(item => item.kind === "MAJOR_YIELD")!;
+  assert.equal(missing.actual, null);
+  assert.equal(missing.complete, false);
+});
+
+test("legacy total-input basis is pending and explicitly incomparable with or without auxiliary actuals", () => {
+  for (const auxiliaryWeight of [10, undefined]) {
+    const baseline = trial();
+    const candidate = trial({ id: "trial-b", name: "方案 B" });
+    for (const value of [baseline, candidate]) {
+      const major = value.plan.majorProcesses[0]!;
+      major.yieldBasis = "TOTAL_INPUT";
+      major.steps[0]!.materials.push({ id: "aux", key: "aux", sequence: 2, materialRole: "AUXILIARY", materialCode: "SALT", materialName: "辅料", materialState: "SOLID", weightKg: auxiliaryWeight });
+    }
+    const rows = plannedActualRows(candidate);
+    const majorRow = rows.find(item => item.kind === "MAJOR_YIELD")!;
+    const batchRow = rows.find(item => item.kind === "BATCH_YIELD")!;
+    assert.equal(majorRow.actual, null);
+    assert.equal(majorRow.complete, false);
+    assert.match(majorRow.reason || "", /旧式总投入.*主料/);
+    assert.equal(batchRow.actual, null);
+    assert.equal(batchRow.complete, false);
+    assert.match(batchRow.reason || "", /旧式总投入.*主料/);
+    const comparison = buildTrialComparison(candidate, baseline);
+    assert.equal(comparison.majorComparisons[0]!.comparable, false);
+    assert.match(comparison.majorComparisons[0]!.reason || "", /旧式总投入.*主料/);
+  }
+});
