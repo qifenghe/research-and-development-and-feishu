@@ -6,6 +6,7 @@ import {
   buildTrialComparison,
   numericDifference,
   plannedActualRows,
+  deviationUnit,
 } from "../apps/pc/src/components/trials/trialComparison.ts";
 
 function trial(overrides: Partial<TrialScheme> = {}): TrialScheme {
@@ -176,4 +177,113 @@ test("numeric parameter delta is emitted only when parameter name and unit match
   candidate.plan.majorProcesses[0]!.steps[0]!.parameter1Unit = "℉";
   item = buildTrialComparison(candidate, baseline).differences.find(entry => entry.kind === "PARAMETER" && entry.path.endsWith("温度"))!;
   assert.equal(item.numericDelta, null);
+});
+
+test("duplicate and missing material identities are explicit incomparable rows", () => {
+  const baseline = trial();
+  const candidate = trial({ id: "trial-b", name: "方案 B" });
+  const duplicate = structuredClone(candidate.plan.majorProcesses[0]!.steps[0]!.materials[0]!);
+  duplicate.id = "material-salt-1";
+  duplicate.key = "material-salt-1";
+  duplicate.materialRole = "AUXILIARY";
+  duplicate.formulaMaterialId = "FM-SALT";
+  duplicate.materialCode = "SALT";
+  duplicate.materialName = "盐";
+  duplicate.weightKg = 0.1;
+  const duplicate2 = { ...duplicate, id: "material-salt-2", key: "material-salt-2", weightKg: 0.2 };
+  candidate.plan.majorProcesses[0]!.steps[0]!.materials.push(duplicate, duplicate2);
+  const ambiguous = buildTrialComparison(candidate, baseline);
+  assert.ok(ambiguous.differences.some(item => item.kind === "INCOMPARABLE" && item.path.includes("配方")));
+
+  candidate.plan.majorProcesses[0]!.steps[0]!.materials = [{
+    ...candidate.plan.majorProcesses[0]!.steps[0]!.materials[0]!,
+    formulaMaterialId: undefined,
+    materialCode: undefined,
+  }];
+  const missing = buildTrialComparison(candidate, baseline);
+  assert.ok(missing.differences.some(item => item.kind === "INCOMPARABLE" && item.path.includes("缺少唯一标识")));
+});
+
+test("duplicate major origins on both sides cannot disappear as no difference", () => {
+  const baseline = trial();
+  const candidate = trial({ id: "trial-b", name: "方案 B" });
+  for (const value of [baseline, candidate]) {
+    const repeated = structuredClone(value.plan.majorProcesses[0]!);
+    repeated.id = `${value.id}-major-2`;
+    repeated.key = repeated.id;
+    repeated.sequence = 2;
+    value.plan.majorProcesses.push(repeated);
+    value.majorOrigins[repeated.id] = "origin-cook";
+  }
+  const comparison = buildTrialComparison(candidate, baseline);
+  assert.ok(comparison.majorComparisons.some(item => !item.comparable));
+  assert.ok(comparison.differences.some(item => item.kind === "INCOMPARABLE"));
+});
+
+test("an external primary material without stable identity is incomparable even when display names match", () => {
+  const baseline = trial();
+  const candidate = trial({ id: "trial-b", name: "方案 B" });
+  for (const value of [baseline, candidate]) {
+    const material = value.plan.majorProcesses[0]!.steps[0]!.materials[0]!;
+    material.formulaMaterialId = undefined;
+    material.materialCode = undefined;
+    material.materialName = "同名主料";
+  }
+  const comparison = buildTrialComparison(candidate, baseline);
+  assert.equal(comparison.majorComparisons[0]!.comparable, false);
+  assert.match(comparison.majorComparisons[0]!.reason!, /主料/);
+});
+
+test("parameter definition changes remain visible when values are unchanged", () => {
+  const baseline = trial();
+  const candidate = trial({ id: "trial-b", name: "方案 B" });
+  candidate.plan.majorProcesses[0]!.steps[0]!.parameter1Unit = "℉";
+  let definition = buildTrialComparison(candidate, baseline).differences.find(item => item.path.includes("参数 1定义"));
+  assert.ok(definition);
+  assert.equal(definition!.numericDelta, undefined);
+  candidate.plan.majorProcesses[0]!.steps[0]!.parameter1Unit = "℃";
+  candidate.plan.majorProcesses[0]!.steps[0]!.parameter1Name = "中心温度";
+  definition = buildTrialComparison(candidate, baseline).differences.find(item => item.path.includes("参数 1定义"));
+  assert.ok(definition);
+});
+
+test("yield deviations use percentage points while actual rates retain percent", () => {
+  assert.equal(deviationUnit("MAJOR_YIELD", "%"), "个百分点");
+  assert.equal(deviationUnit("BATCH_YIELD", "%"), "个百分点");
+  assert.equal(deviationUnit("MATERIAL", "kg"), "kg");
+});
+
+test("downstream primary identity traces through remapped outputs to the unique external source", () => {
+  const baseline = trial();
+  const candidate = trial({ id: "trial-b", name: "方案 B" });
+  for (const [value, suffix] of [[baseline, "base"], [candidate, "candidate"]] as const) {
+    const upstream = value.plan.majorProcesses[0]!;
+    upstream.steps[0]!.outputs![0]!.id = `up-output-${suffix}`;
+    upstream.steps[0]!.outputs![0]!.key = `up-output-${suffix}`;
+    upstream.steps[0]!.outputs![0]!.continueFlow = true;
+    const downstream = structuredClone(upstream);
+    downstream.id = `major-down-${suffix}`;
+    downstream.key = downstream.id;
+    downstream.sequence = 2;
+    downstream.processName = "冷却";
+    downstream.steps[0]!.id = `step-down-${suffix}`;
+    downstream.steps[0]!.key = downstream.steps[0]!.id;
+    downstream.steps[0]!.stepCode = "COOL-1";
+    downstream.steps[0]!.outputs![0]!.id = `down-output-${suffix}`;
+    downstream.steps[0]!.outputs![0]!.key = `down-output-${suffix}`;
+    const input = downstream.steps[0]!.materials[0]!;
+    input.id = `material-down-${suffix}`;
+    input.key = input.id;
+    input.formulaMaterialId = undefined;
+    input.materialCode = undefined;
+    input.sourceType = "STEP_OUTPUT";
+    input.sourceStepOutputId = `up-output-${suffix}`;
+    value.plan.majorProcesses.push(downstream);
+    value.majorOrigins[downstream.id] = "origin-cool";
+  }
+  let comparison = buildTrialComparison(candidate, baseline);
+  assert.equal(comparison.majorComparisons.find(item => item.label === "冷却")!.comparable, true);
+  candidate.plan.majorProcesses[0]!.steps[0]!.materials[0]!.formulaMaterialId = "FM-PORK";
+  comparison = buildTrialComparison(candidate, baseline);
+  assert.equal(comparison.majorComparisons.find(item => item.label === "冷却")!.comparable, false);
 });

@@ -96,3 +96,32 @@ test("rebind fences a late failure without publishing or reporting it", async ()
   assert.deepEqual(errors, []);
   assert.deepEqual(published.at(-1), ["B-cache", "saved"]);
 });
+
+test("server hydration fences a late acknowledgement and permits a new save immediately", async () => {
+  let resolveOld!: (value: Draft) => void;
+  const calls: Draft[] = [];
+  const coordinator = new ProcessPlanSaveCoordinator<Draft>({
+    formId: "FORM-A", debounceMs: 0, isDraft: value => value.status === "DRAFT",
+    mergeAck: (local, ack) => ({ ...local, versionNo: ack.versionNo, status: ack.status }),
+    save: async (_formId, plan) => {
+      calls.push(plan);
+      if (calls.length === 1) return new Promise(resolve => { resolveOld = resolve; });
+      return { ...plan, versionNo: 4 };
+    },
+  });
+  coordinator.hydrateServer({ versionNo: 1, status: "DRAFT", graph: "old formal draft" });
+  coordinator.edit(value => ({ ...value, graph: "old pending edit" }));
+  const oldFlush = coordinator.flush();
+
+  coordinator.hydrateServer({ versionNo: 3, status: "SUBMITTED", graph: "promoted graph" });
+  resolveOld({ versionNo: 2, status: "DRAFT", graph: "old pending edit" });
+  await oldFlush;
+  assert.deepEqual(coordinator.value, { versionNo: 3, status: "SUBMITTED", graph: "promoted graph" });
+  assert.equal(coordinator.state, "idle");
+
+  coordinator.hydrateServer({ versionNo: 3, status: "DRAFT", graph: "new server draft" });
+  coordinator.edit(value => ({ ...value, graph: "new edit" }));
+  await coordinator.flush();
+  assert.deepEqual(calls.map(call => call.graph), ["old pending edit", "new edit"]);
+  assert.deepEqual(coordinator.value, { versionNo: 4, status: "DRAFT", graph: "new edit" });
+});

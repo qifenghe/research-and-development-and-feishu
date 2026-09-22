@@ -99,7 +99,7 @@ import { message, Modal } from "ant-design-vue";
 import { aggregateProcessRecipe, calculateBatchYield, normalizeProcessPlan, type ControlPointDraft, type ProcessPlanDraft, type ProcessRevision, type ProcessRevisionSummary } from "@rnd/shared";
 import { api } from "../../services/api";
 import { trialApi, type TrialPromotionSource } from "../../services/trialApi";
-import { prepareTrialPlanForSave } from "../trials/trialDraft";
+import { createStructureOnlyTrialSource, prepareTrialPlanForSave } from "../trials/trialDraft";
 import MajorProcessBoard from "./MajorProcessBoard.vue";
 import MinorStepWorkspace from "./MinorStepWorkspace.vue";
 import ProcessSubmitDialog from "./ProcessSubmitDialog.vue";
@@ -330,7 +330,8 @@ function copyRecoveredDraft() {
     content: "这不会恢复或覆盖当前正式工艺，只会创建一个独立试验方案。",
     okText: "创建试验方案",
     onOk: async () => {
-      const value = await trialApi.create(formId, { name: `恢复草稿 · R${selectedRevision.value?.revisionNo || ""}`, purpose: "保留正式提交前草稿", variables: "来自被替换草稿", plan: prepareTrialPlanForSave(recovered), plannedData: { materialWeightsKg: {}, stepParameters: {}, majorYieldTargets: {}, batchYieldTarget: null, yieldBasisNote: null } });
+      const structure = createStructureOnlyTrialSource(recovered);
+      const value = await trialApi.create(formId, { name: `恢复草稿 · R${selectedRevision.value?.revisionNo || ""}`, purpose: "保留正式提交前草稿", variables: "来自被替换草稿（旧实测已转为计划值）", plan: prepareTrialPlanForSave(structure.plan), plannedData: structure.plannedData });
       if (props.formId !== formId) return;
       emit("trial-created", value.id);
       message.success("已复制为独立试验方案");

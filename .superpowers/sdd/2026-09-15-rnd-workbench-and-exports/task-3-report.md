@@ -68,3 +68,47 @@ Formal submission was not performed against this accepted revision during this b
 - `.superpowers/sdd/2026-09-15-rnd-workbench-and-exports/task-3-report.md`
 
 Unrelated dirty `DemandDetailView.vue`, planning/review notes, generated outputs, local stores, and other user files were not edited or staged.
+
+## Fix round 1 — independent review findings
+
+Base: `1b5c436`
+
+### RED evidence
+
+- `process-plan-autosave.test.mts`: server hydration during an in-flight save reproduced the reported corruption: expected `SUBMITTED v3`, received the late acknowledgement metadata `DRAFT v2`.
+- `process-flow-regression.test.mts`: a two-step major with a missing intermediate primary observation returned `80` instead of `null`.
+- The first focused run of the new structure-copy and deviation-unit tests failed because `createStructureOnlyTrialSource` and `deviationUnit` did not exist.
+- New comparison regressions initially failed for duplicate/missing identities, duplicate origins on both sides, unchanged-value parameter-definition changes, and downstream primary lineage with remapped output IDs.
+- The first mounted route-transition regression showed that a same-component parameter update did not open the unsaved-choice flow.
+
+### Per-finding resolution and evidence
+
+1. **Late formal save acknowledgement:** `ProcessPlanSaveCoordinator.hydrateServer` now advances the epoch, cancels timers and detaches the old in-flight promise. `ExperimentFormView.onTrialPromoted` synchronously hydrates the mounted formal workspace before changing modes. Direct coordinator and mounted `ProcessPlanWorkspace` regressions prove an old `DRAFT v2` acknowledgement cannot replace `SUBMITTED v3`, while a later new draft can still save normally.
+2. **Unsafe new/recovered copy:** `createStructureOnlyTrialSource` makes an immutable clone, moves applicable material weights, step parameters and yields into `plannedData`, and clears actual input/output/material weights, parameter values, cached yields, measurements and confirmations while retaining graph references and control standards. Both new-from-formal and recovered-draft creation use this helper. The source-immutability/clearing test covers the complete transformation; Task 1 backend/API semantics were not changed.
+3. **Inherited distinction:** inherited schemes now retain a persistent `继承实测` badge and warning after reload, including inside the selected-step measurement context. A source regression guards the persistent wording.
+4. **Ambiguous comparison:** comparison now keeps identity groups instead of dropping duplicates. Duplicate/missing formula and input IDs, duplicate `majorOrigins`, and missing major origins emit explicit `INCOMPARABLE` rows. Primary material identity no longer falls back to display name; downstream `STEP_OUTPUT` inputs trace through remapped output IDs to a unique external formula/material identity, otherwise become incomparable. Focused regressions cover two duplicate SALT rows, duplicates on both sides, missing IDs, same display name without stable IDs, and remapped downstream lineage.
+5. **Incomplete primary flow:** the shared live yield calculator now requires every participating step in the within-major primary chain to have positive observed primary input/output weights, the correct prior-output reference, `continueFlow`, and matching transfer weight. Trial comparison reuses that result, so the board/workspace and comparison cannot disagree. The missing-intermediate regression now returns `null`/pending.
+6. **Unsaved transitions:** scheme switching, creation, copying, external open and same-component route updates use the same save/discard/cancel gate. `adoptServer` retains a clean persisted snapshot; discard clears cache and restores that snapshot before destination loading. Mounted regressions cover blocked creation, route-param cancellation, and failed B loading after discarding edited A.
+7. **Percentage points:** planned/actual rates still render with `%`; yield arithmetic differences now render with `个百分点` in both the full comparison and selected-step extension. Unit and source regressions cover both surfaces.
+8. **Parameter definitions:** name/unit definitions are compared independently of values. A definition-only row remains visible for `92 ℃ → 92 ℉` or a renamed parameter, and numeric subtraction remains suppressed whenever name/unit differ.
+
+The full-plan planned/actual table is now inside a collapsed `全部计划 / 实际（展开查看）` panel; selected-step `计划与偏差` remains the primary editing context.
+
+### Fix-round verification
+
+- Focused RED→GREEN suites: `node --experimental-strip-types --test tests/process-plan-autosave.test.mts tests/process-flow-regression.test.mts tests/trial-comparison.test.mts tests/trial-workbench.test.mts tests/trial-workbench-mounted.test.mts` → passed after the fixes.
+- Fresh full frontend tests: `node --experimental-strip-types --test tests/*.test.mts` → **147/147 passed**, 0 failed, exit 0. Direct mounts intentionally emit Vue Router warnings because two harness cases mount outside a router; the dedicated route-param case mounts through a real memory router and passes.
+- Fresh workspace typecheck: `pnpm typecheck` → shared, PC and mobile passed, exit 0.
+- Production build: `pnpm build` → PC and mobile passed, exit 0. The pre-existing PC large-chunk warning remains non-blocking.
+- Whitespace validation: `git diff --check` → passed, exit 0.
+- Preview stop/start used the existing helper with process visibility; health after restart: backend `8082`, PC `5183/admin`, and mobile `5184/m` all returned HTTP 200. No preview-process script was changed.
+
+### Bounded UI verification status
+
+The rebuilt preview is healthy, but a fresh post-fix CUA visual pass could not run: CUA returned no browser surfaces (`browsers: []`), and both in-app and URL browser acquisition reported that no browser was available. After those bounded attempts, no further retries or fixture mutations were made. The three presentation changes are covered by compilation plus source regressions; the prior Task 3 browser evidence above remains valid. The separate `TASK-0009` / `EXP-0009` software-only export fixture was not edited.
+
+### Remaining boundaries
+
+- Existing legacy blank `stepCode` records remain explicitly incomparable; this fix does not invent backend lineage.
+- Full role/promotion/export acceptance remains Task 6 scope.
+- No backend/API semantics, tester/finance access, or unrelated user files were changed.

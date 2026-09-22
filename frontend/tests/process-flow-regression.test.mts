@@ -35,3 +35,10 @@ test('mismatched transfers and independent routes cannot publish a misleading yi
     assert.equal(calculateBatchYield(plan),null);
   }
 });
+test('a missing intermediate primary observation keeps the whole major yield pending', () => {
+  const first = major(1, undefined, 100, 90);
+  const tail = major(2, 'o1', 90, 80).steps[0];
+  tail.sequence = 2;
+  const combined = {...first, steps: [first.steps[0], {...tail, materials: [{...tail.materials[0], weightKg: undefined}]}]};
+  assert.equal(calculateMajorProcessYield(combined).mainYieldPercent, null);
+});

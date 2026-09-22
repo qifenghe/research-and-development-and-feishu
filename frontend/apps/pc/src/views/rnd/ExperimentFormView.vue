@@ -279,7 +279,7 @@ const resolvingProcessConflict = ref(false);
 const editingBlocked = computed(() => readOnly.value || !!processDraftConflict.value || resolvingProcessConflict.value);
 const serverProcessHydrationToken = ref(0);
 const workspaceMode = ref<"formal" | "trials">("formal");
-const processWorkspace = ref<{ flushSave: (silent?: boolean) => Promise<void>; restoreLocalDirty: (plan: ProcessPlanDraft) => void }>();
+const processWorkspace = ref<{ flushSave: (silent?: boolean) => Promise<void>; restoreLocalDirty: (plan: ProcessPlanDraft) => void; hydrateServer: (plan: ProcessPlanDraft) => void }>();
 const trialWorkbench = ref<{ openCreatedTrial: (trialId: string) => Promise<void> }>();
 const showLegacyProcessEditor = computed(() => processPlan.value.legacy && !processPlan.value.majorProcesses.some((item) => item.steps.length));
 const canUseTrials = computed(() => ["RND_ENGINEER", "RND_DIRECTOR"].includes(auth.role) && Boolean(detail.value?.currentExperimentForm?.id));
@@ -757,7 +757,9 @@ async function saveDraft(options: { silent?: boolean } = {}) {
 }
 
 function onTrialPromoted(revision: { snapshot: ProcessPlanDraft }) {
-  processPlan.value = normalizeProcessPlan(cloneVueValue(revision.snapshot));
+  const promoted = normalizeProcessPlan(cloneVueValue(revision.snapshot));
+  processPlan.value = promoted;
+  processWorkspace.value?.hydrateServer(cloneVueValue(promoted));
   serverProcessHydrationToken.value++;
   workspaceMode.value = "formal";
   persistLocalDraft();

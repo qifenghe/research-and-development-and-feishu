@@ -4,6 +4,7 @@ import test from "node:test";
 import { createEmptyProcessPlan, type ProcessPlanDraft } from "../packages/shared/src/process-plan.ts";
 import {
   TrialRequestFence,
+  createStructureOnlyTrialSource,
   normalizeTrialLocalDateTime,
   prepareTrialPlanForSave,
   readTrialDraft,
@@ -100,6 +101,10 @@ test("trial workbench uses the isolated graph editors and explicit trial confirm
   assert.match(service, /submission-preview/);
   assert.match(service, /\/submit`/);
   assert.doesNotMatch(workbench, /saveProcessPlan|__SESSION_CONFIRMATION_REQUESTED__/);
+  assert.match(workbench, /含继承实测（仅供对照）/);
+  assert.match(workbench, /onBeforeRouteUpdate\(prepareTransition\)/);
+  assert.match(workbench, /deviationUnit\(row\.kind, unit\)/);
+  assert.match(form, /processWorkspace\.value\?\.hydrateServer/);
 });
 
 test("formal revision drawer loads public source separately from private recovered draft", () => {
@@ -108,4 +113,46 @@ test("formal revision drawer loads public source separately from private recover
   assert.match(workspace, /canRecoverDisplacedDraft/);
   assert.match(workspace, /loadDisplacedDraft/);
   assert.match(workspace, /copyRecoveredDraft/);
+  assert.match(workspace, /createStructureOnlyTrialSource\(recovered\)/);
+});
+
+test("the full planned/actual table is collapsed by default", () => {
+  const comparison = fs.readFileSync(new URL("../apps/pc/src/components/trials/TrialComparison.vue", import.meta.url), "utf8");
+  assert.match(comparison, /<a-collapse ghost>/);
+  assert.match(comparison, /全部计划 \/ 实际（展开查看）/);
+});
+
+test("structure-only creation moves observations into plans and clears all actual evidence without mutating source", () => {
+  const source = createEmptyProcessPlan();
+  source.batchYieldPercent = 80;
+  source.majorProcesses = [{
+    id: "major-1", key: "major-1", sequence: 1, processName: "熟制", yieldBasis: "PRIMARY_INPUT",
+    inputs: [{ id: "input-1", key: "input-1", sequence: 1, inputRole: "PRIMARY", materialName: "牛肉", materialState: "SOLID", weightKg: 10 }],
+    outputs: [{ id: "major-output-1", key: "major-output-1", sequence: 1, outputType: "QUALIFIED", outputName: "熟肉", materialState: "SOLID", weightKg: 8 }],
+    steps: [{
+      id: "step-1", key: "step-1", sequence: 1, stepCode: "COOK-1", stepName: "煮制", stepType: "NORMAL",
+      parameter1Name: "温度", parameter1Value: "92", parameter1Unit: "℃", materials: [{ id: "material-1", key: "material-1", sequence: 1, materialRole: "PRIMARY", materialName: "牛肉", materialState: "SOLID", weightKg: 10 }],
+      outputs: [{ id: "step-output-1", key: "step-output-1", sequence: 1, outputType: "FINISHED", outputName: "熟肉", materialState: "SOLID", weightKg: 8, primaryOutput: true, continueFlow: false }],
+      controlPoints: [{ id: "point-1", key: "point-1", sequence: 1, controlType: "PROCESS", importance: "CRITICAL", itemName: "中心温度", targetValue: "92", unit: "℃", resolved: true, confirmedBy: "old-user", confirmedAt: "2026-09-15T10:00:00", basisOrRemark: "历史证据", measurements: [{ id: "measurement-1", key: "measurement-1", sequence: 1, value: "92", measuredAt: "2026-09-15T10:00:00" }] }],
+    }],
+  }];
+  const original = structuredClone(source);
+  const result = createStructureOnlyTrialSource(source);
+  assert.deepEqual(source, original, "source snapshot must remain immutable");
+  assert.equal(result.plannedData.materialWeightsKg["material-1"], 10);
+  assert.equal(result.plannedData.stepParameters["step-1"]!.parameter1Value, "92");
+  assert.equal(result.plannedData.majorYieldTargets["major-1"], 80);
+  assert.equal(result.plannedData.batchYieldTarget, 80);
+  const step = result.plan.majorProcesses[0]!.steps[0]!;
+  assert.equal(step.materials[0]!.weightKg, undefined);
+  assert.equal(step.outputs![0]!.weightKg, undefined);
+  assert.equal(step.parameter1Value, undefined);
+  assert.equal(step.controlPoints![0]!.resolved, false);
+  assert.equal(step.controlPoints![0]!.confirmedBy, undefined);
+  assert.equal(step.controlPoints![0]!.basisOrRemark, undefined);
+  assert.deepEqual(step.controlPoints![0]!.measurements, []);
+  assert.equal(step.controlPoints![0]!.targetValue, "92", "control standard is retained");
+  assert.equal(result.plan.majorProcesses[0]!.inputs[0]!.weightKg, undefined);
+  assert.equal(result.plan.majorProcesses[0]!.outputs[0]!.weightKg, undefined);
+  assert.equal(result.plan.batchYieldPercent, null);
 });

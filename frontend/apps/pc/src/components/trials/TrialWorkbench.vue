@@ -20,9 +20,10 @@
       <template v-else>
         <a-alert v-if="staleCachedTrial" type="warning" show-icon message="发现与服务器版本不一致的本地缓存，已隔离保留，未覆盖当前方案。" closable @close="discardStaleCache" />
         <a-alert v-if="currentTrial.archived" type="info" show-icon message="该方案已归档，仅可查看或恢复。" />
+        <a-alert v-if="currentTrial.inheritedActuals" type="warning" show-icon message="含继承实测（仅供对照）" description="这些历史观测不是当前试验的新证据；控制点需按本次试验重新确认。" />
 
         <section class="trial-summary">
-          <div class="summary-head"><div><span class="eyebrow">试验方案</span><h3>{{ currentTrial.name }}</h3></div><a-tag :color="dirty ? 'orange' : 'green'">{{ dirty ? "有未保存修改" : "已与服务器同步" }}</a-tag></div>
+          <div class="summary-head"><div><span class="eyebrow">试验方案</span><h3>{{ currentTrial.name }}</h3></div><a-space><a-tag v-if="currentTrial.inheritedActuals" color="orange">继承实测</a-tag><a-tag :color="dirty ? 'orange' : 'green'">{{ dirty ? "有未保存修改" : "已与服务器同步" }}</a-tag></a-space></div>
           <a-form layout="vertical">
             <a-row :gutter="10">
               <a-col :span="8"><a-form-item label="方案名称"><a-input v-model:value="currentTrial.name" :disabled="!editable" @update:value="markDirty" /></a-form-item></a-col>
@@ -65,6 +66,7 @@
               <a-collapse class="planned-extension">
                 <a-collapse-panel key="planned" header="计划与偏差（当前步骤）">
                   <p class="hint">计划值与现场实际分开保存；缺失实际显示“待补充”，不按 0 计算。</p>
+                  <a-alert v-if="currentTrial.inheritedActuals" type="warning" show-icon message="当前实测含继承数据，仅供对照，不作为本次新证据。" />
                   <div v-for="material in step.materials" :key="material.key" class="planned-row">
                     <span>{{ material.materialName || "未命名物料" }}</span>
                     <a-input-number :value="plannedMaterial(material)" :disabled="!editable" :min="0" addon-after="kg" placeholder="计划投入" @update:value="setPlannedMaterial(material, $event)" />
@@ -121,7 +123,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { onBeforeRouteLeave } from "vue-router";
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from "vue-router";
 import { message, Modal } from "ant-design-vue";
 import { createEmptyProcessPlan, normalizeProcessPlan, type ControlPointDraft, type MajorProcessDraft, type MinorProcessStepDraft, type ProcessPlanDraft, type ProcessRevision, type ProcessStepMaterialDraft } from "@rnd/shared";
 import { api } from "../../services/api";
@@ -129,13 +131,14 @@ import { trialApi, type TrialPlannedData, type TrialPromotionPreview, type Trial
 import MajorProcessBoard from "../process/MajorProcessBoard.vue";
 import MinorStepWorkspace from "../process/MinorStepWorkspace.vue";
 import TrialComparison from "./TrialComparison.vue";
-import { plannedActualRows } from "./trialComparison";
-import { clearTrialDraft, prepareTrialPlanForSave, readTrialDraft, trialDraftKey, TrialRequestFence, writeTrialDraft } from "./trialDraft";
+import { deviationUnit, plannedActualRows } from "./trialComparison";
+import { clearTrialDraft, createStructureOnlyTrialSource, prepareTrialPlanForSave, readTrialDraft, trialDraftKey, TrialRequestFence, writeTrialDraft } from "./trialDraft";
 
 const props = defineProps<{ formId?: string; userId: string; formalPlan: ProcessPlanDraft; readonly?: boolean }>();
 const emit = defineEmits<{ promoted: [revision: ProcessRevision] }>();
 const trials = ref<TrialScheme[]>([]);
 const currentTrial = ref<TrialScheme>();
+const persistedTrial = ref<TrialScheme>();
 const staleCachedTrial = ref<TrialScheme>();
 const activeMajorKey = ref<string>();
 const baselineTrialId = ref<string>();
@@ -176,13 +179,14 @@ const difficultyOptions = [{ value: "EASY", label: "容易" }, { value: "MEDIUM"
 
 watch(() => props.formId, formId => {
   listFence.invalidate(); detailFence.invalidate(); mutationFence.invalidate(); promotionFence.invalidate();
-  trials.value = []; currentTrial.value = undefined; staleCachedTrial.value = undefined; activeMajorKey.value = undefined; baselineTrialId.value = undefined; dirty.value = false;
+  trials.value = []; currentTrial.value = undefined; persistedTrial.value = undefined; staleCachedTrial.value = undefined; activeMajorKey.value = undefined; baselineTrialId.value = undefined; dirty.value = false;
   if (formId) void loadTrials(formId);
 }, { immediate: true });
 
 onMounted(() => { window.addEventListener("beforeunload", beforeUnload); window.addEventListener("pagehide", persistCache); });
 onBeforeUnmount(() => { listFence.invalidate(); detailFence.invalidate(); mutationFence.invalidate(); promotionFence.invalidate(); window.removeEventListener("beforeunload", beforeUnload); window.removeEventListener("pagehide", persistCache); });
-onBeforeRouteLeave(async () => dirty.value ? await confirmUnsaved() : true);
+onBeforeRouteLeave(prepareTransition);
+onBeforeRouteUpdate(prepareTransition);
 defineExpose({ openCreatedTrial });
 
 async function loadTrials(formId: string) {
@@ -219,13 +223,13 @@ async function loadTrial(trialId: string) {
 
 async function switchTrial(trialId: string) {
   if (trialId === currentTrial.value?.id) return;
-  if (dirty.value && !await confirmUnsaved()) return;
+  if (!await prepareTransition()) return;
   await loadTrial(trialId);
 }
 
 async function openCreatedTrial(trialId: string) {
   const formId = props.formId;
-  if (!formId || (dirty.value && !await confirmUnsaved())) return;
+  if (!formId || !await prepareTransition()) return;
   await loadTrials(formId);
   if (currentTrial.value?.id !== trialId) await loadTrial(trialId);
 }
@@ -244,6 +248,7 @@ function normalizePlannedData(value?: Partial<TrialPlannedData> | null): TrialPl
 
 function adoptServer(value: TrialScheme, allowCache = false) {
   const server = normalizeTrial(value);
+  persistedTrial.value = plainClone(server);
   const key = cacheKey(server.id);
   const cached = allowCache && key ? readTrialDraft<TrialScheme>(localStorage, key) : null;
   staleCachedTrial.value = undefined;
@@ -310,10 +315,12 @@ async function saveTrial() {
 async function createTrial() {
   const formId = props.formId;
   if (!formId || !newTrialName.value.trim()) return;
+  if (!await prepareTransition()) return;
   const token = mutationFence.begin(formId, "create");
   mutating.value = true;
   try {
-    const value = await trialApi.create(formId, { name: newTrialName.value.trim(), purpose: text(newTrialPurpose.value), variables: text(newTrialVariables.value), plan: prepareTrialPlanForSave(normalizeProcessPlan(plainClone(props.formalPlan))), plannedData: normalizePlannedData() });
+    const structure = createStructureOnlyTrialSource(props.formalPlan);
+    const value = await trialApi.create(formId, { name: newTrialName.value.trim(), purpose: text(newTrialPurpose.value), variables: text(newTrialVariables.value), plan: prepareTrialPlanForSave(structure.plan), plannedData: structure.plannedData });
     if (!mutationFence.isCurrent(token) || formId !== props.formId) return;
     newTrialOpen.value = false;
     adoptServer(value);
@@ -325,7 +332,7 @@ function openCopy() { if (!currentTrial.value) return; copyName.value = `${curre
 async function copyTrial() {
   const formId = props.formId; const trial = currentTrial.value;
   if (!formId || !trial || !copyName.value.trim()) return;
-  if (dirty.value && !await saveTrial()) return;
+  if (!await prepareTransition()) return;
   const current = currentTrial.value!;
   const token = mutationFence.begin(formId, `copy:${current.id}`); mutating.value = true;
   try {
@@ -401,9 +408,22 @@ async function promoteTrial() {
 }
 
 function confirmUnsaved() { if (!dirty.value) return Promise.resolve(true); if (switchResolver.value) return Promise.resolve(false); switchModalOpen.value = true; return new Promise<boolean>(resolve => { switchResolver.value = resolve; }); }
+function prepareTransition() { return dirty.value ? confirmUnsaved() : Promise.resolve(true); }
 function resolveUnsaved(accepted: boolean) { const resolve = switchResolver.value; switchResolver.value = undefined; switchModalOpen.value = false; resolve?.(accepted); }
 async function saveAndResolve() { if (await saveTrial()) resolveUnsaved(true); }
-function discardAndResolve() { const trial = currentTrial.value; const key = trial ? cacheKey(trial.id) : null; if (key) clearTrialDraft(localStorage, key); dirty.value = false; resolveUnsaved(true); }
+function discardAndResolve() {
+  const trial = currentTrial.value;
+  const key = trial ? cacheKey(trial.id) : null;
+  if (key) clearTrialDraft(localStorage, key);
+  const persisted = persistedTrial.value;
+  if (trial && persisted?.id === trial.id) {
+    currentTrial.value = normalizeTrial(persisted);
+    trials.value = [plainClone(persisted), ...trials.value.filter(item => item.id !== trial.id)];
+    activeMajorKey.value = undefined;
+  }
+  dirty.value = false;
+  resolveUnsaved(true);
+}
 function beforeUnload(event: BeforeUnloadEvent) { if (!dirty.value) return; persistCache(); event.preventDefault(); event.returnValue = ""; }
 function discardStaleCache() { const trial = currentTrial.value; const key = trial ? cacheKey(trial.id) : null; if (key) clearTrialDraft(localStorage, key); staleCachedTrial.value = undefined; }
 
@@ -420,7 +440,7 @@ function actualAndDifference(key: string, unit = "") {
   if (!row || !row.complete) return "实际：待补充 · 偏差：—";
   const actual = `${row.actual}${unit}`;
   if (row.kind === "PARAMETER") return `实际：${actual} · ${row.planned === row.actual ? "一致" : "不同"}`;
-  const difference = row.difference == null ? "—" : `${row.difference > 0 ? "+" : ""}${row.difference}${unit}`;
+  const difference = row.difference == null ? "—" : `${row.difference > 0 ? "+" : ""}${row.difference}${deviationUnit(row.kind, unit)}`;
   return `实际：${actual} · 偏差：${difference}`;
 }
 function locatePoint(point: ControlPointDraft) { const target = point.id || point.key; const plan = currentTrial.value?.plan; if (!plan) return; for (let major = 0; major < plan.majorProcesses.length; major++) for (let step = 0; step < plan.majorProcesses[major]!.steps.length; step++) { const pointIndex = plan.majorProcesses[major]!.steps[step]!.controlPoints?.findIndex(item => (item.id || item.key) === target) ?? -1; if (pointIndex >= 0) return { major, step, point: pointIndex }; } }

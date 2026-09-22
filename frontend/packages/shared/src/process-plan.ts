@@ -274,16 +274,16 @@ export function calculateBatchYield(plan: ProcessPlanDraft): number | null {
 }
 
 function calculateProcessYieldFromStepFlow(process: MajorProcessDraft): ProcessYieldResult {
-  const allMaterials = process.steps.flatMap((step) => step.materials || []);
-  const firstPrimaryInput = process.steps.flatMap((step) => (step.materials || [])
-    .filter((item) => item.materialRole === "PRIMARY")
-    .map((material) => ({ step, material })))
-    .sort((left, right) => left.step.sequence - right.step.sequence || left.material.sequence - right.material.sequence)[0];
-  const lastPrimaryOutput = process.steps.flatMap((step) => (step.outputs || [])
-    .filter((item) => item.primaryOutput)
-    .map((output) => ({ step, output })))
-    .sort((left, right) => right.step.sequence - left.step.sequence || right.output.sequence - left.output.sequence)[0];
-  const primaryInput = firstPrimaryInput?.material.weightKg || 0;
+  const orderedSteps = [...process.steps].sort((left, right) => left.sequence - right.sequence);
+  const allMaterials = orderedSteps.flatMap((step) => step.materials || []);
+  const primaryFlow = orderedSteps.map(step => ({
+    step,
+    inputs: (step.materials || []).filter(item => item.materialRole === "PRIMARY"),
+    outputs: (step.outputs || []).filter(item => item.primaryOutput),
+  })).filter(item => item.inputs.length || item.outputs.length);
+  const firstPrimaryInput = primaryFlow[0]?.inputs[0];
+  const lastPrimaryOutput = primaryFlow.at(-1)?.outputs[0];
+  const primaryInput = firstPrimaryInput?.weightKg || 0;
   const internalOutputIds = new Set(process.steps.flatMap(step => step.outputs || []).map(output => output.id || output.key));
   const externalInput = sumWeight(allMaterials.filter((item) => item.sourceType !== "STEP_OUTPUT" || !internalOutputIds.has(item.sourceStepOutputId || '')));
   const consumedOutputIds = new Set(allMaterials
@@ -291,10 +291,8 @@ function calculateProcessYieldFromStepFlow(process: MajorProcessDraft): ProcessY
     .map((item) => item.sourceStepOutputId));
   const terminalOutputs = process.steps.flatMap((step) => step.outputs || [])
     .filter((output) => !consumedOutputIds.has(output.id || output.key));
-  const primaryOutput = lastPrimaryOutput?.output;
-  const validPrimaryFlow = Boolean(firstPrimaryInput && lastPrimaryOutput
-    && primaryOutput?.weightKg != null
-    && firstPrimaryInput.step.sequence <= lastPrimaryOutput.step.sequence);
+  const primaryOutput = lastPrimaryOutput;
+  const validPrimaryFlow = completePrimaryFlow(primaryFlow);
   return processYield(
     primaryInput,
     externalInput,
@@ -303,6 +301,22 @@ function calculateProcessYieldFromStepFlow(process: MajorProcessDraft): ProcessY
     sumWeight(terminalOutputs),
     validPrimaryFlow,
   );
+}
+
+function completePrimaryFlow(flow: Array<{ step: MinorProcessStepDraft; inputs: ProcessStepMaterialDraft[]; outputs: StepOutputDraft[] }>) {
+  if (!flow.length) return false;
+  for (let index = 0; index < flow.length; index++) {
+    const current = flow[index]!;
+    if (current.inputs.length !== 1 || current.outputs.length !== 1) return false;
+    const input = current.inputs[0]!;
+    const output = current.outputs[0]!;
+    if (input.weightKg == null || output.weightKg == null || input.weightKg <= 0 || output.weightKg <= 0) return false;
+    if (index === 0) continue;
+    const previousOutput = flow[index - 1]!.outputs[0]!;
+    if (input.sourceType !== "STEP_OUTPUT" || input.sourceStepOutputId !== (previousOutput.id || previousOutput.key)) return false;
+    if (!previousOutput.continueFlow || Math.abs(input.weightKg - (previousOutput.weightKg || 0)) > 0.00000001) return false;
+  }
+  return true;
 }
 
 function hasLayeredPrimaryFlowData(process: MajorProcessDraft) {

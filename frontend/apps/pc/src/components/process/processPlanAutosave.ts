@@ -40,7 +40,9 @@ export class ProcessPlanSaveCoordinator<T> {
   }
 
   hydrateServer(value: T) {
+    this.epoch++;
     this.cancelTimer();
+    this.inFlight = undefined;
     this.value = cloneVueValue(value);
     this.persistedGeneration = this.generation;
     this.state = "idle";
@@ -60,9 +62,6 @@ export class ProcessPlanSaveCoordinator<T> {
   }
 
   rebind(formId: string | undefined, serverValue: T) {
-    this.epoch++;
-    this.cancelTimer();
-    this.inFlight = undefined;
     this.formId = formId;
     this.hydrateServer(serverValue);
   }

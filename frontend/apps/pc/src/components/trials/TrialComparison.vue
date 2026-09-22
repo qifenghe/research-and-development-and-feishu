@@ -5,13 +5,17 @@
       <a-select v-model:value="baselineId" allow-clear placeholder="选择基线方案" :options="baselineOptions" style="width: 220px" />
     </header>
 
-    <a-table :columns="plannedColumns" :data-source="plannedRows" row-key="key" size="small" :pagination="false">
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'planned'">{{ display(record.planned, record.kind) }}</template>
-        <template v-else-if="column.key === 'actual'"><span :class="{ missing: !record.complete }">{{ record.complete ? display(record.actual, record.kind) : "待补充" }}</span></template>
-        <template v-else-if="column.key === 'difference'">{{ record.difference == null ? "—" : signed(record.difference, record.kind) }}</template>
-      </template>
-    </a-table>
+    <a-collapse ghost>
+      <a-collapse-panel key="all-values" header="全部计划 / 实际（展开查看）">
+        <a-table :columns="plannedColumns" :data-source="plannedRows" row-key="key" size="small" :pagination="false">
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'planned'">{{ display(record.planned, record.kind) }}</template>
+            <template v-else-if="column.key === 'actual'"><span :class="{ missing: !record.complete }">{{ record.complete ? display(record.actual, record.kind) : "待补充" }}</span></template>
+            <template v-else-if="column.key === 'difference'">{{ record.difference == null ? "—" : signed(record.difference, record.kind) }}</template>
+          </template>
+        </a-table>
+      </a-collapse-panel>
+    </a-collapse>
 
     <template v-if="comparison">
       <div class="major-status">
@@ -20,7 +24,7 @@
         </a-tag>
       </div>
       <a-empty v-if="!comparison.differences.length" :image="false" description="与基线方案无可见差异" />
-      <div v-for="item in comparison.differences" :key="`${item.kind}-${item.path}`" class="difference">
+      <div v-for="(item, index) in comparison.differences" :key="`${item.kind}-${item.path}-${index}`" class="difference">
         <a-tag :color="item.kind === 'INCOMPARABLE' ? 'orange' : 'blue'">{{ kindLabel(item.kind) }}</a-tag>
         <span><b>{{ item.path }}</b><small>{{ display(item.before) }} → {{ display(item.after) }}<template v-if="item.numericDelta != null"> · 差异 {{ item.numericDelta > 0 ? "+" : "" }}{{ item.numericDelta }}</template></small></span>
       </div>
@@ -31,7 +35,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { TrialScheme } from "../../services/trialApi";
-import { buildTrialComparison, plannedActualRows, type TrialDifferenceKind } from "./trialComparison";
+import { buildTrialComparison, deviationUnit, plannedActualRows, type PlannedActualRow, type TrialDifferenceKind } from "./trialComparison";
 
 const props = defineProps<{ trial: TrialScheme; trials: TrialScheme[]; baselineTrialId?: string }>();
 const emit = defineEmits<{ "update:baselineTrialId": [value: string | undefined] }>();
@@ -52,7 +56,7 @@ function display(value: unknown, kind?: string) {
   if (typeof value === "number") return `${Number(value.toFixed(4))}${kind?.includes("YIELD") ? "%" : kind === "MATERIAL" ? "kg" : ""}`;
   return String(value);
 }
-function signed(value: number, kind: string) { return `${value > 0 ? "+" : ""}${Number(value.toFixed(4))}${kind.includes("YIELD") ? "%" : "kg"}`; }
+function signed(value: number, kind: PlannedActualRow["kind"]) { return `${value > 0 ? "+" : ""}${Number(value.toFixed(4))}${deviationUnit(kind, "kg")}`; }
 function kindLabel(kind: TrialDifferenceKind) { return ({ QUALITY: "质量", DIFFICULTY: "难度", PARAMETER: "参数", FORMULA: "配方", INPUT: "投入", YIELD: "得率", INCOMPARABLE: "不可比较" })[kind]; }
 </script>
 

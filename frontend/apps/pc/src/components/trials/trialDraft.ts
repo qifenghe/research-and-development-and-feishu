@@ -1,4 +1,5 @@
-import type { ProcessPlanDraft } from "@rnd/shared";
+import { calculateBatchYield, calculateMajorProcessYield, normalizeProcessPlan, type ProcessPlanDraft } from "../../../../../packages/shared/src/process-plan.ts";
+import type { TrialPlannedData } from "../../services/trialApi";
 
 export interface TrialDraftEnvelope<T> {
   savedAt: string;
@@ -101,3 +102,47 @@ export function prepareTrialPlanForSave(value: ProcessPlanDraft): ProcessPlanDra
   }
   return plan;
 }
+
+/** Builds a new evidence-empty trial while retaining reusable process structure and standards. */
+export function createStructureOnlyTrialSource(value: ProcessPlanDraft): { plan: ProcessPlanDraft; plannedData: TrialPlannedData } {
+  const plan = normalizeProcessPlan(plainClone(value));
+  const plannedData: TrialPlannedData = {
+    materialWeightsKg: {}, stepParameters: {}, majorYieldTargets: {},
+    batchYieldTarget: finite(value.batchYieldPercent) ?? calculateBatchYield(plan),
+    yieldBasisNote: null,
+  };
+  for (const major of plan.majorProcesses) {
+    const majorId = major.id || major.key;
+    const majorYield = calculateMajorProcessYield(major).mainYieldPercent;
+    if (majorYield != null) plannedData.majorYieldTargets[majorId] = majorYield;
+    for (const input of major.inputs) input.weightKg = undefined;
+    for (const output of major.outputs) output.weightKg = undefined;
+    major.yield = undefined;
+    for (const step of major.steps) {
+      const stepId = step.id || step.key;
+      const parameter1Value = textValue(step.parameter1Value);
+      const parameter2Value = textValue(step.parameter2Value);
+      if (parameter1Value || parameter2Value) plannedData.stepParameters[stepId] = { parameter1Value, parameter2Value };
+      step.parameter1Value = undefined;
+      step.parameter2Value = undefined;
+      for (const material of step.materials) {
+        const weight = finite(material.weightKg);
+        if (weight != null) plannedData.materialWeightsKg[material.id || material.key] = weight;
+        material.weightKg = undefined;
+      }
+      for (const output of step.outputs || []) output.weightKg = undefined;
+      for (const point of step.controlPoints || []) {
+        point.resolved = false;
+        point.confirmedBy = undefined;
+        point.confirmedAt = undefined;
+        point.basisOrRemark = undefined;
+        point.measurements = [];
+      }
+    }
+  }
+  plan.batchYieldPercent = null;
+  return { plan, plannedData };
+}
+
+function finite(value: unknown) { return typeof value === "number" && Number.isFinite(value) ? value : null; }
+function textValue(value: unknown) { const normalized = value == null ? "" : String(value).trim(); return normalized || null; }

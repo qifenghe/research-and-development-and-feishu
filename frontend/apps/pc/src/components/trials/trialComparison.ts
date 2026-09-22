@@ -1,3 +1,4 @@
+import { calculateMajorProcessYield } from "../../../../../packages/shared/src/process-plan.ts";
 import type {
   MajorProcessDraft,
   MinorProcessStepDraft,
@@ -44,6 +45,10 @@ export function numericDifference(planned: number | null | undefined, actual: nu
   return Math.round((actual - planned) * 1_000_000_000) / 1_000_000_000;
 }
 
+export function deviationUnit(kind: PlannedActualRow["kind"], fallback = "") {
+  return kind === "MAJOR_YIELD" || kind === "BATCH_YIELD" ? "个百分点" : fallback;
+}
+
 export function plannedActualRows(trial: TrialScheme): PlannedActualRow[] {
   const rows: PlannedActualRow[] = [];
   const planned = trial.plannedData;
@@ -86,31 +91,34 @@ export function buildTrialComparison(candidate: TrialScheme, baseline: TrialSche
     differences.push({ kind: "YIELD", path: "最终目标得率", before: baseline.plannedData.batchYieldTarget, after: candidate.plannedData.batchYieldTarget });
   }
 
-  const baselineOrigins = uniqueOriginIndex(baseline);
-  const candidateOrigins = uniqueOriginIndex(candidate);
+  const baselineOrigins = originGroups(baseline);
+  const candidateOrigins = originGroups(candidate);
   const origins = new Set([...baselineOrigins.keys(), ...candidateOrigins.keys()]);
   const majorComparisons: MajorComparison[] = [];
   for (const origin of origins) {
-    const baselineMajor = baselineOrigins.get(origin) || null;
-    const candidateMajor = candidateOrigins.get(origin) || null;
-    const label = candidateMajor?.processName || baselineMajor?.processName || "未命名大工序";
+    const baselineGroup = baselineOrigins.get(origin) || [];
+    const candidateGroup = candidateOrigins.get(origin) || [];
+    const baselineMajor = baselineGroup.length === 1 ? baselineGroup[0]! : null;
+    const candidateMajor = candidateGroup.length === 1 ? candidateGroup[0]! : null;
     if (!baselineMajor || !candidateMajor) {
-      majorComparisons.push({ candidateMajorId: candidateMajor ? nodeId(candidateMajor) : null, baselineMajorId: baselineMajor ? nodeId(baselineMajor) : null, label, comparable: false, reason: "缺少唯一来源标识对应项，不能按名称或行号推测" });
-      differences.push({ kind: "INCOMPARABLE", path: label, before: baselineMajor?.processName || null, after: candidateMajor?.processName || null });
+      const label = majorNames(candidateGroup.length ? candidateGroup : baselineGroup) || "未命名大工序";
+      majorComparisons.push({ candidateMajorId: candidateMajor ? nodeId(candidateMajor) : null, baselineMajorId: baselineMajor ? nodeId(baselineMajor) : null, label, comparable: false, reason: "重复或缺少唯一来源标识对应项，不能推测比较" });
+      differences.push({ kind: "INCOMPARABLE", path: `${label} / 大工序来源不唯一`, before: majorNames(baselineGroup), after: majorNames(candidateGroup) });
       continue;
     }
+    const label = candidateMajor?.processName || baselineMajor?.processName || "未命名大工序";
     if (textOrNull(baseline.plannedData.yieldBasisNote) !== textOrNull(candidate.plannedData.yieldBasisNote)) {
       const reason = `称重口径说明不同：${baseline.plannedData.yieldBasisNote || "未填写"} → ${candidate.plannedData.yieldBasisNote || "未填写"}`;
       majorComparisons.push({ candidateMajorId: nodeId(candidateMajor), baselineMajorId: nodeId(baselineMajor), label, comparable: false, reason });
       differences.push({ kind: "YIELD", path: `${label} / 称重口径`, before: textOrNull(baseline.plannedData.yieldBasisNote), after: textOrNull(candidate.plannedData.yieldBasisNote) });
       continue;
     }
-    const beforePrimary = primaryMaterialIdentity(baselineMajor);
-    const afterPrimary = primaryMaterialIdentity(candidateMajor);
-    if (beforePrimary !== afterPrimary) {
-      const reason = `主料标识不同：${beforePrimary || "未识别"} → ${afterPrimary || "未识别"}`;
+    const beforePrimary = primaryMaterialIdentity(baselineMajor, baseline.plan.majorProcesses);
+    const afterPrimary = primaryMaterialIdentity(candidateMajor, candidate.plan.majorProcesses);
+    if (!beforePrimary.stable || !afterPrimary.stable || beforePrimary.identity !== afterPrimary.identity) {
+      const reason = `主料标识不唯一或不同：${beforePrimary.identity || "未识别"} → ${afterPrimary.identity || "未识别"}`;
       majorComparisons.push({ candidateMajorId: nodeId(candidateMajor), baselineMajorId: nodeId(baselineMajor), label, comparable: false, reason });
-      differences.push({ kind: "INPUT", path: `${label} / 主料`, before: beforePrimary, after: afterPrimary });
+      differences.push({ kind: "INCOMPARABLE", path: `${label} / 主料缺少唯一标识`, before: beforePrimary.identity, after: afterPrimary.identity });
       continue;
     }
     if (baselineMajor.yieldBasis !== candidateMajor.yieldBasis) {
@@ -123,11 +131,7 @@ export function buildTrialComparison(candidate: TrialScheme, baseline: TrialSche
     compareMajor(candidateMajor, baselineMajor, differences, candidate, baseline);
   }
 
-  for (const major of [...baseline.plan.majorProcesses, ...candidate.plan.majorProcesses]) {
-    const id = nodeId(major);
-    if (id && (baseline.majorOrigins[id] || candidate.majorOrigins[id])) continue;
-    majorComparisons.push({ candidateMajorId: candidate.plan.majorProcesses.includes(major) ? id : null, baselineMajorId: baseline.plan.majorProcesses.includes(major) ? id : null, label: major.processName || "未命名大工序", comparable: false, reason: "缺少唯一来源标识，重复工序不可按名称或行号比较" });
-  }
+  appendUnidentifiedMajors(baseline, candidate, majorComparisons, differences);
   return { majorComparisons, differences };
 }
 
@@ -176,41 +180,61 @@ function comparePlannedParameter(majorName: string, baselineTrial: TrialScheme, 
 }
 
 function compareTextParameter(majorName: string, before: MinorProcessStepDraft, after: MinorProcessStepDraft, index: 1 | 2, differences: TrialDifference[]) {
+  const beforeName = textOrNull(index === 1 ? before.parameter1Name : before.parameter2Name);
+  const afterName = textOrNull(index === 1 ? after.parameter1Name : after.parameter2Name);
+  const beforeUnit = textOrNull(index === 1 ? before.parameter1Unit : before.parameter2Unit);
+  const afterUnit = textOrNull(index === 1 ? after.parameter1Unit : after.parameter2Unit);
   const beforeValue = textOrNull(index === 1 ? before.parameter1Value : before.parameter2Value);
   const afterValue = textOrNull(index === 1 ? after.parameter1Value : after.parameter2Value);
+  if (beforeName !== afterName || beforeUnit !== afterUnit) {
+    differences.push({ kind: "PARAMETER", path: `${majorName} / ${after.stepName} / 参数 ${index}定义`, before: parameterDefinition(beforeName, beforeUnit), after: parameterDefinition(afterName, afterUnit) });
+  }
   if (beforeValue === afterValue) return;
   const name = (index === 1 ? after.parameter1Name || before.parameter1Name : after.parameter2Name || before.parameter2Name) || `参数 ${index}`;
   differences.push({ kind: "PARAMETER", path: `${majorName} / ${after.stepName} / ${name}`, before: beforeValue, after: afterValue, numericDelta: parameterDelta(before, after, index, beforeValue, afterValue) });
 }
 
 function compareFormula(majorName: string, before: MinorProcessStepDraft, after: MinorProcessStepDraft, differences: TrialDifference[], baselineTrial: TrialScheme, candidateTrial: TrialScheme) {
-  const beforeMaterials = uniqueIndex(before.materials.filter(external), materialIdentity);
-  const afterMaterials = uniqueIndex(after.materials.filter(external), materialIdentity);
+  const beforeValues = before.materials.filter(external);
+  const afterValues = after.materials.filter(external);
+  reportMissingIdentities(`${majorName} / ${after.stepName} / 配方`, beforeValues, afterValues, materialIdentity, item => item.materialName, differences);
+  const beforeMaterials = groupedIndex(beforeValues, materialIdentity);
+  const afterMaterials = groupedIndex(afterValues, materialIdentity);
   for (const identity of new Set([...beforeMaterials.keys(), ...afterMaterials.keys()])) {
-    const beforeMaterial = beforeMaterials.get(identity);
-    const afterMaterial = afterMaterials.get(identity);
-    const beforeWeight = nullableNumber(beforeMaterial?.weightKg);
-    const afterWeight = nullableNumber(afterMaterial?.weightKg);
-    if (beforeWeight === afterWeight && Boolean(beforeMaterial) === Boolean(afterMaterial)) continue;
-    differences.push({ kind: "FORMULA", path: `${majorName} / ${after.stepName} / ${afterMaterial?.materialName || beforeMaterial?.materialName || identity}`, before: beforeWeight, after: afterWeight });
-    continue;
-  }
-  for (const identity of new Set([...beforeMaterials.keys(), ...afterMaterials.keys()])) {
-    const beforeMaterial = beforeMaterials.get(identity);
-    const afterMaterial = afterMaterials.get(identity);
-    const beforeWeight = beforeMaterial ? nullableNumber(baselineTrial.plannedData.materialWeightsKg[nodeId(beforeMaterial)]) : null;
-    const afterWeight = afterMaterial ? nullableNumber(candidateTrial.plannedData.materialWeightsKg[nodeId(afterMaterial)]) : null;
-    if (beforeWeight === afterWeight) continue;
-    differences.push({ kind: "FORMULA", path: `${majorName} / ${after.stepName} / ${afterMaterial?.materialName || beforeMaterial?.materialName || identity}计划投入`, before: beforeWeight, after: afterWeight });
+    const beforeGroup = beforeMaterials.get(identity) || [];
+    const afterGroup = afterMaterials.get(identity) || [];
+    if (beforeGroup.length !== 1 || afterGroup.length !== 1) {
+      differences.push({ kind: "INCOMPARABLE", path: `${majorName} / ${after.stepName} / 配方 ${identity}（标识不唯一或未匹配）`, before: itemNames(beforeGroup, item => item.materialName), after: itemNames(afterGroup, item => item.materialName) });
+      continue;
+    }
+    const beforeMaterial = beforeGroup[0]!;
+    const afterMaterial = afterGroup[0]!;
+    const beforeActualWeight = nullableNumber(beforeMaterial.weightKg);
+    const afterActualWeight = nullableNumber(afterMaterial.weightKg);
+    if (beforeActualWeight !== afterActualWeight) {
+      differences.push({ kind: "FORMULA", path: `${majorName} / ${after.stepName} / ${afterMaterial.materialName || beforeMaterial.materialName || identity}`, before: beforeActualWeight, after: afterActualWeight });
+    }
+    const beforePlannedWeight = nullableNumber(baselineTrial.plannedData.materialWeightsKg[nodeId(beforeMaterial)]);
+    const afterPlannedWeight = nullableNumber(candidateTrial.plannedData.materialWeightsKg[nodeId(afterMaterial)]);
+    if (beforePlannedWeight !== afterPlannedWeight) {
+      differences.push({ kind: "FORMULA", path: `${majorName} / ${after.stepName} / ${afterMaterial.materialName || beforeMaterial.materialName || identity}计划投入`, before: beforePlannedWeight, after: afterPlannedWeight });
+    }
   }
 }
 
 function compareInputs(majorName: string, before: ProcessInputDraft[], after: ProcessInputDraft[], differences: TrialDifference[]) {
-  const beforeInputs = uniqueIndex(before, inputIdentity);
-  const afterInputs = uniqueIndex(after, inputIdentity);
+  reportMissingIdentities(`${majorName} / 投入`, before, after, inputIdentity, item => item.materialName, differences);
+  const beforeInputs = groupedIndex(before, inputIdentity);
+  const afterInputs = groupedIndex(after, inputIdentity);
   for (const identity of new Set([...beforeInputs.keys(), ...afterInputs.keys()])) {
-    const beforeInput = beforeInputs.get(identity);
-    const afterInput = afterInputs.get(identity);
+    const beforeGroup = beforeInputs.get(identity) || [];
+    const afterGroup = afterInputs.get(identity) || [];
+    if (beforeGroup.length !== 1 || afterGroup.length !== 1) {
+      differences.push({ kind: "INCOMPARABLE", path: `${majorName} / 投入 ${identity}（标识不唯一或未匹配）`, before: itemNames(beforeGroup, item => item.materialName), after: itemNames(afterGroup, item => item.materialName) });
+      continue;
+    }
+    const beforeInput = beforeGroup[0]!;
+    const afterInput = afterGroup[0]!;
     const beforeWeight = nullableNumber(beforeInput?.weightKg);
     const afterWeight = nullableNumber(afterInput?.weightKg);
     if (beforeWeight === afterWeight && Boolean(beforeInput) === Boolean(afterInput)) continue;
@@ -218,19 +242,42 @@ function compareInputs(majorName: string, before: ProcessInputDraft[], after: Pr
   }
 }
 
-function uniqueOriginIndex(trial: TrialScheme) {
-  const entries: Array<[string, MajorProcessDraft]> = [];
+function originGroups(trial: TrialScheme) {
+  const groups = new Map<string, MajorProcessDraft[]>();
   for (const major of trial.plan.majorProcesses) {
     const id = nodeId(major);
     const origin = id ? trial.majorOrigins[id] : undefined;
-    if (origin) entries.push([origin, major]);
+    if (origin) groups.set(origin, [...groups.get(origin) || [], major]);
   }
-  return uniquePairs(entries);
+  return groups;
 }
 
-function uniqueIndex<T>(values: T[], identity: (value: T) => string | null) {
-  return uniquePairs(values.map(value => [identity(value), value] as const).filter((entry): entry is [string, T] => Boolean(entry[0])));
+function appendUnidentifiedMajors(baseline: TrialScheme, candidate: TrialScheme, comparisons: MajorComparison[], differences: TrialDifference[]) {
+  for (const [side, trial] of [["before", baseline], ["after", candidate]] as const) {
+    for (const major of trial.plan.majorProcesses) {
+      const id = nodeId(major);
+      if (id && trial.majorOrigins[id]) continue;
+      const label = major.processName || "未命名大工序";
+      comparisons.push({ candidateMajorId: side === "after" ? id : null, baselineMajorId: side === "before" ? id : null, label, comparable: false, reason: "缺少唯一来源标识，不可按名称或行号比较" });
+      differences.push({ kind: "INCOMPARABLE", path: `${label} / 大工序缺少唯一来源标识`, before: side === "before" ? label : null, after: side === "after" ? label : null });
+    }
+  }
 }
+
+function reportMissingIdentities<T>(path: string, before: T[], after: T[], identity: (value: T) => string | null, name: (value: T) => string, differences: TrialDifference[]) {
+  for (const item of before.filter(value => !identity(value))) {
+    differences.push({ kind: "INCOMPARABLE", path: `${path} / 缺少唯一标识`, before: name(item) || null, after: null });
+  }
+  for (const item of after.filter(value => !identity(value))) {
+    differences.push({ kind: "INCOMPARABLE", path: `${path} / 缺少唯一标识`, before: null, after: name(item) || null });
+  }
+}
+
+function itemNames<T>(items: T[], name: (value: T) => string) {
+  return items.length ? items.map(item => name(item) || "未命名").join("、") : null;
+}
+
+function majorNames(majors: MajorProcessDraft[]) { return itemNames(majors, major => major.processName); }
 
 function groupedIndex<T>(values: T[], identity: (value: T) => string | null) {
   const groups = new Map<string, T[]>();
@@ -245,10 +292,8 @@ function stepNames(steps: MinorProcessStepDraft[]) {
   return steps.length ? steps.map(step => step.stepName || `#${step.sequence}`).join("、") : null;
 }
 
-function uniquePairs<T>(pairs: ReadonlyArray<readonly [string, T]>) {
-  const counts = new Map<string, number>();
-  for (const [key] of pairs) counts.set(key, (counts.get(key) || 0) + 1);
-  return new Map(pairs.filter(([key]) => counts.get(key) === 1));
+function parameterDefinition(name: string | null, unit: string | null) {
+  return name ? `${name}${unit ? `（${unit}）` : ""}` : unit ? `未命名（${unit}）` : null;
 }
 
 function stepIdentity(step: MinorProcessStepDraft) { return textOrNull(step.stepCode); }
@@ -261,11 +306,25 @@ function textOrNull(value: unknown) { return blank(value) ? null : String(value)
 function nullableNumber(value: unknown) { return typeof value === "number" && Number.isFinite(value) ? value : null; }
 function quality(trial: TrialScheme) { return [trial.qualityScore, textOrNull(trial.qualityNotes)].filter(value => value != null).join(" · ") || null; }
 
-function primaryMaterialIdentity(major: MajorProcessDraft) {
+function primaryMaterialIdentity(major: MajorProcessDraft, allMajors: MajorProcessDraft[], visited = new Set<string>()): { identity: string | null; stable: boolean } {
+  const majorId = nodeId(major);
+  if (visited.has(majorId)) return { identity: null, stable: false };
+  visited.add(majorId);
   const primary = [...major.steps].sort((left, right) => left.sequence - right.sequence)
     .flatMap(step => [...step.materials].sort((left, right) => left.sequence - right.sequence))
-    .find(material => material.materialRole === "PRIMARY" && material.sourceType !== "STEP_OUTPUT");
-  return primary ? materialIdentity(primary) || textOrNull(primary.materialName) : null;
+    .filter(material => material.materialRole === "PRIMARY");
+  if (!primary.length) return { identity: null, stable: true };
+  const externalPrimary = primary.filter(material => material.sourceType !== "STEP_OUTPUT");
+  if (externalPrimary.length) {
+    if (externalPrimary.length !== 1) return { identity: null, stable: false };
+    const identity = materialIdentity(externalPrimary[0]!);
+    return { identity, stable: Boolean(identity) };
+  }
+  const sourceId = primary[0]!.sourceStepOutputId;
+  if (!sourceId) return { identity: null, stable: false };
+  const producers = allMajors.filter(candidate => candidate.steps.some(step => (step.outputs || []).some(output => nodeId(output) === sourceId)));
+  if (producers.length !== 1) return { identity: null, stable: false };
+  return primaryMaterialIdentity(producers[0]!, allMajors, visited);
 }
 
 function parameterDelta(before: MinorProcessStepDraft, after: MinorProcessStepDraft, index: 1 | 2, beforeValue: string | null, afterValue: string | null) {
@@ -281,30 +340,7 @@ function parameterDelta(before: MinorProcessStepDraft, after: MinorProcessStepDr
 function strictNumber(value: string) { return /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value.trim()); }
 
 function actualMajorYield(major: MajorProcessDraft): number | null {
-  if (major.yieldBasis === "NONE") return null;
-  const materials = major.steps.flatMap(step => step.materials || []);
-  const outputs = major.steps.flatMap(step => step.outputs || []);
-  let denominator: number | null;
-  if (materials.length) {
-    if (major.yieldBasis === "TOTAL_INPUT") {
-      const externalMaterials = materials.filter(external);
-      denominator = externalMaterials.length && externalMaterials.every(item => nullableNumber(item.weightKg) != null)
-        ? externalMaterials.reduce((sum, item) => sum + (item.weightKg as number), 0)
-        : null;
-    } else {
-      const primary = materials.find(item => item.materialRole === "PRIMARY");
-      denominator = nullableNumber(primary?.weightKg);
-    }
-    const primaryOutput = [...outputs].reverse().find(item => item.primaryOutput);
-    const numerator = nullableNumber(primaryOutput?.weightKg);
-    return denominator != null && denominator > 0 && numerator != null ? numerator / denominator * 100 : null;
-  }
-  const inputs = major.yieldBasis === "TOTAL_INPUT" ? major.inputs : major.inputs.filter(item => item.inputRole === "PRIMARY");
-  const qualified = major.outputs.filter(item => item.outputType === "QUALIFIED");
-  if (!inputs.length || !qualified.length || inputs.some(item => nullableNumber(item.weightKg) == null) || qualified.some(item => nullableNumber(item.weightKg) == null)) return null;
-  denominator = inputs.reduce((sum, item) => sum + (item.weightKg as number), 0);
-  const numerator = qualified.reduce((sum, item) => sum + (item.weightKg as number), 0);
-  return denominator > 0 ? numerator / denominator * 100 : null;
+  return major.yieldBasis === "NONE" ? null : calculateMajorProcessYield(major).mainYieldPercent;
 }
 
 function actualBatchYield(majors: MajorProcessDraft[]) {
