@@ -10,6 +10,7 @@ const password = process.env.RND_PREVIEW_PASSWORD;
 assert.ok(password, 'Set RND_PREVIEW_PASSWORD from the local preview bootstrap configuration');
 assert.match(fs.readFileSync('backend/src/main/resources/application-preview.yml', 'utf8'), /feishu:\s*\n\s*enabled: false/);
 const run = `Task6-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+const intermediateName = `${run} 仅工艺内中间产物`;
 const output = path.resolve('data/preview', run);
 fs.mkdirSync(output, {recursive: true});
 const actors = {}, results = [], handles = {run, output, base};
@@ -75,10 +76,10 @@ const major = (i, input, out) => ({id: `major-${i}`, sequence: i, processCode: `
   yieldBasis: 'PRIMARY_INPUT', remark: '软件测试称重损耗，不构成生产标准', inputs: [], outputs: [], steps: [{id: `step-${i}`, sequence: 1,
     stepCode: `S${i}`, stepName: i === 1 ? '测试修割步骤' : '测试熟制步骤', stepType: 'NORMAL', equipment: '软件示例设备',
     instruction: '按软件测试示例记录投入与产出；这些参数不是经验证的生产标准。', parameter1Name: '测试时间', parameter1Value: '10', parameter1Unit: 'min',
-    materials: [{id: `mat-${i}`, sequence: 1, materialName: '测试主料', materialCode: i === 1 ? 'TEST6-BEEF' : null, materialRole: 'PRIMARY',
+    materials: [{id: `mat-${i}`, sequence: 1, materialName: i === 1 ? '测试主料' : intermediateName, materialCode: i === 1 ? 'TEST6-BEEF' : null, materialRole: 'PRIMARY',
       sourceType: i === 1 ? 'EXTERNAL' : 'STEP_OUTPUT', sourceStepOutputId: i === 1 ? null : 'out-1', weightKg: input, materialState: 'SOLID'},
       ...(i === 1 ? [{id: 'aux', sequence: 2, materialName: '测试辅料', materialCode: 'TEST6-SALT', materialRole: 'AUXILIARY', sourceType: 'EXTERNAL', weightKg: 2, materialState: 'SOLID'}] : [])],
-    outputs: [{id: `out-${i}`, sequence: 1, outputType: i === 1 ? 'INTERMEDIATE' : 'FINISHED', outputName: '测试产出', weightKg: out, materialState: 'SOLID', primaryOutput: true, continueFlow: i === 1}],
+    outputs: [{id: `out-${i}`, sequence: 1, outputType: i === 1 ? 'INTERMEDIATE' : 'FINISHED', outputName: i === 1 ? intermediateName : '测试产出', weightKg: out, materialState: 'SOLID', primaryOutput: true, continueFlow: i === 1}],
     controlPoints: [{id: `cp-${i}`, sequence: 1, controlType: 'QUALITY', importance: 'CRITICAL', itemName: '软件测试温度', targetValue: 75,
       lowerLimit: 70, upperLimit: 85, unit: '℃', method: '软件示例探针', measurementTool: '软件示例仪表', frequency: '每批软件测试',
       deviationAction: '隔离并记录偏差，重新测试后由授权人员确认（软件示例）', basisOrRemark: '软件测试，非生产验证标准',
@@ -180,6 +181,13 @@ try {
   const rev = await api(engineer, 'POST', `${ap}/submit`, submit); handles.revisionId = rev.id;
   const rp = `${pp}/revisions/${rev.id}`;
   verify('formal main yield uses actuals not planned 99%', () => assert.equal(rev.snapshot.batchYieldPercent, 72));
+  verify('intermediate stays an internal output reference without material-master identity', () => {
+    const output = rev.snapshot.majorProcesses[0].steps[0].outputs[0];
+    const input = rev.snapshot.majorProcesses[1].steps[0].materials[0];
+    assert.equal(output.outputName, intermediateName); assert.equal(output.outputType, 'INTERMEDIATE');
+    assert.equal(input.sourceType, 'STEP_OUTPUT'); assert.equal(input.sourceStepOutputId, output.id);
+    assert.equal(input.materialCode, null); assert.equal(input.formulaMaterialId, null);
+  });
   const retry = await api(engineer, 'POST', `${ap}/submit`, submit); verify('retry creates no new revision', () => assert.equal(retry.id, rev.id));
   const displaced = await api(engineer, 'GET', `${rp}/displaced-draft`); verify('displaced draft is recoverable unchanged', () => assert.deepEqual(displaced, newerDraft));
   const source = await api(engineer, 'GET', `${rp}/source`); verify('formal source has submitted trial version only', () => {assert.equal(source.trialId, a.id); assert.equal(source.trialVersionNo, a.versionNo); assert.ok(!('plan' in source));});
@@ -201,7 +209,7 @@ try {
     const file = await download(engineer, `${rp}/artifacts/${arts[type].id}/download`, `formal-${type}.${type === 'SOP_DOCX' ? 'docx' : 'xlsx'}`);
     verify(`${type} immutable source label and actual 102kg`, () => {
       assert.ok(file.text.includes(a.name)); assert.ok(file.text.includes(`V${a.versionNo}`)); assert.ok(file.text.includes(`R${rev.revisionNo}`));
-      assert.match(file.text, /102/); assert.doesNotMatch(file.text, /单价|金额|成本|毛利|税率|利润/);
+      assert.match(file.text, /102/); assert.doesNotMatch(file.text, /单价|金额|成本|毛利|税率|税费|利润|自动报价/);
       if (type === 'FORMULA_XLSX') {
         assert.equal(worksheetRows(file.entries, 1).find(r => r[0] === '合计')[4], 102);
         assert.equal(worksheetRows(file.entries, 2).find(r => r[0] === '合计')[4], 100);
@@ -242,9 +250,15 @@ try {
     assert.equal(worksheetRows(pricingFile.entries, 2).find(r => r[0] === '全流程主料得率 %')[1], 72);
     assert.equal(worksheetRows(pricingFile.entries, 3).find(r => r[0] === '独立成品净重')[2], 74);
     assert.equal(worksheetRows(pricingFile.entries, 3).find(r => r[0] === '独立成品数量')[2], 74);
-    assert.doesNotMatch(pricingFile.text, /单价|金额|成本|毛利|税率|利润/);
+    assert.doesNotMatch(pricingFile.text, /单价|金额|成本|毛利|税率|税费|利润|自动报价/);
   });
   await api('finance', 'GET', `/pricing-files/${pricing.id}/download`, undefined, 'PRICING_FILE_NOT_AVAILABLE_FOR_FINANCE');
+  const completedDetail = await api(engineer, 'GET', `/rnd-tasks/${task.id}/detail`);
+  verify('complete trial/promotion/export workflow leaves experiment external-material records unchanged', () => {
+    // This application exposes experiment-owned material records, not a material-master library API.
+    assert.deepEqual(completedDetail.currentExperimentForm.materials, form.materials);
+    assert.ok(!completedDetail.currentExperimentForm.materials.some(material => material.materialName === intermediateName));
+  });
   handles.artifacts = arts; handles.submittedTrialVersion = submittedA.versionNo;
 } finally {
   persist(); console.log(`RESULT ${results.filter(r => r.passed).length}/${results.length}; evidence=${output}`);

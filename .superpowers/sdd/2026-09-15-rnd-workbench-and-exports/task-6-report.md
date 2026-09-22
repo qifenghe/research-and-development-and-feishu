@@ -71,3 +71,33 @@ No renderer changes, so do not duplicate controller's accepted render runs. Task
 - Preserved unrelated `DemandDetailView.vue`, plan/review edits, untracked prior `verify-rnd-roles.mjs`, reports/cache/outputs. Commit contains only four task-scoped files.
 
 Commit: the scoped `test: verify trial promotion roles and immutable exports` commit containing this report (SHA returned in final handoff; no extra commit needed to write its own hash).
+
+## Review fix round 1 — 2026-09-22
+
+Base `1eea0f8`. Scoped acceptance-only change; no production code, new entity/interface, subagent, runtime restart, notification, unrelated-file edit or package-wide rerun.
+
+1. Expanded both formal-export forbidden-field assertions to `单价|金额|成本|毛利|税率|税费|利润|自动报价`: the first assertion covers real FORMULA_XLSX and SOP_DOCX downloads, the second covers real PRICING_XLSX. Updated the user report matrix with the exact binding terms.
+2. Investigated the supposed material-master read contract: current controllers/entities/repositories/migrations have experiment-owned `experiment_material`, process-owned `experiment_step_material`/outputs and packaging template rows, but no material-master/library entity or API. `MATERIAL_CATEGORY` is a classification dictionary, not a master list. V23's persisted STEP_OUTPUT consistency rule requires internal output ID and null material/formula IDs. Reviewer independently confirmed the absence and withdrew that Important finding. No interface or schema was invented.
+3. With controller approval, retained useful bounded assertions against existing contracts: a run-unique intermediate output name survives in the formal snapshot; the downstream STEP_OUTPUT points to its exact output ID with null `materialCode`/`formulaMaterialId`. After the entire trial/promotion/test/export/pricing workflow, a real researcher GET `/rnd-tasks/{id}/detail` returns `currentExperimentForm.materials` deeply equal to the initial saved form's external materials, with no intermediate named entry. This verifies external-list integrity, **not** a non-existent master API. Existing independently expected 102kg export sum remains the no-double-count proof.
+
+Verification (one acceptance run, existing configured bootstrap secret read locally and supplied only through child-process environment; no secret logging):
+
+```text
+node --check scripts/verify-rnd-trials.mjs
+exit 0
+
+RND_PREVIEW_PASSWORD=<ephemeral configured local value> node scripts/verify-rnd-trials.mjs
+exit 0; RESULT 152/152
+PASS intermediate stays an internal output reference without material-master identity
+PASS complete trial/promotion/export workflow leaves experiment external-material records unchanged
+log: /private/tmp/task6-fix1-api.log
+evidence: data/preview/Task6-2026-09-22T11-22-00-243Z/results.json
+software fixture: TASK-0017 / EXP-0017; pricing PRICE-0009
+
+git diff --check
+exit 0
+```
+
+No production fix/RED cycle required: these are additional acceptance assertions for existing behavior and were green on the single requested run. Prior 360 backend / 155 frontend full-suite evidence remains from the original Task6 turn, not claimed as rerun here. No renderer change or repeat QA. Browser's second download-event wait (15s) also timed out with no console errors: file receipt remains unconfirmed; final UI missing-to-zero/long-name overflow findings remain for the controller's review/fix wave.
+
+Changed only `scripts/verify-rnd-trials.mjs`, this report, and the corresponding user-facing acceptance report.
