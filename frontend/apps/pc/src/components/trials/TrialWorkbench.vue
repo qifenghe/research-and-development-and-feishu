@@ -74,8 +74,7 @@
                     <small>{{ actualAndDifference(`material:${nodeId(material)}`, "kg") }}</small>
                   </div>
                   <div class="planned-grid">
-                    <a-form-item :label="`${step.parameter1Name || '参数 1'}计划值`"><a-input :value="plannedParameter(step, 1)" :disabled="!editable" @update:value="setPlannedParameter(step, 1, $event)" /><small>{{ actualAndDifference(`parameter:${nodeId(step)}:1`) }}</small></a-form-item>
-                    <a-form-item :label="`${step.parameter2Name || '参数 2'}计划值`"><a-input :value="plannedParameter(step, 2)" :disabled="!editable" @update:value="setPlannedParameter(step, 2, $event)" /><small>{{ actualAndDifference(`parameter:${nodeId(step)}:2`) }}</small></a-form-item>
+                    <a-form-item v-for="parameter in effectiveStepParameters(step)" :key="parameter.key" :label="`${parameter.name || '未命名参数'}计划值 ${parameter.unit || ''}`"><a-input :value="plannedParameterValue(step, parameter.key)" :disabled="!editable" @update:value="setParameterValue(step, parameter.key, $event)" /><small>{{ actualAndDifference(`parameter:${nodeId(step)}:${step.parameters == null ? parameter.key.replace('legacy-', '') : parameter.key}`, parameter.unit) }}</small></a-form-item>
                     <a-form-item label="大工序目标得率"><a-input-number :value="plannedMajorYield(major)" :disabled="!editable" :min="0" :max="1000" addon-after="%" style="width:100%" @update:value="setPlannedMajorYield(major, $event)" /><small>{{ actualAndDifference(`yield:${nodeId(major)}`, "%") }}</small></a-form-item>
                     <a-form-item label="最终目标得率"><a-input-number v-model:value="currentTrial.plannedData.batchYieldTarget" :disabled="!editable" :min="0" :max="1000" addon-after="%" style="width:100%" @update:value="markDirty" /><small>{{ actualAndDifference("yield:batch", "%") }}</small></a-form-item>
                   </div>
@@ -127,7 +126,7 @@ import ProcessExportPreview from "../process/ProcessExportPreview.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from "vue-router";
 import { message, Modal } from "ant-design-vue";
-import { createEmptyProcessPlan, normalizeProcessPlan, type ControlPointDraft, type MajorProcessDraft, type MinorProcessStepDraft, type ProcessPlanDraft, type ProcessRevision, type ProcessStepMaterialDraft } from "@rnd/shared";
+import { effectiveStepParameters, createEmptyProcessPlan, normalizeProcessPlan, type ControlPointDraft, type MajorProcessDraft, type MinorProcessStepDraft, type ProcessPlanDraft, type ProcessRevision, type ProcessStepMaterialDraft } from "@rnd/shared";
 import { api } from "../../services/api";
 import { trialApi, type TrialPlannedData, type TrialPromotionPreview, type TrialScheme } from "../../services/trialApi";
 import MajorProcessBoard from "../process/MajorProcessBoard.vue";
@@ -438,8 +437,25 @@ function discardStaleCache() { const trial = currentTrial.value; const key = tri
 
 function plannedMaterial(material: ProcessStepMaterialDraft) { return currentTrial.value?.plannedData.materialWeightsKg[nodeId(material)]; }
 function setPlannedMaterial(material: ProcessStepMaterialDraft, value: number | null) { const data = currentTrial.value?.plannedData; if (!data || !editable.value) return; setRecordValue(data.materialWeightsKg, nodeId(material), value); markDirty(); }
-function plannedParameter(step: MinorProcessStepDraft, index: 1 | 2) { const value = currentTrial.value?.plannedData.stepParameters[nodeId(step)]; return index === 1 ? value?.parameter1Value : value?.parameter2Value; }
-function setPlannedParameter(step: MinorProcessStepDraft, index: 1 | 2, value: string) { const data = currentTrial.value?.plannedData; if (!data || !editable.value) return; const key = nodeId(step); const current = data.stepParameters[key] || { parameter1Value: null, parameter2Value: null }; data.stepParameters[key] = { ...current, [index === 1 ? "parameter1Value" : "parameter2Value"]: text(value) }; if (!data.stepParameters[key].parameter1Value && !data.stepParameters[key].parameter2Value) delete data.stepParameters[key]; markDirty(); }
+function plannedParameterValue(step: MinorProcessStepDraft, key: string) {
+  const data=currentTrial.value?.plannedData;if(!data)return undefined;
+  if(data.parameterValues!=null)return data.parameterValues[nodeId(step)]?.[key];
+  return key==='legacy-1'?data.stepParameters[nodeId(step)]?.parameter1Value:key==='legacy-2'?data.stepParameters[nodeId(step)]?.parameter2Value:undefined;
+}
+function setParameterValue(step: MinorProcessStepDraft, key: string, value: string) {
+  const data=currentTrial.value?.plannedData;if(!data||!editable.value)return;
+  if(data.parameterValues==null) {
+    data.parameterValues={};
+    for(const [id,legacy] of Object.entries(data.stepParameters)) {
+      data.parameterValues[id]={};
+      if(legacy.parameter1Value!=null)data.parameterValues[id]!['legacy-1']=legacy.parameter1Value;
+      if(legacy.parameter2Value!=null)data.parameterValues[id]!['legacy-2']=legacy.parameter2Value;
+    }
+    data.parameterValues=pruneParameterPlans(currentTrial.value!.plan,data.parameterValues)!;
+  }
+  (data.parameterValues[nodeId(step)]||={})[key]=value;
+  data.stepParameters={};markDirty();
+}
 function plannedMajorYield(major: MajorProcessDraft) { return currentTrial.value?.plannedData.majorYieldTargets[nodeId(major)]; }
 function setPlannedMajorYield(major: MajorProcessDraft, value: number | null) { const data = currentTrial.value?.plannedData; if (!data || !editable.value) return; setRecordValue(data.majorYieldTargets, nodeId(major), value); markDirty(); }
 function setRecordValue(record: Record<string, number>, key: string, value: number | null) { if (value == null) delete record[key]; else record[key] = value; }

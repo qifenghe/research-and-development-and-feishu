@@ -43,9 +43,7 @@
             <a-col :span="12"><a-form-item label="步骤名称"><a-input v-model:value="selectedStep.stepName" :disabled="readonly" @update:value="publishLocal" /></a-form-item></a-col>
             <a-col :span="12"><a-form-item label="步骤类型"><a-select v-model:value="selectedStep.stepType" :disabled="readonly" :options="stepTypes" @update:value="publishLocal" /></a-form-item></a-col>
           </a-row>
-          <a-row :gutter="10">
-            <a-col v-for="field in parameterFields" :key="field.key" :span="8"><a-form-item :label="field.label"><a-input v-model:value="selectedStep[field.key]" :disabled="readonly" :placeholder="field.placeholder" @update:value="publishLocal" /></a-form-item></a-col>
-          </a-row>
+          <StepParameterEditor :key="selectedStep.key" :model-value="effectiveStepParameters(selectedStep)" :operation="selectedStep.stepName" :readonly="readonly" @update:model-value="replaceParameters" />
           <a-form-item label="设备"><a-input v-model:value="selectedStep.equipment" :disabled="readonly" @update:value="publishLocal" /></a-form-item>
           <a-form-item label="操作要求"><a-textarea v-model:value="selectedStep.instruction" :disabled="readonly" :rows="2" @update:value="publishLocal" /></a-form-item>
         </a-form>
@@ -64,6 +62,7 @@
           <a-input v-model:value="material.materialName" :disabled="readonly" placeholder="物料名称" @update:value="publishLocal" />
           <a-input-number v-model:value="material.weightKg" :disabled="readonly" :min="0" addon-after="kg" @update:value="publishLocal" />
           <a-button v-if="!readonly" type="text" danger @click="removeMaterial(index)">删除</a-button>
+          <details class="material-details"><summary>加入时机与方式{{ material.additionTiming ? ` · ${material.additionTiming}` : '' }}</summary><a-input v-model:value="material.additionTiming" :disabled="readonly" placeholder="何时加入，例如水沸后加入" @update:value="publishLocal" /><a-input v-model:value="material.additionMethod" :disabled="readonly" placeholder="如何加入，例如分三次均匀加入" @update:value="publishLocal" /></details>
         </div>
       </section>
 
@@ -97,8 +96,11 @@ import {
   mainYieldUnavailableReason,
   nextProcessKey, normalizeProcessPlan, type ControlPointDraft, type MinorProcessStepDraft,
   type ProcessPlanDraft, type ProcessStepMaterialDraft, type StepOutputDraft,
+  effectiveStepParameters, type StepParameterDraft,
 } from "@rnd/shared";
 import ControlPointEditor from "./ControlPointEditor.vue";
+import StepParameterEditor from "./StepParameterEditor.vue";
+import { summaryParameters } from "./stepParameterTemplates";
 import { confirmProcessPlanRepair, previousFlowOutputs, type RemovedFlowConsumer } from "./processPlanFlow";
 import { cloneVueValue } from "./cloneVueValue";
 import { externalActualTotal, actualKg } from "./actualSummary";
@@ -123,16 +125,12 @@ const majorYieldReason = computed(() => major.value ? mainYieldUnavailableReason
 const finalYield = computed(() => calculateBatchYield(localPlan.value));
 const recipeTotal = computed(() => externalActualTotal(localPlan.value));
 
-const stepTemplates = ["验收", "解冻", "清洗", "修割", "配料", "滚揉", "腌制", "焯水", "煎制", "炒制", "油炸", "煮制", "冷却", "速冻", "包装", "金检", "研发取样"];
+const stepTemplates = ["验收", "解冻", "清洗", "修割", "切块", "配料", "滚揉", "搅拌", "斩拌", "腌制", "焯水", "煎制", "炒制", "油炸", "煮制", "蒸煮", "冷却", "速冻", "包装", "金检", "研发取样"];
 const materialRoles = [{ label: "主料", value: "PRIMARY" }, { label: "辅料", value: "AUXILIARY" }, { label: "加工用水", value: "PROCESS_WATER" }];
 const sourceTypes = [{ label: "外部物料", value: "EXTERNAL" }, { label: "前序中间产物", value: "STEP_OUTPUT" }];
 const states = [{ label: "固体", value: "SOLID" }, { label: "液体", value: "LIQUID" }, { label: "半固体", value: "SEMI_SOLID" }];
 const outputTypes = [{ label: "中间产物", value: "INTERMEDIATE" }, { label: "成品", value: "FINISHED" }, { label: "合格产出", value: "QUALIFIED" }, { label: "余料", value: "REUSABLE" }, { label: "尾料", value: "TAILING" }, { label: "取样", value: "SAMPLE" }, { label: "废弃", value: "WASTE" }];
 const stepTypes = [{ label: "普通操作", value: "NORMAL" }, { label: "称重点", value: "WEIGH" }, { label: "物料变化", value: "MATERIAL_CHANGE" }, { label: "研发取样", value: "SAMPLE" }, { label: "废弃节点", value: "WASTE" }];
-const parameterFields = [
-  { key: "parameter1Name" as const, label: "参数 1", placeholder: "温度" }, { key: "parameter1Value" as const, label: "值", placeholder: "" }, { key: "parameter1Unit" as const, label: "单位", placeholder: "" },
-  { key: "parameter2Name" as const, label: "参数 2", placeholder: "时间" }, { key: "parameter2Value" as const, label: "值", placeholder: "" }, { key: "parameter2Unit" as const, label: "单位", placeholder: "" },
-];
 
 watch(() => props.modelValue, value => {
   localPlan.value = clonePlan(value);
@@ -262,6 +260,12 @@ function removeMaterial(index: number) { selectedStep.value?.materials.splice(in
 function addOutput() { if (!selectedStep.value) return; const id = nextProcessKey("output"); (selectedStep.value.outputs ||= []).push({ id, key: id, sequence: selectedStep.value.outputs.length + 1, outputType: "INTERMEDIATE", outputName: "", materialState: "SOLID", primaryOutput: false, continueFlow: true }); publishLocal(); }
 function removeOutput(index: number) { if (!selectedStep.value) return; selectedStep.value.outputs?.splice(index, 1); void publish(clonePlan(localPlan.value)); }
 function replaceControls(value: ControlPointDraft[]) { if (!selectedStep.value) return; selectedStep.value.controlPoints = cloneVueValue(value); publishLocal(); }
+function replaceParameters(value: StepParameterDraft[]) {
+  if (!selectedStep.value || props.readonly) return;
+  selectedStep.value.parameters = value;
+  for (const index of [1,2] as const) { selectedStep.value[`parameter${index}Name`]=undefined; selectedStep.value[`parameter${index}Value`]=undefined; selectedStep.value[`parameter${index}Unit`]=undefined; }
+  publishLocal();
+}
 function confirmPass(point: ControlPointDraft) { emit("confirm-pass", cloneVueValue(point)); }
 function confirmDeviation(point: ControlPointDraft) { emit("confirm-deviation", cloneVueValue(point)); }
 function onSourceChange(material: ProcessStepMaterialDraft) {
@@ -293,7 +297,7 @@ async function dropAt(event: DragEvent, index: number) {
     if (data.index !== target) await moveStep(data.index, target - data.index);
   }
 }
-function parameterSummary(step: MinorProcessStepDraft) { return [[step.parameter1Name, step.parameter1Value, step.parameter1Unit].filter(Boolean).join(" "), [step.parameter2Name, step.parameter2Value, step.parameter2Unit].filter(Boolean).join(" ")].filter(Boolean).join(" · ") || "关键参数待设置"; }
+function parameterSummary(step: MinorProcessStepDraft) { const all=effectiveStepParameters(step),selected=summaryParameters(all); return [selected.map(p=>`${p.name || '未命名'} ${p.actualValue ?? '待补充'} ${p.unit || ''}`).join(' · '),all.length>selected.length?`另有 ${all.length-selected.length} 项，展开查看`:''].filter(Boolean).join(' · ') || "关键参数待设置"; }
 function percent(value: number | null) { return value == null ? "待补充" : `${value.toFixed(2)}%`; }
 </script>
 
@@ -323,6 +327,7 @@ function percent(value: number | null) { return value == null ? "待补充" : `$
 .material-row, .output-row { display: grid; gap: 6px; align-items: center; margin-top: 6px; }
 .material-row, .output-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .material-row > *, .output-row > *, .step-editor { min-width: 0; width: 100%; }
+.material-details { grid-column:1/-1; padding:6px 0; color:#667085; font-size:12px; }.material-details summary { cursor:pointer; }.material-details :deep(.ant-input) { margin-top:6px; }
 .live { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; background: #f0f7ff; }
 .live b, .live span { display: block; } .live span { margin-top: 3px; color: #1677ff; }
 .live em { display: block; margin-top: 4px; color: #d46b08; font-size: 11px; font-style: normal; line-height: 1.35; }

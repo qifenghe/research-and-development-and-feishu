@@ -49,6 +49,27 @@ function trial(id: "trial-a" | "trial-b") {
 }
 
 let server: ViteDevServer;
+test("parameter editor adds edits reorders confirms deletion and refuses readonly mutation", async () => {
+  let value: any[] = [];
+  const props: any = { modelValue:value, "onUpdate:modelValue": (next:any[]) => { value=next; app._instance.props.modelValue=next; } };
+  const {app,setup}=await mountSetup("/src/components/process/StepParameterEditor.vue",props);
+  try {
+    for (const name of ["转速","压力","运行时间","暂停时间"]) { setup.addParameter(name); await flush(); }
+    assert.deepEqual(value.map(p=>p.name),["转速","压力","运行时间","暂停时间"]);
+    const key=value[1].key;
+    setup.updateParameter(key,{actualValue:"-0.08",measurementBasis:"GAUGE"}); await flush();
+    assert.equal(value[1].measurementBasis,"GAUGE");
+    setup.moveParameter(key,-1); await flush(); assert.equal(value[0].key,key);
+    await setup.removeParameter(key,async()=>false); await flush(); assert.equal(value.length,4);
+    await setup.removeParameter(key,async()=>true); await flush(); assert.equal(value.length,3);
+    app._instance.props.readonly=true; await flush();
+    setup.addParameter("不能添加"); setup.updateParameter(value[0].key,{actualValue:"9"});
+    await setup.removeParameter(value[0].key,async()=>true); await flush(); assert.equal(value.length,3); assert.equal(value[0].actualValue,undefined);
+    app._instance.props.readonly=false; await flush();
+    setup.appendTemplate("滚筒转速"); await flush(); setup.appendTemplate("滚筒转速"); await flush();
+    assert.equal(value.length,5); assert.notEqual(value[3].key,value[4].key); assert.equal(value[4].actualValue,undefined);
+  } finally { app.unmount(); }
+});
 test("step template drop appends repeated independent steps and selects each newly added step", async () => {
   let plan: any = observedPlan();
   plan.majorProcesses[0].steps = [];

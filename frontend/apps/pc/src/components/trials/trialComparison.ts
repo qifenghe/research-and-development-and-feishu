@@ -88,7 +88,7 @@ export function plannedActualRows(trial: TrialScheme): PlannedActualRow[] {
           complete: !blank(parameter.actualValue), reason: comparison.reason });
       }
       else for (const [index, name, actual] of [[1, step.parameter1Name, step.parameter1Value], [2, step.parameter2Name, step.parameter2Value]] as const) {
-        const target = index === 1 ? stepPlan?.parameter1Value : stepPlan?.parameter2Value;
+        const target = planned.parameterValues != null ? planned.parameterValues[stepId]?.[`legacy-${index}`] : index === 1 ? stepPlan?.parameter1Value : stepPlan?.parameter2Value;
         if (blank(target) && blank(actual)) continue;
         const unit = (index === 1 ? step.parameter1Unit : step.parameter2Unit) || "";
         const difference = !blank(name) && !blank(unit) && strictNumber(String(target ?? "")) && strictNumber(String(actual ?? "")) ? numericDifference(Number(target), Number(actual)) : null;
