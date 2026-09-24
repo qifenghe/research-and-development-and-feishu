@@ -1,4 +1,5 @@
 import type { ExperimentProcessStep } from "./types";
+import type { StepParameterDraft } from "./step-parameters";
 
 export type ProcessMaterialRole = "PRIMARY" | "AUXILIARY" | "PROCESS_WATER";
 export type ProcessOutputType = "QUALIFIED" | "REUSABLE" | "TAILING" | "SAMPLE" | "WASTE" | "HOLD";
@@ -18,6 +19,8 @@ export interface ProcessStepMaterialDraft {
   remark?: string;
   sourceType?: "EXTERNAL" | "STEP_OUTPUT";
   sourceStepOutputId?: string;
+  additionTiming?: string;
+  additionMethod?: string;
 }
 
 export interface StepOutputDraft {
@@ -68,6 +71,7 @@ export interface ControlPointDraft {
 }
 
 export interface MinorProcessStepDraft {
+  parameters?: StepParameterDraft[] | null;
   id?: string;
   key: string;
   sequence: number;

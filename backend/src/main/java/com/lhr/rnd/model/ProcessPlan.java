@@ -63,6 +63,9 @@ public record ProcessPlan(
     ) {
     }
 
+    public record StepParameter(String key, String name, String valueType, String unit, String actualValue,
+            String lowerLimit, String upperLimit, String measurementBasis, String remark, boolean showInSummary) {}
+
     public record MinorStep(
             String id,
             int sequence,
@@ -79,8 +82,23 @@ public record ProcessPlan(
             String instruction,
             List<StepMaterial> materials,
             List<StepOutput> outputs,
-            List<ControlPoint> controlPoints
+            List<ControlPoint> controlPoints,
+            List<StepParameter> parameters
     ) {
+        public MinorStep {
+            if (parameters != null) {
+                parameters = List.copyOf(parameters);
+                parameter1Name = null; parameter1Value = null; parameter1Unit = null;
+                parameter2Name = null; parameter2Value = null; parameter2Unit = null;
+            }
+        }
+        public MinorStep(String id, int sequence, String stepCode, String stepName, String stepType,
+                String parameter1Name, String parameter1Value, String parameter1Unit, String parameter2Name,
+                String parameter2Value, String parameter2Unit, String equipment, String instruction,
+                List<StepMaterial> materials, List<StepOutput> outputs, List<ControlPoint> controlPoints) {
+            this(id, sequence, stepCode, stepName, stepType, parameter1Name, parameter1Value, parameter1Unit,
+                parameter2Name, parameter2Value, parameter2Unit, equipment, instruction, materials, outputs, controlPoints, null);
+        }
         public MinorStep(
                 String id,
                 int sequence,
@@ -113,8 +131,16 @@ public record ProcessPlan(
             String formulaMaterialId,
             String remark,
             String sourceType,
-            String sourceStepOutputId
+            String sourceStepOutputId,
+            String additionTiming,
+            String additionMethod
     ) {
+        public StepMaterial(String id, int sequence, String materialRole, String materialCode, String materialName,
+                String materialState, BigDecimal weightKg, String formulaMaterialId, String remark,
+                String sourceType, String sourceStepOutputId) {
+            this(id, sequence, materialRole, materialCode, materialName, materialState, weightKg, formulaMaterialId,
+                remark, sourceType, sourceStepOutputId, null, null);
+        }
         public StepMaterial(
                 String id,
                 int sequence,

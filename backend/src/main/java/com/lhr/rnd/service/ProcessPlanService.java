@@ -2,6 +2,9 @@ package com.lhr.rnd.service;
 
 import com.lhr.rnd.api.BusinessException;
 import com.lhr.rnd.domain.ProcessPlanCalculationService;
+import com.lhr.rnd.domain.StepParameterService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.lhr.rnd.model.ProcessPlan;
 import com.lhr.rnd.persistence.repository.ExperimentFormRepository;
 import com.lhr.rnd.persistence.repository.ExperimentProcessRepository;
@@ -26,6 +29,7 @@ public class ProcessPlanService {
     private final ExperimentProcessRepository legacyRepository;
     private final AuditLogService auditLogService;
     private final ProcessPlanCalculationService calculations = new ProcessPlanCalculationService();
+    private static final ObjectMapper PARAMETER_JSON = new ObjectMapper();
 
     public ProcessPlanService(
             JdbcTemplate jdbc,
@@ -157,7 +161,7 @@ public class ProcessPlanService {
                 values(major.steps()).stream().map(step -> new ProcessPlan.MinorStep(step.id(), step.sequence(), step.stepCode(), step.stepName(),
                         step.stepType(), step.parameter1Name(), step.parameter1Value(), step.parameter1Unit(), step.parameter2Name(),
                         step.parameter2Value(), step.parameter2Unit(), step.equipment(), step.instruction(), step.materials(), step.outputs(),
-                        values(step.controlPoints()).stream().map(point -> sanitizeControlConfirmation(formId, major, step, point, principal)).toList())).toList(),
+                        values(step.controlPoints()).stream().map(point -> sanitizeControlConfirmation(formId, major, step, point, principal)).toList(), step.parameters())).toList(),
                 major.inputs(), major.outputs(), major.yield())).toList();
         return new ProcessPlan(request.id(), request.experimentFormId(), request.versionNo(), request.status(), majors,
                 request.batchYieldPercent(), request.balanceToleranceKg(), request.legacy(), request.sourceRevisionId(), request.changeReason());
@@ -390,11 +394,12 @@ public class ProcessPlanService {
         if (step.stepName() == null || step.stepName().isBlank())
             throw new BusinessException("STEP_NAME_REQUIRED", "小步骤名称不能为空");
         calculations.validateStep(step);
+        StepParameterService.validate(step);
         var stepId = valueOr(step.id(), id("ST"));
-        jdbc.update("insert into experiment_minor_step(id, major_process_id, sequence, step_code, step_name, step_type, parameter_1_name, parameter_1_value, parameter_1_unit, parameter_2_name, parameter_2_value, parameter_2_unit, equipment, instruction) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        jdbc.update("insert into experiment_minor_step(id, major_process_id, sequence, step_code, step_name, step_type, parameter_1_name, parameter_1_value, parameter_1_unit, parameter_2_name, parameter_2_value, parameter_2_unit, equipment, instruction, parameters_json) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 stepId, majorId, sequence, step.stepCode(), step.stepName(), valueOr(step.stepType(), "NORMAL"),
                 step.parameter1Name(), step.parameter1Value(), step.parameter1Unit(), step.parameter2Name(),
-                step.parameter2Value(), step.parameter2Unit(), step.equipment(), step.instruction());
+                step.parameter2Value(), step.parameter2Unit(), step.equipment(), step.instruction(), parameterJson(step.parameters()));
         var outputs = step.outputs() == null ? List.<ProcessPlan.StepOutput>of() : step.outputs();
         for (int index = 0; index < outputs.size(); index++) {
             var item = outputs.get(index);
@@ -408,10 +413,10 @@ public class ProcessPlanService {
         for (int index = 0; index < materials.size(); index++) {
             var item = materials.get(index);
             requireNonNegative(item.weightKg());
-            jdbc.update("insert into experiment_step_material(id, minor_step_id, sequence, material_role, material_code, material_name, material_state, weight_kg, formula_material_id, remark, source_type, source_step_output_id) values (?,?,?,?,?,?,?,?,?,?,?,?)",
+            jdbc.update("insert into experiment_step_material(id, minor_step_id, sequence, material_role, material_code, material_name, material_state, weight_kg, formula_material_id, remark, source_type, source_step_output_id, addition_timing, addition_method) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     preserveMaterialIds ? valueOr(item.id(), id("MAT")) : id("MAT"), stepId, index + 1, valueOr(item.materialRole(), "AUXILIARY"), item.materialCode(),
                     valueOr(item.materialName(), "未命名物料"), valueOr(item.materialState(), "SOLID"), item.weightKg(),
-                    item.formulaMaterialId(), item.remark(), valueOr(item.sourceType(), "EXTERNAL"), item.sourceStepOutputId());
+                    item.formulaMaterialId(), item.remark(), valueOr(item.sourceType(), "EXTERNAL"), item.sourceStepOutputId(), item.additionTiming(), item.additionMethod());
         }
         var controlPoints = step.controlPoints() == null ? List.<ProcessPlan.ControlPoint>of() : step.controlPoints();
         for (int index = 0; index < controlPoints.size(); index++) {
@@ -458,7 +463,7 @@ public class ProcessPlanService {
                         item.getString("material_role"), item.getString("material_code"), item.getString("material_name"),
                         item.getString("material_state"), item.getBigDecimal("weight_kg"),
                         item.getString("formula_material_id"), item.getString("remark"), item.getString("source_type"),
-                        item.getString("source_step_output_id")), stepId);
+                        item.getString("source_step_output_id"), item.getString("addition_timing"), item.getString("addition_method")), stepId);
         var outputs = jdbc.query("select * from experiment_step_output where minor_step_id = ? order by sequence",
                 (item, row) -> new ProcessPlan.StepOutput(item.getString("id"), item.getInt("sequence"),
                         item.getString("output_type"), item.getString("output_name"), item.getString("material_state"),
@@ -469,7 +474,18 @@ public class ProcessPlanService {
         return new ProcessPlan.MinorStep(stepId, rs.getInt("sequence"), rs.getString("step_code"), rs.getString("step_name"),
                 rs.getString("step_type"), rs.getString("parameter_1_name"), rs.getString("parameter_1_value"),
                 rs.getString("parameter_1_unit"), rs.getString("parameter_2_name"), rs.getString("parameter_2_value"),
-                rs.getString("parameter_2_unit"), rs.getString("equipment"), rs.getString("instruction"), materials, outputs, controlPoints);
+                rs.getString("parameter_2_unit"), rs.getString("equipment"), rs.getString("instruction"), materials, outputs, controlPoints, readParameters(rs.getString("parameters_json")));
+    }
+
+    private static String parameterJson(List<ProcessPlan.StepParameter> parameters) {
+        if (parameters == null) return null;
+        try { return PARAMETER_JSON.writeValueAsString(parameters); }
+        catch (java.io.IOException e) { throw new IllegalStateException("Cannot serialize step parameters",e); }
+    }
+    private static List<ProcessPlan.StepParameter> readParameters(String json) {
+        if (json == null) return null;
+        try { return PARAMETER_JSON.readValue(json,new TypeReference<List<ProcessPlan.StepParameter>>() {}); }
+        catch (java.io.IOException e) { throw new IllegalStateException("Cannot read step parameters",e); }
     }
 
     private ProcessPlan.ControlPoint mapControlPoint(ResultSet item) throws SQLException {
