@@ -463,10 +463,15 @@ public class ProcessArtifactService {
     private String joinSteps(ProcessPlan plan, List<ProcessRecipeService.RecipeSource> sources) {
         var names = new LinkedHashMap<String, String>();
         for (var major : values(plan.majorProcesses())) for (var step : values(major.steps())) {
-            names.put(major.sequence() + "." + step.sequence(), major.sequence() + "." + step.sequence() + " " + value(step.stepName()));
+            for (var material : values(step.materials())) {
+                var detail = major.sequence() + "." + step.sequence() + " " + value(step.stepName()) + "：实际 " + ExportDisplayFormat.actualKg(material.weightKg());
+                if (!blank(material.additionTiming())) detail += "；加入时机：" + material.additionTiming();
+                if (!blank(material.additionMethod())) detail += "；加入方式：" + material.additionMethod();
+                names.put(major.sequence() + "." + step.sequence() + "." + material.sequence(), detail);
+            }
         }
-        return sources.stream().map(source -> names.getOrDefault(source.majorSequence() + "." + source.stepSequence(),
-                source.majorSequence() + "." + source.stepSequence())).distinct().collect(Collectors.joining("；"));
+        return sources.stream().map(source -> names.getOrDefault(source.majorSequence() + "." + source.stepSequence() + "." + source.materialSequence(),
+                source.majorSequence() + "." + source.stepSequence())).collect(Collectors.joining("\n"));
     }
 
     private String percent(BigDecimal value) {

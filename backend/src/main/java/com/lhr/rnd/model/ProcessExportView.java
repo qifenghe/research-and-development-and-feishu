@@ -23,6 +23,10 @@ public record ProcessExportView(String productName, String sourceLabel, ProcessP
         return new ProcessExportView(productName, sourceLabel, snapshot, externalInputKg, mainYieldPercent, ingredients,
                 majors, finishedQuantity, packaging, issues, metadata);
     }
+    public ProcessExportView withIssues(List<Issue> issues) {
+        return new ProcessExportView(productName, sourceLabel, snapshot, externalInputKg, mainYieldPercent, ingredients,
+                majors, finishedQuantity, packaging, List.copyOf(issues), metadata);
+    }
     public record Ingredient(String materialCode, String materialName, String role, BigDecimal weightKg,
                              int majorSequence, int stepSequence) {}
     public record Major(int sequence, String name, String yieldBasis, BigDecimal primaryInputKg,

@@ -28,6 +28,7 @@ public final class SopDocumentRenderer {
                            String compiledBy, LocalDateTime compiledAt, boolean preview) {}
 
     public byte[] render(ProcessExportView view, Metadata metadata) throws Exception {
+        view = view.withIssues(new ProcessExportCheckService().check(view, "SOP_DOCX").issues());
         try (var document = new XWPFDocument(); var output = new ByteArrayOutputStream()) {
             configurePage(document);
             title(document, view.productName() + " 研发 SOP");
@@ -133,7 +134,9 @@ public final class SopDocumentRenderer {
         for (var material : materials) {
             var row = createRow(table, widths);
             cell(row, 0, "EXTERNAL".equals(material.sourceType()) ? "实际外部投料" : producerLabel(plan, material.sourceStepOutputId()));
-            cell(row, 1, join("\n", material.materialName(), material.materialCode()));
+            cell(row, 1, join("\n", material.materialName(), material.materialCode(),
+                    ExportDisplayFormat.blank(material.additionTiming()) ? null : "加入时机：" + material.additionTiming(),
+                    ExportDisplayFormat.blank(material.additionMethod()) ? null : "加入方式：" + material.additionMethod()));
             cell(row, 2, join(" / ", ExportDisplayFormat.materialRole(material.materialRole()), ExportDisplayFormat.materialState(material.materialState())));
             cell(row, 3, ExportDisplayFormat.actualKg(material.weightKg()));
             if (remarks) cell(row, 4, ExportDisplayFormat.optional(material.remark()));
@@ -144,8 +147,7 @@ public final class SopDocumentRenderer {
         sectionLabel(document, "操作、设备与" + actualPrefix + "实际参数");
         var rows = new ArrayList<String[]>();
         if (!ExportDisplayFormat.blank(step.equipment())) rows.add(pair("设备工具", step.equipment()));
-        var parameters = join("；", parameter(step.parameter1Name(), step.parameter1Value(), step.parameter1Unit()),
-                parameter(step.parameter2Name(), step.parameter2Value(), step.parameter2Unit()));
+        var parameters = com.lhr.rnd.domain.StepParameterService.effective(step).stream().map(this::parameter).collect(Collectors.joining("\n"));
         if (!ExportDisplayFormat.blank(parameters)) rows.add(pair(actualPrefix + "实际参数", parameters));
         rows.add(pair("操作要求", ExportDisplayFormat.required(step.instruction())));
         rows.add(pair(actualPrefix + "步骤得率", ExportDisplayFormat.percent(calculations.calculateStep(step).mainYieldPercent())));
@@ -314,7 +316,10 @@ public final class SopDocumentRenderer {
 
     private void setMargin(CTTblWidth margin, long width) { margin.setType(STTblWidth.DXA); margin.setW(java.math.BigInteger.valueOf(width)); }
     private XWPFRun run(XWPFParagraph paragraph, String text, double size, boolean bold) {
-        var run = paragraph.createRun(); run.setText(text == null ? "" : text); run.setFontFamily(FONT); run.setFontSize(size); run.setBold(bold); run.setColor("000000");
+        var run = paragraph.createRun();
+        var lines = (text == null ? "" : text).split("\\R", -1);
+        for (int index = 0; index < lines.length; index++) { if (index > 0) run.addBreak(); run.setText(lines[index]); }
+        run.setFontFamily(FONT); run.setFontSize(size); run.setBold(bold); run.setColor("000000");
         var fonts = run.getCTR().isSetRPr() && run.getCTR().getRPr().sizeOfRFontsArray() > 0 ? run.getCTR().getRPr().getRFontsArray(0) : run.getCTR().getRPr().addNewRFonts();
         fonts.setEastAsia(FONT); fonts.setAscii(FONT); fonts.setHAnsi(FONT);
         return run;
@@ -387,8 +392,14 @@ public final class SopDocumentRenderer {
         }
         return values.isEmpty() ? (ExportDisplayFormat.blank(control.basisOrRemark()) ? "目标或范围：待填写" : "定性要求/依据：" + control.basisOrRemark()) : String.join("；", values);
     }
-    private String parameter(String name, String value, String unit) {
-        return ExportDisplayFormat.blank(name) ? "" : name.trim() + " " + ExportDisplayFormat.required(value) + ExportDisplayFormat.optional(unit);
+    private String parameter(ProcessPlan.StepParameter parameter) {
+        var basis = switch(parameter.measurementBasis() == null ? "" : parameter.measurementBasis()) {
+            case "GAUGE" -> "表压"; case "ABSOLUTE" -> "绝对压力"; case "DEVICE_PERCENT" -> "设备显示百分比"; default -> parameter.measurementBasis();
+        };
+        return join("；", (ExportDisplayFormat.blank(parameter.name()) ? "未命名参数" : parameter.name()) + " "
+                        + ExportDisplayFormat.required(parameter.actualValue()) + ExportDisplayFormat.optional(parameter.unit()), basis,
+                ExportDisplayFormat.blank(parameter.lowerLimit()) && ExportDisplayFormat.blank(parameter.upperLimit()) ? null : "允许范围：" + (ExportDisplayFormat.blank(parameter.lowerLimit()) ? "无下限" : parameter.lowerLimit()) + " 至 " + (ExportDisplayFormat.blank(parameter.upperLimit()) ? "无上限" : parameter.upperLimit()),
+                parameter.remark());
     }
     private String join(String separator, String... values) {
         return java.util.Arrays.stream(values).filter(value -> !ExportDisplayFormat.blank(value)).collect(Collectors.joining(separator));

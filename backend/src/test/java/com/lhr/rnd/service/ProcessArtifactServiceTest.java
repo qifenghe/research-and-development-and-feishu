@@ -105,6 +105,21 @@ class ProcessArtifactServiceTest {
         }
     }
 
+    @Test void formulaIncludesIndividualAdditionTimingWithoutCountingIntermediates() throws Exception {
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree=mapper.valueToTree(ProcessExportCheckServiceTest.plan("72", "90", "PRIMARY_INPUT"));
+        var material=(com.fasterxml.jackson.databind.node.ObjectNode)tree.at("/majorProcesses/0/steps/0/materials/0");
+        material.put("additionTiming","水沸后加入").put("additionMethod","分三次加入");
+        var view=ProcessExportCheckServiceTest.view(mapper.treeToValue(tree,ProcessPlan.class));
+        var bytes=service.preview(view,"FORMULA_XLSX").content();
+        var file=Path.of("target","step-parameters-qa","addition-timing-formula.xlsx");Files.createDirectories(file.getParent());Files.write(file,bytes);
+        try(var book=new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+            var content=new StringBuilder();for(var sheet:book)for(var row:sheet)for(var cell:row)content.append(cell.toString()).append('\n');
+            assertThat(content.toString()).contains("水沸后加入","分三次加入","实际","100kg");
+            assertThat(book.getSheetAt(0).getRow(findRow(book.getSheetAt(0),"合计")).getCell(4).getNumericCellValue()).isEqualTo(view.externalInputKg().doubleValue());
+        }
+    }
+
     @Test
     void emptySavedDraftAndTrialPreviewShowPendingExternalBatch() throws Exception {
         var saved = planService.save(FORM_ID, new ProcessPlan("P", FORM_ID, 1, "DRAFT", List.of(), null, false));
@@ -862,7 +877,9 @@ class ProcessArtifactServiceTest {
                                 new BigDecimal("10.0000"), true, true, "中间产出备注-SOP"),
                         new ProcessPlan.StepOutput(
                                 "OUT-SOP-EARLY-WASTE", 2, "WASTE", "前段修割损耗-SOP", "SOLID",
-                                new BigDecimal("2.5000"), false, false, "前段旁路损耗-SOP")), List.of());
+                                new BigDecimal("2.5000"), false, false, "前段旁路损耗-SOP")), List.of(), List.of(
+                        new ProcessPlan.StepParameter("duration", "时长参数-SOP", "NUMBER", "min-SOP", "31.7", null, null, null, null, true),
+                        new ProcessPlan.StepParameter("pressure", "真空参数-SOP", "NUMBER", "MPa-SOP", "-0.08", null, null, "GAUGE", null, true)));
         var second = new ProcessPlan.MinorStep(
                 null, 2, "COOK-SOP", "熟制步骤-SOP", "NORMAL", "中心温度参数-SOP", "88.8", "℃-SOP",
                 null, null, null, "夹层锅设备-SOP-唯一", "加热至中心温度达标-SOP-唯一",

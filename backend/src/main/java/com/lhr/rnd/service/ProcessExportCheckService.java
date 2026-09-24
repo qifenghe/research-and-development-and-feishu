@@ -69,8 +69,7 @@ public class ProcessExportCheckService {
         if ("SOP_DOCX".equals(type)) {
             for (var major : values(view.snapshot().majorProcesses())) for (var step : values(major.steps())) {
                 if (blank(step.instruction())) issues.add(issue("STEP_INSTRUCTION_REQUIRED", path(major.sequence(), step.sequence()) + ".instruction", "SOP 操作要求待填写", major.sequence(), step.sequence()));
-                parameterIssues(issues, major, step, 1, step.parameter1Name(), step.parameter1Value(), step.parameter1Unit());
-                parameterIssues(issues, major, step, 2, step.parameter2Name(), step.parameter2Value(), step.parameter2Unit());
+                for (var parameter : com.lhr.rnd.domain.StepParameterService.effective(step)) parameterIssues(issues, major, step, parameter);
                 for (var control : values(step.controlPoints())) {
                     var base = path(major.sequence(), step.sequence()) + ".controlPoints[sequence=" + control.sequence() + "]";
                     if (blank(control.itemName())) issues.add(issue("CONTROL_NAME_REQUIRED", base + ".itemName", "控制项目名称待填写", major.sequence(), step.sequence()));
@@ -106,12 +105,21 @@ public class ProcessExportCheckService {
         if (!List.of("FORMULA_XLSX", "SOP_DOCX", "PRICING_XLSX").contains(type == null ? "" : type)) throw new BusinessException("PROCESS_ARTIFACT_TYPE_INVALID", "不支持的成果类型");
     }
     private static ProcessExportView.Issue issue(String code, String path, String message, Integer major, Integer step) { return new ProcessExportView.Issue(code, path, message, major, step); }
-    private void parameterIssues(List<ProcessExportView.Issue> issues, ProcessPlan.MajorProcess major, ProcessPlan.MinorStep step, int index, String name, String value, String unit) {
-        if (blank(value)) return;
-        var base = path(major.sequence(), step.sequence()) + ".parameter" + index;
-        if (blank(name)) issues.add(issue("PARAMETER_NAME_REQUIRED", base + "Name", "已记录参数的含义待填写", major.sequence(), step.sequence()));
-        if (value.trim().matches("[+-]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)") && blank(unit))
-            issues.add(issue("PARAMETER_UNIT_REQUIRED", base + "Unit", "数值参数单位待填写；无量纲请明确填写无量纲", major.sequence(), step.sequence()));
+    private void parameterIssues(List<ProcessExportView.Issue> issues, ProcessPlan.MajorProcess major, ProcessPlan.MinorStep step, ProcessPlan.StepParameter parameter) {
+        var base = path(major.sequence(), step.sequence()) + ".parameters[" + parameter.key() + "]";
+        var legacyBase = path(major.sequence(), step.sequence()) + ".parameter" + parameter.key().replace("legacy-", "");
+        if (blank(parameter.name())) issues.add(issue("PARAMETER_NAME_REQUIRED", step.parameters() == null ? legacyBase + "Name" : base + ".name", "已记录参数的含义待填写", major.sequence(), step.sequence()));
+        if (blank(parameter.actualValue())) issues.add(issue("PARAMETER_VALUE_REQUIRED", base + ".actualValue", "参数实际记录待填写：" + (blank(parameter.name()) ? "未命名参数" : parameter.name()), major.sequence(), step.sequence()));
+        if ("NUMBER".equals(parameter.valueType()) && !blank(parameter.actualValue())) {
+            if (!com.lhr.rnd.domain.StepParameterService.numeric(parameter.actualValue())) issues.add(issue("PARAMETER_NUMBER_INVALID", base + ".actualValue", "参数数值无效", major.sequence(), step.sequence()));
+            if (blank(parameter.unit())) issues.add(issue("PARAMETER_UNIT_REQUIRED", step.parameters() == null ? legacyBase + "Unit" : base + ".unit", "数值参数单位待填写；无量纲请明确填写无量纲", major.sequence(), step.sequence()));
+        }
+        var pressure = (parameter.name() == null ? "" : parameter.name()).matches("(?i).*(压力|真空|pressure|vacuum).*")
+                || (parameter.unit() == null ? "" : parameter.unit()).matches("(?i)(pa|kpa|mpa|bar|mbar)");
+        if (pressure && !List.of("GAUGE", "ABSOLUTE", "DEVICE_PERCENT").contains(parameter.measurementBasis() == null ? "" : parameter.measurementBasis()))
+            issues.add(issue("PARAMETER_BASIS_REQUIRED", base + ".measurementBasis", "压力参数需确认表压、绝对压力或设备显示百分比", major.sequence(), step.sequence()));
+        if (pressure && ("DEVICE_PERCENT".equals(parameter.measurementBasis()) || "%".equals(parameter.unit())) && blank(parameter.remark()))
+            issues.add(issue("PARAMETER_DEVICE_DEFINITION_REQUIRED", base + ".remark", "设备显示百分比需填写设备定义", major.sequence(), step.sequence()));
     }
     private static String path(Integer major, Integer step) { return major == null ? "majorProcesses" : "majorProcesses[sequence=" + major + "]" + (step == null ? "" : ".steps[sequence=" + step + "]"); }
     private static boolean blank(String value) { return value == null || value.isBlank(); }

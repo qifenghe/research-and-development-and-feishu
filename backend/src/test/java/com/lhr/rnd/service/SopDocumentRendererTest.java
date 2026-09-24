@@ -16,6 +16,29 @@ import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SopDocumentRendererTest {
+    @Test void rendersAllParametersAdditionTimingAndIncompleteParameterWarnings() throws Exception {
+        var base=view(false);
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree=mapper.valueToTree(base.snapshot());
+        var step=(com.fasterxml.jackson.databind.node.ObjectNode)tree.at("/majorProcesses/0/steps/0");
+        var parameters=step.putArray("parameters");
+        for (int i=0;i<8;i++) parameters.addObject().put("key","p"+i).put("name",i==3?"暂停时间":i==4?"真空压力":i==7?"":"自定义参数"+i)
+                .put("valueType","NUMBER").put("unit",i==7?"":"min").put("actualValue",i==7?"97":"5");
+        ((com.fasterxml.jackson.databind.node.ObjectNode)parameters.get(4)).put("unit","MPa").put("actualValue","-0.08").put("measurementBasis","GAUGE");
+        ((com.fasterxml.jackson.databind.node.ObjectNode)step.at("/materials/0")).put("additionTiming","水沸后加入").put("additionMethod","分三次加入");
+        var plan=mapper.treeToValue(tree,ProcessPlan.class);
+        var view=new ProcessExportCheckService().view(base.productName(),base.sourceLabel(),plan,null,List.of()).withMetadata(base.metadata()).withActualsProvenance(true,"test");
+        var bytes=new SopDocumentRenderer().render(view,new SopDocumentRenderer.Metadata(null,null,null,"软件测试",null,true));
+        var file=Path.of("target","step-parameters-qa","eight-parameters-incomplete-sop.docx");
+        Files.createDirectories(file.getParent());Files.write(file,bytes);
+        try(var document=new XWPFDocument(new ByteArrayInputStream(bytes))) {
+            var text=document.getParagraphs().stream().map(p->p.getText()).collect(Collectors.joining("\n"))+document.getTables().stream().map(t->t.getText()).collect(Collectors.joining("\n"));
+            assertThat(text).contains("暂停时间","表压","水沸后加入","分三次加入","97","自定义参数6","待核实","含义待填写","数值参数单位待填写");
+            var parameterCell=document.getTables().stream().flatMap(t->t.getRows().stream()).flatMap(r->r.getTableCells().stream())
+                    .filter(c->c.getText().contains("自定义参数6")).findFirst().orElseThrow();
+            assertThat(parameterCell.getCTTc().xmlText()).contains("<w:br");
+        }
+    }
     @Test void inheritedObservationsAreExplicitAndQualitativeRequirementsNeedNoNumericTarget() throws Exception {
         var base = view(true);
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
