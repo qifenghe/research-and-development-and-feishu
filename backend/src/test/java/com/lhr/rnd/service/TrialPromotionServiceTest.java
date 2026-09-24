@@ -32,6 +32,26 @@ class TrialPromotionServiceTest {
     @Autowired RolePermissionService permissions;
     @Autowired ProcessArtifactService artifacts;
 
+    @Test void extensibleParametersPersistInTrialAndImmutablePromotion() {
+        var source = edit(graph(), node -> {
+            var step = (ObjectNode) node.at("/majorProcesses/0/steps/0");
+            var parameters = step.putArray("parameters");
+            for (int i = 1; i <= 4; i++) parameters.addObject().put("key", "p" + i).put("name", "参数" + i)
+                    .put("valueType", "NUMBER").put("unit", "min").put("actualValue", String.valueOf(i));
+            ((ObjectNode)step.at("/materials/0")).put("additionTiming", "水沸后加入").put("additionMethod", "分两次加入");
+        });
+        var trial = confirm(trials.create(form, new TrialSchemeService.CreateCommand("四参数", null, null, source, TrialScheme.PlannedData.empty()), owner));
+        var revision = promotion.submit(form, trial.id(), command(trial, preview(trial), true, "four-parameters"), owner);
+        var step = revision.snapshot().majorProcesses().get(0).steps().get(0);
+        assertThat(step.parameters()).hasSize(4);
+        assertThat(step.parameters().get(3).actualValue()).isEqualTo("4");
+        assertThat(step.materials().get(0).additionTiming()).isEqualTo("水沸后加入");
+        var hash = revision.snapshotHash();
+        save(trial, edit(trial.plan(), n -> ((ObjectNode)n.at("/majorProcesses/0/steps/0/parameters/3")).put("actualValue", "9")));
+        assertThat(revisions.find(form, revision.id()).snapshot().majorProcesses().get(0).steps().get(0).parameters().get(3).actualValue()).isEqualTo("4");
+        assertThat(revisions.find(form, revision.id()).snapshotHash()).isEqualTo(hash);
+    }
+
     @Test void inheritedExportProvenanceComesFromPromotionSnapshotNotMutableTrial() throws Exception {
         var source = create();
         var copy = trials.copy(form, source.id(), new TrialSchemeService.CopyCommand(source.versionNo(), "继承方案B", true), owner);

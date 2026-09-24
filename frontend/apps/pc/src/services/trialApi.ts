@@ -10,6 +10,7 @@ export interface TrialStepParameters {
 }
 
 export interface TrialPlannedData {
+  parameterValues?: Record<string, Record<string, string>> | null;
   materialWeightsKg: Record<string, number>;
   stepParameters: Record<string, TrialStepParameters>;
   majorYieldTargets: Record<string, number>;

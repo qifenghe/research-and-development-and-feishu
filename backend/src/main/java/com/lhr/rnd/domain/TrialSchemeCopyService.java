@@ -54,10 +54,11 @@ public class TrialSchemeCopyService {
     private ProcessPlan remapPlan(ProcessPlan source, Remapper ids, boolean includeActuals) {
         var majors = values(source == null ? null : source.majorProcesses()).stream().map(major -> {
             var steps = values(major.steps()).stream().map(step -> {
+                StepParameterService.validate(step);
                 var materials = values(step.materials()).stream().map(material -> new ProcessPlan.StepMaterial(
                         ids.id("TMAT", material.id()), material.sequence(), material.materialRole(), material.materialCode(), material.materialName(),
                         material.materialState(), includeActuals ? material.weightKg() : null, material.formulaMaterialId(), material.remark(),
-                        material.sourceType(), ids.reference(material.sourceStepOutputId()))).toList();
+                        material.sourceType(), ids.reference(material.sourceStepOutputId()), material.additionTiming(), material.additionMethod())).toList();
                 var outputs = values(step.outputs()).stream().map(output -> new ProcessPlan.StepOutput(
                         ids.id("TOUT", output.id()), output.sequence(), output.outputType(), output.outputName(), output.materialState(),
                         includeActuals ? output.weightKg() : null, output.primaryOutput(), output.continueFlow(), output.remark())).toList();
@@ -70,7 +71,10 @@ public class TrialSchemeCopyService {
                                 measurement.result(), measurement.deviationAction(), null, measurement.remark())).toList() : List.of())).toList();
                 return new ProcessPlan.MinorStep(ids.id("TSTEP", step.id()), step.sequence(), step.stepCode(), step.stepName(), step.stepType(),
                         step.parameter1Name(), includeActuals ? step.parameter1Value() : null, step.parameter1Unit(), step.parameter2Name(),
-                        includeActuals ? step.parameter2Value() : null, step.parameter2Unit(), step.equipment(), step.instruction(), materials, outputs, points);
+                        includeActuals ? step.parameter2Value() : null, step.parameter2Unit(), step.equipment(), step.instruction(), materials, outputs, points,
+                        step.parameters() == null ? null : step.parameters().stream().map(p -> new ProcessPlan.StepParameter(
+                                p.key(), p.name(), p.valueType(), p.unit(), includeActuals ? p.actualValue() : null,
+                                p.lowerLimit(), p.upperLimit(), p.measurementBasis(), p.remark(), p.showInSummary())).toList());
             }).toList();
             var inputs = values(major.inputs()).stream().map(input -> new ProcessPlan.ProcessInput(
                     ids.id("TIN", input.id()), input.sequence(), input.inputRole(), input.materialCode(), input.materialName(),
@@ -89,6 +93,7 @@ public class TrialSchemeCopyService {
         var weights = new LinkedHashMap<>(current.materialWeightsKg());
         var parameters = new LinkedHashMap<>(current.stepParameters());
         var yields = new LinkedHashMap<>(current.majorYieldTargets());
+        var parameterValues = new LinkedHashMap<>(values(current.parameterValues()));
         for (var major : values(source.majorProcesses())) {
             var mappedMajorId = ids.reference(major.id());
             if (major.yield() != null && major.yield().mainYieldPercent() != null) {
@@ -96,6 +101,11 @@ public class TrialSchemeCopyService {
             }
             for (var step : values(major.steps())) {
                 var mappedStepId = ids.reference(step.id());
+                var targets = new LinkedHashMap<>(values(parameterValues.get(mappedStepId)));
+                for (var parameter : StepParameterService.effective(step)) {
+                    if (!blank(parameter.actualValue()) && blank(targets.get(parameter.key()))) targets.put(parameter.key(), parameter.actualValue());
+                }
+                if (!targets.isEmpty()) parameterValues.put(mappedStepId, targets);
                 var explicit = parameters.get(mappedStepId);
                 var parameter1 = plannedValue(explicit == null ? null : explicit.parameter1Value(), step.parameter1Value());
                 var parameter2 = plannedValue(explicit == null ? null : explicit.parameter2Value(), step.parameter2Value());
@@ -110,7 +120,7 @@ public class TrialSchemeCopyService {
             }
         }
         var batchTarget = current.batchYieldTarget() != null ? current.batchYieldTarget() : source.batchYieldPercent();
-        return new TrialScheme.PlannedData(weights, parameters, yields, batchTarget, current.yieldBasisNote());
+        return new TrialScheme.PlannedData(weights, parameters, yields, batchTarget, current.yieldBasisNote(), parameterValues);
     }
 
     private TrialScheme.PlannedData remapPlanned(TrialScheme.PlannedData plannedData, Remapper ids, ProcessPlan plan) {
@@ -121,7 +131,35 @@ public class TrialSchemeCopyService {
         var weights = remapMap(source.materialWeightsKg(), materialIds, ids);
         var parameters = remapMap(source.stepParameters(), stepIds, ids);
         var yields = remapMap(source.majorYieldTargets(), majorIds, ids);
-        return new TrialScheme.PlannedData(weights, parameters, yields, source.batchYieldTarget(), source.yieldBasisNote());
+        var parameterValues = new LinkedHashMap<String, Map<String, String>>();
+        if (source.parameterValues() != null) {
+            var definitions = new LinkedHashMap<String, Map<String, ProcessPlan.StepParameter>>();
+            for (var major : values(plan.majorProcesses())) for (var step : values(major.steps())) {
+                StepParameterService.validate(step);
+                var entries = new LinkedHashMap<String, ProcessPlan.StepParameter>();
+                for (var parameter : StepParameterService.effective(step)) entries.put(parameter.key(), parameter);
+                definitions.put(step.id(), entries);
+            }
+            for (var entry : source.parameterValues().entrySet()) {
+                var allowed = definitions.get(entry.getKey());
+                if (allowed == null) throw invalidReference();
+                for (var target : entry.getValue().entrySet()) {
+                    var definition = allowed.get(target.getKey());
+                    if (definition == null) throw invalidReference();
+                    if ("NUMBER".equals(definition.valueType()) && !blank(target.getValue()) && !StepParameterService.numeric(target.getValue()))
+                        throw new BusinessException("STEP_PARAMETER_INVALID", "参数计划值必须是有效数字");
+                }
+                parameterValues.put(ids.reference(entry.getKey()), entry.getValue());
+            }
+        } else {
+            for (var entry : parameters.entrySet()) {
+                var targets = new LinkedHashMap<String, String>();
+                if (!blank(entry.getValue().parameter1Value())) targets.put("legacy-1", entry.getValue().parameter1Value());
+                if (!blank(entry.getValue().parameter2Value())) targets.put("legacy-2", entry.getValue().parameter2Value());
+                if (!targets.isEmpty()) parameterValues.put(entry.getKey(), targets);
+            }
+        }
+        return new TrialScheme.PlannedData(weights, parameters, yields, source.batchYieldTarget(), source.yieldBasisNote(), parameterValues);
     }
 
     private <T> Map<String, T> remapMap(Map<String, T> source, Set<String> allowed, Remapper ids) {

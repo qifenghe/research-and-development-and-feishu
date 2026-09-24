@@ -16,6 +16,35 @@ class TrialSchemeCopyServiceTest {
     private final TrialSchemeCopyService service = new TrialSchemeCopyService();
 
     @Test
+    void extensibleParametersAndAdditionDetailsSurviveCopyWithoutActuals() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree = mapper.valueToTree(graph());
+        var stepNode = (com.fasterxml.jackson.databind.node.ObjectNode) tree.at("/majorProcesses/0/steps/0");
+        stepNode.set("parameters", mapper.readTree("""
+                [{"key":"rpm","name":"滚筒转速","valueType":"NUMBER","unit":"rpm","actualValue":"8"},
+                 {"key":"pressure","name":"真空压力","valueType":"NUMBER","unit":"MPa","actualValue":"-0.08","measurementBasis":"GAUGE"},
+                 {"key":"run","name":"运行时间","valueType":"NUMBER","unit":"min","actualValue":"20"},
+                 {"key":"pause","name":"暂停时间","valueType":"NUMBER","unit":"min","actualValue":"5"}]
+                """));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) stepNode.at("/materials/0")).put("additionTiming", "启动前").put("additionMethod", "均匀加入");
+        var source = mapper.treeToValue(tree, ProcessPlan.class);
+        var plans = mapper.readValue("""
+                {"parameterValues":{"STEP-SOURCE":{"rpm":"6"}}}
+                """, TrialScheme.PlannedData.class);
+        var copy = service.copy(source, plans, false, Map.of());
+        var step = copy.plan().majorProcesses().get(0).steps().get(0);
+        assertThat(step.parameters()).hasSize(4).allMatch(p -> p.actualValue() == null);
+        assertThat(step.materials().get(0).additionTiming()).isEqualTo("启动前");
+        assertThat(step.materials().get(0).additionMethod()).isEqualTo("均匀加入");
+        var copiedPlans = mapper.valueToTree(copy.plannedData()).path("parameterValues").path(step.id());
+        assertThat(copiedPlans.path("rpm").asText()).isEqualTo("6");
+        assertThat(copiedPlans.path("pressure").asText()).isEqualTo("-0.08");
+        assertThat(copiedPlans.path("pause").asText()).isEqualTo("5");
+        assertThat(service.copy(source, plans, true, Map.of()).plan().majorProcesses().get(0).steps().get(0).parameters())
+                .isEqualTo(source.majorProcesses().get(0).steps().get(0).parameters());
+    }
+
+    @Test
     void defaultCopyMovesSupportedActualsIntoMissingPlansAndClearsActuals() {
         var source = graph();
         var copy = service.copy(source, TrialScheme.PlannedData.empty(), false, Map.of("MAJOR-SOURCE", "MAJOR-ORIGIN"));
@@ -32,6 +61,16 @@ class TrialSchemeCopyServiceTest {
         assertThat(copy.plannedData().batchYieldTarget()).isEqualByComparingTo("88");
         assertThat(copy.majorOrigins()).containsEntry(major.id(), "MAJOR-ORIGIN");
         assertThat(copy.inheritedMeasurementIds()).isEmpty();
+    }
+
+    @Test
+    void plannedParametersRejectUnknownKeysAndInvalidNumbersAndExplicitEmptyDoesNotReviveLegacy() {
+        var invalidKey = new TrialScheme.PlannedData(Map.of(), Map.of(), Map.of(), null, null, Map.of("STEP-SOURCE", Map.of("missing", "1")));
+        assertThatThrownBy(() -> service.normalizeNew(graph(), invalidKey)).isInstanceOf(BusinessException.class);
+        var invalidValue = new TrialScheme.PlannedData(Map.of(), Map.of(), Map.of(), null, null, Map.of("STEP-SOURCE", Map.of("legacy-1", "NaN")));
+        assertThatThrownBy(() -> service.normalizeNew(graph(), invalidValue)).isInstanceOf(BusinessException.class);
+        var empty = new TrialScheme.PlannedData(Map.of(), Map.of("STEP-SOURCE", new TrialScheme.StepParameters("30", "95")), Map.of(), null, null, Map.of());
+        assertThat(service.normalizeNew(graph(), empty).plannedData().parameterValues()).isEmpty();
     }
 
     @Test

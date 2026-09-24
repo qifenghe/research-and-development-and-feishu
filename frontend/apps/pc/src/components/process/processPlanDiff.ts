@@ -1,3 +1,4 @@
+import { effectiveStepParameters } from "../../../../../packages/shared/src/step-parameters.ts";
 import type {
   ControlMeasurementDraft,
   ControlPointDraft,
@@ -72,6 +73,14 @@ function compareMajorOutput(differences: Difference[], path: string, before: Pro
 }
 
 function compareStep(differences: Difference[], path: string, before: MinorProcessStepDraft, after: MinorProcessStepDraft, contexts: ContextPair) {
+  if (before.parameters != null || after.parameters != null) {
+    const previous = effectiveStepParameters(before), next = effectiveStepParameters(after);
+    const summarize = (p: (typeof previous)[number]) => [p.name || "未命名参数", p.valueType, p.actualValue ?? "待补充", p.unit || "", p.measurementBasis || "", p.lowerLimit ?? "", p.upperLimit ?? "", p.remark || "", p.showInSummary ? "摘要" : ""].join(" / ");
+    for (const key of new Set([...previous.map(p => p.key), ...next.map(p => p.key)])) {
+      const left = previous.find(p => p.key === key), right = next.find(p => p.key === key);
+      changed(differences, `${path} / 参数 ${right?.name || left?.name || key}`, left ? summarize(left) : null, right ? summarize(right) : null);
+    }
+  }
   const beforeWithRemark = before as MinorProcessStepDraft & { remark?: string };
   const afterWithRemark = after as MinorProcessStepDraft & { remark?: string };
   fields(differences, path, beforeWithRemark, afterWithRemark, [
@@ -87,6 +96,7 @@ function compareStep(differences: Difference[], path: string, before: MinorProce
 
 function compareMaterial(differences: Difference[], path: string, before: ProcessStepMaterialDraft, after: ProcessStepMaterialDraft, contexts: ContextPair) {
   fields(differences, path, before, after, [
+    ["加入时机", "additionTiming"], ["加入方式", "additionMethod"],
     ["顺序", "sequence"], ["来源类型", "sourceType"],
     ["角色", "materialRole"], ["配方物料 ID", "formulaMaterialId"], ["物料编码", "materialCode"],
     ["物料名称", "materialName"], ["物料状态", "materialState"], ["重量", "weightKg", weight], ["备注", "remark"],

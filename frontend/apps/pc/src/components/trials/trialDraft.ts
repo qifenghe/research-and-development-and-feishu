@@ -1,5 +1,17 @@
 import { calculateBatchYield, calculateMajorProcessYield, normalizeProcessPlan, type ProcessPlanDraft } from "../../../../../packages/shared/src/process-plan.ts";
 import type { TrialPlannedData } from "../../services/trialApi";
+import { effectiveStepParameters } from "../../../../../packages/shared/src/step-parameters.ts";
+
+export function pruneParameterPlans(plan: ProcessPlanDraft, values: TrialPlannedData["parameterValues"]) {
+  if (values == null) return values;
+  const result: Record<string, Record<string, string>> = {};
+  for (const major of plan.majorProcesses) for (const step of major.steps) {
+    const id = step.id || step.key;
+    const keys = new Set(effectiveStepParameters(step).map(p => p.key));
+    if (values[id]) result[id] = Object.fromEntries(Object.entries(values[id]!).filter(([key]) => keys.has(key)));
+  }
+  return result;
+}
 
 export interface TrialDraftEnvelope<T> {
   savedAt: string;
@@ -89,6 +101,13 @@ export function prepareTrialPlanForSave(value: ProcessPlanDraft): ProcessPlanDra
     for (const output of major.outputs) output.id ||= output.key;
     for (const step of major.steps) {
       step.id ||= step.key;
+      if (step.parameters != null) {
+        for (const index of [1, 2] as const) {
+          step[`parameter${index}Name`] = undefined;
+          step[`parameter${index}Value`] = undefined;
+          step[`parameter${index}Unit`] = undefined;
+        }
+      }
       for (const material of step.materials) material.id ||= material.key;
       for (const output of step.outputs || []) output.id ||= output.key;
       for (const point of step.controlPoints || []) {
@@ -107,7 +126,7 @@ export function prepareTrialPlanForSave(value: ProcessPlanDraft): ProcessPlanDra
 export function createStructureOnlyTrialSource(value: ProcessPlanDraft): { plan: ProcessPlanDraft; plannedData: TrialPlannedData } {
   const plan = normalizeProcessPlan(plainClone(value));
   const plannedData: TrialPlannedData = {
-    materialWeightsKg: {}, stepParameters: {}, majorYieldTargets: {},
+    materialWeightsKg: {}, stepParameters: {}, majorYieldTargets: {}, parameterValues: {},
     batchYieldTarget: finite(value.batchYieldPercent) ?? calculateBatchYield(plan),
     yieldBasisNote: null,
   };
@@ -120,6 +139,9 @@ export function createStructureOnlyTrialSource(value: ProcessPlanDraft): { plan:
     major.yield = undefined;
     for (const step of major.steps) {
       const stepId = step.id || step.key;
+      plannedData.parameterValues![stepId] = Object.fromEntries(effectiveStepParameters(step)
+        .filter(p => textValue(p.actualValue) != null).map(p => [p.key, p.actualValue!]));
+      if (step.parameters != null) step.parameters = step.parameters.map(p => ({ ...p, actualValue: undefined }));
       const parameter1Value = textValue(step.parameter1Value);
       const parameter2Value = textValue(step.parameter2Value);
       if (parameter1Value || parameter2Value) plannedData.stepParameters[stepId] = { parameter1Value, parameter2Value };

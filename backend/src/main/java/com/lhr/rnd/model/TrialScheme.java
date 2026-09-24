@@ -39,12 +39,23 @@ public record TrialScheme(
             Map<String, StepParameters> stepParameters,
             Map<String, BigDecimal> majorYieldTargets,
             BigDecimal batchYieldTarget,
-            String yieldBasisNote
+            String yieldBasisNote,
+            Map<String, Map<String, String>> parameterValues
     ) {
         public PlannedData {
             materialWeightsKg = immutable(materialWeightsKg);
             stepParameters = immutable(stepParameters);
             majorYieldTargets = immutable(majorYieldTargets);
+            if (parameterValues != null) {
+                var copy = new LinkedHashMap<String, Map<String, String>>();
+                parameterValues.forEach((key, value) -> copy.put(key, immutable(value)));
+                parameterValues = Map.copyOf(copy);
+            }
+        }
+
+        public PlannedData(Map<String, BigDecimal> materialWeightsKg, Map<String, StepParameters> stepParameters,
+                           Map<String, BigDecimal> majorYieldTargets, BigDecimal batchYieldTarget, String yieldBasisNote) {
+            this(materialWeightsKg, stepParameters, majorYieldTargets, batchYieldTarget, yieldBasisNote, null);
         }
 
         public static PlannedData empty() {

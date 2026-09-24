@@ -7,6 +7,20 @@ import type {
 } from "@rnd/shared";
 import type { TrialScheme } from "../../services/trialApi";
 import { externalActualTotal } from "../process/actualSummary.ts";
+import { effectiveStepParameters, isParameterNumber, type StepParameterDraft } from "../../../../../packages/shared/src/step-parameters.ts";
+
+export function compareParameter(before: StepParameterDraft, after: StepParameterDraft): { comparable: boolean; delta: number | null; reason: string | null } {
+  const no = (reason: string) => ({ comparable: false, delta: null, reason });
+  if (!before.name?.trim() || before.name.trim() !== after.name?.trim() || (before.unit || "").trim() !== (after.unit || "").trim()
+    || before.valueType !== after.valueType || (before.measurementBasis || "") !== (after.measurementBasis || "")) return no("参数定义或测量口径不同");
+  const pressure = /压力|真空|pressure|vacuum/i.test(before.name) || /^(pa|kpa|mpa|bar|mbar)$/i.test(before.unit || "");
+  if (pressure && !["GAUGE", "ABSOLUTE", "DEVICE_PERCENT"].includes(before.measurementBasis || "")) return no("压力测量口径待补充");
+  if (pressure && (before.unit === "%" || before.measurementBasis === "DEVICE_PERCENT")
+    && (!before.remark?.trim() || before.remark.trim() !== after.remark?.trim())) return no("设备百分比定义不完整或不同");
+  if (before.valueType === "TEXT") return no("文字参数仅展示变化");
+  if (!isParameterNumber(before.actualValue) || !isParameterNumber(after.actualValue)) return no("数值待补充");
+  return { comparable: true, delta: numericDifference(Number(before.actualValue), Number(after.actualValue)), reason: null };
+}
 
 export type TrialDifferenceKind = "OVERVIEW" | "QUALITY" | "DIFFICULTY" | "PARAMETER" | "FORMULA" | "INPUT" | "YIELD" | "INCOMPARABLE";
 
@@ -66,7 +80,14 @@ export function plannedActualRows(trial: TrialScheme): PlannedActualRow[] {
         if (target == null && actual == null) continue;
         rows.push({ key: `material:${materialId || material.key}`, kind: "MATERIAL", label: `${major.processName} / ${step.stepName} / ${material.materialName || "未命名物料"}`, planned: target, actual, difference: numericDifference(target, actual), complete: actual != null });
       }
-      for (const [index, name, actual] of [[1, step.parameter1Name, step.parameter1Value], [2, step.parameter2Name, step.parameter2Value]] as const) {
+      if (step.parameters != null) for (const parameter of effectiveStepParameters(step)) {
+        const target = planned.parameterValues?.[stepId]?.[parameter.key];
+        const comparison = compareParameter({ ...parameter, actualValue: target }, parameter);
+        rows.push({ key: `parameter:${stepId}:${parameter.key}`, kind: "PARAMETER", label: `${major.processName} / ${step.stepName} / ${parameter.name || "未命名参数"}`,
+          planned: textOrNull(target), actual: textOrNull(parameter.actualValue), difference: comparison.delta, unit: parameter.unit,
+          complete: !blank(parameter.actualValue), reason: comparison.reason });
+      }
+      else for (const [index, name, actual] of [[1, step.parameter1Name, step.parameter1Value], [2, step.parameter2Name, step.parameter2Value]] as const) {
         const target = index === 1 ? stepPlan?.parameter1Value : stepPlan?.parameter2Value;
         if (blank(target) && blank(actual)) continue;
         const unit = (index === 1 ? step.parameter1Unit : step.parameter2Unit) || "";
@@ -177,12 +198,40 @@ function compareMajor(candidate: MajorProcessDraft, baseline: MajorProcessDraft,
     }
     const before = beforeGroup[0]!;
     const after = afterGroup[0]!;
+    if (before.parameters != null || after.parameters != null) {
+      compareParameterLists(candidate.processName, before, after, baselineTrial, candidateTrial, differences);
+    } else {
     compareTextParameter(candidate.processName, before, after, 1, differences);
     compareTextParameter(candidate.processName, before, after, 2, differences);
     comparePlannedParameter(candidate.processName, baselineTrial, candidateTrial, before, after, 1, differences);
     comparePlannedParameter(candidate.processName, baselineTrial, candidateTrial, before, after, 2, differences);
+    }
     compareFormula(candidate.processName, before, after, differences, baselineTrial, candidateTrial);
   }
+}
+
+function compareParameterLists(majorName: string, before: MinorProcessStepDraft, after: MinorProcessStepDraft, baseline: TrialScheme, candidate: TrialScheme, differences: TrialDifference[]) {
+  const previous = effectiveStepParameters(before), next = effectiveStepParameters(after);
+  const definition = (p: StepParameterDraft) => JSON.stringify([p.name.trim(), p.valueType, p.unit || "", p.measurementBasis || ""]);
+  const used = new Set<StepParameterDraft>();
+  for (const right of next) {
+    const sameKey = previous.filter(p => p.key === right.key);
+    const sameDefinition = previous.filter(p => definition(p) === definition(right));
+    const left = sameKey.length === 1 ? sameKey[0] : sameDefinition.length === 1 && next.filter(p => definition(p) === definition(right)).length === 1 ? sameDefinition[0] : undefined;
+    const path = `${majorName} / ${after.stepName} / ${right.name || "未命名参数"}`;
+    if (!left || used.has(left)) { differences.push({kind:"INCOMPARABLE",path:`${path}（未唯一匹配）`,before:null,after:textOrNull(right.actualValue)}); continue; }
+    used.add(left);
+    if (JSON.stringify(left) !== JSON.stringify(right)) {
+      const comparison = compareParameter(left, right);
+      differences.push({kind:comparison.comparable || right.valueType === "TEXT" ? "PARAMETER" : "INCOMPARABLE",path:comparison.reason ? `${path} / ${comparison.reason}` : path,
+        before: `${left.name}：${left.actualValue ?? "待补充"} ${left.unit || ""} ${left.measurementBasis || ""}`,
+        after: `${right.name}：${right.actualValue ?? "待补充"} ${right.unit || ""} ${right.measurementBasis || ""}`,numericDelta:comparison.delta});
+    }
+    const oldPlan = baseline.plannedData.parameterValues == null ? baseline.plannedData.stepParameters[nodeId(before)]?.[left.key === "legacy-1" ? "parameter1Value" : "parameter2Value"] : baseline.plannedData.parameterValues[nodeId(before)]?.[left.key];
+    const newPlan = candidate.plannedData.parameterValues == null ? candidate.plannedData.stepParameters[nodeId(after)]?.[right.key === "legacy-1" ? "parameter1Value" : "parameter2Value"] : candidate.plannedData.parameterValues[nodeId(after)]?.[right.key];
+    if (textOrNull(oldPlan) !== textOrNull(newPlan)) differences.push({kind:"PARAMETER",path:`${path}计划值`,before:textOrNull(oldPlan),after:textOrNull(newPlan),numericDelta:compareParameter({...left,actualValue:oldPlan ?? undefined},{...right,actualValue:newPlan ?? undefined}).delta});
+  }
+  for (const left of previous.filter(p => !used.has(p))) differences.push({kind:"INCOMPARABLE",path:`${majorName} / ${before.stepName} / ${left.name}（未唯一匹配）`,before:textOrNull(left.actualValue),after:null});
 }
 
 function comparePlannedParameter(majorName: string, baselineTrial: TrialScheme, candidateTrial: TrialScheme, before: MinorProcessStepDraft, after: MinorProcessStepDraft, index: 1 | 2, differences: TrialDifference[]) {

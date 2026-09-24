@@ -134,7 +134,7 @@ import MajorProcessBoard from "../process/MajorProcessBoard.vue";
 import MinorStepWorkspace from "../process/MinorStepWorkspace.vue";
 import TrialComparison from "./TrialComparison.vue";
 import { deviationUnit, plannedActualRows } from "./trialComparison";
-import { clearTrialDraft, createStructureOnlyTrialSource, prepareTrialPlanForSave, readTrialDraft, trialDraftKey, TrialRequestFence, writeTrialDraft } from "./trialDraft";
+import { clearTrialDraft, createStructureOnlyTrialSource, prepareTrialPlanForSave, pruneParameterPlans, readTrialDraft, trialDraftKey, TrialRequestFence, writeTrialDraft } from "./trialDraft";
 
 const props = defineProps<{ formId?: string; userId: string; formalPlan: ProcessPlanDraft; readonly?: boolean }>();
 const emit = defineEmits<{ promoted: [revision: ProcessRevision] }>();
@@ -245,7 +245,7 @@ function normalizeTrial(value: TrialScheme): TrialScheme {
 }
 
 function normalizePlannedData(value?: Partial<TrialPlannedData> | null): TrialPlannedData {
-  return { materialWeightsKg: { ...(value?.materialWeightsKg || {}) }, stepParameters: { ...(value?.stepParameters || {}) }, majorYieldTargets: { ...(value?.majorYieldTargets || {}) }, batchYieldTarget: value?.batchYieldTarget ?? null, yieldBasisNote: value?.yieldBasisNote ?? null };
+  return { parameterValues: value?.parameterValues == null ? value?.parameterValues : plainClone(value.parameterValues), materialWeightsKg: { ...(value?.materialWeightsKg || {}) }, stepParameters: { ...(value?.stepParameters || {}) }, majorYieldTargets: { ...(value?.majorYieldTargets || {}) }, batchYieldTarget: value?.batchYieldTarget ?? null, yieldBasisNote: value?.yieldBasisNote ?? null };
 }
 
 function adoptServer(value: TrialScheme, allowCache = false) {
@@ -272,6 +272,7 @@ function replacePlan(value: ProcessPlanDraft) {
   const majors = currentTrial.value.plan.majorProcesses;
   const keep = <T,>(record: Record<string, T>, ids: Set<string>) => Object.fromEntries(Object.entries(record).filter(([id]) => ids.has(id)));
   const data = currentTrial.value.plannedData;
+  data.parameterValues = pruneParameterPlans(currentTrial.value.plan, data.parameterValues);
   data.materialWeightsKg = keep(data.materialWeightsKg, new Set(majors.flatMap(m => m.steps.flatMap(s => s.materials.map(nodeId)))));
   data.stepParameters = keep(data.stepParameters, new Set(majors.flatMap(m => m.steps.map(nodeId))));
   data.majorYieldTargets = keep(data.majorYieldTargets, new Set(majors.map(nodeId)));
