@@ -96,7 +96,8 @@ public class PricingFileService {
             ProcessExportView.FinishedQuantity finished, TrialPromotionService.SourceMetadata source) {
         var label = "正式工艺 R" + revision.revisionNo() + (source == null ? "" : " / 试验方案 " + source.trialName() + " V" + source.trialVersionNo());
         var view = new ProcessExportCheckService().view(version.productName(), label, revision.snapshot(), finished, packagingItems)
-                .withMetadata(new ProcessExportView.Metadata(version.specification(), version.authorName(), LocalDate.now().toString()));
+                .withMetadata(new ProcessExportView.Metadata(version.specification(), version.authorName(), LocalDate.now().toString()))
+                .withActualsProvenance(source != null && source.inheritedActuals(), source == null ? null : source.sourceTrialId());
         return new PricingFileResult(version.productName() + "-产品核价基础数据表-R" + revision.revisionNo() + ".xlsx",
                 version.versionNo() + "-核价" + pricingVersionNo, renderBasis(view, false));
     }
@@ -143,7 +144,7 @@ public class PricingFileService {
         basisRow(sheet, 0, (preview ? "研发预览 · 非正式归档 · " : "") + "产品核价基础数据表");
         basisRow(sheet, 1, "产品 / 产品规格", view.productName() + " / " + (view.metadata() == null || view.metadata().specification() == null ? "待填写" : view.metadata().specification()));
         basisRow(sheet, 2, "来源", view.sourceLabel());
-        basisRow(sheet, 3, "实际基准批次 kg", view.externalInputKg(), "重量单位统一 kg；计划目标不参与计算");
+        basisRow(sheet, 3, "实际基准批次 kg", view.externalInputKg(), view.inheritedActuals() ? view.actualProvenanceLabel() : "重量单位统一 kg；计划目标不参与计算");
         basisRow(sheet, 4, "编制人 / 日期", (view.metadata() == null || view.metadata().compiledBy() == null ? "待填写" : view.metadata().compiledBy()) + " / " + (view.metadata() == null ? LocalDate.now() : view.metadata().date()));
         basisRow(sheet, 5, headers.toArray());
         var widths = "实际投料依据".equals(name) ? new int[]{19, 20, 60, 12, 20, 24}

@@ -7,6 +7,7 @@ import {
   numericDifference,
   plannedActualRows,
   deviationUnit,
+  trialOverview,
 } from "../apps/pc/src/components/trials/trialComparison.ts";
 
 function trial(overrides: Partial<TrialScheme> = {}): TrialScheme {
@@ -36,6 +37,26 @@ test("numeric difference is actual minus planned with decimal-safe +0.2kg", () =
   assert.equal(numericDifference(10, 10.2), 0.2);
   assert.equal(numericDifference(null, 10.2), null);
   assert.equal(numericDifference(0, 0), 0);
+});
+
+test("purpose variables and conclusion changes cannot disappear as no visible difference", () => {
+  const before = trial();
+  const after = trial({ purpose: "改善口感", variables: "温度", conclusion: "RECOMMEND", recommendationReason: "口感稳定" });
+  const result = buildTrialComparison(after, before);
+  for (const path of ["试验目的", "试验变量", "结论", "推荐理由"]) assert.ok(result.differences.some(row => row.path === path), path);
+  assert.deepEqual(trialOverview(after), { purpose: "改善口感", variables: "温度", status: "进行中", conclusion: "推荐", reason: "口感稳定", externalInputKg: 10, finalYield: 80 });
+  after.plan.majorProcesses[0]!.steps[0]!.materials[0]!.weightKg = undefined;
+  assert.equal(trialOverview(after).externalInputKg, null);
+  assert.equal(trialOverview(after).finalYield, null);
+});
+
+test("planned numeric parameters use the same step definition and strict complete numeric values", () => {
+  const value = trial();
+  value.plannedData.stepParameters["step-a"]!.parameter1Value = "95";
+  value.plan.majorProcesses[0]!.steps[0]!.parameter1Value = "97";
+  assert.equal(plannedActualRows(value).find(row => row.key === "parameter:step-a:1")!.difference, 2);
+  value.plan.majorProcesses[0]!.steps[0]!.parameter1Value = "97℃";
+  assert.equal(plannedActualRows(value).find(row => row.key === "parameter:step-a:1")!.difference, null);
 });
 
 test("planned versus actual keeps missing actual distinct from zero", () => {

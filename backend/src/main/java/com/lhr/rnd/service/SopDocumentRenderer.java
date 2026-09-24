@@ -40,7 +40,7 @@ public final class SopDocumentRenderer {
             for (var major : sorted(view.snapshot().majorProcesses(), ProcessPlan.MajorProcess::sequence)) {
                 major(document, view, major);
             }
-            appendix(document, view.snapshot());
+            appendix(document, view.snapshot(), view.actualPrefix());
             footer(document, view);
             document.write(output);
             return output.toByteArray();
@@ -79,10 +79,10 @@ public final class SopDocumentRenderer {
     }
 
     private void summary(XWPFDocument document, ProcessExportView view) {
-        heading(document, "本次实验实际记录", 1);
+        heading(document, view.actualPrefix() + "实际记录", 1);
         paragraph(document, "外部原料实际总投入：" + ExportDisplayFormat.actualKg(view.externalInputKg())
                 + "  主流程实际得率：" + ExportDisplayFormat.percent(view.mainYieldPercent()));
-        paragraph(document, "口径说明：仅采用本次试验已记录的实际值，不用计划值补齐。");
+        paragraph(document, "口径说明：" + view.actualProvenanceLabel() + "。");
     }
 
     private void pendingItems(XWPFDocument document, ProcessExportView view) {
@@ -100,36 +100,36 @@ public final class SopDocumentRenderer {
         if (measured != null) {
             paragraph(document, "主料实际投入：" + ExportDisplayFormat.actualKg(measured.primaryInputKg())
                     + "  主料实际产出：" + ExportDisplayFormat.actualKg(measured.primaryOutputKg())
-                    + "  本次实验大工序得率：" + ExportDisplayFormat.percent(measured.mainYieldPercent()));
+                    + "  " + view.actualPrefix() + "大工序得率：" + ExportDisplayFormat.percent(measured.mainYieldPercent()));
         }
 
         var steps = sorted(major.steps(), ProcessPlan.MinorStep::sequence);
         if (!steps.isEmpty()) {
             for (int i = paragraphStart; i < document.getParagraphs().size(); i++) keepNext(document.getParagraphs().get(i));
         }
-        for (var step : steps) step(document, view.snapshot(), major, step);
+        for (var step : steps) step(document, view.snapshot(), major, step, view.actualPrefix());
     }
 
-    private void step(XWPFDocument document, ProcessPlan plan, ProcessPlan.MajorProcess major, ProcessPlan.MinorStep step) {
+    private void step(XWPFDocument document, ProcessPlan plan, ProcessPlan.MajorProcess major, ProcessPlan.MinorStep step, String actualPrefix) {
         var paragraphStart = document.getParagraphs().size();
         var tableStart = document.getTables().size();
         heading(document, major.sequence() + "." + step.sequence() + " " + ExportDisplayFormat.required(step.stepName()), 2);
-        materials(document, plan, step);
-        operations(document, step);
-        outputs(document, plan, step);
+        materials(document, plan, step, actualPrefix);
+        operations(document, step, actualPrefix);
+        outputs(document, plan, step, actualPrefix);
         controls(document, major, step);
         keepStepTogether(document, paragraphStart, tableStart);
     }
 
-    private void materials(XWPFDocument document, ProcessPlan plan, ProcessPlan.MinorStep step) {
+    private void materials(XWPFDocument document, ProcessPlan plan, ProcessPlan.MinorStep step, String actualPrefix) {
         var materials = sorted(step.materials(), ProcessPlan.StepMaterial::sequence);
         if (materials.isEmpty()) return;
         sectionLabel(document, "投料与前序承接");
         var remarks = materials.stream().anyMatch(material -> !ExportDisplayFormat.blank(material.remark()));
         var widths = remarks ? new int[]{14, 34, 21, 18, 13} : new int[]{15, 38, 24, 23};
         var table = table(document, remarks
-                        ? new String[]{"来源", "名称与编码", "角色与状态", "本次实验实际重量", "备注"}
-                        : new String[]{"来源", "名称与编码", "角色与状态", "本次实验实际重量"}, widths);
+                        ? new String[]{"来源", "名称与编码", "角色与状态", actualPrefix + "实际重量", "备注"}
+                        : new String[]{"来源", "名称与编码", "角色与状态", actualPrefix + "实际重量"}, widths);
         for (var material : materials) {
             var row = createRow(table, widths);
             cell(row, 0, "EXTERNAL".equals(material.sourceType()) ? "实际外部投料" : producerLabel(plan, material.sourceStepOutputId()));
@@ -140,27 +140,27 @@ public final class SopDocumentRenderer {
         }
     }
 
-    private void operations(XWPFDocument document, ProcessPlan.MinorStep step) {
-        sectionLabel(document, "操作、设备与本次实验实际参数");
+    private void operations(XWPFDocument document, ProcessPlan.MinorStep step, String actualPrefix) {
+        sectionLabel(document, "操作、设备与" + actualPrefix + "实际参数");
         var rows = new ArrayList<String[]>();
         if (!ExportDisplayFormat.blank(step.equipment())) rows.add(pair("设备工具", step.equipment()));
         var parameters = join("；", parameter(step.parameter1Name(), step.parameter1Value(), step.parameter1Unit()),
                 parameter(step.parameter2Name(), step.parameter2Value(), step.parameter2Unit()));
-        if (!ExportDisplayFormat.blank(parameters)) rows.add(pair("本次实验实际参数", parameters));
+        if (!ExportDisplayFormat.blank(parameters)) rows.add(pair(actualPrefix + "实际参数", parameters));
         rows.add(pair("操作要求", ExportDisplayFormat.required(step.instruction())));
-        rows.add(pair("本次实验步骤得率", ExportDisplayFormat.percent(calculations.calculateStep(step).mainYieldPercent())));
+        rows.add(pair(actualPrefix + "步骤得率", ExportDisplayFormat.percent(calculations.calculateStep(step).mainYieldPercent())));
         fieldTable(document, rows);
     }
 
-    private void outputs(XWPFDocument document, ProcessPlan plan, ProcessPlan.MinorStep step) {
+    private void outputs(XWPFDocument document, ProcessPlan plan, ProcessPlan.MinorStep step, String actualPrefix) {
         var outputs = sorted(step.outputs(), ProcessPlan.StepOutput::sequence);
         if (outputs.isEmpty()) return;
         sectionLabel(document, "产出");
         var remarks = outputs.stream().anyMatch(output -> !ExportDisplayFormat.blank(output.remark()));
         var widths = remarks ? new int[]{29, 22, 18, 18, 13} : new int[]{34, 24, 20, 22};
         var table = table(document, remarks
-                        ? new String[]{"产出名称", "类型与状态", "本次实验实际重量", "后续流转", "备注"}
-                        : new String[]{"产出名称", "类型与状态", "本次实验实际重量", "后续流转"}, widths);
+                        ? new String[]{"产出名称", "类型与状态", actualPrefix + "实际重量", "后续流转", "备注"}
+                        : new String[]{"产出名称", "类型与状态", actualPrefix + "实际重量", "后续流转"}, widths);
         for (var output : outputs) {
             var row = createRow(table, widths);
             cell(row, 0, ExportDisplayFormat.required(output.outputName()));
@@ -193,7 +193,7 @@ public final class SopDocumentRenderer {
         }
     }
 
-    private void appendix(XWPFDocument document, ProcessPlan plan) {
+    private void appendix(XWPFDocument document, ProcessPlan plan, String actualPrefix) {
         var records = new ArrayList<String[]>();
         for (var major : sorted(plan.majorProcesses(), ProcessPlan.MajorProcess::sequence)) {
             for (var step : sorted(major.steps(), ProcessPlan.MinorStep::sequence)) {
@@ -208,7 +208,7 @@ public final class SopDocumentRenderer {
                         if (!ExportDisplayFormat.blank(control.confirmedBy())) details.add("确认人：" + control.confirmedBy());
                         if (!ExportDisplayFormat.blank(control.confirmedAt())) details.add("确认时间：" + ExportDisplayFormat.dateTime(control.confirmedAt()));
                         if (!ExportDisplayFormat.blank(measurement.deviationAction())) details.add("实际偏差处理：" + measurement.deviationAction());
-                        if (!ExportDisplayFormat.blank(measurement.retestResult())) details.add("复测结果：" + measurement.retestResult());
+                        if (!ExportDisplayFormat.blank(measurement.retestResult())) details.add("复测结果：" + (List.of("PASS", "FAIL", "PENDING").contains(measurement.retestResult()) ? ExportDisplayFormat.measurementResult(measurement.retestResult()) : measurement.retestResult()));
                         if (!ExportDisplayFormat.blank(measurement.remark())) details.add("备注：" + measurement.remark());
                         records.add(new String[]{major.sequence() + "." + step.sequence() + " " + step.stepName() + "\n" + control.itemName(), String.join("；", details)});
                     }
@@ -217,7 +217,7 @@ public final class SopDocumentRenderer {
         }
         if (records.isEmpty()) return;
         heading(document, "测量记录追溯附录", 1);
-        paragraph(document, "附录为本次实验实测与审计记录，不作为生产指令标准。");
+        paragraph(document, "附录为" + actualPrefix + "实测与审计记录，不作为生产指令标准。");
         var widths = new int[]{25, 75};
         var table = table(document, new String[]{"记录位置", "实测与追溯信息"}, widths);
         for (var record : records) {
@@ -385,7 +385,7 @@ public final class SopDocumentRenderer {
             values.add("允许范围：" + (control.lowerLimit() == null ? "无下限" : ExportDisplayFormat.number(control.lowerLimit())) + " 至 "
                     + (control.upperLimit() == null ? "无上限" : ExportDisplayFormat.number(control.upperLimit())) + ExportDisplayFormat.optional(control.unit()));
         }
-        return values.isEmpty() ? "目标或范围：待填写" : String.join("；", values);
+        return values.isEmpty() ? (ExportDisplayFormat.blank(control.basisOrRemark()) ? "目标或范围：待填写" : "定性要求/依据：" + control.basisOrRemark()) : String.join("；", values);
     }
     private String parameter(String name, String value, String unit) {
         return ExportDisplayFormat.blank(name) ? "" : name.trim() + " " + ExportDisplayFormat.required(value) + ExportDisplayFormat.optional(unit);

@@ -30,6 +30,26 @@ class TrialPromotionServiceTest {
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate jdbc;
     @Autowired RolePermissionService permissions;
+    @Autowired ProcessArtifactService artifacts;
+
+    @Test void inheritedExportProvenanceComesFromPromotionSnapshotNotMutableTrial() throws Exception {
+        var source = create();
+        var copy = trials.copy(form, source.id(), new TrialSchemeService.CopyCommand(source.versionNo(), "继承方案B", true), owner);
+        var changed = save(copy, edit(copy.plan(), node -> ((ObjectNode)control(node).path("measurements").get(0)).put("measuredAt", "2026-09-15T10:01:00")));
+        var confirmed = confirm(changed);
+        assertThat(artifacts.trialView(form, confirmed.id(), confirmed.versionNo(), owner).sourceLabel()).contains("含继承实测");
+        var revision = promotion.submit(form, confirmed.id(), command(confirmed, preview(confirmed), true, "inherited-export"), owner);
+        var before = artifacts.revisionView(form, revision.id(), owner);
+        assertThat(before.sourceLabel()).contains("含继承实测");
+        jdbc.update("update experiment_trial_scheme set inherited_actuals=false where id=?", confirmed.id());
+        assertThat(artifacts.revisionView(form, revision.id(), owner).sourceLabel()).isEqualTo(before.sourceLabel());
+        assertThat(mapper.writeValueAsString(promotion.source(form, revision.id(), owner))).doesNotContain("plannedData", "qualityNotes", "purpose");
+        for (var role : List.of("TESTER", "FINANCE")) {
+            var denied = new SessionPrincipal("other", "other", "其他", null, role, null);
+            assertThatThrownBy(() -> artifacts.revisionView(form, revision.id(), denied)).isInstanceOf(BusinessException.class);
+            assertThatThrownBy(() -> artifacts.trialView(form, confirmed.id(), confirmed.versionNo(), denied)).isInstanceOf(BusinessException.class);
+        }
+    }
     String form;
     SessionPrincipal owner;
     final SessionPrincipal director = new SessionPrincipal("PROMO-DIR", "promo-dir", "总监", null, "RND_DIRECTOR", null);

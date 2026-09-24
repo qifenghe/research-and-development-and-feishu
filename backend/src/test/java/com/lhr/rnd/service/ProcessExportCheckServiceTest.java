@@ -9,6 +9,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProcessExportCheckServiceTest {
     private final ProcessExportCheckService service = new ProcessExportCheckService();
 
+    @Test void sopRequiresControlRequirementAndUsedParameterMeaningAndNumericUnit() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree = mapper.valueToTree(plan("72", "90", "PRIMARY_INPUT"));
+        var step = (com.fasterxml.jackson.databind.node.ObjectNode) tree.path("majorProcesses").get(0).path("steps").get(0);
+        step.put("parameter1Value", "97");
+        step.set("controlPoints", mapper.readTree("""
+                [{"sequence":1,"importance":"CRITICAL","itemName":"温度","method":"探针","frequency":"每锅","deviationAction":"复测"}]
+                """));
+        var check = service.check(view(mapper.treeToValue(tree, ProcessPlan.class)), "SOP_DOCX");
+        assertThat(check.issues()).extracting(ProcessExportView.Issue::path).contains(
+                "majorProcesses[sequence=1].steps[sequence=1].parameter1Name",
+                "majorProcesses[sequence=1].steps[sequence=1].parameter1Unit",
+                "majorProcesses[sequence=1].steps[sequence=1].controlPoints[sequence=1].basisOrRemark");
+        step.put("parameter1Name", "比例"); step.put("parameter1Unit", "无量纲");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) step.path("controlPoints").get(0)).put("basisOrRemark", "外观均匀，无可见异物（软件测试定性要求）");
+        assertThat(service.check(view(mapper.treeToValue(tree, ProcessPlan.class)), "SOP_DOCX").ready()).isTrue();
+        step.put("parameter1Value", "均匀"); step.putNull("parameter1Unit");
+        assertThat(service.check(view(mapper.treeToValue(tree, ProcessPlan.class)), "SOP_DOCX").ready()).isTrue();
+    }
+
     @Test void emptyExternalObservationsArePendingButExplicitZeroIsMeasured() {
         assertThat(view(new ProcessPlan("P", "F", 1, "DRAFT", List.of(), null, false)).externalInputKg()).isNull();
         var zero = new ProcessPlan.MinorStep("S", 1, "S", "观察", "NORMAL", null, null, null, null, null, null, null, null,

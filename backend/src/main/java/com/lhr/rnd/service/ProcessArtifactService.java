@@ -82,7 +82,8 @@ public class ProcessArtifactService {
         var source = promotions.source(formId, revisionId, principal);
         return exportChecks.view(productName(formId), "正式工艺 R" + revision.revisionNo()
                 + (source == null ? "" : " / 试验方案 " + source.trialName() + " V" + source.trialVersionNo()),
-                revision.snapshot(), null, List.of()).withMetadata(exportMetadata(formId, principal));
+                revision.snapshot(), null, List.of()).withMetadata(exportMetadata(formId, principal))
+                .withActualsProvenance(source != null && source.inheritedActuals(), source == null ? null : source.sourceTrialId());
     }
 
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
@@ -98,7 +99,8 @@ public class ProcessArtifactService {
         var trial = trials.find(formId, trialId, principal);
         requireVersion(versionNo, trial.versionNo());
         // A/B schemes do not own a packed-finished measurement; never borrow the shared experiment's value.
-        return exportChecks.view(productName(formId), "试验方案 " + trial.name() + " V" + trial.versionNo(), trial.plan(), null, List.of()).withMetadata(exportMetadata(formId, principal));
+        return exportChecks.view(productName(formId), "试验方案 " + trial.name() + " V" + trial.versionNo(), trial.plan(), null, List.of()).withMetadata(exportMetadata(formId, principal))
+                .withActualsProvenance(trial.inheritedActuals(), trial.sourceTrialId());
     }
 
     private ProcessExportView.Metadata exportMetadata(String formId, SessionPrincipal principal) {
@@ -275,12 +277,12 @@ public class ProcessArtifactService {
             if (!preview && totalWeight.signum() <= 0) throw new BusinessException("EXTERNAL_MATERIAL_WEIGHT_REQUIRED", "外部物料总重量必须大于0");
             var displayedPercentages = totalWeight.signum() <= 0 ? List.<BigDecimal>of() : allocatePercent(lines.stream().map(ProcessRecipeService.RecipeLine::weightKg).map(this::safe).toList(), totalWeight);
 
-            var actualSheet = workbook.createSheet("本次实际投料");
-            var actualRowIndex = formulaPreamble(actualSheet, "研发配方—本次实验实际外部投入", view, formalRevision,
+            var actualSheet = workbook.createSheet(view.inheritedActuals() ? "方案实际投料" : "本次实际投料");
+            var actualRowIndex = formulaPreamble(actualSheet, "研发配方—" + view.actualPrefix() + "实际外部投入", view, formalRevision,
                     documentVersion, changeReason, generatedAt, generatedBy, preview, titleStyle, sectionStyle, label, text);
-            var actualSection = actualSheet.createRow(actualRowIndex++); set(actualSection, 0, "本次实验实际外部投入"); actualSection.getCell(0).setCellStyle(sectionStyle); actualSheet.addMergedRegion(new CellRangeAddress(actualSection.getRowNum(), actualSection.getRowNum(), 0, 5));
+            var actualSection = actualSheet.createRow(actualRowIndex++); set(actualSection, 0, view.actualPrefix() + "实际外部投入"); actualSection.getCell(0).setCellStyle(sectionStyle); actualSheet.addMergedRegion(new CellRangeAddress(actualSection.getRowNum(), actualSection.getRowNum(), 0, 5));
             var actualHeader = actualRowIndex;
-            formulaHeader(actualSheet.createRow(actualRowIndex++), header, "序号", "物料编码", "物料名称", "角色", "本次实验实际 kg", "加入步骤");
+            formulaHeader(actualSheet.createRow(actualRowIndex++), header, "序号", "物料编码", "物料名称", "角色", view.actualPrefix() + "实际 kg", "加入步骤");
             for (int index = 0; index < lines.size(); index++) {
                 var line = lines.get(index);
                 var row = actualSheet.createRow(actualRowIndex++);
@@ -297,7 +299,7 @@ public class ProcessArtifactService {
                 actualRowIndex++; var issueSection = actualSheet.createRow(actualRowIndex++); set(issueSection, 0, "待核实项"); issueSection.getCell(0).setCellStyle(sectionStyle); actualSheet.addMergedRegion(new CellRangeAddress(issueSection.getRowNum(), issueSection.getRowNum(), 0, 5));
                 for (var issue : issues) { var row = actualSheet.createRow(actualRowIndex++); formulaText(row, 0, "待核实", label); formulaText(row, 1, issue.message(), text); actualSheet.addMergedRegion(new CellRangeAddress(row.getRowNum(), row.getRowNum(), 1, 5)); }
             }
-            configureFormulaSheet(workbook, actualSheet, view, actualHeader, actualRowIndex, "本次实际投料");
+            configureFormulaSheet(workbook, actualSheet, view, actualHeader, actualRowIndex, actualSheet.getSheetName());
 
             var normalizedSheet = workbook.createSheet("每100kg折算");
             var normalizedRowIndex = formulaPreamble(normalizedSheet, "研发配方—每100kg外部投入折算", view, formalRevision,
@@ -336,6 +338,7 @@ public class ProcessArtifactService {
         rowIndex = formulaMetadataRow(sheet, rowIndex, "产品", view.productName(), label, text);
         if (view.metadata() != null && !blank(view.metadata().specification())) rowIndex = formulaMetadataRow(sheet, rowIndex, "规格", view.metadata().specification(), label, text);
         rowIndex = formulaMetadataRow(sheet, rowIndex, "固定数据来源", view.sourceLabel(), label, text);
+        if (view.inheritedActuals()) rowIndex = formulaMetadataRow(sheet, rowIndex, "实测来源说明", view.actualProvenanceLabel(), label, text);
         if (!blank(formalRevision)) rowIndex = formulaMetadataRow(sheet, rowIndex, "正式工艺修订", formalRevision, label, text);
         if (!blank(documentVersion)) rowIndex = formulaMetadataRow(sheet, rowIndex, "文件版本", documentVersion, label, text);
         if (!blank(changeReason)) rowIndex = formulaMetadataRow(sheet, rowIndex, "变更原因", changeReason, label, text);

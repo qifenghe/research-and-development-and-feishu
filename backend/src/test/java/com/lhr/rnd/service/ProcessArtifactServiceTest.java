@@ -85,6 +85,27 @@ class ProcessArtifactServiceTest {
     }
 
     @Test
+    void inheritedFormulaAndPricingPreviewKeepProvenanceVisibleWithoutInternalIds() throws Exception {
+        var view = ProcessExportCheckServiceTest.view(ProcessExportCheckServiceTest.plan("72", "90", "PRIMARY_INPUT"))
+                .withMetadata(new ProcessExportView.Metadata("1kg袋装", "研发张三", "2026-09-22"))
+                .withActualsProvenance(true, "TRIAL-SOURCE-INTERNAL");
+        for (var type : List.of("FORMULA_XLSX", "PRICING_XLSX")) {
+            var bytes = service.preview(view, type).content();
+            var file = Path.of("target", "final-fix-export-qa", "inherited-" + type.toLowerCase() + ".xlsx");
+            Files.createDirectories(file.getParent()); Files.write(file, bytes);
+            try (var book = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+                if (type.equals("FORMULA_XLSX")) {
+                    assertThat(book.getSheetName(0)).isEqualTo("方案实际投料");
+                    assertThat(book.getSheetAt(0).getFooter().getRight()).isEqualTo("方案实际投料");
+                }
+                var content = new StringBuilder();
+                for (var sheet : book) for (var row : sheet) for (var cell : row) content.append(cell.toString()).append('\n');
+                assertThat(content.toString()).contains("含继承实测", "不表示本次新观测").doesNotContain("TRIAL-SOURCE-INTERNAL", "本次实验实际 kg");
+            }
+        }
+    }
+
+    @Test
     void emptySavedDraftAndTrialPreviewShowPendingExternalBatch() throws Exception {
         var saved = planService.save(FORM_ID, new ProcessPlan("P", FORM_ID, 1, "DRAFT", List.of(), null, false));
         var trial = trials.create(FORM_ID, new TrialSchemeService.CreateCommand("空方案软件测试", null, null, saved, null), ENGINEER);

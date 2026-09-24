@@ -269,6 +269,12 @@ function adoptServer(value: TrialScheme, allowCache = false) {
 function replacePlan(value: ProcessPlanDraft) {
   if (!editable.value || !currentTrial.value) return;
   currentTrial.value.plan = normalizeProcessPlan(plainClone(value));
+  const majors = currentTrial.value.plan.majorProcesses;
+  const keep = <T,>(record: Record<string, T>, ids: Set<string>) => Object.fromEntries(Object.entries(record).filter(([id]) => ids.has(id)));
+  const data = currentTrial.value.plannedData;
+  data.materialWeightsKg = keep(data.materialWeightsKg, new Set(majors.flatMap(m => m.steps.flatMap(s => s.materials.map(nodeId)))));
+  data.stepParameters = keep(data.stepParameters, new Set(majors.flatMap(m => m.steps.map(nodeId))));
+  data.majorYieldTargets = keep(data.majorYieldTargets, new Set(majors.map(nodeId)));
   markDirty();
 }
 
@@ -440,8 +446,10 @@ function actualAndDifference(key: string, unit = "") {
   const trial = currentTrial.value;
   const row = trial ? plannedActualRows(trial).find(item => item.key === key) : undefined;
   if (!row || !row.complete) return `实际：待补充 · ${row?.reason || "偏差：—"}`;
+  unit = row.unit || unit;
   const actual = `${row.actual}${unit}`;
-  if (row.kind === "PARAMETER") return `实际：${actual} · ${row.planned === row.actual ? "一致" : "不同"}`;
+  if (row.planned == null) return `实际：${actual} · 未设计划`;
+  if (row.kind === "PARAMETER" && row.difference == null) return `实际：${actual} · ${row.planned === row.actual ? "一致" : `计划 ${row.planned} → 实际 ${row.actual}`}`;
   const difference = row.difference == null ? "—" : `${row.difference > 0 ? "+" : ""}${row.difference}${deviationUnit(row.kind, unit)}`;
   return `实际：${actual} · 偏差：${difference}`;
 }
@@ -455,9 +463,14 @@ function newIdempotencyKey() { return globalThis.crypto?.randomUUID?.() || `tria
 </script>
 
 <style scoped>
-.trial-workbench { display: grid; gap: 12px; padding: 12px; border-radius: 12px; background: #f5f6f8; }
+.trial-workbench { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; max-width: 100%; gap: 12px; padding: 12px; border-radius: 12px; background: #f5f6f8; }
+.trial-workbench > *, .trial-summary, .editor-shell, .summary-head > * { min-width: 0; }
+.trial-workbench :deep(.ant-spin-container), .trial-workbench :deep(.ant-spin-nested-loading) { min-width: 0; }
+.scheme-bar { flex-wrap: wrap; min-width: 0; }
+.scheme-bar > :deep(.ant-space) { flex-wrap: wrap; min-width: 0; }
+.summary-head, .editor-title, .breadcrumb { flex-wrap: wrap; overflow-wrap: anywhere; }
 .scheme-bar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 9px 11px; border: 1px solid #e5e6eb; border-radius: 10px; background: #fff; }
-.scheme-tabs { display: flex; gap: 5px; min-width: 0; overflow-x: auto; }
+.scheme-tabs { display: flex; flex: 1 1 280px; max-width: 100%; gap: 5px; min-width: 0; overflow-x: auto; }
 .scheme-tabs button { display: flex; gap: 5px; align-items: center; white-space: nowrap; padding: 6px 9px; border: 1px solid transparent; border-radius: 7px; background: #f7f8fa; cursor: pointer; }
 .scheme-tabs button.active { border-color: #3370ff; color: #245bdb; background: #eef3ff; }
 .scheme-tabs small { color: #86909c; }
@@ -471,5 +484,6 @@ function newIdempotencyKey() { return globalThis.crypto?.randomUUID?.() || `tria
 .planned-row small { color: #595959; }.planned-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
 .issues { margin: 10px 0; padding-left: 22px; color: #cf1322; }.issues.warning { color: #d46b08; }
 button:focus-visible { outline: 3px solid #69b1ff; outline-offset: 2px; }
-@media (max-width: 1000px) { .scheme-bar { align-items: flex-start; flex-direction: column; }.planned-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.planned-row { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .planned-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.planned-row { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1000px) { .scheme-bar { align-items: flex-start; flex-direction: column; } }
 </style>

@@ -69,9 +69,18 @@ public class ProcessExportCheckService {
         if ("SOP_DOCX".equals(type)) {
             for (var major : values(view.snapshot().majorProcesses())) for (var step : values(major.steps())) {
                 if (blank(step.instruction())) issues.add(issue("STEP_INSTRUCTION_REQUIRED", path(major.sequence(), step.sequence()) + ".instruction", "SOP 操作要求待填写", major.sequence(), step.sequence()));
-                for (var control : values(step.controlPoints())) if ("CRITICAL".equals(control.importance())
-                        && (blank(control.method()) || blank(control.frequency()) || blank(control.deviationAction())))
-                    issues.add(issue("CONTROL_STANDARD_REQUIRED", path(major.sequence(), step.sequence()) + ".controlPoints", "关键控制需填写检测方法、频次和偏差处理", major.sequence(), step.sequence()));
+                parameterIssues(issues, major, step, 1, step.parameter1Name(), step.parameter1Value(), step.parameter1Unit());
+                parameterIssues(issues, major, step, 2, step.parameter2Name(), step.parameter2Value(), step.parameter2Unit());
+                for (var control : values(step.controlPoints())) {
+                    var base = path(major.sequence(), step.sequence()) + ".controlPoints[sequence=" + control.sequence() + "]";
+                    if (blank(control.itemName())) issues.add(issue("CONTROL_NAME_REQUIRED", base + ".itemName", "控制项目名称待填写", major.sequence(), step.sequence()));
+                    if (control.targetValue() == null && control.lowerLimit() == null && control.upperLimit() == null && blank(control.basisOrRemark()))
+                        issues.add(issue("CONTROL_REQUIREMENT_REQUIRED", base + ".basisOrRemark", "控制要求需填写目标、范围或明确的定性要求/依据", major.sequence(), step.sequence()));
+                    if ((control.targetValue() != null || control.lowerLimit() != null || control.upperLimit() != null) && blank(control.unit()))
+                        issues.add(issue("CONTROL_UNIT_REQUIRED", base + ".unit", "数值控制单位待填写；无量纲请明确填写无量纲", major.sequence(), step.sequence()));
+                    for (var field : new String[][]{{"method", control.method()}, {"frequency", control.frequency()}, {"deviationAction", control.deviationAction()}})
+                        if (blank(field[1])) issues.add(issue("CONTROL_STANDARD_REQUIRED", base + "." + field[0], "控制需填写检测方法、频次和偏差处理", major.sequence(), step.sequence()));
+                }
             }
         }
         if ("PRICING_XLSX".equals(type)) {
@@ -97,6 +106,13 @@ public class ProcessExportCheckService {
         if (!List.of("FORMULA_XLSX", "SOP_DOCX", "PRICING_XLSX").contains(type == null ? "" : type)) throw new BusinessException("PROCESS_ARTIFACT_TYPE_INVALID", "不支持的成果类型");
     }
     private static ProcessExportView.Issue issue(String code, String path, String message, Integer major, Integer step) { return new ProcessExportView.Issue(code, path, message, major, step); }
+    private void parameterIssues(List<ProcessExportView.Issue> issues, ProcessPlan.MajorProcess major, ProcessPlan.MinorStep step, int index, String name, String value, String unit) {
+        if (blank(value)) return;
+        var base = path(major.sequence(), step.sequence()) + ".parameter" + index;
+        if (blank(name)) issues.add(issue("PARAMETER_NAME_REQUIRED", base + "Name", "已记录参数的含义待填写", major.sequence(), step.sequence()));
+        if (value.trim().matches("[+-]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)") && blank(unit))
+            issues.add(issue("PARAMETER_UNIT_REQUIRED", base + "Unit", "数值参数单位待填写；无量纲请明确填写无量纲", major.sequence(), step.sequence()));
+    }
     private static String path(Integer major, Integer step) { return major == null ? "majorProcesses" : "majorProcesses[sequence=" + major + "]" + (step == null ? "" : ".steps[sequence=" + step + "]"); }
     private static boolean blank(String value) { return value == null || value.isBlank(); }
     private static <T> List<T> values(List<T> list) { return list == null ? List.of() : list; }

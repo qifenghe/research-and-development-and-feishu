@@ -90,10 +90,11 @@ function importanceLabel(value: ControlPointDraft["importance"]) { return value 
 </script>
 
 <style scoped>
-.control-points { display: grid; gap: 10px; } .control-points header, .measure-title, .point-heading { display: flex; align-items: center; gap: 8px; } .control-points header { justify-content: space-between; } .control-points small { display: block; color: #86909c; font-size: 12px; }
-.control-card { display: grid; gap: 8px; padding: 12px; border: 1px solid #e5e6eb; border-radius: 10px; background: #fff; } .control-card.blocking { border-color: #ff7875; background: #fff8f7; } .point-heading .ant-input { flex: 1; }
-.grid { display: grid; gap: 8px; } .two { grid-template-columns: repeat(2, minmax(0, 1fr)); } .three { grid-template-columns: 1.2fr 1fr .6fr; } .four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.measurements { padding: 8px; border-radius: 8px; background: #f7f8fa; } .measure-title { justify-content: space-between; margin-bottom: 6px; } .measurement-row { display: grid; grid-template-columns: 1fr 1.4fr .8fr 1.3fr .8fr 44px; gap: 6px; margin-top: 6px; } .block-note { color: #cf1322; font-size: 12px; }
-.confirmation { display: flex; align-items: center; gap: 8px; min-height: 32px; color: #595959; font-size: 12px; }
-@media (max-width: 900px) { .four, .measurement-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.control-points { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 10px; } .control-points header, .measure-title, .point-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; } .control-points header { justify-content: space-between; } .control-points small { display: block; color: #86909c; font-size: 12px; }
+.control-card { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 8px; padding: 12px; border: 1px solid #e5e6eb; border-radius: 10px; background: #fff; } .control-card.blocking { border-color: #ff7875; background: #fff8f7; } .point-heading .ant-input { flex: 1 1 150px; min-width: 0; }
+.grid { display: grid; gap: 8px; min-width: 0; } .two { grid-template-columns: repeat(2, minmax(0, 1fr)); } .three { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, .6fr); } .four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid > *, .measurement-row > * { min-width: 0; width: 100%; }
+.measurements { min-width: 0; padding: 8px; border-radius: 8px; background: #f7f8fa; } .measure-title { justify-content: space-between; margin-bottom: 6px; } .measurement-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, .8fr) minmax(0, 1.3fr) minmax(0, .8fr) 44px; gap: 6px; margin-top: 6px; } .block-note { color: #cf1322; font-size: 12px; }
+.confirmation { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 32px; color: #595959; font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .three, .four, .measurement-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

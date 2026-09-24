@@ -64,7 +64,7 @@
         <footer>
           <span>主料投入 {{ kg(yieldOf(major).primaryInputWeightKg) }}</span>
           <span>末端产出 {{ kg(yieldOf(major).qualifiedOutputWeightKg) }}</span>
-          <span :class="{ warn: Math.abs(yieldOf(major).balanceDifferenceKg) > 0.01 }">平衡差 {{ kg(yieldOf(major).balanceDifferenceKg) }}</span>
+          <span :class="{ warn: Math.abs(yieldOf(major).balanceDifferenceKg ?? 0) > 0.01 }">平衡差 {{ kg(yieldOf(major).balanceDifferenceKg) }}</span>
           <a-button v-if="!readonly" type="link" size="small" @click="copyMajor(major.key)">复制</a-button>
         </footer>
       </article>
@@ -102,6 +102,7 @@ import {
 import { confirmProcessPlanRepair, copyMajorProcess, type RemovedFlowConsumer } from "./processPlanFlow";
 import { cloneVueValue } from "./cloneVueValue";
 import { templateProcessCode } from "./processDraftRecovery";
+import { actualKg as kg, majorActualSummary as yieldOf } from "./actualSummary";
 
 const props = defineProps<{ modelValue: ProcessPlanDraft; readonly?: boolean; selectedKey?: string }>();
 const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft]; select: [key: string] }>();
@@ -244,8 +245,6 @@ async function dropAtEnd(event: DragEvent) {
   else if (data?.kind === "existing") await moveMajor(data.index, plan.value.majorProcesses.length - 1 - data.index);
 }
 
-function yieldOf(major: MajorProcessDraft) { return calculateMajorProcessYield(major); }
-function kg(value: number) { return `${value.toFixed(3)}kg`; }
 function percent(value: number | null) { return value == null ? "待补充" : `${value.toFixed(2)}%`; }
 </script>
 

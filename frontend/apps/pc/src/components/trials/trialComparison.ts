@@ -6,8 +6,9 @@ import type {
   ProcessStepMaterialDraft,
 } from "@rnd/shared";
 import type { TrialScheme } from "../../services/trialApi";
+import { externalActualTotal } from "../process/actualSummary.ts";
 
-export type TrialDifferenceKind = "QUALITY" | "DIFFICULTY" | "PARAMETER" | "FORMULA" | "INPUT" | "YIELD" | "INCOMPARABLE";
+export type TrialDifferenceKind = "OVERVIEW" | "QUALITY" | "DIFFICULTY" | "PARAMETER" | "FORMULA" | "INPUT" | "YIELD" | "INCOMPARABLE";
 
 export interface TrialDifference {
   kind: TrialDifferenceKind;
@@ -34,6 +35,7 @@ export interface PlannedActualRow {
   difference: number | null;
   complete: boolean;
   reason?: string | null;
+  unit?: string;
 }
 
 export interface TrialComparisonResult {
@@ -67,7 +69,9 @@ export function plannedActualRows(trial: TrialScheme): PlannedActualRow[] {
       for (const [index, name, actual] of [[1, step.parameter1Name, step.parameter1Value], [2, step.parameter2Name, step.parameter2Value]] as const) {
         const target = index === 1 ? stepPlan?.parameter1Value : stepPlan?.parameter2Value;
         if (blank(target) && blank(actual)) continue;
-        rows.push({ key: `parameter:${stepId || step.key}:${index}`, kind: "PARAMETER", label: `${major.processName} / ${step.stepName} / ${name || `参数 ${index}`}`, planned: textOrNull(target), actual: textOrNull(actual), difference: null, complete: !blank(actual) });
+        const unit = (index === 1 ? step.parameter1Unit : step.parameter2Unit) || "";
+        const difference = !blank(name) && !blank(unit) && strictNumber(String(target ?? "")) && strictNumber(String(actual ?? "")) ? numericDifference(Number(target), Number(actual)) : null;
+        rows.push({ key: `parameter:${stepId || step.key}:${index}`, kind: "PARAMETER", label: `${major.processName} / ${step.stepName} / ${name || `参数 ${index}`}`, planned: textOrNull(target), actual: textOrNull(actual), difference, unit, complete: !blank(actual) });
       }
     }
     const majorId = nodeId(major);
@@ -84,6 +88,9 @@ export function plannedActualRows(trial: TrialScheme): PlannedActualRow[] {
 
 export function buildTrialComparison(candidate: TrialScheme, baseline: TrialScheme): TrialComparisonResult {
   const differences: TrialDifference[] = [];
+  for (const [field, path] of [["purpose", "试验目的"], ["variables", "试验变量"], ["conclusion", "结论"], ["recommendationReason", "推荐理由"], ["archived", "状态"]] as const) {
+    if (candidate[field] !== baseline[field]) differences.push({ kind: "OVERVIEW", path, before: overviewValue(baseline, field), after: overviewValue(candidate, field) });
+  }
   if (candidate.qualityScore !== baseline.qualityScore || textOrNull(candidate.qualityNotes) !== textOrNull(baseline.qualityNotes)) {
     differences.push({ kind: "QUALITY", path: "质量评价", before: quality(baseline), after: quality(candidate) });
   }
@@ -315,6 +322,15 @@ function textOrNull(value: unknown) { return blank(value) ? null : String(value)
 function nullableNumber(value: unknown) { return typeof value === "number" && Number.isFinite(value) ? value : null; }
 function quality(trial: TrialScheme) { return [trial.qualityScore, textOrNull(trial.qualityNotes)].filter(value => value != null).join(" · ") || null; }
 
+function overviewValue(trial: TrialScheme, field: "purpose" | "variables" | "conclusion" | "recommendationReason" | "archived") {
+  if (field === "archived") return trial.archived ? "已归档" : "进行中";
+  if (field === "conclusion") return ({ PENDING: "待观察", ADJUST: "需调整", REJECT: "淘汰", RECOMMEND: "推荐" })[trial.conclusion];
+  return textOrNull(trial[field]);
+}
+export function trialOverview(trial: TrialScheme) {
+  return { purpose: trial.purpose || "未填写", variables: trial.variables || "未填写", status: overviewValue(trial, "archived"), conclusion: overviewValue(trial, "conclusion"), reason: trial.recommendationReason || "未填写", externalInputKg: externalActualTotal(trial.plan), finalYield: actualBatchYield(trial.plan.majorProcesses) };
+}
+
 function primaryMaterialIdentity(major: MajorProcessDraft, allMajors: MajorProcessDraft[], visited = new Set<string>()): { identity: string | null; stable: boolean } {
   const majorId = nodeId(major);
   if (visited.has(majorId)) return { identity: null, stable: false };
@@ -346,7 +362,7 @@ function parameterDelta(before: MinorProcessStepDraft, after: MinorProcessStepDr
   return numericDifference(Number(beforeValue), Number(afterValue));
 }
 
-function strictNumber(value: string) { return /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value.trim()); }
+function strictNumber(value: string) { return /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value.trim()) && Number.isFinite(Number(value)); }
 
 function actualMajorYield(major: MajorProcessDraft): number | null {
   return major.yieldBasis === "NONE" ? null : calculateMajorProcessYield(major).mainYieldPercent;

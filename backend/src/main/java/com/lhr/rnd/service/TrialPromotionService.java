@@ -115,8 +115,13 @@ public class TrialPromotionService {
     }
 
     private SourceMetadata sourceMetadata(String formId, String revisionId) {
-        var rows = jdbc.query("select id,trial_id,trial_name,trial_version_no,trial_snapshot_hash,promoted_by,promoted_at from experiment_trial_promotion where experiment_form_id=? and revision_id=?",
-                (rs, row) -> new SourceMetadata(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4), rs.getString(5), rs.getString(6), rs.getTimestamp(7).toLocalDateTime().toString()), formId, revisionId);
+        var rows = jdbc.query("select id,trial_id,trial_name,trial_version_no,trial_snapshot_hash,promoted_by,promoted_at,trial_snapshot_json from experiment_trial_promotion where experiment_form_id=? and revision_id=?",
+                (rs, row) -> {
+                    try {
+                        var snapshot = mapper.readTree(rs.getString(8));
+                        return new SourceMetadata(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4), rs.getString(5), rs.getString(6), rs.getTimestamp(7).toLocalDateTime().toString(), snapshot.path("inheritedActuals").asBoolean(false), snapshot.path("sourceTrialId").asText(null));
+                    } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new IllegalStateException("正式来源快照无法读取", e); }
+                }, formId, revisionId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -172,5 +177,5 @@ public class TrialPromotionService {
     public record PreviewCommand(int trialVersionNo, int expectedProcessVersionNo) {}
     public record SubmitCommand(int trialVersionNo, int expectedProcessVersionNo, String previewToken, boolean confirmed, String changeReason, String idempotencyKey) {}
     public record Preview(int trialVersionNo, int expectedProcessVersionNo, ProcessSubmissionCheck checks, boolean differingDraft, String previewToken, String previewHash) {}
-    public record SourceMetadata(String promotionId, String trialId, String trialName, int trialVersionNo, String trialSnapshotHash, String promotedBy, String promotedAt) {}
+    public record SourceMetadata(String promotionId, String trialId, String trialName, int trialVersionNo, String trialSnapshotHash, String promotedBy, String promotedAt, boolean inheritedActuals, String sourceTrialId) {}
 }

@@ -16,6 +16,25 @@ import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SopDocumentRendererTest {
+    @Test void inheritedObservationsAreExplicitAndQualitativeRequirementsNeedNoNumericTarget() throws Exception {
+        var base = view(true);
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree = mapper.valueToTree(base.snapshot());
+        var control = (com.fasterxml.jackson.databind.node.ObjectNode) tree.path("majorProcesses").get(1).path("steps").get(0).path("controlPoints").get(1);
+        control.putNull("targetValue"); control.putNull("upperLimit");
+        control.put("basisOrRemark", "外观均匀，无可见异物（软件测试定性要求）");
+        var plan = mapper.treeToValue(tree, ProcessPlan.class);
+        var inherited = new ProcessExportCheckService().view(base.productName(), base.sourceLabel(), plan, null, List.of())
+                .withMetadata(base.metadata()).withActualsProvenance(true, "TRIAL-SOURCE-INTERNAL");
+        var bytes = new SopDocumentRenderer().render(inherited, new SopDocumentRenderer.Metadata("R3", "V3", null, "研发张三", LocalDateTime.of(2026, 9, 22, 10, 0), false));
+        var file = Path.of("target", "final-fix-export-qa", "inherited-qualitative-numeric-sop.docx");
+        Files.createDirectories(file.getParent()); Files.write(file, bytes);
+        try (var document = new XWPFDocument(new ByteArrayInputStream(bytes))) {
+            var text = document.getParagraphs().stream().map(p -> p.getText()).collect(Collectors.joining("\n")) + document.getTables().stream().map(t -> t.getText()).collect(Collectors.joining("\n"));
+            assertThat(text).contains("含继承实测", "不表示本次新观测", "方案记录实际重量", "定性要求/依据：外观均匀", "目标：78℃", "复测结果：符合");
+            assertThat(text).doesNotContain("TRIAL-SOURCE-INTERNAL", "本次实验实际重量", "目标或范围：待填写");
+        }
+    }
     @Test
     void rendersVerticalChineseSopWithNearbyControlsAndSeparateTraceAppendix() throws Exception {
         var view = view(true);
@@ -42,7 +61,7 @@ class SopDocumentRendererTest {
                     "承接 1.2 慢火熟制", "流向 2.1 冷却与包装", "工艺用水超长名称",
                     "中心温度", "数字探针检测", "每锅检测", "继续加热并复测",
                     "目标：78℃", "允许范围：75 至 82℃", "目标：0℃", "允许范围：无下限 至 0℃",
-                    "79.9", "2026-08-19 22:00:22", "符合", "实测值：待填写", "实测值：0℃");
+                    "79.9", "2026-08-19 22:00:22", "符合", "复测结果：符合", "实测值：待填写", "实测值：0℃");
             assertThat(allTables).doesNotContain("实测值：℃");
             assertThat(content).doesNotContain("OUT-RAW-123", "MAT-RAW-456", "PRIMARY", "FROZEN_SOLID",
                     "FOOD_SAFETY", "CRITICAL", "PASS", "PACKED", "2026-08-19T22:00:22", ".123456");
@@ -78,7 +97,7 @@ class SopDocumentRendererTest {
 
     private ProcessExportView view(boolean withMeasurement) {
         var measurement = new ProcessPlan.ControlMeasurement("CM-RAW", 1, new BigDecimal("79.9000"),
-                "2026-08-19T22:00:22.123456", "PASS", null, "复测符合", null);
+                "2026-08-19T22:00:22.123456", "PASS", null, "PASS", null);
         var control = new ProcessPlan.ControlPoint("CP-RAW", 1, "FOOD_SAFETY", "CRITICAL", "中心温度",
                 new BigDecimal("78"), new BigDecimal("75"), new BigDecimal("82"), "℃", "数字探针检测",
                 "校准温度探针", "每锅检测", "继续加热并复测", true, "研发李四",

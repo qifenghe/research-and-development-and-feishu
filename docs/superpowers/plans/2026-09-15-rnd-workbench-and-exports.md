@@ -25,6 +25,8 @@
 
 ## Task 1: Persist independent trial drafts and safe copies
 
+Status: completed and independently reviewed through `ced2f26`; 16 focused tests and 325 backend tests passed.
+
 **Files:** Create model `backend/src/main/java/com/lhr/rnd/model/TrialScheme.java`, domain `TrialSchemeCopyService.java`, service `TrialSchemeService.java`, API `TrialSchemeController.java`, migration `V25__create_trial_scheme.sql`, tests `TrialSchemeServiceTest.java` and `TrialSchemeCopyServiceTest.java`. Only add a targeted access/state helper to `ProcessPlanService` if required.
 
 **Interfaces:** `/api/v1/experiment-forms/{formId}/trials` GET list, POST create; `/{trialId}` GET, PUT versioned save; `/{trialId}/copy` POST; `/{trialId}/archive` POST versioned archive/restore. Standard ApiResponse wrapper. Trial JSON has id, experimentFormId, versionNo, name, sourceTrialId, archived, purpose, variables, conclusion (`PENDING|ADJUST|REJECT|RECOMMEND`), recommendationReason, qualityScore (nullable 0–10), qualityNotes, difficulty (`EASY|MEDIUM|HARD` or null), plan (ProcessPlan), plannedData (JSON object), inheritedActuals, createdBy/At, updatedBy/At. PlannedData keys reference current step/material/major IDs, using `materialWeightsKg`, `stepParameters` (parameter1Value/parameter2Value), `majorYieldTargets`, `batchYieldTarget`, and `yieldBasisNote`. Server IDs/audit fields must not be accepted from save body.
@@ -41,9 +43,13 @@
 
 ## Task 2: Transactional trial promotion and snapshot provenance
 
+Status: completed and independently reviewed in `1769ccb`; 15 focused tests and 340 backend tests passed. Deeper populated-graph/late-failure rollback regression coverage is carried into Task 6.
+
 **Files:** Create `TrialPromotionService.java`, migration `V26__bind_trial_revision_provenance.sql`, tests `TrialPromotionServiceTest.java`; modify trial controller and targeted revision model/service code. Store immutable trial JSON, displaced draft JSON, request key and resulting revision ID in a promotion record, FK to form/trial/revision. Existing revision JSON remains unchanged.
 
 **Interfaces:** POST `/{trialId}/submission-preview` with trialVersionNo and expectedProcessVersionNo returns checks plus differingDraft flag and preview token/hash. POST `/{trialId}/submit` takes versions, preview token, confirmed, changeReason, idempotencyKey; returns ProcessRevision. GET revision source metadata is authorized via existing formal read path, not draft read.
+
+Trial controls also need explicit `/{trialId}/control-points/{pointId}/confirm` (valid current passing measurements) and `/confirm-deviation` (director only, documented disposition and passing retest) actions, with trialVersionNo. Derive confirmer and time on server. Reject confirmation of unchanged inherited measurements; save invalidates prior confirmation if location, control definition or measurements change. A confirmed trial's trusted evidence must survive promotion remapping without becoming client-forgeable. This closes the critical-point gate rather than removing it.
 
 - [ ] Write integration tests for unconfirmed/stale/unauthorized rejection, existing-draft preservation, invalid control rollback, retry returning same revision, mismatched request-key reuse rejection, and immutable source snapshot after later edits.
   ```java
@@ -55,6 +61,8 @@
 - [ ] Run focused plus full backend tests, self-review rollbacks and existing sent-test binding; commit scoped changes and record provenance API for exports.
 
 ## Task 3: Trial workbench and planned/actual comparison UI
+
+Status: implemented and independently reviewed through `0f7c789` on2026-09-22. Task6 latest fullfrontend155/build passed; CUA save/switch/reload and confirmation checked. Final review carries newly observed missing-summary and long-name layout issues for one scoped fix wave.
 
 **Files:** Create `frontend/apps/pc/src/components/trials/TrialWorkbench.vue`, `TrialComparison.vue`, `trialDraft.ts`, `trialComparison.ts`, service `trialApi.ts`, tests `frontend/tests/trial-workbench.test.mts`, `trial-comparison.test.mts`; modify ExperimentFormView and expose a controlled persistence adapter in ProcessPlanWorkspace as needed, preserving existing dirty edits.
 
@@ -71,6 +79,8 @@
 
 ## Task 4: Snapshot export checks and pricing basis
 
+Status: completed and independently reviewed through `cd1f6bb`. Task6 latest fullbackend360/frontend155 and API152 passed. Final pricing workbooks visually checked across all12printed pages. Preview dialogs verified by CUA; actual browser download-event receipt remains unconfirmed despite successful API file verification.
+
 **Files:** Create `ProcessExportView.java`, `ProcessExportCheckService.java`, tests `ProcessExportCheckServiceTest.java`; extend PackagingItem/unit migration and request/frontend contracts; modify PricingFileService and pricing tests, ProcessArtifactService preview/check API.
 
 **Interfaces:** Shared read-only export view from fixed ProcessRevision plus authorized promotion source metadata. Check result has ready and issues with code/path/message; artifact type-specific checks. Preview renders without formal archive/status writes and labels incomplete fields. Existing archived downloads unchanged.
@@ -86,6 +96,8 @@
 
 ## Task 5: Readable SOP renderer and matched formula
 
+Status: completed and independently reviewed through `12161a9`. Backend359/frontend155 tests and typecheck/build/contracts passed atfa85c04; finalfix29focusedpassed. LatestSOP4pages and formula2sheets/6printpages visually inspected. Actual and100kg formula amounts use separately named sheets with independent repeatingheaders.
+
 **Files:** Create `SopDocumentRenderer.java`, `ExportDisplayFormat.java`, tests `SopDocumentRendererTest.java`; modify ProcessArtifactService and associated tests.
 
 **Interfaces:** Renderer consumes Task 4 fixed export view and preview/formal mode, returns DOCX bytes. Formula export consumes same snapshot/provenance and separates actual quantities from 100kg external-input normalization.
@@ -96,6 +108,8 @@
 - [ ] Run tests and generate long-Chinese-name, multiple-additive, multiple-process, control-heavy samples; use document skill render and inspect every page, iterate layout without changing source business records; commit scoped changes.
 
 ## Task 6: End-to-end and role acceptance
+
+Status: completed and independently reviewed through `508dc59`; backend360/frontend155/API152, contracts/routes/typecheck/build passed. Final whole-plan review and its bounded fix wave remain in progress; browser/file and UI limitations are explicitly recorded in the acceptance report.
 
 **Files:** Extend `scripts/verify-rnd-roles.mjs` only if necessary; create `scripts/verify-rnd-trials.mjs`, report `docs/研发工作台与导出验收-2026-09-15.md`.
 

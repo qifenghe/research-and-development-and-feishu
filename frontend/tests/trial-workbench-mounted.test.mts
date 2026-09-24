@@ -49,6 +49,63 @@ function trial(id: "trial-a" | "trial-b") {
 }
 
 let server: ViteDevServer;
+async function mountSetup(path: string, props: any) {
+  const component = (await server.ssrLoadModule(path)).default;
+  component.render = () => null;
+  const renderer = createRenderer<HostNode, HostNode>({
+    patchProp(el, key, _old, next) { el.props[key] = next; }, insert(child, parent) { child.parent = parent; parent.children.push(child); },
+    remove() {}, createElement() { return { parent: null, children: [], props: {} }; },
+    createText(text) { return { parent: null, children: [], props: {}, text }; }, createComment(text) { return { parent: null, children: [], props: {}, text }; },
+    setText(node, text) { node.text = text; }, setElementText(node, text) { node.text = text; }, parentNode(node) { return node.parent; }, nextSibling() { return null; }, setScopeId() {},
+    insertStaticContent() { const node: HostNode = { parent: null, children: [], props: {} }; return [node, node]; },
+  });
+  const app = renderer.createApp(component, props); app.provide(Symbol.for("v-scx"), { modules: new Set<string>() });
+  const instance = app.mount({ parent: null, children: [], props: {} }) as any;
+  await flush(); return { app, setup: instance.$.setupState };
+}
+function observedPlan(weight: number | undefined = 10) {
+  return { ...createEmptyProcessPlan(), majorProcesses: [{ id: "m", key: "m", sequence: 1, processName: "热加工", yieldBasis: "PRIMARY_INPUT", inputs: [], outputs: [], steps: [{ id: "s", key: "s", sequence: 1, stepName: "煮制", stepType: "NORMAL", parameter1Name: "温度", parameter1Unit: "℃", parameter1Value: "97", materials: [{ id: "mat", key: "mat", sequence: 1, materialRole: "PRIMARY", sourceType: "EXTERNAL", materialName: "牛肉", weightKg: weight }], outputs: [{ id: "out", key: "out", sequence: 1, primaryOutput: true, continueFlow: false, outputType: "FINISHED", weightKg: weight }], controlPoints: [] }] }] };
+}
+
+test("graph replacement prunes deleted planned keys before saving material step and major deletions", async () => {
+  for (const deletion of ["material", "step", "major"]) {
+    localStorage.clear();
+    const value = { ...trial("trial-a"), plan: observedPlan(), plannedData: { materialWeightsKg: { mat: 10 }, stepParameters: { s: { parameter1Value: "95", parameter2Value: null } }, majorYieldTargets: { m: 80 }, batchYieldTarget: 72, yieldBasisNote: "主料" } };
+    const api = (await server.ssrLoadModule("/src/services/trialApi.ts")).trialApi;
+    api.list = async () => [value]; api.find = async () => value;
+    let saved: any;
+    api.save = async (_f: string, _t: string, command: any) => { saved = command; return { ...value, ...command }; };
+    const { app, setup } = await mountSetup("/src/components/trials/TrialWorkbench.vue", { formId: "form-1", userId: "engineer-1", formalPlan: createEmptyProcessPlan() });
+    const next = structuredClone(value.plan);
+    if (deletion === "material") next.majorProcesses[0]!.steps[0]!.materials = [];
+    else if (deletion === "step") next.majorProcesses[0]!.steps = [];
+    else next.majorProcesses = [];
+    setup.replacePlan(next); await setup.saveTrial();
+    assert.deepEqual(saved.plannedData.materialWeightsKg, {});
+    assert.deepEqual(saved.plannedData.stepParameters, deletion === "material" ? value.plannedData.stepParameters : {});
+    assert.deepEqual(saved.plannedData.majorYieldTargets, deletion === "major" ? {} : { m: 80 });
+    assert.equal(saved.plannedData.batchYieldTarget, 72); assert.equal(saved.plannedData.yieldBasisNote, "主料");
+    if (deletion === "material") assert.match(setup.actualAndDifference("parameter:s:1"), /\+2℃/);
+    app.unmount();
+  }
+});
+
+test("actual summaries preserve missing partial zero and tiny observations", async () => {
+  for (const weight of [undefined, 0, 0.0001]) {
+    const plan = observedPlan(); plan.majorProcesses[0]!.steps[0]!.materials[0]!.weightKg = weight; plan.majorProcesses[0]!.steps[0]!.outputs[0]!.weightKg = weight;
+    const board = await mountSetup("/src/components/process/MajorProcessBoard.vue", { modelValue: plan });
+    const summary = board.setup.yieldOf(plan.majorProcesses[0]);
+    assert.equal(summary.primaryInputWeightKg, weight ?? null); assert.equal(summary.qualifiedOutputWeightKg, weight ?? null);
+    assert.equal(summary.balanceDifferenceKg, weight == null ? null : 0);
+    assert.equal(board.setup.kg(weight ?? null), weight == null ? "待补充" : `${weight}kg`);
+    const workspace = await mountSetup("/src/components/process/MinorStepWorkspace.vue", { modelValue: plan, majorKey: "m" });
+    assert.equal(workspace.setup.recipeTotal, weight ?? null);
+    board.app.unmount(); workspace.app.unmount();
+  }
+  const plan = observedPlan(); plan.majorProcesses[0]!.steps[0]!.materials.push({ ...plan.majorProcesses[0]!.steps[0]!.materials[0]!, id: "aux", key: "aux", materialRole: "AUXILIARY", weightKg: undefined });
+  const workspace = await mountSetup("/src/components/process/MinorStepWorkspace.vue", { modelValue: plan, majorKey: "m" });
+  assert.equal(workspace.setup.recipeTotal, null); workspace.app.unmount();
+});
 const require = createRequire(import.meta.url);
 test.before(async () => {
   Object.assign(globalThis, { localStorage: new MemoryStorage() });

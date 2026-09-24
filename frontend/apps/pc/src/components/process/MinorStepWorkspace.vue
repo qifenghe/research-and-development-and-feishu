@@ -82,7 +82,7 @@
         </div>
       </section>
 
-      <section class="section live"><div><b>得率摘要</b><span>小步骤 {{ percent(stepYield.mainYieldPercent) }} · 大工序 {{ percent(majorYield.mainYieldPercent) }} · 最终 {{ percent(finalYield) }}</span><em v-if="majorYieldReason">{{ majorYieldReason }}</em></div><div><b>配方汇总</b><span>外部物料 {{ recipeTotal.toFixed(3) }} kg</span></div></section>
+      <section class="section live"><div><b>得率摘要</b><span>小步骤 {{ percent(stepYield.mainYieldPercent) }} · 大工序 {{ percent(majorYield.mainYieldPercent) }} · 最终 {{ percent(finalYield) }}</span><em v-if="majorYieldReason">{{ majorYieldReason }}</em></div><div><b>配方汇总</b><span>外部物料 {{ actualKg(recipeTotal) }}</span></div></section>
       <ControlPointEditor :model-value="selectedStep.controlPoints || []" :readonly="readonly" :confirmation-mode="confirmationMode" @update:model-value="replaceControls" @confirm-pass="confirmPass" @confirm-deviation="confirmDeviation" />
     </main>
     <main v-else class="no-step">先添加一个小步骤</main>
@@ -101,6 +101,7 @@ import {
 import ControlPointEditor from "./ControlPointEditor.vue";
 import { confirmProcessPlanRepair, previousFlowOutputs, type RemovedFlowConsumer } from "./processPlanFlow";
 import { cloneVueValue } from "./cloneVueValue";
+import { externalActualTotal, actualKg } from "./actualSummary";
 
 const props = withDefaults(defineProps<{ modelValue: ProcessPlanDraft; majorKey: string; readonly?: boolean; confirmationMode?: "legacy-sentinel" | "external" }>(), {
   confirmationMode: "legacy-sentinel",
@@ -120,7 +121,7 @@ const stepYield = computed(() => selectedStep.value ? calculateMinorStepYield(se
 const majorYield = computed(() => major.value ? calculateMajorProcessYield(major.value) : { mainYieldPercent: null });
 const majorYieldReason = computed(() => major.value ? mainYieldUnavailableReason(major.value) : null);
 const finalYield = computed(() => calculateBatchYield(localPlan.value));
-const recipeTotal = computed(() => aggregateProcessRecipe(localPlan.value).reduce((sum, line) => sum + line.weightKg, 0));
+const recipeTotal = computed(() => externalActualTotal(localPlan.value));
 
 const stepTemplates = ["验收", "解冻", "清洗", "修割", "配料", "滚揉", "腌制", "焯水", "煎制", "炒制", "油炸", "煮制", "冷却", "速冻", "包装", "金检", "研发取样"];
 const materialRoles = [{ label: "主料", value: "PRIMARY" }, { label: "辅料", value: "AUXILIARY" }, { label: "加工用水", value: "PROCESS_WATER" }];
@@ -296,17 +297,20 @@ function percent(value: number | null) { return value == null ? "待补充" : `$
 .step-moves button { border: 0; border-radius: 4px; background: #f0f5ff; color: #1677ff; font-size: 11px; }
 .step-templates { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; padding-top: 10px; border-top: 1px solid #f0f0f0; }
 .step-templates button { border: 1px solid #d9d9d9; border-radius: 5px; background: #fff; padding: 4px 7px; font-size: 12px; cursor: grab; }
-.step-editor { display: grid; align-content: start; gap: 10px; padding: 16px; overflow: auto; }
-.editor-header { display: flex; justify-content: space-between; align-items: start; }
+.step-editor { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 10px; padding: 16px; overflow: auto; }
+.step-editor > * { min-width: 0; max-width: 100%; }
+.editor-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: 8px; }
+.editor-header > * { min-width: 0; overflow-wrap: anywhere; }
+.editor-header :deep(.ant-space) { flex-wrap: wrap; }
 .editor-header h3 { margin: 3px 0; } .editor-header p { margin: 0; }
 .section { padding: 13px; border: 1px solid #e5e6eb; border-radius: 10px; background: #fff; }
-.section-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.section-title { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; color: #595959; font-size: 13px; }
 .hint { margin: 0 0 8px; }
 .material-row, .output-row { display: grid; gap: 6px; align-items: center; margin-top: 6px; }
 .material-row, .output-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .material-row > *, .output-row > *, .step-editor { min-width: 0; width: 100%; }
-.live { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #f0f7ff; }
+.live { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; background: #f0f7ff; }
 .live b, .live span { display: block; } .live span { margin-top: 3px; color: #1677ff; }
 .live em { display: block; margin-top: 4px; color: #d46b08; font-size: 11px; font-style: normal; line-height: 1.35; }
 .no-step { display: grid; place-content: center; min-height: 300px; color: #86909c; }
