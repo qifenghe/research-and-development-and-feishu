@@ -49,6 +49,39 @@ function trial(id: "trial-a" | "trial-b") {
 }
 
 let server: ViteDevServer;
+test("step template drop appends repeated independent steps and selects each newly added step", async () => {
+  let plan: any = observedPlan();
+  plan.majorProcesses[0].steps = [];
+  const props: any = { modelValue: plan, majorKey: "m", "onUpdate:modelValue": (next: any) => { plan = next; app._instance.props.modelValue = next; } };
+  const { app, setup } = await mountSetup("/src/components/process/MinorStepWorkspace.vue", props);
+  const event = { dataTransfer: { getData: () => JSON.stringify({ kind: "template", name: "煮制" }) } };
+  try {
+    for (let i = 0; i < 2; i++) {
+      await setup.dropAt(event, i); await flush();
+      assert.equal(plan.majorProcesses[0].steps.length, i + 1);
+      assert.equal(setup.selectedStepKey, plan.majorProcesses[0].steps[i].key);
+    }
+    assert.notEqual(plan.majorProcesses[0].steps[0].key, plan.majorProcesses[0].steps[1].key);
+    assert.deepEqual(plan.majorProcesses[0].steps.map((s: any) => s.stepName), ["煮制", "煮制"]);
+    assert.deepEqual(plan.majorProcesses[0].steps.map((s: any) => s.sequence), [1, 2]);
+  } finally { app.unmount(); }
+});
+
+test("step drop ignores malformed data and readonly workspace rejects additions", async () => {
+  for (const readonly of [false, true]) {
+    let emissions = 0;
+    const { app, setup } = await mountSetup("/src/components/process/MinorStepWorkspace.vue", {
+      modelValue: observedPlan(), majorKey: "m", readonly, "onUpdate:modelValue": () => { emissions++; },
+    });
+    try {
+      await setup.dropAt({ dataTransfer: { getData: () => '{"kind":"template","name":42}' } }, 1);
+      await flush();
+      assert.equal(emissions, 0);
+      if (readonly) { await setup.addStep("煮制"); await flush(); assert.equal(emissions, 0); }
+    } finally { app.unmount(); }
+  }
+});
+
 async function mountSetup(path: string, props: any) {
   const component = (await server.ssrLoadModule(path)).default;
   component.render = () => null;

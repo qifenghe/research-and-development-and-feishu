@@ -1,5 +1,5 @@
 <template>
-  <div class="minor-workspace">
+  <div class="minor-workspace" @dragover.prevent @drop.prevent.stop="dropAt($event, major?.steps.length || 0)" @dragend="dragPayload = null">
     <aside class="step-rail">
       <div class="rail-heading"><b>{{ major?.processName }}</b><small>小步骤编排</small></div>
       <div v-for="(step, index) in major?.steps || []" :key="step.key" class="step-row">
@@ -11,7 +11,7 @@
           @click="selectedStepKey = step.key"
           @dragstart="dragExisting($event, index)"
           @dragover.prevent
-          @drop.stop="dropAt($event, index)"
+          @drop.prevent.stop="dropAt($event, index)"
         >
           <span>{{ String(index + 1).padStart(2, "0") }}</span>
           <b>{{ step.stepName || "未命名步骤" }}</b>
@@ -24,8 +24,8 @@
       </div>
       <a-button v-if="!readonly" type="dashed" block @click="addStep()">＋ 新建小步骤</a-button>
       <div class="step-templates">
-        <small>模板可重复拖入</small>
-        <button v-for="name in stepTemplates" :key="name" :draggable="!readonly" :disabled="readonly" @dragstart="dragTemplate($event, name)" @dblclick="addStep(name)">{{ name }}</button>
+        <small>点击添加，或拖入右侧；可重复添加</small>
+        <button v-for="name in stepTemplates" :key="name" :draggable="!readonly" :disabled="readonly" @dragstart="dragTemplate($event, name)" @click="addStep(name)">{{ name }}</button>
       </div>
     </aside>
 
@@ -85,7 +85,7 @@
       <section class="section live"><div><b>得率摘要</b><span>小步骤 {{ percent(stepYield.mainYieldPercent) }} · 大工序 {{ percent(majorYield.mainYieldPercent) }} · 最终 {{ percent(finalYield) }}</span><em v-if="majorYieldReason">{{ majorYieldReason }}</em></div><div><b>配方汇总</b><span>外部物料 {{ actualKg(recipeTotal) }}</span></div></section>
       <ControlPointEditor :model-value="selectedStep.controlPoints || []" :readonly="readonly" :confirmation-mode="confirmationMode" @update:model-value="replaceControls" @confirm-pass="confirmPass" @confirm-deviation="confirmDeviation" />
     </main>
-    <main v-else class="no-step">先添加一个小步骤</main>
+    <main v-else class="no-step">{{ readonly ? '暂无小步骤' : '将左侧模板拖到这里，或点击模板添加小步骤' }}</main>
   </div>
 </template>
 
@@ -193,16 +193,17 @@ function mutate(mutator: (plan: ProcessPlanDraft) => void) {
   return publish(next);
 }
 
-function addStep(name = "") {
+async function addStep(name = "") {
+  if (props.readonly) return;
   let key = "";
-  mutate(plan => {
+  const committed = await mutate(plan => {
     const target = plan.majorProcesses.find(item => item.key === props.majorKey);
     if (!target) return;
     const step = newStep(name);
     key = step.key;
     target.steps.push(step);
   });
-  selectedStepKey.value = key;
+  if (committed) selectedStepKey.value = key;
 }
 
 async function copyStep() {
@@ -279,7 +280,19 @@ function ensurePrimaryOutput(output: StepOutputDraft) { if (output.primaryOutput
 function dragTemplate(event: DragEvent, name: string) { dragPayload.value = { kind: "template", name }; event.dataTransfer?.setData("application/rnd-step", JSON.stringify(dragPayload.value)); }
 function dragExisting(event: DragEvent, index: number) { dragPayload.value = { kind: "existing", index }; event.dataTransfer?.setData("application/rnd-step", JSON.stringify(dragPayload.value)); }
 function payload(event: DragEvent) { try { return JSON.parse(event.dataTransfer?.getData("application/rnd-step") || ""); } catch { return dragPayload.value; } }
-function dropAt(event: DragEvent, index: number) { if (props.readonly) return; const data = payload(event); if (data?.kind === "template") mutate(plan => plan.majorProcesses.find(item => item.key === props.majorKey)?.steps.splice(index, 0, newStep(data.name))); else if (data?.kind === "existing" && data.index !== index) moveStep(data.index, index - data.index); }
+async function dropAt(event: DragEvent, index: number) {
+  if (props.readonly || !major.value) return;
+  const data = payload(event);
+  dragPayload.value = null;
+  if (data?.kind === "template" && typeof data.name === "string" && stepTemplates.includes(data.name)) {
+    const step = newStep(data.name);
+    const committed = await mutate(plan => plan.majorProcesses.find(item => item.key === props.majorKey)?.steps.splice(index, 0, step));
+    if (committed) selectedStepKey.value = step.key;
+  } else if (data?.kind === "existing" && Number.isInteger(data.index) && data.index >= 0 && data.index < major.value.steps.length) {
+    const target = Math.min(index, major.value.steps.length - 1);
+    if (data.index !== target) await moveStep(data.index, target - data.index);
+  }
+}
 function parameterSummary(step: MinorProcessStepDraft) { return [[step.parameter1Name, step.parameter1Value, step.parameter1Unit].filter(Boolean).join(" "), [step.parameter2Name, step.parameter2Value, step.parameter2Unit].filter(Boolean).join(" ")].filter(Boolean).join(" · ") || "关键参数待设置"; }
 function percent(value: number | null) { return value == null ? "待补充" : `${value.toFixed(2)}%`; }
 </script>
