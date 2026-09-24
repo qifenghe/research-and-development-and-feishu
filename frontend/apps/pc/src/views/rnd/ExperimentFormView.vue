@@ -85,8 +85,9 @@
                 </a-space>
               </template>
             </a-alert>
+            <p class="workspace-usage">试验方案：独立打样、调整参数与对比结果；正式版本：确认后提交的工艺及其历史。试验不会自动覆盖正式工艺草稿。</p>
             <a-tabs v-model:active-key="workspaceMode">
-              <a-tab-pane key="formal" tab="正式工艺">
+              <a-tab-pane key="formal" tab="正式版本">
                 <ProcessPlanWorkspace
                   ref="processWorkspace"
                   v-model="processPlan"
@@ -536,6 +537,7 @@ async function resetAndLoad(taskId: string, generation: number) {
     const loadedDetail = await api.task.detail(taskId, auth.role, auth.displayName);
     if (!requestGeneration.isCurrent(generation)) return;
     detail.value = loadedDetail;
+    workspaceMode.value = canUseTrials.value ? "trials" : "formal";
     form.productName = loadedDetail.task.productName;
     form.specification = loadedDetail.version.specification ?? loadedDetail.project?.specification ?? "";
     headerTitle.value = `${loadedDetail.task.productName} ${loadedDetail.task.versionCode}`;

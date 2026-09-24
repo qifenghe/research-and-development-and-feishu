@@ -47,8 +47,9 @@
           <b>步骤得率 {{ percent(stepYield(step).mainYieldPercent) }}</b>
         </header>
         <dl class="detail-grid">
-          <dt>参数 1</dt><dd>{{ parameter(step.parameter1Name, step.parameter1Value, step.parameter1Unit) }}</dd>
-          <dt>参数 2</dt><dd>{{ parameter(step.parameter2Name, step.parameter2Value, step.parameter2Unit) }}</dd>
+          <template v-for="item in parameters(step)" :key="item.key">
+            <dt>{{ item.name || '未命名参数' }}</dt><dd>{{ display(item.actualValue) }} {{ item.unit }}<span v-if="item.measurementBasis"> · {{ basis[item.measurementBasis] || item.measurementBasis }}</span><span v-if="item.lowerLimit || item.upperLimit"> · 范围 {{ display(item.lowerLimit) }}～{{ display(item.upperLimit) }}</span><span v-if="item.remark"> · {{ item.remark }}</span></dd>
+          </template>
           <dt>设备</dt><dd>{{ display(step.equipment) }}</dd>
           <dt>操作要求</dt><dd>{{ display(step.instruction) }}</dd>
           <dt>步骤备注</dt><dd>{{ display(step.remark) }}</dd>
@@ -62,6 +63,7 @@
           <span>配方物料 ID {{ display(material.formulaMaterialId) }}</span><span>编码 {{ display(material.materialCode) }}</span>
           <span>记录 ID {{ display(material.id) }}</span><span>来源产出 ID {{ display(material.sourceStepOutputId) }}</span>
           <span>重量 {{ kg(material.weightKg) }}</span><span>状态 {{ material.materialState }}</span><span>备注 {{ display(material.remark) }}</span>
+          <span>加入时机 {{ display(material.additionTiming) }}</span><span>加入方式 {{ display(material.additionMethod) }}</span>
         </div>
 
         <h5>产出</h5>
@@ -114,6 +116,7 @@
 import { computed } from "vue";
 import {
   aggregateProcessRecipe,
+  effectiveStepParameters,
   calculateBatchYield,
   calculateMajorProcessYield,
   calculateMinorStepYield,
@@ -123,6 +126,8 @@ import {
 } from "@rnd/shared";
 
 const props = defineProps<{ plan: ProcessPlanDraft }>();
+const parameters = effectiveStepParameters;
+const basis:Record<string,string>={GAUGE:"表压",ABSOLUTE:"绝对压力",DEVICE_PERCENT:"设备显示百分比"};
 const recipe = computed(() => aggregateProcessRecipe(props.plan));
 const recipeWeight = computed(() => recipe.value.reduce((sum, line) => sum + line.weightKg, 0));
 const finalYield = computed(() => calculateBatchYield(props.plan));

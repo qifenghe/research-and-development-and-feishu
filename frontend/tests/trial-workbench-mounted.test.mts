@@ -49,6 +49,15 @@ function trial(id: "trial-a" | "trial-b") {
 }
 
 let server: ViteDevServer;
+test("readonly snapshot exposes every recorded parameter and material addition detail", async () => {
+  const plan:any=observedPlan();
+  plan.majorProcesses[0].steps[0].parameters=Array.from({length:4},(_,i)=>({key:`p${i}`,name:`参数${i}`,valueType:"NUMBER",unit:"min",actualValue:String(i),showInSummary:false}));
+  const {app,setup}=await mountSetup("/src/components/process/ProcessPlanSnapshot.vue",{plan});
+  try {
+    assert.equal(setup.parameters(plan.majorProcesses[0].steps[0]).length,4);
+    assert.equal(setup.parameters(plan.majorProcesses[0].steps[0])[3].actualValue,"3");
+  } finally {app.unmount();}
+});
 test("parameter editor adds edits reorders confirms deletion and refuses readonly mutation", async () => {
   let value: any[] = [];
   const props: any = { modelValue:value, "onUpdate:modelValue": (next:any[]) => { value=next; app._instance.props.modelValue=next; } };

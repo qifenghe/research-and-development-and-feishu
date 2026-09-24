@@ -12,6 +12,7 @@
         <span>最终得率 <b>{{ percent(finalYield) }}</b></span>
       </div>
       <a-space>
+        <a-button @click="recipeOpen = true">配方汇总</a-button>
         <ProcessYieldComparison :form-id="formId" />
         <ProcessExportPreview :form-id="formId" :version-no="plan.versionNo" :source-label="`正式工艺草稿 V${plan.versionNo}`" :disabled="plan.status !== 'DRAFT' || saveState === 'dirty' || saveState === 'saving' || saveState === 'error'" @locate="locateExportIssue" />
         <a-button :disabled="readonly || plan.status !== 'DRAFT'" :loading="saveState === 'saving'" @click="saveNow()">保存草稿</a-button>
@@ -19,6 +20,7 @@
       </a-space>
     </header>
 
+    <RecipeSummaryDrawer v-model:open="recipeOpen" :plan="plan" :source-label="`${plan.status === 'SUBMITTED' ? '正式版本' : '正式工艺草稿'} V${plan.versionNo}`" :dirty="['dirty', 'saving', 'error'].includes(saveState)" />
     <div class="workspace-main">
       <div v-if="!activeMajorKey" class="view">
         <div class="view-bar"><div><b>大工序编排</b><small>拖拽或键盘排序；模板可重复使用</small></div></div>
@@ -108,6 +110,7 @@ import ProcessPlanSnapshot from "./ProcessPlanSnapshot.vue";
 import RndOutputCenter from "./RndOutputCenter.vue";
 import ProcessYieldComparison from "./ProcessYieldComparison.vue";
 import ProcessExportPreview from "./ProcessExportPreview.vue";
+import RecipeSummaryDrawer from "./RecipeSummaryDrawer.vue";
 import type { ExportIssue } from "../../services/processExportApi";
 import { diffProcessPlans } from "./processPlanDiff";
 import { ProcessPlanSaveCoordinator, type ProcessPlanSaveState } from "./processPlanAutosave";
@@ -127,6 +130,7 @@ const plan = ref(normalizeProcessPlan(clonePlan(props.modelValue)));
 const activeMajorKey = ref<string>();
 function locateExportIssue(issue: ExportIssue) { activeMajorKey.value = plan.value.majorProcesses.find(m => m.sequence === issue.majorSequence)?.key; }
 const saveState = ref<ProcessPlanSaveState>("idle");
+const recipeOpen = ref(false);
 const revisions = ref<ProcessRevisionSummary[]>([]);
 const selectedRevision = ref<ProcessRevision>();
 const selectedRevisionSource = ref<ProcessRevision>();

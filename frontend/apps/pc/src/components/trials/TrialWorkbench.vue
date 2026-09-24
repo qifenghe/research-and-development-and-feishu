@@ -7,6 +7,7 @@
         </button>
       </div>
       <a-space>
+        <a-button size="small" :disabled="!currentTrial" @click="recipeOpen = true">配方汇总</a-button>
         <a-button size="small" :disabled="readonly || busy || !formId" @click="newTrialOpen = true">新建方案</a-button>
         <a-button size="small" :disabled="!editable" @click="openCopy">复制</a-button>
         <a-button size="small" :disabled="readonly || busy || !currentTrial" @click="toggleArchive">{{ currentTrial?.archived ? "恢复" : "归档" }}</a-button>
@@ -16,6 +17,7 @@
       </a-space>
     </header>
 
+    <RecipeSummaryDrawer v-if="currentTrial" v-model:open="recipeOpen" :plan="currentTrial.plan" :source-label="`试验方案 ${currentTrial.name} V${currentTrial.versionNo}${currentTrial.inheritedActuals ? '（含继承实测）' : ''}`" :dirty="dirty" />
     <a-spin :spinning="loading">
       <a-empty v-if="!currentTrial" description="尚无试验方案。新建方案后可独立编排，不会写入正式工艺。" />
       <template v-else>
@@ -123,6 +125,7 @@
 
 <script setup lang="ts">
 import ProcessExportPreview from "../process/ProcessExportPreview.vue";
+import RecipeSummaryDrawer from "../process/RecipeSummaryDrawer.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from "vue-router";
 import { message, Modal } from "ant-design-vue";
@@ -148,6 +151,7 @@ const saving = ref(false);
 const mutating = ref(false);
 const promoting = ref(false);
 const dirty = ref(false);
+const recipeOpen = ref(false);
 const newTrialOpen = ref(false);
 const newTrialName = ref("方案 A");
 const newTrialPurpose = ref("");

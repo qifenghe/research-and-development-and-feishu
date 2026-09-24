@@ -75,9 +75,14 @@ async function download(role, url, name) {
 const major = (i, input, out) => ({id: `major-${i}`, sequence: i, processCode: `M${i}`, processName: i === 1 ? '测试修割' : '测试熟制',
   yieldBasis: 'PRIMARY_INPUT', remark: '软件测试称重损耗，不构成生产标准', inputs: [], outputs: [], steps: [{id: `step-${i}`, sequence: 1,
     stepCode: `S${i}`, stepName: i === 1 ? '测试修割步骤' : '测试熟制步骤', stepType: 'NORMAL', equipment: '软件示例设备',
-    instruction: '按软件测试示例记录投入与产出；这些参数不是经验证的生产标准。', parameter1Name: '测试时间', parameter1Value: '10', parameter1Unit: 'min',
+    instruction: '按软件测试示例记录投入与产出；这些参数不是经验证的生产标准。', parameters: [
+      {key:'time',name:'测试时间',valueType:'NUMBER',unit:'min',actualValue:'10',showInSummary:true},
+      {key:'rpm',name:'滚筒转速',valueType:'NUMBER',unit:'rpm',actualValue:'8',showInSummary:true},
+      {key:'pressure',name:'真空压力',valueType:'NUMBER',unit:'MPa',actualValue:'-0.08',measurementBasis:'GAUGE',showInSummary:true},
+      {key:'pause',name:'暂停时间',valueType:'NUMBER',unit:'min',actualValue:'5',showInSummary:false},
+    ],
     materials: [{id: `mat-${i}`, sequence: 1, materialName: i === 1 ? '测试主料' : intermediateName, materialCode: i === 1 ? 'TEST6-BEEF' : null, materialRole: 'PRIMARY',
-      sourceType: i === 1 ? 'EXTERNAL' : 'STEP_OUTPUT', sourceStepOutputId: i === 1 ? null : 'out-1', weightKg: input, materialState: 'SOLID'},
+      sourceType: i === 1 ? 'EXTERNAL' : 'STEP_OUTPUT', sourceStepOutputId: i === 1 ? null : 'out-1', weightKg: input, materialState: 'SOLID', additionTiming:'水沸后加入（软件测试）', additionMethod:'分三次加入'},
       ...(i === 1 ? [{id: 'aux', sequence: 2, materialName: '测试辅料', materialCode: 'TEST6-SALT', materialRole: 'AUXILIARY', sourceType: 'EXTERNAL', weightKg: 2, materialState: 'SOLID'}] : [])],
     outputs: [{id: `out-${i}`, sequence: 1, outputType: i === 1 ? 'INTERMEDIATE' : 'FINISHED', outputName: i === 1 ? intermediateName : '测试产出', weightKg: out, materialState: 'SOLID', primaryOutput: true, continueFlow: i === 1}],
     controlPoints: [{id: `cp-${i}`, sequence: 1, controlType: 'QUALITY', importance: 'CRITICAL', itemName: '软件测试温度', targetValue: 75,
@@ -124,10 +129,21 @@ try {
   let b = await api(engineer, 'POST', `${ap}/copy`, {versionNo: a.versionNo, name: `${run} B`, includeActuals: false});
   handles.trialB = b.id; const bp = `${tp}/${b.id}`; persist();
   verify('copy keeps planned input and clears actual', () => {const m = b.plan.majorProcesses[0].steps[0].materials[0]; assert.equal(m.weightKg, null); assert.equal(b.plannedData.materialWeightsKg[m.id], 110);});
+  verify('four parameter structure copy clears actuals and remaps planned values', () => {
+    const step=b.plan.majorProcesses[0].steps[0]; assert.equal(step.parameters.length,4);
+    assert.ok(step.parameters.every(p=>p.actualValue==null));
+    assert.equal(b.plannedData.parameterValues[step.id].pause,'5');
+    assert.equal(step.parameters[2].measurementBasis,'GAUGE');
+    assert.match(step.materials[0].additionTiming,/水沸后/);
+  });
   b.plannedData.materialWeightsKg[b.plan.majorProcesses[0].steps[0].materials[0].id] = 99.8;
   b = await api(engineer, 'PUT', bp, saveBody(b));
   a.purpose = 'A 独立保存'; a = await api(engineer, 'PUT', ap, saveBody(a));
   const ar = await api(engineer, 'GET', ap), br = await api(engineer, 'GET', bp);
+  verify('saved trial retains fourth parameter and pressure basis',()=>{
+    assert.equal(ar.plan.majorProcesses[0].steps[0].parameters[3].actualValue,'5');
+    assert.equal(ar.plan.majorProcesses[0].steps[0].parameters[2].measurementBasis,'GAUGE');
+  });
   verify('A/B independent save reload planned versus actual', () => {assert.equal(ar.purpose, 'A 独立保存'); assert.equal(ar.plan.majorProcesses[0].steps[0].materials[0].weightKg, 100); assert.equal(br.plannedData.materialWeightsKg[br.plan.majorProcesses[0].steps[0].materials[0].id], 99.8); assert.equal(br.plan.majorProcesses[0].steps[0].materials[0].weightKg, null);});
   await api(engineer, 'PUT', ap, {...saveBody(a), versionNo: a.versionNo - 1}, 'TRIAL_VERSION_CONFLICT');
   await api(engineer, 'POST', `${ap}/control-points/${a.plan.majorProcesses[0].steps[0].controlPoints[0].id}/confirm`, {trialVersionNo: a.versionNo - 1}, 'TRIAL_VERSION_CONFLICT');
@@ -181,6 +197,10 @@ try {
   const rev = await api(engineer, 'POST', `${ap}/submit`, submit); handles.revisionId = rev.id;
   const rp = `${pp}/revisions/${rev.id}`;
   verify('formal main yield uses actuals not planned 99%', () => assert.equal(rev.snapshot.batchYieldPercent, 72));
+  verify('promotion preserves all parameters and addition details',()=>{
+    assert.equal(rev.snapshot.majorProcesses[0].steps[0].parameters[3].actualValue,'5');
+    assert.equal(rev.snapshot.majorProcesses[0].steps[0].materials[0].additionMethod,'分三次加入');
+  });
   verify('intermediate stays an internal output reference without material-master identity', () => {
     const output = rev.snapshot.majorProcesses[0].steps[0].outputs[0];
     const input = rev.snapshot.majorProcesses[1].steps[0].materials[0];
@@ -198,6 +218,8 @@ try {
     if (type === 'PRICING_XLSX') verify('trial pricing cannot borrow independent finished output', () => assert.equal(check.ready, false));
     const preview = await download(engineer, `${ap}/export-preview?versionNo=${a.versionNo}&artifactType=${type}`, `trial-${type}.${type === 'SOP_DOCX' ? 'docx' : 'xlsx'}`);
     verify(`${type} fixed trial/version label`, () => {assert.match(preview.text, /研发预览/); assert.ok(preview.text.includes(a.name)); assert.ok(preview.text.includes(`V${a.versionNo}`));});
+    if(type==='SOP_DOCX') verify('SOP exports fourth parameter and pressure basis',()=>{assert.match(preview.text,/暂停时间/);assert.match(preview.text,/表压/);});
+    if(type!=='PRICING_XLSX') verify(`${type} exports addition timing`,()=>{assert.match(preview.text,/水沸后/);assert.match(preview.text,/分三次加入/);});
   }
   const artifactAfter = await api(engineer, 'GET', `${rp}/artifacts`), auditAfter = await api('admin', 'GET', '/admin/audit-logs');
   verify('trial preview downloads do not create artifacts or approvals', () => {assert.deepEqual(artifactAfter, artifactBefore); assert.deepEqual(auditAfter, auditSnapshot);});
