@@ -109,7 +109,7 @@ Status: completed and independently reviewed through `12161a9`. Backend359/front
 
 ## Task 6: End-to-end and role acceptance
 
-Status: completed and independently reviewed through `508dc59`; backend360/frontend155/API152, contracts/routes/typecheck/build passed. Final whole-plan review and its bounded fix wave remain in progress; browser/file and UI limitations are explicitly recorded in the acceptance report.
+Status: Task6 completed and independently reviewed through `508dc59`. Final bounded fix wave committed `39770f5`, backend364/frontend159/contracts/routes/typecheck/build passed; API152 baseline retained. Sole scoped rereview closed7/8 findings; SOP incomplete-preview missing-name/unit markers remain P2 (formal generation gate fixed). Browser file receipt remains unverified. Both are explicit acceptance limitations, not an all-complete claim.
 
 **Files:** Extend `scripts/verify-rnd-roles.mjs` only if necessary; create `scripts/verify-rnd-trials.mjs`, report `docs/研发工作台与导出验收-2026-09-15.md`.
 
