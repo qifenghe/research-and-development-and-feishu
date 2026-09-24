@@ -145,7 +145,8 @@ test("graph replacement prunes deleted planned keys before saving material step 
     else next.majorProcesses = [];
     setup.replacePlan(next); await setup.saveTrial();
     assert.deepEqual(saved.plannedData.materialWeightsKg, {});
-    assert.deepEqual(saved.plannedData.stepParameters, deletion === "material" ? value.plannedData.stepParameters : {});
+    assert.deepEqual(saved.plannedData.stepParameters, {});
+    assert.deepEqual(saved.plannedData.parameterValues, deletion === "material" ? {s:{"legacy-1":"95"}} : {});
     assert.deepEqual(saved.plannedData.majorYieldTargets, deletion === "major" ? {} : { m: 80 });
     assert.equal(saved.plannedData.batchYieldTarget, 72); assert.equal(saved.plannedData.yieldBasisNote, "主料");
     if (deletion === "material") assert.match(setup.actualAndDifference("parameter:s:1"), /\+2℃/);

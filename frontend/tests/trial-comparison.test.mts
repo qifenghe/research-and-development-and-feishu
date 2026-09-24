@@ -33,6 +33,28 @@ function trial(overrides: Partial<TrialScheme> = {}): TrialScheme {
   };
 }
 
+test("legacy storage comparisons honor authoritative parameter plans including explicit empty",()=>{
+  const before=trial(),after=trial();
+  before.plannedData.parameterValues={"step-a":{"legacy-1":"90"}};
+  after.plannedData.parameterValues={"step-a":{"legacy-1":"95"}};
+  let diff=buildTrialComparison(after,before).differences.find(d=>d.path.endsWith("温度计划值"));
+  assert.equal(diff?.numericDelta,5);
+  after.plannedData.parameterValues={};
+  diff=buildTrialComparison(after,before).differences.find(d=>d.path.endsWith("温度计划值"));
+  assert.equal(diff?.after,null);
+});
+test("legacy pressure needs known basis for planned and cross-trial deviations",()=>{
+  const before=trial(),after=trial();
+  for(const value of [before,after]) {
+    Object.assign(value.plan.majorProcesses[0]!.steps[0]!,{parameter1Name:"真空压力",parameter1Unit:"MPa",parameter1Value:"-0.08"});
+    value.plannedData.stepParameters["step-a"]!.parameter1Value="-0.09";
+  }
+  const row=plannedActualRows(after).find(r=>r.key==="parameter:step-a:1")!;
+  assert.equal(row.difference,null); assert.match(row.reason!,/口径/);
+  before.plan.majorProcesses[0]!.steps[0]!.parameter1Value="-0.09";
+  assert.equal(buildTrialComparison(after,before).differences.find(d=>d.path.endsWith("真空压力"))?.numericDelta,null);
+});
+
 test("numeric difference is actual minus planned with decimal-safe +0.2kg", () => {
   assert.equal(numericDifference(10, 10.2), 0.2);
   assert.equal(numericDifference(null, 10.2), null);

@@ -16,6 +16,20 @@ class TrialSchemeCopyServiceTest {
     private final TrialSchemeCopyService service = new TrialSchemeCopyService();
 
     @Test
+    void deletedLegacyParametersDoNotBecomeOrphanPlansOnRepeatedNormalizationAndCopy() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree = mapper.valueToTree(graph());
+        ((com.fasterxml.jackson.databind.node.ObjectNode)tree.at("/majorProcesses/0/steps/0")).set("parameters", mapper.createArrayNode());
+        var deleted = mapper.treeToValue(tree, ProcessPlan.class);
+        var legacy = new TrialScheme.PlannedData(Map.of(), Map.of("STEP-SOURCE", new TrialScheme.StepParameters("25", "90")), Map.of(), null, null);
+        var saved = service.normalizeNew(deleted, legacy);
+        assertThat(saved.plannedData().parameterValues().values()).allMatch(Map::isEmpty);
+        var reloaded = mapper.readValue(mapper.writeValueAsString(saved.plannedData()), TrialScheme.PlannedData.class);
+        var second = service.normalizeNew(saved.plan(), reloaded);
+        assertThat(service.copy(second.plan(), second.plannedData(), false, Map.of()).plan().majorProcesses().get(0).steps().get(0).parameters()).isEmpty();
+    }
+
+    @Test
     void extensibleParametersAndAdditionDetailsSurviveCopyWithoutActuals() throws Exception {
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         var tree = mapper.valueToTree(graph());

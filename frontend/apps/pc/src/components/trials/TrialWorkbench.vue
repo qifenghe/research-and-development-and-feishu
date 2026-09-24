@@ -275,9 +275,9 @@ function replacePlan(value: ProcessPlanDraft) {
   const majors = currentTrial.value.plan.majorProcesses;
   const keep = <T,>(record: Record<string, T>, ids: Set<string>) => Object.fromEntries(Object.entries(record).filter(([id]) => ids.has(id)));
   const data = currentTrial.value.plannedData;
-  data.parameterValues = pruneParameterPlans(currentTrial.value.plan, data.parameterValues);
+  data.parameterValues = pruneParameterPlans(currentTrial.value.plan, data.parameterValues, data.stepParameters);
   data.materialWeightsKg = keep(data.materialWeightsKg, new Set(majors.flatMap(m => m.steps.flatMap(s => s.materials.map(nodeId)))));
-  data.stepParameters = keep(data.stepParameters, new Set(majors.flatMap(m => m.steps.map(nodeId))));
+  data.stepParameters = {};
   data.majorYieldTargets = keep(data.majorYieldTargets, new Set(majors.map(nodeId)));
   markDirty();
 }

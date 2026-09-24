@@ -152,11 +152,20 @@ public class TrialSchemeCopyService {
                 parameterValues.put(ids.reference(entry.getKey()), entry.getValue());
             }
         } else {
-            for (var entry : parameters.entrySet()) {
+            for (var major : values(plan.majorProcesses())) for (var step : values(major.steps())) {
+                var mappedId = ids.reference(step.id());
+                var legacy = parameters.get(mappedId);
+                if (legacy == null) continue;
                 var targets = new LinkedHashMap<String, String>();
-                if (!blank(entry.getValue().parameter1Value())) targets.put("legacy-1", entry.getValue().parameter1Value());
-                if (!blank(entry.getValue().parameter2Value())) targets.put("legacy-2", entry.getValue().parameter2Value());
-                if (!targets.isEmpty()) parameterValues.put(entry.getKey(), targets);
+                for (var definition : StepParameterService.effective(step)) {
+                    var target = "legacy-1".equals(definition.key()) ? legacy.parameter1Value() : "legacy-2".equals(definition.key()) ? legacy.parameter2Value() : null;
+                    if (blank(target)) continue;
+                    if ("NUMBER".equals(definition.valueType()) && !StepParameterService.numeric(target))
+                        throw new BusinessException("STEP_PARAMETER_INVALID", "参数计划值必须是有效数字");
+                    targets.put(definition.key(), target);
+                }
+                if (!targets.isEmpty()) parameterValues.put(mappedId, targets);
+                parameters.put(mappedId, new TrialScheme.StepParameters(targets.get("legacy-1"), targets.get("legacy-2")));
             }
         }
         return new TrialScheme.PlannedData(weights, parameters, yields, source.batchYieldTarget(), source.yieldBasisNote(), parameterValues);

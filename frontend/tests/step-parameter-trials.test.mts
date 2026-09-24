@@ -4,6 +4,12 @@ import { compareParameter } from "../apps/pc/src/components/trials/trialComparis
 import { createStructureOnlyTrialSource, pruneParameterPlans } from "../apps/pc/src/components/trials/trialDraft.ts";
 import { createEmptyProcessPlan } from "../packages/shared/src/process-plan.ts";
 
+test("pruning migrates legacy plans before deleting their last parameter",()=>{
+  const plan:any=createEmptyProcessPlan();
+  plan.majorProcesses=[{key:"m",steps:[{key:"s",parameters:[],materials:[]}]}];
+  assert.deepEqual(pruneParameterPlans(plan,null,{s:{parameter1Value:"90"}}),{s:{}});
+});
+
 const pressure = {key:"p",name:"真空压力",valueType:"NUMBER" as const,unit:"MPa",measurementBasis:"GAUGE",actualValue:"-0.08",showInSummary:true};
 test("pressure comparisons require matching known basis and device percentage definition", () => {
   assert.equal(compareParameter(pressure,{...pressure,measurementBasis:"ABSOLUTE"}).comparable,false);

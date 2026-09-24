@@ -8,6 +8,7 @@ import type {
 import type { TrialScheme } from "../../services/trialApi";
 import { externalActualTotal } from "../process/actualSummary.ts";
 import { effectiveStepParameters, isParameterNumber, type StepParameterDraft } from "../../../../../packages/shared/src/step-parameters.ts";
+import { plannedParameterValue } from "./trialDraft.ts";
 
 export function compareParameter(before: StepParameterDraft, after: StepParameterDraft): { comparable: boolean; delta: number | null; reason: string | null } {
   const no = (reason: string) => ({ comparable: false, delta: null, reason });
@@ -81,18 +82,20 @@ export function plannedActualRows(trial: TrialScheme): PlannedActualRow[] {
         rows.push({ key: `material:${materialId || material.key}`, kind: "MATERIAL", label: `${major.processName} / ${step.stepName} / ${material.materialName || "未命名物料"}`, planned: target, actual, difference: numericDifference(target, actual), complete: actual != null });
       }
       if (step.parameters != null) for (const parameter of effectiveStepParameters(step)) {
-        const target = planned.parameterValues?.[stepId]?.[parameter.key];
+        const target = plannedParameterValue(planned, stepId, parameter.key);
         const comparison = compareParameter({ ...parameter, actualValue: target }, parameter);
         rows.push({ key: `parameter:${stepId}:${parameter.key}`, kind: "PARAMETER", label: `${major.processName} / ${step.stepName} / ${parameter.name || "未命名参数"}`,
           planned: textOrNull(target), actual: textOrNull(parameter.actualValue), difference: comparison.delta, unit: parameter.unit,
           complete: !blank(parameter.actualValue), reason: comparison.reason });
       }
       else for (const [index, name, actual] of [[1, step.parameter1Name, step.parameter1Value], [2, step.parameter2Name, step.parameter2Value]] as const) {
-        const target = planned.parameterValues != null ? planned.parameterValues[stepId]?.[`legacy-${index}`] : index === 1 ? stepPlan?.parameter1Value : stepPlan?.parameter2Value;
+        const target = plannedParameterValue(planned, stepId, `legacy-${index}`);
         if (blank(target) && blank(actual)) continue;
         const unit = (index === 1 ? step.parameter1Unit : step.parameter2Unit) || "";
-        const difference = !blank(name) && !blank(unit) && strictNumber(String(target ?? "")) && strictNumber(String(actual ?? "")) ? numericDifference(Number(target), Number(actual)) : null;
-        rows.push({ key: `parameter:${stepId || step.key}:${index}`, kind: "PARAMETER", label: `${major.processName} / ${step.stepName} / ${name || `参数 ${index}`}`, planned: textOrNull(target), actual: textOrNull(actual), difference, unit, complete: !blank(actual) });
+        const parameter = effectiveStepParameters(step).find(p=>p.key===`legacy-${index}`);
+        const comparison = parameter ? compareParameter({...parameter,actualValue:target},parameter) : {delta:null,reason:"参数定义待补充"};
+        const difference = !blank(unit) ? comparison.delta : null;
+        rows.push({ key: `parameter:${stepId || step.key}:${index}`, kind: "PARAMETER", label: `${major.processName} / ${step.stepName} / ${name || `参数 ${index}`}`, planned: textOrNull(target), actual: textOrNull(actual), difference, unit, complete: !blank(actual), reason:comparison.reason });
       }
     }
     const majorId = nodeId(major);
@@ -227,18 +230,16 @@ function compareParameterLists(majorName: string, before: MinorProcessStepDraft,
         before: `${left.name}：${left.actualValue ?? "待补充"} ${left.unit || ""} ${left.measurementBasis || ""}`,
         after: `${right.name}：${right.actualValue ?? "待补充"} ${right.unit || ""} ${right.measurementBasis || ""}`,numericDelta:comparison.delta});
     }
-    const oldPlan = baseline.plannedData.parameterValues == null ? baseline.plannedData.stepParameters[nodeId(before)]?.[left.key === "legacy-1" ? "parameter1Value" : "parameter2Value"] : baseline.plannedData.parameterValues[nodeId(before)]?.[left.key];
-    const newPlan = candidate.plannedData.parameterValues == null ? candidate.plannedData.stepParameters[nodeId(after)]?.[right.key === "legacy-1" ? "parameter1Value" : "parameter2Value"] : candidate.plannedData.parameterValues[nodeId(after)]?.[right.key];
+    const oldPlan = plannedParameterValue(baseline.plannedData,nodeId(before),left.key);
+    const newPlan = plannedParameterValue(candidate.plannedData,nodeId(after),right.key);
     if (textOrNull(oldPlan) !== textOrNull(newPlan)) differences.push({kind:"PARAMETER",path:`${path}计划值`,before:textOrNull(oldPlan),after:textOrNull(newPlan),numericDelta:compareParameter({...left,actualValue:oldPlan ?? undefined},{...right,actualValue:newPlan ?? undefined}).delta});
   }
   for (const left of previous.filter(p => !used.has(p))) differences.push({kind:"INCOMPARABLE",path:`${majorName} / ${before.stepName} / ${left.name}（未唯一匹配）`,before:textOrNull(left.actualValue),after:null});
 }
 
 function comparePlannedParameter(majorName: string, baselineTrial: TrialScheme, candidateTrial: TrialScheme, before: MinorProcessStepDraft, after: MinorProcessStepDraft, index: 1 | 2, differences: TrialDifference[]) {
-  const beforePlan = baselineTrial.plannedData.stepParameters[nodeId(before)];
-  const afterPlan = candidateTrial.plannedData.stepParameters[nodeId(after)];
-  const beforeValue = textOrNull(index === 1 ? beforePlan?.parameter1Value : beforePlan?.parameter2Value);
-  const afterValue = textOrNull(index === 1 ? afterPlan?.parameter1Value : afterPlan?.parameter2Value);
+  const beforeValue = textOrNull(plannedParameterValue(baselineTrial.plannedData,nodeId(before),`legacy-${index}`));
+  const afterValue = textOrNull(plannedParameterValue(candidateTrial.plannedData,nodeId(after),`legacy-${index}`));
   if (beforeValue === afterValue) return;
   const name = (index === 1 ? after.parameter1Name || before.parameter1Name : after.parameter2Name || before.parameter2Name) || `参数 ${index}`;
   differences.push({ kind: "PARAMETER", path: `${majorName} / ${after.stepName} / ${name}计划值`, before: beforeValue, after: afterValue, numericDelta: parameterDelta(before, after, index, beforeValue, afterValue) });
@@ -402,13 +403,9 @@ function primaryMaterialIdentity(major: MajorProcessDraft, allMajors: MajorProce
 }
 
 function parameterDelta(before: MinorProcessStepDraft, after: MinorProcessStepDraft, index: 1 | 2, beforeValue: string | null, afterValue: string | null) {
-  const beforeName = textOrNull(index === 1 ? before.parameter1Name : before.parameter2Name);
-  const afterName = textOrNull(index === 1 ? after.parameter1Name : after.parameter2Name);
-  const beforeUnit = textOrNull(index === 1 ? before.parameter1Unit : before.parameter2Unit);
-  const afterUnit = textOrNull(index === 1 ? after.parameter1Unit : after.parameter2Unit);
-  if (beforeName !== afterName || beforeUnit !== afterUnit || beforeValue == null || afterValue == null) return null;
-  if (!strictNumber(beforeValue) || !strictNumber(afterValue)) return null;
-  return numericDifference(Number(beforeValue), Number(afterValue));
+  const left=effectiveStepParameters(before).find(p=>p.key===`legacy-${index}`);
+  const right=effectiveStepParameters(after).find(p=>p.key===`legacy-${index}`);
+  return left && right ? compareParameter({...left,actualValue:beforeValue ?? undefined},{...right,actualValue:afterValue ?? undefined}).delta : null;
 }
 
 function strictNumber(value: string) { return /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value.trim()) && Number.isFinite(Number(value)); }

@@ -2,7 +2,9 @@ import { calculateBatchYield, calculateMajorProcessYield, normalizeProcessPlan, 
 import type { TrialPlannedData } from "../../services/trialApi";
 import { effectiveStepParameters } from "../../../../../packages/shared/src/step-parameters.ts";
 
-export function pruneParameterPlans(plan: ProcessPlanDraft, values: TrialPlannedData["parameterValues"]) {
+export function pruneParameterPlans(plan: ProcessPlanDraft, values: TrialPlannedData["parameterValues"], legacy?: TrialPlannedData["stepParameters"]) {
+  if (values == null && legacy) values = Object.fromEntries(Object.entries(legacy).map(([id,item]) => [id,
+    Object.fromEntries([["legacy-1",item.parameter1Value],["legacy-2",item.parameter2Value]].filter((entry):entry is [string,string] => entry[1] != null))]));
   if (values == null) return values;
   const result: Record<string, Record<string, string>> = {};
   for (const major of plan.majorProcesses) for (const step of major.steps) {
@@ -11,6 +13,12 @@ export function pruneParameterPlans(plan: ProcessPlanDraft, values: TrialPlanned
     if (values[id]) result[id] = Object.fromEntries(Object.entries(values[id]!).filter(([key]) => keys.has(key)));
   }
   return result;
+}
+
+export function plannedParameterValue(data: TrialPlannedData, stepId: string, key: string): string | undefined {
+  if (data.parameterValues != null) return data.parameterValues[stepId]?.[key];
+  const old=data.stepParameters[stepId];
+  return (key === "legacy-1" ? old?.parameter1Value : key === "legacy-2" ? old?.parameter2Value : undefined) ?? undefined;
 }
 
 export interface TrialDraftEnvelope<T> {
