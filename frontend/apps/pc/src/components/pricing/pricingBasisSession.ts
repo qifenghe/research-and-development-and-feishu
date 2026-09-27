@@ -1,8 +1,10 @@
-import type { PricingBasisDraft,PricingBasisView } from "../../../../../packages/shared/src/pricing-basis.ts";
+import type { PricingBasisDraft,PricingBasisView,PricingBasisMaterial } from "../../../../../packages/shared/src/pricing-basis.ts";
 export interface BasisApi {load(id:string):Promise<PricingBasisView>;save(id:string,version:number,draft:PricingBasisDraft):Promise<PricingBasisView>;confirm(id:string,version:number):Promise<PricingBasisView>;generate(id:string,version:number):Promise<unknown>;preview(id:string,version:number):Promise<Blob>;}
 const clone=<T>(v:T):T=>JSON.parse(JSON.stringify(v));
 export const utilizationFromPercent=(v:number|null|undefined)=>v==null?null:v/100;
 export const canEditPricingBasis=(actions:{code:string}[])=>actions.some(a=>a.code==="CONFIRM_PRICING_PACKAGING");
+export const pricingSourceLabel=(revision:string,m:PricingBasisMaterial)=>`${revision} / ${m.stage} / ${m.stepName || m.stepId}`;
+export function removePacking(draft:PricingBasisDraft,source:PricingBasisDraft,id:string){const p=draft.packaging.find(p=>p.id===id);if(!p)return;if(source.packaging.some(p=>p.id===id)){p.quantity=0;p.adjustmentReason=null;}else draft.packaging=draft.packaging.filter(p=>p.id!==id);}
 export class PricingBasisSession {
  id="";epoch=0;editable=false;busy=false;view:PricingBasisView|null=null;draft:PricingBasisDraft|null=null;baseline="";
  api:BasisApi;

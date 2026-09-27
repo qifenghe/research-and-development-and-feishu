@@ -30,11 +30,12 @@ await call(tester,'POST',`/test-assignments/${handoff.testAssignment.id}/pass`,{
 const pricing=await call(assistant,'POST',`/sample-versions/${approved.version.id}/pricing-files`);
 const endpoint=`/pricing-files/${pricing.id}/basis`;
 let view=await call(engineer,'GET',endpoint);assert.equal(view.version,0);assert.equal(view.confirmedBy,null);assert.equal(view.draft.sourceRevisionId,revision.id);
+assert.equal(view.draft.materials[0].stepName,'1. 煮制');
 const draft=structuredClone(view.draft);
 Object.assign(draft.header,{companyName:'江西龙汇肉制品有限责任公司',documentNumber:`QA-${stamp}`,version:'A/0',effectiveDate:'2026-09-27',ownerName:engineer.user.name,authorName:engineer.user.name});
 for(const m of draft.materials)Object.assign(m,{weightBasis:'AFTER_PROCESS',usageKg:100,utilizationRate:.95,confirmationBasis:'验收手算100÷95%'});
 Object.assign(draft,{mainOutputKg:89,mainScopeBasis:'对应大肠头净出成，验收专用',finishedNetKg:89,unitWeightKg:.5,bagsPerBox:20,actualBags:178});
-for(const p of draft.packaging)Object.assign(p,{quantity:178,quantityUnit:'个',internalCode:'003',remark:'0.99',adjustmentReason:'验收人工确认，备注不参与换算'});
+for(const p of draft.packaging)Object.assign(p,{quantity:p.materialName==='透明胶带'?0:p.materialName==='通用外箱'||p.materialName.endsWith('外箱标签')?9:178,quantityUnit:p.materialName.includes('标签')?'张':'个',internalCode:'003',remark:'0.99',adjustmentReason:p.materialName==='透明胶带'?'本次验收不用胶带':'验收人工确认，备注不参与换算'});
 if(!draft.packaging.length)draft.packaging.push({id:'qa-bag',materialName:'包装袋',quantity:178,quantityUnit:'个',internalCode:'003',remark:'0.99',adjustmentReason:'验收人工确认'});
 view=await call(engineer,'PUT',endpoint,{expectedVersion:0,draft});
 const restored=await call(engineer,'GET',endpoint);assert.deepEqual(restored.draft,draft);

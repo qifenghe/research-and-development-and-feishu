@@ -20,7 +20,7 @@
         <label>参考利用率 %<a-input-number :value="m.weightBasis==='BEFORE_PROCESS'?rowResult(m.id)?.utilizationRate==null?null:rowResult(m.id)!.utilizationRate!*100:m.utilizationRate==null?null:m.utilizationRate*100" :disabled="disabled || m.weightBasis==='BEFORE_PROCESS'" :min="0" :max="100" @update:value="m.utilizationRate=utilizationFromPercent($event)" /></label>
         <label>参考领料 kg<strong>{{session.dirty?'保存后更新':display(rowResult(m.id)?.requisitionKg)}}</strong></label>
        </div>
-       <details><summary>来源与确认依据</summary><p>原始投入：{{display(m.originalWeightKg)}} kg。{{m.weightBasis==='BEFORE_PROCESS'?'以原始投入作为领料量，不再除以利用率。':'以处理后用量除以利用率，得到参考领料量。'}}</p>
+       <details><summary>来源与确认依据</summary><p class="source-label">来源：{{sourceLabel(m)}}</p><p>原始投入：{{display(m.originalWeightKg)}} kg。{{m.weightBasis==='BEFORE_PROCESS'?'以原始投入作为领料量，不再除以利用率。':'以处理后用量除以利用率，得到参考领料量。'}}</p>
         <label>净用量确认依据<a-input v-model:value="m.confirmationBasis" :disabled="disabled" placeholder="填写处理后称重记录或研发确认依据；混合总重不能直接当单一原料净重" /></label>
         <label>核价备注<a-input v-model:value="m.remark" :disabled="disabled" placeholder="例如配料车间配制" /></label>
        </details>
@@ -37,11 +37,14 @@
      </div>
      <div class="summary"><span>核价主料得率 <b>{{resultValue(session.view.calculation.mainYieldPercent)}}%</b></span><span>参考完整包数 <b>{{resultValue(session.view.calculation.referenceBags)}}</b></span><span>参考箱数 <b>{{resultValue(session.view.calculation.referenceBoxes)}}</b></span><span>不足整包余量 <b>{{resultValue(session.view.calculation.remainingKg)}} kg</b></span></div>
      <p class="muted">袋数向下取整，箱数向上取整。参考量不替代实测。修改后保存更新结果。</p>
-     <div v-for="p in session.draft.packaging" :key="p.id" class="packing"><div class="fields">
+     <a-alert v-if="packingBasisChanged" type="warning" message="包装基准已调整：请逐项核对数量，填写当前规格下的确认原因。旧建议不会自动换算。" />
+     <div v-for="p in session.draft.packaging" :key="p.id" class="packing">
+      <div class="material-title"><span>{{p.quantity===0?'本次不使用（不导出，保留原因）':p.conversionRule || '人工确认数量'}}</span><a-button v-if="editable && p.quantity!==0" danger size="small" @click="removePacking(session.draft,session.view.source,p.id)">{{session.view.source.packaging.some(s=>s.id===p.id)?'本次不使用':'删除新增行'}}</a-button></div>
+      <div class="fields">
       <label>包装名称<a-input v-model:value="p.materialName" :disabled="disabled" /></label><label>NS编码<a-input v-model:value="p.materialCode" :disabled="disabled" /></label>
       <label>内部代码<a-input v-model:value="p.internalCode" :disabled="disabled" /></label><label>参考数量<a-input-number v-model:value="p.quantity" :disabled="disabled" :min="0" /></label>
       <label>数量单位<a-input v-model:value="p.quantityUnit" :disabled="disabled" placeholder="个、张、米" /></label><label>包装规格<a-input v-model:value="p.specification" :disabled="disabled" /></label>
-      <label>备注<a-input v-model:value="p.remark" :disabled="disabled" /></label><label>新增或调整原因<a-input v-model:value="p.adjustmentReason" :disabled="disabled" placeholder="数量、单位或名称调整时必填" /></label>
+      <label>备注<a-input v-model:value="p.remark" :disabled="disabled" /></label><label>新增、调整或不使用原因<a-input v-model:value="p.adjustmentReason" :disabled="disabled" placeholder="说明当前规格下的用量依据；数量为0表示本次不使用" /></label>
      </div></div><a-button v-if="editable" :disabled="session.busy" @click="addPacking">＋ 添加包装</a-button></section>
     </fieldset>
     <a-alert v-if="!session.dirty && session.view.calculation.issues.length" type="warning" show-icon message="以下数据仍需确认"><template #description><ul><li v-for="i in session.view.calculation.issues" :key="i.path+i.message">{{i.message}}</li></ul></template></a-alert>
@@ -53,9 +56,9 @@
 <script setup lang="ts">
 import {computed,reactive,ref,watch} from "vue";
 import {Modal,message} from "ant-design-vue";
-import type {PricingBasisHeader} from "@rnd/shared";
+import type {PricingBasisHeader,PricingBasisMaterial} from "@rnd/shared";
 import {pricingBasisApi} from "../../services/pricingBasisApi";
-import {PricingBasisSession,utilizationFromPercent} from "./pricingBasisSession";
+import {PricingBasisSession,utilizationFromPercent,removePacking,pricingSourceLabel} from "./pricingBasisSession";
 const props=defineProps<{pricingFileId:string;editable:boolean}>();const emit=defineEmits<{generated:[]}>();
 const session=reactive(new PricingBasisSession(pricingBasisApi));const error=ref("");const disabled=computed(()=>!props.editable||session.busy);
 const headerFields:{key:keyof PricingBasisHeader;label:string}[]=[{key:"companyName",label:"公司"},{key:"productName",label:"产品名称"},{key:"specification",label:"产品规格"},{key:"category",label:"类别"},{key:"ownerName",label:"负责人"},{key:"authorName",label:"编写人"},{key:"documentNumber",label:"文件编号"},{key:"version",label:"版本号"},{key:"effectiveDate",label:"实施日期"}];
@@ -63,6 +66,9 @@ const basisOptions=[{value:"AFTER_PROCESS",label:"处理后用量 → 换算领�
 watch(()=>[props.pricingFileId,props.editable] as const,async([id,editable])=>{error.value="";try{await session.load(id,editable);}catch(e){error.value=e instanceof Error?e.message:"加载失败";}},{immediate:true});
 const display=(v:number|null|undefined)=>v==null?"待填写":Number(v.toFixed(4)).toString();
 const rowResult=(id:string)=>session.view?.calculation.materials.find(m=>m.id===id);
+const packingBasisChanged=computed(()=>{const d=session.draft,s=session.view?.source;return !!d&&!!s&&(d.finishedNetKg!==s.finishedNetKg||d.unitWeightKg!==s.unitWeightKg||d.bagsPerBox!==s.bagsPerBox);});
+function sourceLabel(m:PricingBasisMaterial){const d=session.draft!,s=session.view!.source;const bound=s.sourceRevisionId===d.sourceRevisionId?s.materials.find(x=>x.id===m.id)??m:m;return pricingSourceLabel(d.sourceRevisionId,bound);}
+watch(()=>[session.draft?.finishedNetKg,session.draft?.unitWeightKg,session.draft?.bagsPerBox],(now,old)=>{if(old.every(v=>v!==undefined)&&now.some((v,i)=>v!==old[i]))for(const p of session.draft?.packaging??[])p.adjustmentReason=null;});
 const resultValue=(v:number|null)=>session.dirty?"待保存":display(v);
 function setBasis(index:number,value:"AFTER_PROCESS"|"BEFORE_PROCESS"){const m=session.draft!.materials[index]!;m.weightBasis=value;m.utilizationRate=null;m.confirmationBasis=null;m.processedOutputId=null;}
 async function run(fn:()=>Promise<unknown>){error.value="";try{await fn();}catch(e){error.value=e instanceof Error?e.message:"操作失败";}}

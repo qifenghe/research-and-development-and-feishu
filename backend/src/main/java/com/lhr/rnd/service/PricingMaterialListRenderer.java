@@ -66,7 +66,7 @@ public class PricingMaterialListRenderer {
             int packagingHeader=row;
             merged(s,row,row,0,1,"编号");cell(s,row,2,"NS编码");merged(s,row,row,3,4,"物料名称");cell(s,row,5,"内部代码");cell(s,row,6,"数量（供参考）");cell(s,row,7,"数量单位");cell(s,row,8,"包装规格");merged(s,row,row,9,10,"备注");row++;
             if(d.packaging()!=null)for(int i=0;i<d.packaging().size();i++) {
-                var p=d.packaging().get(i);merged(s,row,row,0,1,i+1);cell(s,row,2,p.materialCode()==null?"":p.materialCode());merged(s,row,row,3,4,p.materialName());cell(s,row,5,p.internalCode()==null?"":p.internalCode());cell(s,row,6,p.quantity());cell(s,row,7,p.quantityUnit());cell(s,row,8,p.specification());merged(s,row,row,9,10,p.remark()==null?"":p.remark());row++;
+                var p=d.packaging().get(i);if(p!=null&&p.quantity()!=null&&p.quantity().signum()==0)continue;merged(s,row,row,0,1,row-packagingHeader);cell(s,row,2,p.materialCode()==null?"":p.materialCode());merged(s,row,row,3,4,p.materialName());cell(s,row,5,p.internalCode()==null?"":p.internalCode());cell(s,row,6,p.quantity());cell(s,row,7,p.quantityUnit());cell(s,row,8,p.specification());merged(s,row,row,9,10,p.remark()==null?"":p.remark());row++;
             }
             if(preview)for(var issue:result.issues()){merged(s,row,row,0,10,"待补充："+issue.message());row++;}
             row++;merged(s,row,row,0,10,"本资料为机密文件，未经公司研发部门书面许可，不得保有或泄露本资料任何内容。");

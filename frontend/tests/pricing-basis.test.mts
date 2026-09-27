@@ -1,10 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PricingBasisSession, utilizationFromPercent, canEditPricingBasis } from "../apps/pc/src/components/pricing/pricingBasisSession.ts";
+import { PricingBasisSession, utilizationFromPercent, canEditPricingBasis, removePacking, pricingSourceLabel } from "../apps/pc/src/components/pricing/pricingBasisSession.ts";
 const fixture=(id="rev")=>({draft:{schemaVersion:1,sourceRevisionId:id,header:{productName:"测试"},materials:[],packaging:[]},version:1,calculation:{materials:[],issues:[]},confirmedBy:null,confirmedAt:null,stale:false,source:{}} as any);
 test("edit entrance uses server owner permission, not the version author",()=>{
  assert.equal(canEditPricingBasis([{code:"CONFIRM_PRICING_PACKAGING"}]),true);
  assert.equal(canEditPricingBasis([]),false);
+});
+test("packaging removal retains source exclusion audit but removes accidental manual rows",()=>{
+ const draft:any={packaging:[{id:"source",quantity:9,adjustmentReason:"old"},{id:"manual",quantity:null}]};
+ removePacking(draft,{packaging:[{id:"source"}]} as any,"source");
+ assert.equal(draft.packaging[0].quantity,0);assert.equal(draft.packaging[0].adjustmentReason,null);
+ removePacking(draft,{packaging:[{id:"source"}]} as any,"manual");assert.equal(draft.packaging.length,1);
+});
+test("same material rows show distinct bound steps and revision, not just weight",()=>{
+ const a=pricingSourceLabel("REV-1",{stage:"卤制",stepId:"s1",stepName:"1. 配料"} as any);
+ const b=pricingSourceLabel("REV-1",{stage:"卤制",stepId:"s2",stepName:"2. 补料"} as any);
+ assert.match(a,/REV-1.*卤制.*1\. 配料/);assert.match(b,/2\. 补料/);assert.notEqual(a,b);
 });
 test("percent entry distinguishes blank from zero and converts 95 to 0.95",()=>{
  assert.equal(utilizationFromPercent(null),null);assert.equal(utilizationFromPercent(0),0);assert.equal(utilizationFromPercent(95),.95);

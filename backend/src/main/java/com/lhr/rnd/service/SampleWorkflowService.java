@@ -170,6 +170,7 @@ public class SampleWorkflowService {
     private List<PricingPackagingItem> basisPackaging(String id,com.lhr.rnd.model.PricingBasisDraft draft) {
         var original=pricingPackagingItems(id);var values=new ArrayList<PricingPackagingItem>();
         for(var p:draft.packaging()) {
+            if(p.quantity()!=null && p.quantity().signum()==0) continue;
             var old=original.stream().filter(x->Objects.equals(x.id(),p.id())).findFirst().orElse(null);
             values.add(new PricingPackagingItem(p.id(),id,values.size()+1,old==null?PricingPackagingSource.MANUAL:old.source(),p.materialCode(),p.materialName(),p.quantity(),p.specification(),p.conversionRule(),p.remark(),PricingPackagingStatus.CONFIRMED,p.adjustmentReason(),p.quantityUnit()));
         }
@@ -214,13 +215,13 @@ public class SampleWorkflowService {
             for (var major : revision.snapshot().majorProcesses().stream().sorted(java.util.Comparator.comparingInt(ProcessPlan.MajorProcess::sequence)).toList())
                 for (var step : major.steps().stream().sorted(java.util.Comparator.comparingInt(ProcessPlan.MinorStep::sequence)).toList()) {
                     for (var m : step.materials()) if ("EXTERNAL".equals(m.sourceType()))
-                        materials.add(new com.lhr.rnd.model.PricingBasisDraft.Material(m.id(), major.id(), step.id(), m.id(), major.processName(), m.materialCode(), m.materialName(), m.materialRole(), "EXTERNAL", m.weightKg(), null, m.weightKg(), null, null, null, m.remark()));
+                        materials.add(new com.lhr.rnd.model.PricingBasisDraft.Material(m.id(), major.id(), step.id(), m.id(), major.processName(), m.materialCode(), m.materialName(), m.materialRole(), "EXTERNAL", m.weightKg(), null, m.weightKg(), null, null, null, m.remark(),step.sequence()+". "+step.stepName()));
                     if (step.outputs() != null) for (var out : step.outputs()) if (out.primaryOutput()) mainOutput = out.weightKg();
                 }
         } else {
             for (int i=0;i<form.materials().size();i++) {
                 var m=form.materials().get(i); var key="legacy-"+i;
-                materials.add(new com.lhr.rnd.model.PricingBasisDraft.Material(key,"legacy",key,key,m.stage(),m.materialCode(),m.materialName(),m.primaryMaterial()?"PRIMARY":"AUXILIARY","EXTERNAL",m.weightKg(),null,m.weightKg(),m.utilizationRate(),null,null,m.remark()));
+                materials.add(new com.lhr.rnd.model.PricingBasisDraft.Material(key,"legacy",key,key,m.stage(),m.materialCode(),m.materialName(),m.primaryMaterial()?"PRIMARY":"AUXILIARY","EXTERNAL",m.weightKg(),null,m.weightKg(),m.utilizationRate(),null,null,m.remark(),"旧版试验单第 "+(i+1)+" 行"));
             }
             // Legacy total finished weight is not presumed to be pure primary-material output.
         }

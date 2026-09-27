@@ -43,4 +43,25 @@ class PricingBasisServiceTest {
         jdbc.update("update pricing_file set status='PENDING_PRICING_REVIEW'");
         assertThatThrownBy(()->service.save("P",1,d,d)).hasMessageContaining("归档");
     }
+    @Test void unusedSourcePackagingCanBeExcludedWithReasonAndDoesNotExport() throws Exception {
+        var seed=valid();var bag=seed.packaging().get(0);
+        var excluded=new PricingBasisDraft.Packaging(bag.id(),bag.materialCode(),bag.materialName(),bag.internalCode(),java.math.BigDecimal.ZERO,bag.quantityUnit(),bag.specification(),bag.conversionRule(),bag.remark(),"本产品不使用默认包装袋");
+        var replacement=new PricingBasisDraft.Packaging("new-bag",null,"替代包装",null,new java.math.BigDecimal("178"),"个",null,null,null,"改用其他包装");
+        var d=withPacking(seed,seed.unitWeightKg(),List.of(excluded,replacement));
+        var service=new PricingBasisService(db(),new ObjectMapper(),new PricingBasisCalculator());
+        assertThatCode(()->service.requireReady(d,seed)).doesNotThrowAnyException();
+        var bytes=new PricingMaterialListRenderer().render(d,new PricingBasisCalculator().calculate(d),false);
+        try(var w=new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(bytes))) {
+            var text=new StringBuilder();for(var r:w.getSheetAt(0))for(var c:r)text.append(c.toString());
+            assertThat(text.toString()).contains("替代包装").doesNotContain("包装袋");
+        }
+    }
+    @Test void changedPackingBasisRequiresExplicitPackagingReconfirmation() {
+        var seed=valid();var changed=withPacking(seed,new java.math.BigDecimal("0.25"),seed.packaging());
+        var service=new PricingBasisService(db(),new ObjectMapper(),new PricingBasisCalculator());
+        assertThatThrownBy(()->service.requireReady(changed,seed)).hasMessageContaining("包装基准");
+    }
+    static PricingBasisDraft withPacking(PricingBasisDraft d,java.math.BigDecimal unit,List<PricingBasisDraft.Packaging> packs) {
+        return new PricingBasisDraft(1,d.sourceRevisionId(),d.header(),d.materials(),d.mainOutputKg(),d.mainMaterialIds(),d.mainScopeBasis(),d.finishedNetKg(),unit,d.bagsPerBox(),d.actualBags(),packs);
+    }
 }

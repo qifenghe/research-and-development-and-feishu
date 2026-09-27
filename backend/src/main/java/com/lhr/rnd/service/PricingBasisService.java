@@ -60,11 +60,13 @@ public class PricingBasisService {
         var h=d.header();
         if(List.of(str(h.companyName()),str(h.specification()),str(h.ownerName()),str(h.authorName()),str(h.category()),str(h.documentNumber()),str(h.version()),str(h.effectiveDate())).stream().anyMatch(String::isBlank)) throw fail("PRICING_BASIS_HEADER_REQUIRED","请补全文件信息后确认");
         try { java.time.LocalDate.parse(h.effectiveDate()); } catch(Exception e) { throw fail("PRICING_BASIS_DATE_INVALID","实施日期须为 YYYY-MM-DD"); }
-        if(d.packaging()==null||d.packaging().isEmpty()) throw fail("PRICING_BASIS_PACKAGING_REQUIRED","请确认包装清单");
+        if(d.packaging()==null||d.packaging().stream().noneMatch(p->p.quantity()!=null&&p.quantity().signum()>0)) throw fail("PRICING_BASIS_PACKAGING_REQUIRED","请确认至少一项本次使用的包装");
+        boolean packingBasisChanged=!same(d.finishedNetKg(),seed.finishedNetKg()) || !same(d.unitWeightKg(),seed.unitWeightKg()) || !Objects.equals(d.bagsPerBox(),seed.bagsPerBox());
         var ids=new HashSet<String>();
         for(var p:d.packaging()) {
             if(p==null||str(p.id()).isBlank()||!ids.add(p.id())) throw fail("PRICING_BASIS_PACKAGING_INVALID","包装行标识缺失或重复");
             var original=seed.packaging().stream().filter(x->Objects.equals(x.id(),p.id())).findFirst().orElse(null);
+            if(packingBasisChanged && p.quantity().signum()>0 && str(p.adjustmentReason()).isBlank()) throw fail("PRICING_BASIS_PACKAGING_RECONFIRM","包装基准已变化，请逐项核对包装数量并填写确认原因");
             if((original==null || !same(original.quantity(),p.quantity()) || !Objects.equals(original.quantityUnit(),p.quantityUnit()) || !Objects.equals(original.materialName(),p.materialName())) && str(p.adjustmentReason()).isBlank()) throw fail("PRICING_BASIS_ADJUSTMENT_REQUIRED","新增或调整包装数量、单位、名称时请填写调整原因");
         }
         for(var original:seed.packaging()) if(d.packaging().stream().noneMatch(p->Objects.equals(p.id(),original.id()))) throw fail("PRICING_BASIS_PACKAGING_REMOVAL","来源包装不可直接删除，可修改并填写调整原因");

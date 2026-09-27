@@ -82,7 +82,11 @@ public class PricingBasisCalculator {
         if (draft.packaging() != null) for (int i = 0; i < draft.packaging().size(); i++) {
             var p = draft.packaging().get(i); String path = "packaging[" + i + "]";
             if (p == null) { issue(issues,path,"包装记录缺失"); continue; }
-            if (!positive(p.quantity())) issue(issues,path + ".quantity","包装数量必须大于0");
+            if (!nonnegative(p.quantity())) issue(issues,path + ".quantity","包装数量不能为负或留空");
+            if (p.quantity()!=null && p.quantity().signum()==0) {
+                if(blank(p.adjustmentReason())) issue(issues,path+".adjustmentReason","本次不使用的包装请填写原因");
+                continue;
+            }
             if (blank(p.materialName())) issue(issues,path + ".materialName","请填写包装名称");
             if (blank(p.quantityUnit())) issue(issues,path + ".quantityUnit","请填写包装数量单位");
         }

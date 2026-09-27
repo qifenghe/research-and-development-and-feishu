@@ -31,4 +31,6 @@ generated/node_modules
 dist/
 build/
 data/preview/
+data/pricing-acceptance/
+data/pricing-acceptance-v2/
 backend/data/preview/
