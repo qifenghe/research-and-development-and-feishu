@@ -44,6 +44,7 @@ class ReportExportControllerTest {
                 "finance_notification",
                 "pricing_archive_cleanup_ledger",
                 "pricing_packaging_item",
+                "pricing_basis_snapshot",
                 "pricing_file",
                 "customer_feedback",
                 "shipment_record",

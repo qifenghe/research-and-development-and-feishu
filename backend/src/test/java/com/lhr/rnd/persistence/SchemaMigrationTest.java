@@ -37,6 +37,7 @@ class SchemaMigrationTest {
         assertTableExists("shipment_record");
         assertTableExists("customer_feedback");
         assertTableExists("pricing_file");
+        assertTableExists("pricing_basis_snapshot");
         assertTableExists("finance_notification");
         assertTableExists("user_account");
         assertTableExists("role_permission");

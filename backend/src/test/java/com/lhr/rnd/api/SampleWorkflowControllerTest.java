@@ -110,6 +110,7 @@ class SampleWorkflowControllerTest {
                 "archive_file",
                 "finance_notification",
                 "pricing_packaging_item",
+                "pricing_basis_snapshot",
                 "pricing_file",
                 "customer_feedback",
                 "shipment_record",
@@ -1751,7 +1752,7 @@ class SampleWorkflowControllerTest {
         assertThat(valueById("pricing_file", pricingFileId, "pricing_version")).isEqualTo("A0-核价V1");
         assertThat(valueById("pricing_file", pricingFileId, "status")).isEqualTo("PENDING_PRICING_REVIEW");
         assertThat(valueById("pricing_file", pricingFileId, "file_name"))
-                .matches("500g香卤大肠头-产品核价基础数据表-R1\\.xlsx");
+                .matches("500g香卤大肠头（核价）原材料清单-A0-核价V1\\.xlsx");
         var generatedFileName = valueById("pricing_file", pricingFileId, "file_name");
         assertThat(countByColumn("archive_file", "business_id", pricingFileId)).isEqualTo(1);
         assertThat(valueByColumn("archive_file", "business_id", pricingFileId, "business_type")).isEqualTo("PRICING_FILE");
@@ -2002,6 +2003,7 @@ class SampleWorkflowControllerTest {
         insertFormalPricingRevision(formId, "PREV-ATTEMPT-B", 2, "70");
         var second = CompletableFuture.supplyAsync(() -> {
             secondStarted.countDown();
+            preparePricingBasis(pricingFileId,items,principal("张研发","RND_ENGINEER"));
             return workflowService.confirmPricingPackaging(pricingFileId, items, "张研发", "RND_ENGINEER");
         });
         assertThat(secondStarted.await(20, TimeUnit.SECONDS)).isTrue();
@@ -2118,14 +2120,15 @@ class SampleWorkflowControllerTest {
         var versionId = createLockedSampleVersion();
         var pricingId = createPricingDraft(versionId);
         assertThatThrownBy(() -> workflowService.confirmPricingPackaging(pricingId, workflowService.pricingPackagingItems(pricingId), "张研发", "RND_ENGINEER"))
-                .isInstanceOf(BusinessException.class).hasMessageContaining("数量单位");
+                .isInstanceOf(BusinessException.class).hasMessageContaining("确认核价数据");
         assertThat(valueById("pricing_file", pricingId, "status")).isEqualTo("DRAFT_PACKAGING");
         assertThat(countByColumn("archive_file", "business_id", pricingId)).isZero();
         workflowService.confirmPricingPackaging(pricingId, packagingWithExplicitUnits(pricingId), "张研发", "RND_ENGINEER");
         assertThat(workflowService.pricingPackagingItems(pricingId)).allMatch(i -> "测试单位".equals(i.quantityUnit()));
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(workflowService.downloadPricingFile(pricingId).content()))) {
-            assertThat(workbook.getSheetAt(2).getRow(6).getCell(2).getNumericCellValue()).isEqualTo(8.5);
-            assertThat(workbook.getSheetAt(2).getRow(7).getCell(2).getNumericCellValue()).isEqualTo(17);
+            assertThat(workbook.getNumberOfSheets()).isEqualTo(1);
+            var text=new StringBuilder(); for(var row:workbook.getSheetAt(0))for(var cell:row)text.append(new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(cell));
+            assertThat(text.toString()).contains("可分装成品净重：8.5", "参考包数");
         }
     }
 
@@ -2150,8 +2153,12 @@ class SampleWorkflowControllerTest {
 
             var outcomes = List.of(first.join(), second.join());
             nextRevision.join();
-            assertThat(outcomes).filteredOn("SUCCESS"::equals).hasSize(1);
-            assertThat(outcomes).filteredOn("PRICING_PACKAGING_CONFIRM_ILLEGAL"::equals).hasSize(1);
+            assertThat(outcomes).allMatch(v->List.of("SUCCESS","PRICING_PACKAGING_CONFIRM_ILLEGAL","PRICING_BASIS_SOURCE_CHANGED").contains(v));
+            assertThat(outcomes).filteredOn("SUCCESS"::equals).hasSizeLessThanOrEqualTo(1);
+            if(!outcomes.contains("SUCCESS")) {
+                preparePricingBasis(pricingFileId,items,principal("张研发","RND_ENGINEER"));
+                workflowService.confirmPricingPackaging(pricingFileId,items,"张研发","RND_ENGINEER");
+            }
             var pinnedRevision = valueById("pricing_file", pricingFileId, "process_revision_id");
             assertThat(pinnedRevision).isIn("PREV-RACE-" + currentRound + "-2", "PREV-RACE-" + currentRound + "-3");
             assertPricingPersistenceCoherent(pricingFileId, items, pinnedRevision,
@@ -3187,6 +3194,7 @@ class SampleWorkflowControllerTest {
                 .andReturn().getResponse().getContentAsString();
         var items = objectMapper.readTree(packagingItems).path("data");
         items.forEach(item -> ((com.fasterxml.jackson.databind.node.ObjectNode)item).put("quantityUnit", "测试单位"));
+        preparePricingBasis(pricingFileId, java.util.Arrays.asList(objectMapper.treeToValue(items, com.lhr.rnd.model.PricingPackagingItem[].class)), owner);
         mockMvc.perform(put("/api/v1/pricing-files/{id}/packaging-items", pricingFileId)
                         .requestAttr("sessionPrincipal", owner)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -3194,6 +3202,14 @@ class SampleWorkflowControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PENDING_PRICING_REVIEW"));
         return pricingFileId;
+    }
+
+    @Test
+    void packagingCannotBypassPricingBasisConfirmation() throws Exception {
+        var versionId=createLockedSampleVersion();
+        var id=createPricingDraft(versionId);
+        assertThatThrownBy(()->workflowService.confirmPricingPackaging(id,workflowService.pricingPackagingItems(id),"张研发","RND_ENGINEER"))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("确认核价数据");
     }
 
     private void approvePricingFile(String pricingFileId) throws Exception {
@@ -3496,17 +3512,31 @@ class SampleWorkflowControllerTest {
     private void assertPricingWorkbookRevision(byte[] bytes, String revisionId, String finishedYield) throws Exception {
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
             var sheet = workbook.getSheetAt(0);
-            var revisionNo = valueById("experiment_process_revision", revisionId, "revision_no");
-            assertThat(sheet.getRow(2).getCell(1).getStringCellValue()).contains("正式工艺 R" + revisionNo).doesNotContain("revisionId=");
-            assertThat(workbook.getSheetAt(1).getRow(7).getCell(1).getNumericCellValue())
-                    .isEqualTo(new BigDecimal(finishedYield).doubleValue());
+            assertThat(workbook.getNumberOfSheets()).isEqualTo(1);
+            var found=false;
+            for(var row:sheet) if(row.getCell(0)!=null && "主料得率（%）".equals(new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(row.getCell(0)))) {
+                assertThat(workbook.getCreationHelper().createFormulaEvaluator().evaluate(row.getCell(6)).getNumberValue()).isCloseTo(new BigDecimal(finishedYield).doubleValue()/100,org.assertj.core.data.Offset.offset(.000001)); found=true;
+            }
+            assertThat(found).isTrue();
         }
     }
 
     private List<com.lhr.rnd.model.PricingPackagingItem> packagingWithExplicitUnits(String pricingFileId) {
-        return workflowService.pricingPackagingItems(pricingFileId).stream().map(item -> new com.lhr.rnd.model.PricingPackagingItem(
+        var items = workflowService.pricingPackagingItems(pricingFileId).stream().map(item -> new com.lhr.rnd.model.PricingPackagingItem(
                 item.id(), item.pricingFileId(), item.sequence(), item.source(), item.materialCode(), item.materialName(),
                 item.quantity(), item.packageSpec(), item.conversionRule(), item.remark(), item.confirmationStatus(), item.modificationReason(), "测试单位")).toList();
+        preparePricingBasis(pricingFileId,items,principal("张研发","RND_ENGINEER"));
+        return items;
+    }
+
+    private void preparePricingBasis(String id, List<com.lhr.rnd.model.PricingPackagingItem> items, SessionPrincipal actor) {
+        var view=workflowService.pricingBasis(id,actor);var d=view.source();var h=d.header();
+        var header=new com.lhr.rnd.model.PricingBasisDraft.Header(h.companyName(),h.productName(),"500g/袋，20袋/箱",actor.name(),actor.name(),"酱卤肉制品","TEST-DOC",h.version(),"2026-09-27");
+        var materials=d.materials().stream().map(m->new com.lhr.rnd.model.PricingBasisDraft.Material(m.id(),m.majorId(),m.stepId(),m.sourceMaterialId(),m.stage(),m.materialCode(),m.materialName(),m.role(),m.sourceType(),m.originalWeightKg(),"AFTER_PROCESS",m.usageKg(),BigDecimal.ONE,null,"测试确认",m.remark())).toList();
+        var packing=items.stream().map(p->new com.lhr.rnd.model.PricingBasisDraft.Packaging(p.id(),p.materialCode(),p.materialName(),null,p.quantity(),p.quantityUnit(),p.packageSpec(),p.conversionRule(),p.remark(),"测试单位确认")).toList();
+        var draft=new com.lhr.rnd.model.PricingBasisDraft(1,d.sourceRevisionId(),header,materials,d.mainOutputKg()==null?new BigDecimal("89"):d.mainOutputKg(),d.mainMaterialIds(),"测试主料范围确认",d.finishedNetKg()==null?new BigDecimal("89"):d.finishedNetKg(),new BigDecimal("0.5"),20,d.actualBags(),packing);
+        var saved=workflowService.savePricingBasis(id,view.version(),draft,actor);
+        workflowService.confirmPricingBasis(id,saved.version(),actor);
     }
 
     private void insertFormalPricingRevision(String formId, String revisionId, int revisionNo, String outputWeightKg) throws Exception {

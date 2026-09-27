@@ -288,7 +288,19 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/sample-versions/*/archive-files", "查看归档文件", 110),
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 120)
                 ))
-        );
+        ).stream().map(config -> {
+            if (!hasAnyRole(config.roleCode(), "RND_DIRECTOR", "RND_ENGINEER", "RND_ASSISTANT", "FINANCE", "MANAGER")) return config;
+            var rules = new java.util.ArrayList<>(config.permissions());
+            var path = "/api/v1/pricing-files/*/basis";
+            rules.add(rule("GET", path, "查看核价确认数据", 86));
+            if (hasAnyRole(config.roleCode(), "RND_DIRECTOR", "RND_ENGINEER")) {
+                rules.add(rule("PUT", path, "保存核价草稿", 87));
+                rules.add(rule("POST", path + "/preview", "预览原材料清单", 88));
+                rules.add(rule("POST", path + "/confirm", "确认核价数据", 89));
+                rules.add(rule("POST", path + "/generate", "生成原材料清单", 90));
+            }
+            return new RolePermissionConfig(config.roleCode(), rules);
+        }).toList();
     }
 
     private RolePermissionRule rule(String httpMethod, String pathPattern, String description, int sortOrder) {

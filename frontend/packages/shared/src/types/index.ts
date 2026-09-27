@@ -137,6 +137,7 @@ export interface RndTask {
 }
 
 export interface SampleVersion {
+  ownerName?: string;
   id: string;
   projectId: string;
   versionCode: string;

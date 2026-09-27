@@ -17,6 +17,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 class RolePermissionServiceTest {
 
+    @Test void freshDatabaseIncludesPricingBasisRoleBoundaries() {
+        var path="/api/v1/pricing-files/PRICE-1/basis";
+        for(var role:java.util.List.of("RND_DIRECTOR","RND_ENGINEER")) {
+            assertThat(service.hasPermission(role,"GET",path)).isTrue();
+            assertThat(service.hasPermission(role,"PUT",path)).isTrue();
+            for(var action:java.util.List.of("preview","confirm","generate")) assertThat(service.hasPermission(role,"POST",path+"/"+action)).isTrue();
+        }
+        for(var role:java.util.List.of("RND_ASSISTANT","FINANCE","MANAGER")) {
+            assertThat(service.hasPermission(role,"GET",path)).isTrue();
+            assertThat(service.hasPermission(role,"PUT",path)).isFalse();
+            assertThat(service.hasPermission(role,"POST",path+"/generate")).isFalse();
+        }
+        assertThat(service.hasPermission("TESTER","GET",path)).isFalse();
+    }
+
     @Autowired
     private RolePermissionRepository repository;
 

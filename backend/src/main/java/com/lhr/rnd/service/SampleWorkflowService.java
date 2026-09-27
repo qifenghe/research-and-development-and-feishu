@@ -1,4 +1,5 @@
 package com.lhr.rnd.service;
+import com.lhr.rnd.model.ProcessPlan;
 
 import com.lhr.rnd.api.BusinessException;
 import com.lhr.rnd.domain.SampleAction;
@@ -146,6 +147,87 @@ public class SampleWorkflowService {
     @Autowired(required = false) private UserAccountRepository userAccountRepository;
     @Autowired(required = false) private ProcessRevisionService processRevisionService;
     @Autowired(required = false) private TrialPromotionService trialPromotionService;
+    @Autowired(required = false) private PricingBasisService pricingBasisService;
+
+    @Transactional
+    public byte[] previewPricingBasis(String id, int expectedVersion, SessionPrincipal principal) {
+        requireBasisAccess(id, principal, true);
+        var view=pricingBasisService.load(id,pricingBasisSource(id));
+        if(view.version()!=expectedVersion || view.stale()) throw new BusinessException("PRICING_BASIS_CONFLICT","核价数据或来源已更新，请重新加载");
+        return new PricingMaterialListRenderer().render(view.draft(),view.calculation(),true);
+    }
+
+    @Transactional
+    public PricingFileRecord generateConfirmedPricingBasis(String id, int expectedVersion, SessionPrincipal principal) {
+        requireBasisAccess(id, principal, true);
+        var source=pricingBasisSource(id);
+        var view=pricingBasisService.load(id,source);
+        if(view.version()!=expectedVersion) throw new BusinessException("PRICING_BASIS_CONFLICT","核价数据已更新，请重新加载");
+        var draft=pricingBasisService.confirmed(id,source);
+        return confirmPricingPackaging(id,basisPackaging(id,draft),principal.name(),principal.role());
+    }
+
+    private List<PricingPackagingItem> basisPackaging(String id,com.lhr.rnd.model.PricingBasisDraft draft) {
+        var original=pricingPackagingItems(id);var values=new ArrayList<PricingPackagingItem>();
+        for(var p:draft.packaging()) {
+            var old=original.stream().filter(x->Objects.equals(x.id(),p.id())).findFirst().orElse(null);
+            values.add(new PricingPackagingItem(p.id(),id,values.size()+1,old==null?PricingPackagingSource.MANUAL:old.source(),p.materialCode(),p.materialName(),p.quantity(),p.specification(),p.conversionRule(),p.remark(),PricingPackagingStatus.CONFIRMED,p.adjustmentReason(),p.quantityUnit()));
+        }
+        return values;
+    }
+
+    @Transactional
+    public PricingBasisService.View pricingBasis(String id, SessionPrincipal principal) {
+        requireBasisAccess(id, principal, false);
+        return pricingBasisService.load(id, pricingBasisSource(id));
+    }
+
+    @Transactional
+    public PricingBasisService.View savePricingBasis(String id, int expectedVersion, com.lhr.rnd.model.PricingBasisDraft draft, SessionPrincipal principal) {
+        requireBasisAccess(id, principal, true);
+        return pricingBasisService.save(id, expectedVersion, draft, pricingBasisSource(id));
+    }
+
+    @Transactional
+    public PricingBasisService.View confirmPricingBasis(String id, int expectedVersion, SessionPrincipal principal) {
+        requireBasisAccess(id, principal, true);
+        return pricingBasisService.confirm(id, expectedVersion, pricingBasisSource(id), principal.name());
+    }
+
+    private void requireBasisAccess(String id, SessionPrincipal principal, boolean write) {
+        if (principal == null) throw new BusinessException("SESSION_PRINCIPAL_REQUIRED", "必须使用服务端会话身份");
+        if (!hasRole(principal.role(), "RND_DIRECTOR", "RND_ENGINEER", "RND_ASSISTANT", "FINANCE", "MANAGER", "ADMIN", "SYSTEM_ADMIN", "SUPER_ADMIN"))
+            throw new BusinessException("PRICING_BASIS_FORBIDDEN", "当前角色不能访问核价数据");
+        var record = lockedPricingFile(id);
+        pricingFileDetail(id, principal.role(), principal.name());
+        if (write) ensurePricingReviewer(record, principal.name(), principal.role());
+    }
+
+    private com.lhr.rnd.model.PricingBasisDraft pricingBasisSource(String id) {
+        var record = requiredPricingFile(id);
+        var version = requiredVersion(record.versionId());
+        var form = lockedExperimentForm(record.versionId());
+        var revision = latestFormalPricingRevision(form);
+        var materials = new java.util.ArrayList<com.lhr.rnd.model.PricingBasisDraft.Material>();
+        BigDecimal mainOutput = null;
+        if (revision != null) {
+            for (var major : revision.snapshot().majorProcesses().stream().sorted(java.util.Comparator.comparingInt(ProcessPlan.MajorProcess::sequence)).toList())
+                for (var step : major.steps().stream().sorted(java.util.Comparator.comparingInt(ProcessPlan.MinorStep::sequence)).toList()) {
+                    for (var m : step.materials()) if ("EXTERNAL".equals(m.sourceType()))
+                        materials.add(new com.lhr.rnd.model.PricingBasisDraft.Material(m.id(), major.id(), step.id(), m.id(), major.processName(), m.materialCode(), m.materialName(), m.materialRole(), "EXTERNAL", m.weightKg(), null, m.weightKg(), null, null, null, m.remark()));
+                    if (step.outputs() != null) for (var out : step.outputs()) if (out.primaryOutput()) mainOutput = out.weightKg();
+                }
+        } else {
+            for (int i=0;i<form.materials().size();i++) {
+                var m=form.materials().get(i); var key="legacy-"+i;
+                materials.add(new com.lhr.rnd.model.PricingBasisDraft.Material(key,"legacy",key,key,m.stage(),m.materialCode(),m.materialName(),m.primaryMaterial()?"PRIMARY":"AUXILIARY","EXTERNAL",m.weightKg(),null,m.weightKg(),m.utilizationRate(),null,null,m.remark()));
+            }
+            // Legacy total finished weight is not presumed to be pure primary-material output.
+        }
+        var header = new com.lhr.rnd.model.PricingBasisDraft.Header("江西龙汇肉制品有限责任公司",version.productName(),version.specification(),version.ownerName(),version.authorName(),version.productType(),null,version.versionCode(),version.effectiveDate()==null?null:version.effectiveDate().toString());
+        var packaging=pricingPackagingItems(id).stream().map(p->new com.lhr.rnd.model.PricingBasisDraft.Packaging(p.id(),p.materialCode(),p.materialName(),null,p.quantity(),p.quantityUnit(),p.packageSpec(),p.conversionRule(),p.remark(),null)).toList();
+        return new com.lhr.rnd.model.PricingBasisDraft(1,revision==null?"legacy:"+form.id()+":"+form.savedAt():revision.id(),header,materials,mainOutput,materials.stream().filter(m->"PRIMARY".equals(m.role())).map(com.lhr.rnd.model.PricingBasisDraft.Material::id).toList(),null,form.finishedOutputWeightKg(),version.unitWeightKg(),bagsPerBox(version.specification()),form.finishedOutputQuantity(),packaging);
+    }
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
     private final Map<String, SampleProject> projects = new LinkedHashMap<>();
     private final Map<String, SampleVersion> versions = new LinkedHashMap<>();
@@ -1965,6 +2047,16 @@ public class SampleWorkflowService {
         if (pricingFile.status() != PricingFileStatus.DRAFT_PACKAGING) {
             throw new BusinessException("PRICING_PACKAGING_CONFIRM_ILLEGAL", "当前核价文件不处于包装确认状态");
         }
+        var basis = pricingBasisService == null ? null : pricingBasisService.confirmed(pricingFileId, pricingBasisSource(pricingFileId));
+        if (basis != null) {
+            var expected=basisPackaging(pricingFileId,basis);
+            if(requestedItems==null || requestedItems.size()!=expected.size()) throw new BusinessException("PRICING_BASIS_PACKAGING_CHANGED","包装已变化，请重新保存并确认核价数据");
+            for(int i=0;i<expected.size();i++) {
+                var a=expected.get(i);var b=requestedItems.get(i);
+                if(b==null || a.quantity().compareTo(b.quantity()==null?BigDecimal.ZERO:b.quantity())!=0 || !Objects.equals(a.materialName(),b.materialName()) || !Objects.equals(a.quantityUnit(),b.quantityUnit()) || !Objects.equals(a.materialCode(),b.materialCode()) || !Objects.equals(a.packageSpec(),b.packageSpec()) || !Objects.equals(a.remark(),b.remark()))
+                    throw new BusinessException("PRICING_BASIS_PACKAGING_CHANGED","包装已变化，请重新保存并确认核价数据");
+            }
+        }
         var confirmedItems = normalizeConfirmedPackagingItems(pricingFileId, requestedItems);
         pricingPackagingService.validateForSubmission(confirmedItems);
         persistPricingPackagingItems(pricingFileId, confirmedItems);
@@ -1977,8 +2069,12 @@ public class SampleWorkflowService {
         var customerName = projects.containsKey(version.projectId())
                 ? projects.get(version.projectId()).customerName()
                 : "LHYC";
-        var revision = latestFormalPricingRevision(lockedForm);
-        var generated = revision == null
+        var revision = basis != null && !basis.sourceRevisionId().startsWith("legacy:") ? processRevisionService.find(lockedForm.id(), basis.sourceRevisionId()) : latestFormalPricingRevision(lockedForm);
+        if (basis != null && revision != null) {
+            var checks=new ProcessExportCheckService();
+            checks.requireReady(checks.view(version.productName(),"正式工艺",revision.snapshot(),new com.lhr.rnd.model.ProcessExportView.FinishedQuantity(lockedForm.finishedOutputWeightKg(),lockedForm.finishedOutputQuantity(),lockedForm.finishedOutputUnit(),"独立实测"),confirmedItems),"PRICING_XLSX");
+        }
+        var generated = basis != null ? new PricingFileResult(version.productName()+"（核价）原材料清单-"+pricingFile.pricingVersion()+".xlsx",pricingFile.pricingVersion(),new PricingMaterialListRenderer().render(basis,new PricingBasisCalculator().calculate(basis),false)) : revision == null
                 ? pricingFileService.generate(
                         versionWithMaterials,
                         pricingFile.pricingVersion().replace(version.versionNo() + "-核价", ""),
