@@ -1,0 +1,70 @@
+// Local isolated acceptance only. Creates labelled fixtures; never mutates existing tasks.
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import {inflateRawSync} from 'node:zlib';
+const base='http://127.0.0.1:5193/api/v1', stamp=Date.now();
+const password=process.env.RND_PREVIEW_PASSWORD;
+assert.ok(password,'Set RND_PREVIEW_PASSWORD for the local preview');
+const output=path.resolve('data/material-acceptance',String(stamp));
+fs.mkdirSync(output,{recursive:true});
+async function call(actor,method,url,body,expected='0'){
+ const r=await fetch(base+url,{method,headers:{'Content-Type':'application/json',...(actor?{Authorization:`Bearer ${actor.accessToken}`}:{})},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(30000)});
+ const result=await r.json();
+ if(expected==='DENIED')assert.equal(r.status,403,`${method} ${url}`);
+ else assert.equal(result.code,expected,`${method} ${url}: ${result.message}`);
+ return result.data;
+}
+const login=username=>call(null,'POST','/auth/login',{username,password});
+const admin=await login('admin'),assistant=await login('rnd_assistant'),director=await login('rnd_director'),engineer=await login('rnd_engineer'),tester=await login('tester');
+const original=await call(admin,'GET','/rnd-tasks/TASK-0010/detail');
+const root=await call(admin,'POST','/material-classifications',{name:`物料库验收原料-${stamp}`,businessType:'RAW',sortOrder:0});
+const child=await call(admin,'POST','/material-classifications',{name:'牛类',parentId:root.id,sortOrder:0});
+await call(assistant,'POST','/material-classifications',{name:'不得建立',businessType:'RAW',sortOrder:0},'DENIED');
+let material=await call(assistant,'POST','/materials',{code:`QA-BEEF-${stamp}`,name:'物料库验收牛肉',classificationId:child.id,unit:'kg',specification:'软件验收，不作生产标准'});
+const found=await call(engineer,'GET',`/materials?classificationId=${root.id}&ingredientsOnly=true`);
+assert.ok(found.items.some(i=>i.id===material.id));assert.equal(found.access.create,false);
+await call(engineer,'POST','/materials',{code:`DENIED-${stamp}`,name:'越权',classificationId:child.id,unit:'kg'},'DENIED');
+const req=await call(assistant,'POST','/sample-requests',{productName:`物料库验收牛肉-${stamp}`,productType:'预制菜',customerName:'内部验收',specification:'散装kg',applicationScenario:'软件验收',flavorRequirement:'非生产数据',creatorName:assistant.user.name});
+const approved=await call(director,'POST',`/sample-requests/${req.id}/approve`,{reviewerName:director.user.name});
+const task=approved.task;
+await call(director,'POST',`/rnd-tasks/${task.id}/assign`,{assigneeName:engineer.user.name,productOwnerName:engineer.user.name,dueDate:'2026-12-31'});
+await call(engineer,'POST',`/rnd-tasks/${task.id}/accept`,{acceptedBy:engineer.user.name});
+const form=await call(engineer,'POST',`/rnd-tasks/${task.id}/experiment-form/draft`,{operatorName:engineer.user.name,summary:'物料库验收专用',materials:[{sequence:1,stage:'熟制',materialName:material.name,materialCode:material.code,catalogMaterialId:material.id,weightKg:20,materialCategory:'RAW',primaryMaterial:true,utilizationRate:1}],processSteps:[{sequence:1,processName:"熟制",beforeWeightKg:20,afterWeightKg:12.345}],finishedOutputWeightKg:12.345,finishedOutputQuantity:12.345,finishedOutputUnit:'kg'});
+assert.equal(form.finishedOutputQuantity,12.345);
+const pp=`/experiment-forms/${form.id}/process-plan`;
+const initial=await call(engineer,'GET',pp);
+let plan=await call(engineer,'PUT',pp,{versionNo:initial.versionNo,status:'DRAFT',balanceToleranceKg:.01,majorProcesses:[{sequence:1,processCode:'QA-COOK',processName:'熟制',yieldBasis:'PRIMARY_INPUT',inputs:[],outputs:[],steps:[{sequence:1,stepCode:'BOIL',stepName:'煮制',stepType:'NORMAL',equipment:'软件验收设备',instruction:'软件验收示例，不作为生产工艺参数。水沸后投入，记录实际时间。',parameters:[{key:'time',name:'时间',valueType:'NUMBER',unit:'min',actualValue:'10',showInSummary:true}],materials:[{sequence:1,materialRole:'PRIMARY',materialCode:'FAKE',materialName:'伪造名称',catalogMaterialId:material.id,sourceType:'EXTERNAL',materialState:'SOLID',weightKg:20,additionTiming:'水沸后',additionMethod:'分次加入'}],outputs:[{sequence:1,outputType:'FINISHED',outputName:'测试熟牛肉',materialState:'SOLID',weightKg:12.345,primaryOutput:true,continueFlow:false}],controlPoints:[]}]}]});
+const ingredient=()=>plan.majorProcesses[0].steps[0].materials[0];
+assert.equal(ingredient().materialName,'物料库验收牛肉');assert.equal(plan.batchYieldPercent,61.725);
+material=await call(assistant,'PUT',`/materials/${material.id}`,{code:material.code,name:'物料库验收牛肉新名称',classificationId:child.id,unit:'kg',specification:material.specification,expectedVersion:material.version});
+await call(admin,'POST',`/material-classifications/${root.id}/status`,{status:'INACTIVE',expectedVersion:root.version});
+assert.ok((await call(engineer,'GET',`/materials?query=${encodeURIComponent(material.code)}&ingredientsOnly=true`)).items.some(i=>i.id===material.id));
+material=await call(assistant,'POST',`/materials/${material.id}/status`,{status:'INACTIVE',expectedVersion:material.version});
+plan=await call(engineer,'PUT',pp,plan);
+assert.equal(ingredient().materialName,'物料库验收牛肉');
+const blocked=await call(engineer,'GET',pp+'/submission-check');assert.equal(blocked.ready,false);assert.ok(blocked.errors.some(e=>e.code==='MATERIAL_REFERENCE_INVALID'));
+await call(engineer,'POST',pp+'/submit',{versionNo:plan.versionNo,confirmed:true},'PROCESS_PLAN_NOT_READY');
+material=await call(assistant,'POST',`/materials/${material.id}/status`,{status:'ACTIVE',expectedVersion:material.version});
+ingredient().refreshCatalogSnapshot=true;
+plan.majorProcesses[0].remark='软件验收模拟：投入20kg，主料产出12.345kg，差额7.655kg按模拟熟制损耗记录；非生产实测。';
+plan=await call(engineer,'PUT',pp,plan);assert.equal(ingredient().materialName,material.name);
+const revision=await call(engineer,'POST',pp+'/submit',{versionNo:plan.versionNo,confirmed:true});
+const artifacts={};
+function xmlText(bytes){let text='';for(let i=0;i+46<bytes.length;i++){if(bytes.readUInt32LE(i)!==0x02014b50)continue;const n=bytes.readUInt16LE(i+28),e=bytes.readUInt16LE(i+30),c=bytes.readUInt16LE(i+32),name=bytes.subarray(i+46,i+46+n).toString(),offset=bytes.readUInt32LE(i+42),start=offset+30+bytes.readUInt16LE(offset+26)+bytes.readUInt16LE(offset+28),raw=bytes.subarray(start,start+bytes.readUInt32LE(i+20));if(name.endsWith('.xml'))text+=(bytes.readUInt16LE(i+10)===8?inflateRawSync(raw):raw).toString();i+=45+n+e+c;}return text;}
+for(const type of ['FORMULA_XLSX','SOP_DOCX']){
+ const rp=`${pp}/revisions/${revision.id}`;
+ const artifact=await call(engineer,'POST',rp+'/artifacts',{artifactType:type});
+ const r=await fetch(base+rp+`/artifacts/${artifact.id}/download`,{headers:{Authorization:`Bearer ${engineer.accessToken}`}});assert.equal(r.status,200);
+ const bytes=Buffer.from(await r.arrayBuffer());assert.equal(bytes.subarray(0,2).toString(),'PK');
+ const text=xmlText(bytes);assert.ok(text.includes(material.name));assert.ok(text.includes('水沸后'));
+ fs.writeFileSync(path.join(output,type==='SOP_DOCX'?'验收SOP.docx':'验收配方.xlsx'),bytes);artifacts[type]=artifact.id;
+}
+const handoff=await call(engineer,'POST',`/experiment-forms/${form.id}/submit-test`,{testerName:tester.user.name});
+await call(tester,'POST',`/test-assignments/${handoff.testAssignment.id}/pass`,{testerName:tester.user.name,comment:'软件验收通过'});
+const pricing=await call(assistant,'POST',`/sample-versions/${approved.version.id}/pricing-files`);
+const basis=await call(engineer,'GET',`/pricing-files/${pricing.id}/basis`);
+assert.equal(basis.source.finishedNetKg,12.345);assert.equal(basis.source.actualBags,null);assert.equal(basis.calculation.referenceBags,null);
+assert.deepEqual(await call(admin,'GET','/rnd-tasks/TASK-0010/detail'),original);
+const summary={result:'PASS',taskId:task.id,formId:form.id,revisionId:revision.id,pricingId:pricing.id,materialId:material.id,rootId:root.id,childId:child.id,artifacts,output,mainYieldPercent:61.725,finishedKg:12.345,actualBags:null,referenceBags:null,originalTaskUnchanged:true};
+fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(summary,null,2));console.log(JSON.stringify(summary,null,2));
