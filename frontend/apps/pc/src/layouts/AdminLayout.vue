@@ -153,6 +153,8 @@ function signOut() {
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
   display: flex;
+  height: 72px;
+  line-height: normal;
   justify-content: space-between;
   padding: 0 24px;
 }
@@ -178,11 +180,13 @@ function signOut() {
 .brand-title {
   font-size: 16px;
   font-weight: 800;
+  line-height: 24px;
 }
 
 .brand-sub {
   color: #64748b;
   font-size: 12px;
+  line-height: 18px;
 }
 
 .topbar-actions {
@@ -244,7 +248,7 @@ function signOut() {
 }
 
 .content {
-  min-height: calc(100vh - 64px);
+  min-height: calc(100vh - 72px);
   padding: 24px;
 }
 </style>
