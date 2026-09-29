@@ -291,8 +291,10 @@ public class RolePermissionService {
         ).stream().map(config -> {
             if (!hasAnyRole(config.roleCode(), "RND_DIRECTOR", "RND_ENGINEER", "RND_ASSISTANT", "FINANCE", "MANAGER")) return config;
             var rules = new java.util.ArrayList<>(config.permissions());
-            if (hasAnyRole(config.roleCode(), "RND_DIRECTOR", "RND_ENGINEER", "RND_ASSISTANT"))
+            if (hasAnyRole(config.roleCode(), "RND_DIRECTOR", "RND_ENGINEER", "RND_ASSISTANT")) {
                 rules.add(rule("GET", "/api/v1/materials", "查询物料库", 210));
+                rules.add(rule("GET", "/api/v1/material-classifications", "查询物料分类", 214));
+            }
             if (hasAnyRole(config.roleCode(), "RND_ASSISTANT")) {
                 rules.add(rule("POST", "/api/v1/materials", "新增物料", 211));
                 rules.add(rule("PUT", "/api/v1/materials/*", "编辑物料", 212));
@@ -315,6 +317,8 @@ public class RolePermissionService {
     }
 
     public boolean hasPermission(String role, String method, String uri) {
+        if (uri != null && (uri.equals("/api/v1/material-classifications") || uri.startsWith("/api/v1/material-classifications/"))
+                && !"GET".equalsIgnoreCase(method)) return "SYSTEM_ADMIN".equals(role);
         if (role == null || role.isBlank()) {
             return false;
         }
