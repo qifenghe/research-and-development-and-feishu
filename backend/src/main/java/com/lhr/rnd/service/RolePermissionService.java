@@ -291,6 +291,13 @@ public class RolePermissionService {
         ).stream().map(config -> {
             if (!hasAnyRole(config.roleCode(), "RND_DIRECTOR", "RND_ENGINEER", "RND_ASSISTANT", "FINANCE", "MANAGER")) return config;
             var rules = new java.util.ArrayList<>(config.permissions());
+            if (hasAnyRole(config.roleCode(), "RND_DIRECTOR", "RND_ENGINEER", "RND_ASSISTANT"))
+                rules.add(rule("GET", "/api/v1/materials", "查询物料库", 210));
+            if (hasAnyRole(config.roleCode(), "RND_ASSISTANT")) {
+                rules.add(rule("POST", "/api/v1/materials", "新增物料", 211));
+                rules.add(rule("PUT", "/api/v1/materials/*", "编辑物料", 212));
+                rules.add(rule("POST", "/api/v1/materials/*/status", "启停物料", 213));
+            }
             var path = "/api/v1/pricing-files/*/basis";
             rules.add(rule("GET", path, "查看核价确认数据", 86));
             if (hasAnyRole(config.roleCode(), "RND_DIRECTOR", "RND_ENGINEER")) {
@@ -337,6 +344,7 @@ public class RolePermissionService {
     }
 
     private PermissionModule moduleFor(String pathPattern) {
+        if (pathPattern.startsWith("/api/v1/materials")) return new PermissionModule("MATERIAL", "物料管理");
         if (pathPattern.contains("sample-requests")) return new PermissionModule("DEMAND", "样品需求");
         if (pathPattern.contains("rnd-tasks") || pathPattern.contains("experiment-forms")
                 || pathPattern.contains("test-assignments") || pathPattern.contains("process-steps")
