@@ -18,6 +18,8 @@
 - 不迁移猜测历史关联，不重写正式版本；不复用formulaMaterialId，不删历史内部字段。
 - kg数量从重量同步，缺失保持缺失；不当作袋数。袋装历史逻辑不变。
 - 保留现有顶部CSS和浏览器测试修改，不将测试产物、数据库提交；无新授权不推送合并。
+- 分类扩展采用已批准设计末尾的两级结构；分类写操作仅SYSTEM_ADMIN，内勤继续维护物料，研发继续只读选用。
+- 执行状态：Task 1已完成，不重做；Task 2进行中。新增Task 6先于Task 3执行，之后完成3→4→5，保留原任务编号与进度记录。沿用用户选择的本会话执行方式及一次最终独立审查。
 
 ## Review Focus
 
@@ -90,3 +92,35 @@
 ## 自审结果
 
 设计中的权限、主数据、历史兼容、kg语义与排除项均映射至任务。五类审查风险分别在Task 1—4测试中覆盖；任务依赖为1→2→3，4可独立实现，5统一验收。执行前再次核对工作区现状和迁移编号，若有新迁移占用V30/V31则顺延，不改已有迁移。
+
+### Task 6: 两级分类与超级管理员专属维护（在Task 3前执行）
+
+**Files:** 新建 `backend/src/main/resources/db/migration/V32__material_classifications.sql`、`backend/src/main/java/com/lhr/rnd/model/MaterialClassification.java`、`backend/src/main/java/com/lhr/rnd/service/MaterialClassificationService.java`、`backend/src/main/java/com/lhr/rnd/api/MaterialClassificationController.java`、`backend/src/test/java/com/lhr/rnd/api/MaterialClassificationControllerTest.java`；修改现有MaterialCatalogItem、MaterialCatalogService、MaterialCatalogController、RolePermissionService及其测试。V31为进行中的引用迁移，执行前确认V32未占用。
+
+**Interfaces:** `MaterialClassification(id,parentId,name,businessType,sortOrder,status,version)`；GET `/api/v1/material-classifications` 返回扁平列表，包含停用状态供分类树显示；POST同路径新建，PUT `/{id}`编辑名称/排序，POST `/{id}/status`启停。写请求带expectedVersion（新建除外），创建接收parentId、name、businessType、sortOrder，二级businessType由父级确定。业务类型固定RAW/AUXILIARY/PROCESS_WATER/PACKAGING。物料返回新增classificationId；物料写请求增加classificationId，类型由服务端分类决定。GET `/api/v1/materials` 增加可选classificationId筛选，一级包含其二级，空值查询全部。
+
+- [ ] **失败测试：** `assistantCannotManageClassificationEvenWithCapability`：内勤即使配置写能力，分类POST/PUT/status仍403；管理员成功，内勤物料POST仍成功。`classificationDepthAndSiblingNamesValidated`：原料→牛成功、同父级“ 牛 ”重复拒绝、辅料下同名可用、三级和变更parentId拒绝。`classificationTypeCannotBypassPackagingRule`：包装分类携带RAW不能变成原料，投料仍拒绝。`disabledParentBlocksNewAssignmentOnly`：父级停用后新建/重新归类拒绝，旧启用物料仍可全局选用及保存未改分类的编辑。`rootFilterIncludesChildren`：原料筛选含牛，不含辅料。`staleClassificationWriteRejected`：旧版本不能覆盖改名。迁移测试验证旧物料归默认一级，编码与业务类型不变。
+- [ ] 运行 `mvn -f backend/pom.xml -Dtest=MaterialClassificationControllerTest,MaterialCatalogControllerTest test`。Expected：新增接口/字段未实现导致失败，保留失败证据。
+- [ ] 实现分类表（id、parent_id、name、规范化同级唯一键、business_type、sort_order、status、version及审计时间）。初始化原料/辅料/包装材料/工艺用水及设计中的默认二级；按已有category回填物料classification_id，不读写实验单与归档。数据库同级唯一约束覆盖两个管理员并发创建重复名称，根节点使用非空唯一范围键避免NULL父级绕过约束。
+- [ ] 实现分类服务校验两级限制、固定父级和业务类型、父级启用状态、乐观锁和审计。服务端角色校验仅接受SYSTEM_ADMIN；分类写能力不能授予非管理员，分类读取沿用物料读取角色，新库默认与已有库迁移均覆盖。无需物理删除端点。
+- [ ] 扩展物料接口：创建或修改classificationId时校验目标和父级启用；未改变分类的旧条目允许保留停用分类。更新已有物料省略classificationId时保留原分类；兼容旧创建请求仅带category时映射到对应启用默认一级，不接受无效category。classificationId与category同时提供且冲突时拒绝。分类停用不级联物料停用。
+- [ ] 运行上述测试及 `mvn -f backend/pom.xml test`。Expected：全部通过，包括原有物料权限、单位及引用快照测试。分类改名不修改业务快照，归档仍能读取。
+- [ ] 只提交本任务文件，提交说明 `feat: add admin-managed material classifications`。
+
+### Task 3补充：分类树与分类管理入口
+
+**Files:** 在Task 3文件之外，新建 `frontend/apps/pc/src/components/materials/MaterialClassificationManager.vue`、`frontend/tests/material-classifications.test.mts`；分类API沿用 `materialCatalogApi.ts`，共享类型放 `material-catalog.ts`。移动端选择器使用同一分类接口，可用级联选择代替常驻树。
+
+**Interfaces:** 分类管理组件仅SYSTEM_ADMIN可见；MaterialPicker增加可选classificationId过滤，选物料发出的对象包含classificationId。左侧“全部”＋一级/二级树，右侧列表分页；选择一级含二级，清空分类恢复全部。管理页允许管理员显示停用节点，停用节点不能作为新增归类目标。
+
+- [ ] 在既定RED阶段添加真实组件或浏览器断言：管理员建“测试原料→牛类”后内勤能在其下建料；内勤无分类管理按钮；研发能筛选选料但无维护按钮；切换分类重置页码，迟到的旧分类查询不能覆盖新结果；全局搜索可找到归类已停用但自身启用的物料。
+- [ ] 实现管理弹窗名称、父级（新建时选择）、业务类型（仅新建一级）、排序和启停；物料表单选择分类并显示派生业务类型，不给内勤创建分类入口。不额外创建数据库或重复物料表。
+- [ ] 运行 `node --experimental-strip-types --test tests/material-picker.test.mts tests/material-classifications.test.mts` 及 `pnpm exec playwright test e2e/pc-material-catalog.spec.ts --project=pc-chromium`（指定5193隔离地址）。Expected：权限、筛选、乱序响应与分类变更用例通过。
+
+### Task 5补充：分类验收与审查关注项
+
+验收脚本增加管理员创建分类、内勤归类建料、研发筛选选料的端到端链路，所有记录独立命名，不修改TASK-0010。最终审查额外检查：并发同级重名只能一个成功；父级停用与新增归类并发时不得绕过状态校验；自定义分类不能改变包装禁投料及kg约束；空分类/停用分类不导致旧物料丢失；权限编辑器不能向其他角色授予有效分类维护权。对应测试归Task 6及Task 3补充，失败后按TDD修复。
+
+## 分类扩展自审
+
+分类结构、默认数据、管理员限制、物料回填和服务端校验归Task 6；管理入口和筛选归Task 3；全链路及现有数据保护归Task 5。分类业务类型与既有category明确映射，分类引用不替代catalogMaterialId，两类引用职责不同。保留Task 1完成状态和Task 2在途修改，不要求重做已验证部分。
