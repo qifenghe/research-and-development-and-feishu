@@ -61,6 +61,7 @@
           <a-menu-item v-if="canSee('/reports')" key="/reports">
             <span>报表导出</span>
           </a-menu-item>
+          <a-menu-item v-if="canReadMaterials" key="/materials">物料管理</a-menu-item>
           <a-sub-menu v-if="canSee('/settings')" key="settings" title="系统设置">
             <a-menu-item key="/settings">配置中心</a-menu-item>
             <a-menu-item key="/settings/users">账号与权限</a-menu-item>
@@ -88,10 +89,17 @@ import { useRoute, useRouter } from "vue-router";
 import { canAccessRoute, roleLabel } from "@rnd/shared";
 import { useAuthStore } from "../stores/auth";
 import { useAdminContext } from "../composables/adminContext";
+import {materialCatalogApi} from '../services/materialCatalogApi';
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const canReadMaterials = ref(false);
+let materialAccessRequest = 0;
+watch(() => auth.role, async () => {
+  const request=++materialAccessRequest; canReadMaterials.value=false;
+  try {await materialCatalogApi.list({size:1});if(request===materialAccessRequest)canReadMaterials.value=true;} catch {/* Menu follows server capability. */}
+}, {immediate:true});
 const { panel } = useAdminContext();
 
 function canSee(path: string) {

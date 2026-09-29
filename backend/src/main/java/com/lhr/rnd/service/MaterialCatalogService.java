@@ -16,14 +16,21 @@ public class MaterialCatalogService {
  public record Write(String code,String name,String category,String specification,String unit,Integer expectedVersion,String classificationId){
   public Write(String code,String name,String category,String specification,String unit,Integer expectedVersion){this(code,name,category,specification,unit,expectedVersion,null);}
  }
- public record Page(List<MaterialCatalogItem> items,long total,int page,int size){}
+ public record Access(boolean create,boolean edit,boolean status,boolean classifications){}
+ public record Page(List<MaterialCatalogItem> items,long total,int page,int size,Access access){
+  public Page(List<MaterialCatalogItem> items,long total,int page,int size){this(items,total,page,size,null);}
+ }
  private final RowMapper<MaterialCatalogItem> mapper=(r,n)->new MaterialCatalogItem(r.getString("id"),r.getString("code"),r.getString("name"),r.getString("category"),r.getString("specification"),r.getString("unit"),r.getString("status"),r.getInt("version"),r.getString("classification_id"));
  public Page list(String query,String category,String status,int page,int size){
   return list(query,category,status,page,size,null);
  }
  public Page list(String query,String category,String status,int page,int size,String classificationId){
+  return list(query,category,status,page,size,classificationId,false);
+ }
+ public Page list(String query,String category,String status,int page,int size,String classificationId,boolean ingredientsOnly){
   if(page<1||size<1||size>100)throw invalid("页码或每页条数无效");
   var args=new ArrayList<Object>();var sql=" from material_catalog where 1=1";
+  if(ingredientsOnly)sql+=" and category<>'PACKAGING' and unit='kg'";
   if(query!=null&&!query.isBlank()){sql+=" and (upper(code) like ? escape '!' or upper(name) like ? escape '!')";var q="%"+query.trim().toUpperCase(Locale.ROOT).replace("!","!!").replace("%","!%").replace("_","!_")+"%";args.add(q);args.add(q);}
   if(category!=null&&!category.isBlank()){sql+=" and category=?";args.add(category);}
   if(classificationId!=null&&!classificationId.isBlank()){sql+=" and (classification_id=? or classification_id in (select id from material_classification where parent_id=?))";args.add(classificationId);args.add(classificationId);}

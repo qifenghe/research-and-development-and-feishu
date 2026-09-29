@@ -1,0 +1,28 @@
+export interface MaterialCatalogItem { id:string; code:string; name:string; category:string; specification?:string; unit:string; status:string; version:number; classificationId?:string }
+export interface MaterialClassification { id:string; parentId?:string|null; name:string; businessType:string; sortOrder:number; status:string; version:number }
+export interface MaterialIdentity { id?:string; materialCode?:string; materialName?:string; catalogMaterialId?:string; catalogSpecification?:string; catalogUnit?:string; formulaMaterialId?:string; sourceStepOutputId?:string }
+export function selectCatalogMaterial<T extends MaterialIdentity>(row:T,item:MaterialCatalogItem) {
+ if(item.status!=='ACTIVE'||item.category==='PACKAGING'||item.unit!=='kg')throw new Error('请选择启用的kg原辅料');
+ return {...row,materialCode:item.code,materialName:item.name,catalogMaterialId:item.id,catalogSpecification:item.specification,
+  catalogUnit:item.unit,formulaMaterialId:undefined,sourceStepOutputId:undefined,refreshCatalogSnapshot:true};
+}
+export function clearCatalogReference<T>(row:T) {return {...row,catalogMaterialId:undefined,catalogSpecification:undefined,catalogUnit:undefined,formulaMaterialId:undefined,refreshCatalogSnapshot:false};}
+export function materialLinkLabel(row:MaterialIdentity){return row.catalogMaterialId?'已关联物料库':'待关联物料';}
+export class LatestMaterialQuery {
+ private serial=0;
+ invalidate(){this.serial++;}
+ async run<T>(load:()=>Promise<T>,apply:(result:T)=>void){const serial=++this.serial;try{const result=await load();if(serial===this.serial)apply(result);}catch(error){if(serial===this.serial)throw error;}}
+}
+export function classificationOptions(items:MaterialClassification[],assignable=false){
+ const result:Array<{value:string;label:string}>=[];
+ const roots=items.filter(x=>!x.parentId).sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name));
+ for(const root of roots){
+  if(assignable&&root.status!=='ACTIVE')continue;
+  result.push({value:root.id,label:root.name+(root.status==='INACTIVE'?'（停用）':'')});
+  for(const child of items.filter(x=>x.parentId===root.id).sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name))){
+   if(assignable&&child.status!=='ACTIVE')continue;
+   result.push({value:child.id,label:`${root.name} / ${child.name}${child.status==='INACTIVE'?'（停用）':''}`});
+  }
+ }
+ return result;
+}

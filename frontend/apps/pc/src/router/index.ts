@@ -6,6 +6,7 @@ import {
 import { canAccessRoute } from "@rnd/shared";
 import { useAuthStore } from "../stores/auth";
 import AdminLayout from "../layouts/AdminLayout.vue";
+import {materialCatalogApi} from '../services/materialCatalogApi';
 
 const DEMO_BYPASS_AUTH = false;
 
@@ -28,6 +29,7 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: "", redirect: "/dashboard" },
       { path: "dashboard", name: "dashboard", component: () => import("../views/DashboardView.vue") },
+      { path: "materials", name: "materials", component: () => import("../views/materials/MaterialCatalogView.vue") },
       { path: "flowchart", name: "flowchart", component: () => import("../views/FlowchartView.vue") },
       { path: "demand", name: "demand-module", component: () => import("../views/demand/DemandModuleView.vue") },
       { path: "demand/new", name: "request-new", component: () => import("../views/demand/RequestNewView.vue") },
@@ -96,6 +98,10 @@ router.beforeEach(async (to) => {
     if (!restored) {
       return { name: "login", query: { redirect: to.fullPath } };
     }
+  }
+  if (to.path === '/materials') {
+    try { await materialCatalogApi.list({size:1}); return true; }
+    catch { return {name:'forbidden'}; }
   }
   if (!canAccessRoute(auth.role, to.path, "pc")) {
     return { name: "forbidden" };

@@ -14,6 +14,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties="rnd.session.auth-required=true") @AutoConfigureMockMvc @ActiveProfiles("test")
 class MaterialCatalogControllerTest {
+ @Test void listReturnsServerCapabilities() throws Exception {
+  mvc.perform(get("/api/v1/materials").header("Authorization","Bearer "+token("RND_ASSISTANT")))
+   .andExpect(jsonPath("$.data.access.create").value(true)).andExpect(jsonPath("$.data.access.classifications").value(false));
+  mvc.perform(get("/api/v1/materials").header("Authorization","Bearer "+token("RND_ENGINEER")))
+   .andExpect(jsonPath("$.data.access.create").value(false));
+ }
  @Autowired MockMvc mvc; @Autowired ObjectMapper mapper;
  String token(String role) throws Exception {
   var uid="mat-"+UUID.randomUUID();

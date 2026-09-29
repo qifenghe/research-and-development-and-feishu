@@ -53,13 +53,13 @@
 
       <section class="section">
         <div class="section-title"><b>本步骤投料</b><a-button v-if="!readonly" type="link" size="small" @click="addMaterial">＋ 添加投料</a-button></div>
-        <p class="hint">外部物料可填写物料/配方 ID；中间产物仅可选择前序步骤继续流转的产出，<b>不进入物料库</b>。</p>
+        <p class="hint">外部投料从物料库选择；中间产物引用前序步骤的产出，<b>不进入物料库</b>。</p>
         <div v-for="(material, index) in selectedStep.materials" :key="material.key" class="material-row">
           <a-select v-model:value="material.sourceType" :disabled="readonly" :options="sourceTypes" @change="onSourceChange(material)" />
           <a-select v-if="material.sourceType === 'STEP_OUTPUT'" v-model:value="material.sourceStepOutputId" :disabled="readonly" :options="previousOutputsFor(material)" placeholder="选择前序产出" @change="applyOutputSource(material)" />
-          <template v-else><a-input v-model:value="material.formulaMaterialId" :disabled="readonly" placeholder="配方物料 ID" @update:value="publishLocal" /><a-input v-model:value="material.materialCode" :disabled="readonly" placeholder="物料编码" @update:value="publishLocal" /></template>
+          <MaterialPicker v-else :key="material.key" :current-material="material" :readonly="readonly" @select="selectMaterial(material,$event)" />
           <a-select v-model:value="material.materialRole" :disabled="readonly" :options="materialRoles" @change="ensurePrimaryMaterial(material)" />
-          <a-input v-model:value="material.materialName" :disabled="readonly" placeholder="物料名称" @update:value="publishLocal" />
+          <a-input v-if="material.sourceType === 'STEP_OUTPUT'" :value="material.materialName" disabled placeholder="前序产出名称" />
           <a-input-number v-model:value="material.weightKg" :disabled="readonly" :min="0" addon-after="kg" @update:value="publishLocal" />
           <a-button v-if="!readonly" type="text" danger @click="removeMaterial(index)">删除</a-button>
           <details class="material-details"><summary>加入时机与方式{{ material.additionTiming ? ` · ${material.additionTiming}` : '' }}</summary><a-input v-model:value="material.additionTiming" :disabled="readonly" placeholder="何时加入，例如水沸后加入" @update:value="publishLocal" /><a-input v-model:value="material.additionMethod" :disabled="readonly" placeholder="如何加入，例如分三次均匀加入" @update:value="publishLocal" /></details>
@@ -104,6 +104,8 @@ import { summaryParameters } from "./stepParameterTemplates";
 import { confirmProcessPlanRepair, previousFlowOutputs, type RemovedFlowConsumer } from "./processPlanFlow";
 import { cloneVueValue } from "./cloneVueValue";
 import { externalActualTotal, actualKg } from "./actualSummary";
+import MaterialPicker from '../materials/MaterialPicker.vue';
+import {selectCatalogMaterial,clearCatalogReference,type MaterialCatalogItem} from '@rnd/shared';
 
 const props = withDefaults(defineProps<{ modelValue: ProcessPlanDraft; majorKey: string; readonly?: boolean; confirmationMode?: "legacy-sentinel" | "external" }>(), {
   confirmationMode: "legacy-sentinel",
@@ -269,6 +271,8 @@ function replaceParameters(value: StepParameterDraft[]) {
 function confirmPass(point: ControlPointDraft) { emit("confirm-pass", cloneVueValue(point)); }
 function confirmDeviation(point: ControlPointDraft) { emit("confirm-deviation", cloneVueValue(point)); }
 function onSourceChange(material: ProcessStepMaterialDraft) {
+  Object.assign(material,clearCatalogReference(material));
+  material.materialCode=undefined;material.materialName='';material.sourceStepOutputId=undefined;
   if (material.sourceType === "EXTERNAL") publishLocal();
   else {
     material.materialCode = undefined;
@@ -276,6 +280,7 @@ function onSourceChange(material: ProcessStepMaterialDraft) {
     delete material.sourceStepOutputId;
   }
 }
+function selectMaterial(material:ProcessStepMaterialDraft,item:MaterialCatalogItem){Object.assign(material,selectCatalogMaterial(material,item));publishLocal();}
 function previousOutputsFor(material: ProcessStepMaterialDraft) { return material.materialRole === "PRIMARY" ? previousOutputs.value.filter(item => item.output.primaryOutput) : previousOutputs.value; }
 function applyOutputSource(material: ProcessStepMaterialDraft) { const output = previousOutputs.value.find(item => item.value === material.sourceStepOutputId)?.output; if (output) { material.materialName = output.outputName; material.materialState = output.materialState; material.weightKg = output.weightKg; } publishLocal(); }
 function ensurePrimaryMaterial(material: ProcessStepMaterialDraft) { if (material.materialRole === "PRIMARY") selectedStep.value?.materials.forEach(item => { if (item.key !== material.key) item.materialRole = "AUXILIARY"; }); publishLocal(); }

@@ -2767,7 +2767,7 @@ public class SampleWorkflowService {
                         material.primaryMaterial(),
                         null,
                         material.inputUnit() == null ? "kg" : material.inputUnit(),
-                        material.catalogMaterialId(), material.catalogSpecification(), material.catalogUnit()
+                        material.catalogMaterialId(), material.catalogSpecification(), material.catalogUnit(), material.refreshCatalogSnapshot()
                 ))
                 .toList();
     }

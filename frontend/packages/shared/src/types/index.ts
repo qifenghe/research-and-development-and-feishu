@@ -151,6 +151,10 @@ export interface SampleVersion {
 }
 
 export interface ExperimentMaterial {
+  refreshCatalogSnapshot?:boolean;
+  catalogMaterialId?: string;
+  catalogSpecification?: string;
+  catalogUnit?: string;
   id?: string;
   stage: string;
   sequence: number;

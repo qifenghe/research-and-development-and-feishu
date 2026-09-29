@@ -17,6 +17,7 @@ type RouteRule = {
 
 /** Page-level access aligned with RolePermissionService defaults and RND-002. */
 const ROUTE_RULES: RouteRule[] = [
+  { pattern: /^\/materials$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", ...ADMIN_ROLES] },
   { pattern: /^\/dashboard$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/flowchart$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/demand$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },

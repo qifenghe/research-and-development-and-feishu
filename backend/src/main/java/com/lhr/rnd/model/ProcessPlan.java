@@ -136,8 +136,16 @@ public record ProcessPlan(
             String additionMethod,
             String catalogMaterialId,
             String catalogSpecification,
-            String catalogUnit
+            String catalogUnit,
+            boolean refreshCatalogSnapshot
     ) {
+        public StepMaterial(String id, int sequence, String materialRole, String materialCode, String materialName,
+                String materialState, BigDecimal weightKg, String formulaMaterialId, String remark,
+                String sourceType, String sourceStepOutputId, String additionTiming, String additionMethod,
+                String catalogMaterialId,String catalogSpecification,String catalogUnit) {
+            this(id,sequence,materialRole,materialCode,materialName,materialState,weightKg,formulaMaterialId,remark,sourceType,
+                sourceStepOutputId,additionTiming,additionMethod,catalogMaterialId,catalogSpecification,catalogUnit,false);
+        }
         public StepMaterial(String id, int sequence, String materialRole, String materialCode, String materialName,
                 String materialState, BigDecimal weightKg, String formulaMaterialId, String remark,
                 String sourceType, String sourceStepOutputId, String additionTiming, String additionMethod) {

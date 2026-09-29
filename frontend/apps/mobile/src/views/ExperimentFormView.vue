@@ -39,8 +39,7 @@
             <div v-for="(material,index) in materials" :key="index" class="material-row">
               <van-field label="类别"><template #input><van-radio-group v-model="material.materialCategory" direction="horizontal" :disabled="readOnly"><van-radio name="RAW">原料</van-radio><van-radio name="AUXILIARY">辅料</van-radio><van-radio name="PACKAGING">包材</van-radio></van-radio-group></template></van-field>
               <van-field v-if="yieldCalculationMode === 'SELECTED_PRIMARY_MATERIALS' && material.materialCategory === 'RAW'" label="计入主料"><template #input><van-switch v-model="material.primaryMaterial" :disabled="readOnly" size="20" /></template></van-field>
-              <van-field v-model="material.materialName" label="物料" placeholder="物料名称" :readonly="readOnly" />
-              <van-field v-model="material.materialCode" label="ERP编码" placeholder="可选" :readonly="readOnly" />
+              <MaterialPicker :current-material="material" :readonly="readOnly" @select="chooseMaterial(material,$event)" />
               <van-field v-model="material.weightKg" label="重量" type="number" :readonly="readOnly"><template #button>kg</template></van-field>
               <van-field label="配方比例"><template #input>{{ formulaRatioAt(index).toFixed(2) }}%</template></van-field>
               <van-field v-model="material.utilizationRate" label="利用率" type="number" :readonly="readOnly"><template #button>%</template></van-field>
@@ -104,9 +103,15 @@ import { blankProcessStep, fromProcessSteps, toProcessSteps, type EditableProces
 import { useAuthStore } from "../stores/auth";
 import { api } from "../services/api";
 import { commitLatestRouteRequest } from "./latestRouteRequest";
+import MaterialPicker from '../components/MaterialPicker.vue';
+import {selectCatalogMaterial,type MaterialCatalogItem} from '@rnd/shared';
 
 type Phase = "arrange" | "execute" | "readonly";
 type EditableMaterial = {
+  refreshCatalogSnapshot?:boolean;
+  catalogMaterialId?:string;
+  catalogSpecification?:string;
+  catalogUnit?:string;
   materialCategory: MaterialCategory;
   primaryMaterial: boolean;
   materialCode: string;
@@ -193,6 +198,7 @@ function applyDetail(data:RndTaskDetailView){
   else if(/酱汁|复合调味/.test(data.project?.productType||"")){yieldCalculationMode.value="TOTAL_PICKING_WEIGHT"}
   if(existing?.materials?.length){
     const savedMaterials=existing.materials.map(item=>({
+    catalogMaterialId:item.catalogMaterialId,catalogSpecification:item.catalogSpecification,catalogUnit:item.catalogUnit,
     materialCategory:item.materialCategory??categoryFromStage(item.stage),
     primaryMaterial:item.primaryMaterial??false,
     materialCode:item.materialCode||"",
@@ -311,7 +317,8 @@ function formulaRatioAt(index:number){
   return formulaRatiosValue.value[index]??0;
 }
 
-function buildMaterials():ExperimentMaterial[]{return materials.value.filter(item=>item.materialName.trim()).map((item,index)=>({stage:categoryLabel(item.materialCategory),sequence:index+1,materialCode:item.materialCode.trim()||undefined,materialName:item.materialName.trim(),weightKg:Number(item.weightKg||0),utilizationRate:Number(item.utilizationRate||100)/100,materialCategory:item.materialCategory,primaryMaterial:item.materialCategory==="RAW"&&item.primaryMaterial,inputUnit:"kg",remark:item.remark.trim()||undefined}))}
+function chooseMaterial(row:EditableMaterial,item:MaterialCatalogItem){Object.assign(row,selectCatalogMaterial(row,item));}
+function buildMaterials():ExperimentMaterial[]{return materials.value.filter(item=>item.materialName.trim()).map((item,index)=>({stage:categoryLabel(item.materialCategory),sequence:index+1,materialCode:item.materialCode.trim()||undefined,materialName:item.materialName.trim(),weightKg:Number(item.weightKg||0),utilizationRate:Number(item.utilizationRate||100)/100,materialCategory:item.materialCategory,primaryMaterial:item.materialCategory==="RAW"&&item.primaryMaterial,inputUnit:"kg",remark:item.remark.trim()||undefined,catalogMaterialId:item.catalogMaterialId,catalogSpecification:item.catalogSpecification,catalogUnit:item.catalogUnit,refreshCatalogSnapshot:item.refreshCatalogSnapshot}))}
 
 function validateFinishedOutputQuantity(){
   const quantity=normalizePositiveIntegerQuantity(form.finishedOutputQuantity);

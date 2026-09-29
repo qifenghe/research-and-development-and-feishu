@@ -5,7 +5,7 @@
     <div class="total">外部投料合计 <strong>{{ kg(summary.externalTotalKg) }}</strong></div>
     <a-empty v-if="!summary.rows.length" description="尚未添加外部投料" />
     <article v-for="(row, index) in summary.rows" :key="index" class="material">
-      <header><div><b>{{ row.materialName || '未命名物料' }}</b><small>{{ roles[row.materialRole] }} · {{ row.materialCode || row.formulaMaterialId || '未填编码' }}</small></div><div class="amount"><b>{{ kg(row.weightKg) }}</b><small>{{ row.proportionPercent == null ? '比例待补充' : `${Number(row.proportionPercent.toFixed(4))}%` }}</small></div></header>
+      <header><div><b>{{ row.materialName || '未命名物料' }}</b><small>{{ roles[row.materialRole] }} · {{ row.materialCode || '未填编码' }}</small></div><div class="amount"><b>{{ kg(row.weightKg) }}</b><small>{{ row.proportionPercent == null ? '比例待补充' : `${Number(row.proportionPercent.toFixed(4))}%` }}</small></div></header>
       <details><summary>查看 {{ row.occurrences.length }} 次投料</summary><div v-for="(item, i) in row.occurrences" :key="i" class="addition"><b>{{ item.majorName }} / {{ item.stepName }}</b><span>{{ kg(item.weightKg) }}</span><p>加入时机：{{ item.additionTiming || '未填写' }} · 加入方式：{{ item.additionMethod || '未填写' }}</p></div></details>
     </article>
   </a-drawer>

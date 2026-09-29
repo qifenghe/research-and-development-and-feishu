@@ -89,6 +89,13 @@ class SampleWorkflowControllerTest {
             .andExpect(jsonPath("$.data.materials[0].catalogMaterialId").value(item.id())).andReturn();
         var id=objectMapper.readTree(result.getResponse().getContentAsString()).at("/data/id").asText();
         assertThat(jdbcTemplate.queryForObject("select catalog_material_id from experiment_material where experiment_form_id=?",String.class,id)).isEqualTo(item.id());
+        catalog.update(item.id(),new com.lhr.rnd.service.MaterialCatalogService.Write(item.code(),"新名称","RAW","规格B","kg",item.version()),taskPrincipal(taskId));
+        var request=objectMapper.readTree(json);
+        ((com.fasterxml.jackson.databind.node.ObjectNode)request.at("/materials/0")).put("refreshCatalogSnapshot",true);
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft",taskId)
+            .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,taskPrincipal(taskId))
+            .contentType(MediaType.APPLICATION_JSON).content(request.toString()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.materials[0].materialName").value("新名称"));
     }
 
     @Autowired

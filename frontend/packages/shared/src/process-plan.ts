@@ -7,6 +7,7 @@ export type ProcessStepOutputType = "INTERMEDIATE" | "FINISHED" | ProcessOutputT
 export type ProcessStepType = "NORMAL" | "WEIGH" | "MATERIAL_CHANGE" | "SAMPLE" | "WASTE";
 
 export interface ProcessStepMaterialDraft {
+  refreshCatalogSnapshot?:boolean;
   id?: string;
   key: string;
   sequence: number;
@@ -16,6 +17,9 @@ export interface ProcessStepMaterialDraft {
   materialState: "SOLID" | "LIQUID" | "SEMI_SOLID";
   weightKg?: number;
   formulaMaterialId?: string;
+  catalogMaterialId?: string;
+  catalogSpecification?: string;
+  catalogUnit?: string;
   remark?: string;
   sourceType?: "EXTERNAL" | "STEP_OUTPUT";
   sourceStepOutputId?: string;

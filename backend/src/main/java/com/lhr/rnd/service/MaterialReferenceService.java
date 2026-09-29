@@ -43,7 +43,7 @@ public class MaterialReferenceService {
   return values(incoming).stream().map(m->{
    var old=values(persisted).stream().filter(p->p.sequence()==m.sequence()).findFirst().orElse(null);
    var ref=resolveForSave(new Reference(m.catalogMaterialId(),m.materialCode(),m.materialName(),m.catalogSpecification(),m.catalogUnit()),
-    old==null?null:new Reference(old.catalogMaterialId(),old.materialCode(),old.materialName(),old.catalogSpecification(),old.catalogUnit()));
+    old==null||m.refreshCatalogSnapshot()?null:new Reference(old.catalogMaterialId(),old.materialCode(),old.materialName(),old.catalogSpecification(),old.catalogUnit()));
    return new com.lhr.rnd.model.ExperimentMaterial(m.stage(),m.sequence(),ref.code(),ref.name(),m.weightKg(),m.utilizationRate(),m.remark(),
     m.materialCategory(),m.primaryMaterial(),m.formulaRatio(),m.inputUnit(),ref.catalogMaterialId(),ref.specification(),ref.unit());
   }).toList();
@@ -51,7 +51,7 @@ public class MaterialReferenceService {
  public ProcessPlan.StepMaterial resolveMaterial(ProcessPlan.StepMaterial m,ProcessPlan.StepMaterial persisted){
   boolean intermediate="STEP_OUTPUT".equals(m.sourceType());
   var ref=intermediate?new Reference(null,m.materialCode(),m.materialName(),null,null):
-   resolveForSave(reference(m),persisted==null||"STEP_OUTPUT".equals(persisted.sourceType())?null:reference(persisted));
+   resolveForSave(reference(m),m.refreshCatalogSnapshot()||persisted==null||"STEP_OUTPUT".equals(persisted.sourceType())?null:reference(persisted));
   return new ProcessPlan.StepMaterial(m.id(),m.sequence(),m.materialRole(),ref.code(),ref.name(),m.materialState(),m.weightKg(),
    m.formulaMaterialId(),m.remark(),m.sourceType(),intermediate?m.sourceStepOutputId():null,m.additionTiming(),m.additionMethod(),
    ref.catalogMaterialId(),ref.specification(),ref.unit());

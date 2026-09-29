@@ -63,7 +63,7 @@
                   <a-select v-model:value="record.materialCategory" :disabled="editingBlocked" style="width:86px" :options="materialCategoryOptions" />
                   <a-checkbox v-if="yieldCalculationMode === 'SELECTED_PRIMARY_MATERIALS' && record.materialCategory === 'RAW'" v-model:checked="record.primaryMaterial" :disabled="editingBlocked" style="margin-left:8px">主料</a-checkbox>
                 </template>
-                <template v-else-if="column.key === 'materialName'"><a-input v-model:value="record.materialName" :disabled="editingBlocked" placeholder="物料名称" /></template>
+                <template v-else-if="column.key === 'materialName'"><MaterialPicker :current-material="record" :readonly="editingBlocked" @select="chooseLegacyMaterial(record,$event)" /></template>
                 <template v-else-if="column.key === 'weightKg'"><a-input-number v-model:value="record.weightKg" :disabled="editingBlocked" :min="0" :precision="4" addon-after="kg" style="width:100%" /></template>
                 <template v-else-if="column.key === 'ratio'">{{ formulaRatioAt(index).toFixed(2) }}%</template>
                 <template v-else-if="column.key === 'utilizationRate'"><a-input-number v-model:value="record.utilizationRate" :disabled="editingBlocked" :min="0" :max="100" addon-after="%" style="width:100%" /></template>
@@ -210,8 +210,14 @@ import TrialWorkbench from "../../components/trials/TrialWorkbench.vue";
 import { RequestGeneration } from "../../components/process/requestGeneration";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
+import MaterialPicker from '../../components/materials/MaterialPicker.vue';
+import {selectCatalogMaterial,type MaterialCatalogItem} from '@rnd/shared';
 
 type MaterialRow = {
+  refreshCatalogSnapshot?:boolean;
+  catalogMaterialId?:string;
+  catalogSpecification?:string;
+  catalogUnit?:string;
   key: number;
   materialCategory: MaterialCategory;
   primaryMaterial: boolean;
@@ -462,6 +468,7 @@ function buildMaterials(): ExperimentMaterial[] {
     .map((item, index) => ({
       stage: categoryLabel(item.materialCategory),
       sequence: index + 1,
+      catalogMaterialId:item.catalogMaterialId,catalogSpecification:item.catalogSpecification,catalogUnit:item.catalogUnit,refreshCatalogSnapshot:item.refreshCatalogSnapshot,
       materialCode: item.materialCode.trim() || undefined,
       materialName: item.materialName.trim(),
       weightKg: item.weightKg ?? 0,
@@ -472,6 +479,7 @@ function buildMaterials(): ExperimentMaterial[] {
       remark: item.remark.trim() || undefined,
     }));
 }
+function chooseLegacyMaterial(row:MaterialRow,item:MaterialCatalogItem){Object.assign(row,selectCatalogMaterial(row,item));}
 
 function buildProcessSteps(): ExperimentProcessStep[] {
   if (processPlan.value.majorProcesses.length) return processPlanToLegacySteps(processPlan.value);
@@ -550,6 +558,7 @@ async function resetAndLoad(taskId: string, generation: number) {
       || (/酱汁|复合调味/.test(loadedDetail.project?.productType || "") ? "TOTAL_PICKING_WEIGHT" : "SELECTED_PRIMARY_MATERIALS");
     if (loadedDetail.currentExperimentForm?.materials?.length) {
       materials.value = loadedDetail.currentExperimentForm.materials.map(item => ({
+        catalogMaterialId:item.catalogMaterialId,catalogSpecification:item.catalogSpecification,catalogUnit:item.catalogUnit,
         key: rowKey++, materialCategory: item.materialCategory ?? categoryFromStage(item.stage),
         primaryMaterial: item.primaryMaterial ?? false, materialCode: item.materialCode || "",
         materialName: item.materialName, weightKg: item.weightKg ?? null, inputUnit: item.inputUnit || "kg",

@@ -16,8 +16,14 @@ public record ExperimentMaterial(
         String inputUnit,
         String catalogMaterialId,
         String catalogSpecification,
-        String catalogUnit
+        String catalogUnit,
+        boolean refreshCatalogSnapshot
 ) {
+    public ExperimentMaterial(String stage,int sequence,String materialCode,String materialName,BigDecimal weightKg,
+            BigDecimal utilizationRate,String remark,String materialCategory,boolean primaryMaterial,BigDecimal formulaRatio,String inputUnit,
+            String catalogMaterialId,String catalogSpecification,String catalogUnit) {
+        this(stage,sequence,materialCode,materialName,weightKg,utilizationRate,remark,materialCategory,primaryMaterial,formulaRatio,inputUnit,catalogMaterialId,catalogSpecification,catalogUnit,false);
+    }
     public ExperimentMaterial(String stage,int sequence,String materialCode,String materialName,BigDecimal weightKg,
             BigDecimal utilizationRate,String remark,String materialCategory,boolean primaryMaterial,BigDecimal formulaRatio,String inputUnit) {
         this(stage,sequence,materialCode,materialName,weightKg,utilizationRate,remark,materialCategory,primaryMaterial,formulaRatio,inputUnit,null,null,null);

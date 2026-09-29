@@ -8,3 +8,4 @@ export * from "./permissions";
 export * from "./process-plan";
 export * from "./step-parameters";
 export * from "./pricing-basis";
+export * from "./material-catalog";

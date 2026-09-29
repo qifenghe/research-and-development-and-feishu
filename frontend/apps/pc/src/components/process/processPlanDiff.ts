@@ -98,7 +98,7 @@ function compareMaterial(differences: Difference[], path: string, before: Proces
   fields(differences, path, before, after, [
     ["加入时机", "additionTiming"], ["加入方式", "additionMethod"],
     ["顺序", "sequence"], ["来源类型", "sourceType"],
-    ["角色", "materialRole"], ["配方物料 ID", "formulaMaterialId"], ["物料编码", "materialCode"],
+    ["角色", "materialRole"], ["物料编码", "materialCode"],
     ["物料名称", "materialName"], ["物料状态", "materialState"], ["重量", "weightKg", weight], ["备注", "remark"],
   ]);
   changed(differences, `${path} / 来源产出`, resolveReference(contexts.before.outputReferences, before.sourceStepOutputId), resolveReference(contexts.after.outputReferences, after.sourceStepOutputId));

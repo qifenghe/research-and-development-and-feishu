@@ -60,7 +60,7 @@
         <div v-for="material in step.materials" :key="material.key" class="row material">
           <b>{{ material.sequence }}. {{ material.materialName || "未命名投料" }}</b>
           <span>来源 {{ material.sourceType || "EXTERNAL" }}</span><span>角色 {{ material.materialRole }}</span>
-          <span>配方物料 ID {{ display(material.formulaMaterialId) }}</span><span>编码 {{ display(material.materialCode) }}</span>
+          <span>编码 {{ display(material.materialCode) }}</span><span v-if="material.catalogSpecification">规格 {{ material.catalogSpecification }}</span>
           <span>记录 ID {{ display(material.id) }}</span><span>来源产出 ID {{ display(material.sourceStepOutputId) }}</span>
           <span>重量 {{ kg(material.weightKg) }}</span><span>状态 {{ material.materialState }}</span><span>备注 {{ display(material.remark) }}</span>
           <span>加入时机 {{ display(material.additionTiming) }}</span><span>加入方式 {{ display(material.additionMethod) }}</span>
@@ -105,7 +105,7 @@
     <article class="major">
       <h3>汇总配方</h3>
       <div v-for="line in recipe" :key="`${line.formulaMaterialId}-${line.materialCode}-${line.materialName}`" class="recipe-line">
-        <span>{{ line.materialName }} · ID {{ display(line.formulaMaterialId) }} · 编码 {{ display(line.materialCode) }}</span>
+        <span>{{ line.materialName }} · 编码 {{ display(line.materialCode) }}</span>
         <b>{{ kg(line.weightKg) }} · {{ percent(line.ratioPercent) }}</b>
       </div>
     </article>
