@@ -66,6 +66,28 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class SampleWorkflowControllerTest {
+    @Test void kgPricingBasisDoesNotTreatWeightAsActualBags() throws Exception {
+        var versionId=createLockedSampleVersion("张研发",true);
+        var pricingId=createPricingDraft(versionId);
+        var source=workflowService.pricingBasis(pricingId,principal("张研发","RND_ENGINEER")).source();
+        assertThat(source.finishedNetKg()).isEqualByComparingTo("12.345");
+        assertThat(source.actualBags()).isNull();
+    }
+    @Test void kgFinishedOutputPersistsDecimalsAndRejectsMismatch() throws Exception {
+        var taskId=createApprovedRequest(); assignTask(taskId); acceptTask(taskId);
+        var result=mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft",taskId)
+            .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,taskPrincipal(taskId))
+            .contentType(MediaType.APPLICATION_JSON).content("""
+            {"operatorName":"张研发","finishedOutputWeightKg":12.345,"finishedOutputQuantity":12.345,"finishedOutputUnit":"kg"}
+            """)).andExpect(status().isOk()).andExpect(jsonPath("$.data.finishedOutputQuantity").value(12.345)).andReturn();
+        var id=objectMapper.readTree(result.getResponse().getContentAsString()).at("/data/id").asText();
+        assertThat(jdbcTemplate.queryForObject("select finished_output_quantity from experiment_form where id=?",BigDecimal.class,id)).isEqualByComparingTo("12.345");
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft",taskId)
+            .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,taskPrincipal(taskId))
+            .contentType(MediaType.APPLICATION_JSON).content("""
+            {"operatorName":"张研发","finishedOutputWeightKg":12,"finishedOutputQuantity":10,"finishedOutputUnit":"kg"}
+            """)).andExpect(status().isBadRequest());
+    }
     @Autowired private com.lhr.rnd.service.MaterialCatalogService catalog;
 
     @Test void unlinkedLegacyDraftCannotUseLegacyTestHandoff() throws Exception {
@@ -3006,6 +3028,10 @@ class SampleWorkflowControllerTest {
     }
 
     private String saveExperimentDraft(String taskId) throws Exception {
+        return saveExperimentDraft(taskId,false);
+    }
+
+    private String saveExperimentDraft(String taskId, boolean kilograms) throws Exception {
         var draftJson = """
                 {
                   "operatorName": "张研发",
@@ -3042,7 +3068,7 @@ class SampleWorkflowControllerTest {
         return mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft", taskId)
                         .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, taskPrincipal(taskId))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(draftJson))
+                        .content(kilograms ? draftJson.replace("\"finishedOutputWeightKg\": 8.5", "\"finishedOutputWeightKg\": 12.345").replace("\"finishedOutputQuantity\": 17", "\"finishedOutputQuantity\": 12.345").replace("\"finishedOutputUnit\": \"袋\"", "\"finishedOutputUnit\": \"kg\"") : draftJson))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.versionCode").value("A0"))
@@ -3418,10 +3444,14 @@ class SampleWorkflowControllerTest {
     }
 
     private String createLockedSampleVersion(String productOwnerName) throws Exception {
+        return createLockedSampleVersion(productOwnerName,false);
+    }
+
+    private String createLockedSampleVersion(String productOwnerName, boolean kilograms) throws Exception {
         var taskId = createApprovedRequest();
         assignTask(taskId, productOwnerName);
         acceptTask(taskId, productOwnerName);
-        var experimentFormId = saveExperimentDraft(taskId);
+        var experimentFormId = saveExperimentDraft(taskId,kilograms);
         var testAssignmentId = submitExperimentForTest(experimentFormId);
         return mockMvc.perform(post("/api/v1/test-assignments/{id}/pass", testAssignmentId)
                         .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, testerPrincipal())

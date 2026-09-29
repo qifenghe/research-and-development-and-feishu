@@ -106,7 +106,6 @@ import java.util.UUID;
 
 @Service
 public class SampleWorkflowService {
-    private static final Set<String> FINISHED_OUTPUT_UNITS = Set.of("袋", "盒", "份", "个", "盘");
     private static final int MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
     private static final String DEFAULT_FINANCE_RECIPIENT = "财务核价员";
     private static final String AUTO_FINANCE_REMARK = "核价文件已审核通过，系统自动移交财务核价";
@@ -228,7 +227,7 @@ public class SampleWorkflowService {
         }
         var header = new com.lhr.rnd.model.PricingBasisDraft.Header("江西龙汇肉制品有限责任公司",version.productName(),version.specification(),version.ownerName(),version.authorName(),version.productType(),null,version.versionCode(),version.effectiveDate()==null?null:version.effectiveDate().toString());
         var packaging=pricingPackagingItems(id).stream().map(p->new com.lhr.rnd.model.PricingBasisDraft.Packaging(p.id(),p.materialCode(),p.materialName(),null,p.quantity(),p.quantityUnit(),p.packageSpec(),p.conversionRule(),p.remark(),null)).toList();
-        return new com.lhr.rnd.model.PricingBasisDraft(1,revision==null?"legacy:"+form.id()+":"+form.savedAt():revision.id(),header,materials,mainOutput,materials.stream().filter(m->"PRIMARY".equals(m.role())).map(com.lhr.rnd.model.PricingBasisDraft.Material::id).toList(),null,form.finishedOutputWeightKg(),version.unitWeightKg(),bagsPerBox(version.specification()),form.finishedOutputQuantity(),packaging);
+        return new com.lhr.rnd.model.PricingBasisDraft(1,revision==null?"legacy:"+form.id()+":"+form.savedAt():revision.id(),header,materials,mainOutput,materials.stream().filter(m->"PRIMARY".equals(m.role())).map(com.lhr.rnd.model.PricingBasisDraft.Material::id).toList(),null,form.finishedOutputWeightKg(),version.unitWeightKg(),bagsPerBox(version.specification()),"袋".equals(form.finishedOutputUnit()) && form.finishedOutputQuantity()!=null ? form.finishedOutputQuantity().intValueExact() : null,packaging);
     }
     private final Map<String, SampleRequest> requests = new LinkedHashMap<>();
     private final Map<String, SampleProject> projects = new LinkedHashMap<>();
@@ -533,8 +532,7 @@ public class SampleWorkflowService {
         materials = recalculateFormulaRatios(materials);
         var processSteps = recalculateProcessLosses(command.processSteps());
         var finishedOutputUnit = normalizeFinishedOutputUnit(command.finishedOutputUnit());
-        var finishedOutputQuantity = normalizeFinishedOutputQuantity(command.finishedOutputQuantity());
-        validateFinishedOutput(finishedOutputQuantity, finishedOutputUnit);
+        var finishedOutputQuantity = com.lhr.rnd.domain.FinishedOutputValidator.validate(command.finishedOutputWeightKg(), command.finishedOutputQuantity(), finishedOutputUnit);
         var yieldCalculationMode = command.yieldCalculationMode() == null
                 ? YieldCalculationMode.SELECTED_PRIMARY_MATERIALS
                 : command.yieldCalculationMode();
@@ -2206,12 +2204,12 @@ public class SampleWorkflowService {
         if (version.unitWeightKg() != null) {
             return version.unitWeightKg();
         }
-        if (referenceOutputKg == null || lockedForm.finishedOutputQuantity() == null
-                || lockedForm.finishedOutputQuantity() <= 0) {
+        if ("kg".equals(lockedForm.finishedOutputUnit()) || referenceOutputKg == null || lockedForm.finishedOutputQuantity() == null
+                || lockedForm.finishedOutputQuantity().signum() <= 0) {
             return null;
         }
         return referenceOutputKg.divide(
-                BigDecimal.valueOf(lockedForm.finishedOutputQuantity()),
+                lockedForm.finishedOutputQuantity(),
                 6,
                 RoundingMode.HALF_UP
         );
@@ -2817,7 +2815,7 @@ public class SampleWorkflowService {
         if (form.finishedOutputWeightKg() == null || form.finishedOutputWeightKg().signum() <= 0) {
             throw new BusinessException("FINISHED_OUTPUT_WEIGHT_REQUIRED", "提交内部测试前成品重量必须大于 0");
         }
-        if (form.finishedOutputQuantity() == null || form.finishedOutputQuantity() <= 0) {
+        if (form.finishedOutputQuantity() == null || form.finishedOutputQuantity().signum() <= 0) {
             throw new BusinessException("FINISHED_OUTPUT_QUANTITY_REQUIRED", "提交内部测试前成品数量必须大于 0");
         }
     }
@@ -3421,29 +3419,6 @@ public class SampleWorkflowService {
     private String normalizeFinishedOutputUnit(String finishedOutputUnit) {
         var normalized = normalizeOptional(finishedOutputUnit);
         return normalized == null ? "袋" : normalized;
-    }
-
-    private void validateFinishedOutput(Integer finishedOutputQuantity, String finishedOutputUnit) {
-        if (finishedOutputQuantity != null && finishedOutputQuantity <= 0) {
-            throw new BusinessException("FINISHED_OUTPUT_QUANTITY_INVALID", "成品数量必须为正数");
-        }
-        if (!FINISHED_OUTPUT_UNITS.contains(finishedOutputUnit)) {
-            throw new BusinessException("FINISHED_OUTPUT_UNIT_INVALID", "成品单位不受支持");
-        }
-    }
-
-    private Integer normalizeFinishedOutputQuantity(BigDecimal finishedOutputQuantity) {
-        if (finishedOutputQuantity == null) {
-            return null;
-        }
-        if (finishedOutputQuantity.signum() <= 0) {
-            throw new BusinessException("FINISHED_OUTPUT_QUANTITY_INVALID", "成品数量必须为正整数");
-        }
-        try {
-            return finishedOutputQuantity.toBigIntegerExact().intValueExact();
-        } catch (ArithmeticException exception) {
-            throw new BusinessException("FINISHED_OUTPUT_QUANTITY_INVALID", "成品数量必须为正整数");
-        }
     }
 
     private void ensureReadyForShipment(String versionId) {

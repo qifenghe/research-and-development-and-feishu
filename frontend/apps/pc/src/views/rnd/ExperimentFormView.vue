@@ -122,8 +122,8 @@
             <a-form layout="vertical">
               <a-row :gutter="16">
                 <a-col :span="8"><a-form-item label="成品重量"><a-input-number v-model:value="form.finishedOutputWeightKg" :disabled="editingBlocked" :min="0" :precision="4" addon-after="kg" style="width:100%" /></a-form-item></a-col>
-                <a-col :span="8"><a-form-item label="成品数量"><a-input-number v-model:value="form.finishedOutputQuantity" :disabled="editingBlocked" :min="1" :precision="0" :step="1" style="width:100%" /></a-form-item></a-col>
-                <a-col :span="8"><a-form-item label="成品单位"><a-select v-model:value="form.finishedOutputUnit" :disabled="editingBlocked" :options="outputUnitOptions" /></a-form-item></a-col>
+                <a-col :span="8"><a-form-item label="成品数量"><a-input-number v-model:value="form.finishedOutputQuantity" :disabled="editingBlocked || form.finishedOutputUnit === 'kg'" :min="form.finishedOutputUnit === 'kg' ? 0.0001 : 1" :precision="form.finishedOutputUnit === 'kg' ? 4 : 0" :step="1" style="width:100%" /><small v-if="form.finishedOutputUnit === 'kg'">与成品重量同步，不作为袋数</small></a-form-item></a-col>
+                <a-col :span="8"><a-form-item label="成品单位"><a-select :value="form.finishedOutputUnit" @change="changeOutputUnit" :disabled="editingBlocked" :options="outputUnitOptions" /></a-form-item></a-col>
               </a-row>
             </a-form>
             <a-form-item label="备注"><a-textarea v-model:value="form.remark" :rows="2" :disabled="editingBlocked" /></a-form-item>
@@ -134,8 +134,8 @@
             <a-descriptions :column="2" size="small" bordered style="margin-top:12px">
               <a-descriptions-item label="总投入">{{ pricingPreview.totalInputWeightKg.toFixed(3) }}kg</a-descriptions-item>
               <a-descriptions-item label="成品重量">{{ form.finishedOutputWeightKg == null ? '待填写' : `${Number(form.finishedOutputWeightKg).toFixed(3)}kg` }}</a-descriptions-item>
-              <a-descriptions-item label="成品数量">{{ pricingPreview.referenceQuantity }}{{ form.finishedOutputUnit }}</a-descriptions-item>
-              <a-descriptions-item :label="`平均每${form.finishedOutputUnit}重量`">{{ pricingPreview.averageUnitWeightKg.toFixed(3) }}kg</a-descriptions-item>
+              <a-descriptions-item label="成品数量">{{ form.finishedOutputQuantity ?? '待填写' }}{{ form.finishedOutputQuantity == null ? '' : form.finishedOutputUnit }}</a-descriptions-item>
+              <a-descriptions-item v-if="form.finishedOutputUnit !== 'kg'" :label="`平均每${form.finishedOutputUnit}重量`">{{ pricingPreview.averageUnitWeightKg.toFixed(3) }}kg</a-descriptions-item>
               <a-descriptions-item label="得率基准">{{ pricingPreview.yieldBasisWeightKg.toFixed(3) }}kg</a-descriptions-item>
               <a-descriptions-item label="研发参考得率">{{ pricingPreview.yieldPercent.toFixed(2) }}%</a-descriptions-item>
             </a-descriptions>
@@ -189,6 +189,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { switchFinishedOutputUnit } from '@rnd/shared';
 import { useRoute, useRouter } from "vue-router";
 import { message, Modal } from "ant-design-vue";
 import { hasLayeredProcessData, recoverProcessDraft } from '../../components/process/processDraftRecovery';
@@ -274,7 +275,7 @@ const form = reactive({
   summary: "",
   finishedOutputWeightKg: null as number | null,
   finishedOutputQuantity: null as number | null,
-  finishedOutputUnit: "袋" as "袋" | "盒" | "份" | "个" | "盘",
+  finishedOutputUnit: "袋" as "袋" | "盒" | "份" | "个" | "盘" | "kg",
   remark: "",
 });
 
@@ -326,7 +327,14 @@ const pricingPreviewMaterials = computed(() => effectiveMaterials.value.map((ite
   weightKg: `${(item.weightKg ?? 0).toFixed(3)}kg`,
   ratio: `${formulaRatioValues.value[index]?.toFixed(2) ?? "0.00"}%`,
 })));
-const outputUnitOptions = ["袋", "盒", "份", "个", "盘"].map((value) => ({ label: value, value }));
+const outputUnitOptions = ["袋", "盒", "份", "个", "盘", "kg"].map((value) => ({ label: value, value }));
+function changeOutputUnit(unit: typeof form.finishedOutputUnit) {
+  const next = switchFinishedOutputUnit({weightKg:form.finishedOutputWeightKg,quantity:form.finishedOutputQuantity,unit:form.finishedOutputUnit},unit);
+  form.finishedOutputQuantity = next.quantity;
+  if (unit === 'kg') message.info('kg 数量与成品重量同步，不作为袋数');
+  form.finishedOutputUnit = unit;
+}
+watch(() => form.finishedOutputWeightKg, value => {if (form.finishedOutputUnit === 'kg') form.finishedOutputQuantity = value;}, {flush:'sync'});
 const materialCategoryOptions = [
   { label: "原料", value: "RAW" },
   { label: "辅料", value: "AUXILIARY" },
@@ -611,6 +619,7 @@ onBeforeUnmount(() => {
 });
 
 function validateFinishedOutputQuantity() {
+  if (form.finishedOutputUnit === 'kg') return form.finishedOutputWeightKg ?? undefined;
   const quantity = normalizePositiveIntegerQuantity(form.finishedOutputQuantity);
   if (form.finishedOutputQuantity !== null && quantity === undefined) {
     message.warning("成品数量必须为正整数");

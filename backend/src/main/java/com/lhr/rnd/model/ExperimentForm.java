@@ -18,13 +18,22 @@ public record ExperimentForm(
         List<ExperimentMaterial> materials,
         List<ExperimentProcessStep> processSteps,
         BigDecimal finishedOutputWeightKg,
-        Integer finishedOutputQuantity,
+        BigDecimal finishedOutputQuantity,
         String finishedOutputUnit,
         YieldCalculationMode yieldCalculationMode,
         BigDecimal finishedYieldPercent,
         LocalDateTime savedAt,
         LocalDateTime submittedAt
 ) {
+    public ExperimentForm(String id, String taskId, String projectId, String versionId, String sampleNo,
+            String productName, String versionCode, ExperimentFormStatus status, String operatorName, String summary,
+            List<ExperimentMaterial> materials, List<ExperimentProcessStep> processSteps, BigDecimal finishedOutputWeightKg,
+            Number finishedOutputQuantity, String finishedOutputUnit, YieldCalculationMode yieldCalculationMode,
+            BigDecimal finishedYieldPercent, LocalDateTime savedAt, LocalDateTime submittedAt) {
+        this(id,taskId,projectId,versionId,sampleNo,productName,versionCode,status,operatorName,summary,materials,processSteps,
+            finishedOutputWeightKg,finishedOutputQuantity==null?null:new BigDecimal(finishedOutputQuantity.toString()),finishedOutputUnit,
+            yieldCalculationMode,finishedYieldPercent,savedAt,submittedAt);
+    }
     public ExperimentForm submit(LocalDateTime submittedAt) {
         return new ExperimentForm(
                 id,

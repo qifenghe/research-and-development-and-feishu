@@ -46,7 +46,7 @@ public class ExperimentFormEntity {
     private BigDecimal finishedOutputWeightKg;
 
     @Column(name = "finished_output_quantity")
-    private Integer finishedOutputQuantity;
+    private BigDecimal finishedOutputQuantity;
 
     @Column(name = "finished_output_unit", nullable = false)
     private String finishedOutputUnit;
@@ -78,7 +78,7 @@ public class ExperimentFormEntity {
             String operatorName,
             String summary,
             BigDecimal finishedOutputWeightKg,
-            Integer finishedOutputQuantity,
+            BigDecimal finishedOutputQuantity,
             String finishedOutputUnit,
             String yieldCalculationMode,
             BigDecimal finishedYieldPercent,
@@ -157,7 +157,7 @@ public class ExperimentFormEntity {
         return finishedOutputWeightKg;
     }
 
-    public Integer getFinishedOutputQuantity() {
+    public BigDecimal getFinishedOutputQuantity() {
         return finishedOutputQuantity;
     }
 

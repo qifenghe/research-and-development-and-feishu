@@ -42,7 +42,7 @@ export interface SaveExperimentDraftPayload {
   }>;
   finishedOutputWeightKg?: number;
   finishedOutputQuantity?: number;
-  finishedOutputUnit?: "袋" | "盒" | "份" | "个" | "盘";
+  finishedOutputUnit?: "袋" | "盒" | "份" | "个" | "盘" | "kg";
   finishedYieldPercent?: number;
   yieldCalculationMode?: YieldCalculationMode;
 }

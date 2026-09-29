@@ -67,13 +67,13 @@
           <section class="form-section">
             <h2>成品产出</h2>
             <van-field v-model="form.finishedOutputWeightKg" label="成品重量" type="number" placeholder="请输入" :readonly="readOnly"><template #button>kg</template></van-field>
-            <van-field v-model="form.finishedOutputQuantity" label="成品数量" type="digit" inputmode="numeric" placeholder="请输入正整数" :readonly="readOnly" @blur="validateFinishedOutputQuantity" />
-            <van-field label="成品单位"><template #input><van-radio-group v-model="form.finishedOutputUnit" direction="horizontal" :disabled="readOnly"><van-radio name="袋">袋</van-radio><van-radio name="盒">盒</van-radio><van-radio name="份">份</van-radio><van-radio name="个">个</van-radio><van-radio name="盘">盘</van-radio></van-radio-group></template></van-field>
+            <van-field v-model="form.finishedOutputQuantity" label="成品数量" type="number" inputmode="decimal" :placeholder="form.finishedOutputUnit === 'kg' ? '与成品重量同步' : '请输入正整数'" :readonly="readOnly || form.finishedOutputUnit === 'kg'" @blur="validateFinishedOutputQuantity" />
+            <van-field label="成品单位"><template #input><van-radio-group :model-value="form.finishedOutputUnit" @update:model-value="changeOutputUnit" direction="horizontal" :disabled="readOnly"><van-radio name="袋">袋</van-radio><van-radio name="盒">盒</van-radio><van-radio name="份">份</van-radio><van-radio name="个">个</van-radio><van-radio name="盘">盘</van-radio><van-radio name="kg">kg</van-radio></van-radio-group></template></van-field>
           </section>
           <section class="form-section pricing-preview">
             <h2>核价数据预览</h2>
             <div v-for="(material,index) in materials" :key="`preview-${index}`" class="pricing-preview__material"><span>{{ categoryLabel(material.materialCategory) }}{{ material.primaryMaterial ? " · 主料" : "" }} {{ material.materialName || "未命名" }}</span><strong>{{ Number(material.weightKg || 0).toFixed(3) }}kg · {{ formulaRatioAt(index).toFixed(2) }}%</strong></div>
-            <div class="pricing-preview__grid"><span>总投入<strong>{{ pricingPreview.totalInputWeightKg.toFixed(3) }}kg</strong></span><span>得率基准<strong>{{ pricingPreview.yieldBasisWeightKg.toFixed(3) }}kg</strong></span><span>成品重量<strong>{{ Number(form.finishedOutputWeightKg || 0).toFixed(3) }}kg</strong></span><span>成品数量<strong>{{ pricingPreview.referenceQuantity }}{{ form.finishedOutputUnit }}</strong></span><span>平均每{{ form.finishedOutputUnit }}重量<strong>{{ pricingPreview.averageUnitWeightKg.toFixed(3) }}kg</strong></span><span>研发参考得率<strong>{{ pricingPreview.yieldPercent.toFixed(2) }}%</strong></span></div>
+            <div class="pricing-preview__grid"><span>总投入<strong>{{ pricingPreview.totalInputWeightKg.toFixed(3) }}kg</strong></span><span>得率基准<strong>{{ pricingPreview.yieldBasisWeightKg.toFixed(3) }}kg</strong></span><span>成品重量<strong>{{ Number(form.finishedOutputWeightKg || 0).toFixed(3) }}kg</strong></span><span>成品数量<strong>{{ form.finishedOutputQuantity || "待填写" }}{{ form.finishedOutputQuantity === "" ? "" : form.finishedOutputUnit }}</strong></span><span v-if="form.finishedOutputUnit !== 'kg'">平均每{{ form.finishedOutputUnit }}重量<strong>{{ pricingPreview.averageUnitWeightKg.toFixed(3) }}kg</strong></span><span>研发参考得率<strong>{{ pricingPreview.yieldPercent.toFixed(2) }}%</strong></span></div>
           </section>
           <section class="form-section"><h2>照片附件</h2><van-uploader v-if="!readOnly" v-model="fileList" :after-read="afterRead" /></section>
         </section>
@@ -92,6 +92,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { showFailToast, showSuccessToast } from "vant";
+import { switchFinishedOutputUnit } from '@rnd/shared';
 import type { ExperimentMaterial, MaterialCategory, ProcessArtifact, ProcessPlanDraft, ProcessRevision, RndTaskDetailView, YieldCalculationMode } from "@rnd/shared";
 import { calculatePricingPreview, canEditExperiment, canNotifyInternalTest, clearExperimentDraft, createEmptyProcessPlan, experimentDraftKey, formulaRatios, isCachedDraftNewer, normalizePositiveIntegerQuantity, normalizeProcessPlan, readExperimentDraft, writeExperimentDraft, yieldBasisWeightKg } from "@rnd/shared";
 import PageHeader from "../components/PageHeader.vue";
@@ -120,7 +121,7 @@ type EditableMaterial = {
   utilizationRate: string;
   remark: string;
 };
-type FinishedOutputUnit = "袋" | "盒" | "份" | "个" | "盘";
+type FinishedOutputUnit = "袋" | "盒" | "份" | "个" | "盘" | "kg";
 type ActionContext = {
   taskId: string;
   generation: number;
@@ -321,10 +322,18 @@ function chooseMaterial(row:EditableMaterial,item:MaterialCatalogItem){Object.as
 function buildMaterials():ExperimentMaterial[]{return materials.value.filter(item=>item.materialName.trim()).map((item,index)=>({stage:categoryLabel(item.materialCategory),sequence:index+1,materialCode:item.materialCode.trim()||undefined,materialName:item.materialName.trim(),weightKg:Number(item.weightKg||0),utilizationRate:Number(item.utilizationRate||100)/100,materialCategory:item.materialCategory,primaryMaterial:item.materialCategory==="RAW"&&item.primaryMaterial,inputUnit:"kg",remark:item.remark.trim()||undefined,catalogMaterialId:item.catalogMaterialId,catalogSpecification:item.catalogSpecification,catalogUnit:item.catalogUnit,refreshCatalogSnapshot:item.refreshCatalogSnapshot}))}
 
 function validateFinishedOutputQuantity(){
+  if(form.finishedOutputUnit==='kg') return form.finishedOutputWeightKg===''?undefined:Number(form.finishedOutputWeightKg);
   const quantity=normalizePositiveIntegerQuantity(form.finishedOutputQuantity);
   if(form.finishedOutputQuantity!==""&&quantity===undefined){showFailToast("成品数量必须为正整数");return undefined}
   return quantity;
 }
+
+function changeOutputUnit(unit:FinishedOutputUnit){
+  const next=switchFinishedOutputUnit({weightKg:form.finishedOutputWeightKg===''?null:Number(form.finishedOutputWeightKg),quantity:form.finishedOutputQuantity===''?null:Number(form.finishedOutputQuantity),unit:form.finishedOutputUnit},unit);
+  form.finishedOutputQuantity=next.quantity==null?'':String(next.quantity);
+  form.finishedOutputUnit=unit;
+}
+watch(()=>form.finishedOutputWeightKg,value=>{if(form.finishedOutputUnit==='kg')form.finishedOutputQuantity=value;},{flush:'sync'});
 
 function captureActionContext():ActionContext{
   return {taskId:activeTaskId.value,generation:routeRequestGeneration,formId:detail.value?.currentExperimentForm?.id||null,localDraftKey:localDraftKey.value,operatorName:auth.displayName};
@@ -384,7 +393,7 @@ async function afterRead(item:{file?:File}|Array<{file?:File}>){
   const entry=Array.isArray(item)?item[0]:item;
   if(!entry?.file)return;
   const context=captureActionContext();
-  const finishedOutputQuantity=normalizePositiveIntegerQuantity(form.finishedOutputQuantity);
+  const finishedOutputQuantity=validateFinishedOutputQuantity();
   const payload=buildDraftPayload(finishedOutputQuantity,context.operatorName);
   let experimentId=context.formId;
   if(!experimentId){

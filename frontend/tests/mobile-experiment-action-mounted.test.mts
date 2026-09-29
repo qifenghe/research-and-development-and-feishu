@@ -73,7 +73,7 @@ async function mountView(aHasForm:boolean){
   const setup=instance.$.setupState;
   const view:MountedActions={afterRead:setup.afterRead,notifyTest:setup.notifyTest,get hydrated(){return setup.hydrated}};
   await flush();
-  return {api,router,view,unmount:()=>app.unmount()};
+  return {api,router,view,setup,unmount:()=>app.unmount()};
 }
 
 test("mounted A upload stops after deferred draft save when the memory router reuses the view for B",async()=>{
@@ -103,6 +103,23 @@ test("mounted late A submit cannot clear B cache, toast or navigate after memory
   documentAppends=(globalThis as {__mobileMountedTestDocumentAppends:number}).__mobileMountedTestDocumentAppends;
   assert.equal(documentAppends,0,"a stale submit completion must not publish a toast");
   mounted.unmount();
+});
+
+test("mounted kg form synchronizes decimal weight and clears quantity when returning to bags",async()=>{
+  const mounted=await mountView(true);
+  try {
+    mounted.setup.form.finishedOutputWeightKg="12.345";
+    mounted.setup.changeOutputUnit("kg");await flush();
+    assert.equal(mounted.setup.form.finishedOutputQuantity,"12.345");
+    const payload=mounted.setup.buildDraftPayload(mounted.setup.validateFinishedOutputQuantity());
+    assert.equal(payload.finishedOutputQuantity,12.345);assert.equal(payload.finishedOutputUnit,"kg");
+    mounted.setup.form.finishedOutputWeightKg="";await flush();
+    assert.equal(mounted.setup.form.finishedOutputQuantity,"");
+    assert.equal(mounted.setup.validateFinishedOutputQuantity(),undefined);
+    mounted.setup.form.finishedOutputWeightKg="12.345";await flush();
+    mounted.setup.changeOutputUnit("袋");await flush();assert.equal(mounted.setup.form.finishedOutputQuantity,"");
+    mounted.setup.form.finishedOutputQuantity="178";assert.equal(mounted.setup.validateFinishedOutputQuantity(),178);
+  }finally{mounted.unmount();}
 });
 
 test("mounted existing form never submits when the final draft flush fails",async()=>{

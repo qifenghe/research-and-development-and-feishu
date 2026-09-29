@@ -17,7 +17,7 @@ public record SaveExperimentDraftRequest(
         @Valid List<ExperimentProcessStep> processSteps,
         BigDecimal finishedOutputWeightKg,
         BigDecimal finishedOutputQuantity,
-        @Pattern(regexp = "\\s*|袋|盒|份|个|盘") String finishedOutputUnit,
+        @Pattern(regexp = "\\s*|袋|盒|份|个|盘|kg") String finishedOutputUnit,
         BigDecimal finishedYieldPercent,
         YieldCalculationMode yieldCalculationMode
 ) {

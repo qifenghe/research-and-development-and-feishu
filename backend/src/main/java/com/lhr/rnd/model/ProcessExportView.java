@@ -31,7 +31,11 @@ public record ProcessExportView(String productName, String sourceLabel, ProcessP
                              int majorSequence, int stepSequence) {}
     public record Major(int sequence, String name, String yieldBasis, BigDecimal primaryInputKg,
                         BigDecimal primaryOutputKg, BigDecimal mainYieldPercent) {}
-    public record FinishedQuantity(BigDecimal weightKg, Integer quantity, String unit, String sourceLabel) {}
+    public record FinishedQuantity(BigDecimal weightKg, BigDecimal quantity, String unit, String sourceLabel) {
+        public FinishedQuantity(BigDecimal weightKg, Number quantity, String unit, String sourceLabel) {
+            this(weightKg,quantity==null?null:new BigDecimal(quantity.toString()),unit,sourceLabel);
+        }
+    }
     public record Issue(String code, String path, String message, Integer majorSequence, Integer stepSequence) {}
     public record Check(boolean ready, List<Issue> issues) {}
 }

@@ -84,7 +84,7 @@ public class ProcessExportCheckService {
         }
         if ("PRICING_XLSX".equals(type)) {
             var f = view.finishedQuantity();
-            if (f == null || f.weightKg() == null || f.weightKg().signum() < 0 || f.quantity() == null || f.quantity() < 0 || blank(f.unit()) || blank(f.sourceLabel()))
+            if (f == null || f.weightKg() == null || f.weightKg().signum() < 0 || f.quantity() == null || f.quantity().signum() < 0 || blank(f.unit()) || blank(f.sourceLabel()))
                 issues.add(issue("FINISHED_QUANTITY_REQUIRED", "finishedQuantity", "独立实测成品净重、数量及单位待确认；不得由主料得率推算，试验方案未关联独立包装产量", null, null));
             if (view.packaging().isEmpty()) issues.add(issue("PACKAGING_REQUIRED", "packaging", "包装物料待确认", null, null));
             for (int i = 0; i < view.packaging().size(); i++) {
