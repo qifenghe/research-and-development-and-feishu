@@ -144,7 +144,7 @@ class ProcessArtifactServiceTest {
     @Test
     void incompleteSopPreviewLabelsMissingExternalBatchAndDoesNotInventZero() throws Exception {
         var step = new ProcessPlan.MinorStep("s", 1, "COOK", "熟制", "NORMAL", null, null, null, null, null, null, null, null,
-                List.of(new ProcessPlan.StepMaterial("m", 1, "PRIMARY", "BEEF", "牛肉", "SOLID", null, "BEEF", null)),
+                List.of(com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, "m", 1, "PRIMARY", "BEEF", "牛肉", "SOLID", null, "BEEF", null)),
                 List.of(new ProcessPlan.StepOutput("o", 1, "FINISHED", "成品", "SOLID", new BigDecimal("72"), true, false, null)), List.of());
         var p = new ProcessPlan("p", FORM_ID, 1, "DRAFT", List.of(new ProcessPlan.MajorProcess("m", 1, "COOK", "熟制", null, "PRIMARY_INPUT", null, List.of(step), List.of(), List.of(), null)), null, false);
         var view = new ProcessExportCheckService().view("软件测试", "试验A V1", p, null, List.of());
@@ -669,20 +669,20 @@ class ProcessArtifactServiceTest {
                 "STEP-QA-1", 1, "PREP", "预处理与复合调味", "NORMAL", null, null, null,
                 null, null, null, "真空滚揉机", "按本次试验记录完成复合调味",
                 List.of(
-                        new ProcessPlan.StepMaterial("MAT-QA-BEEF", 1, "PRIMARY", "BEEF-001", "特级超长名称冷冻牛腩主料", "FROZEN_SOLID", new BigDecimal("100"), "F-BEEF", null, "EXTERNAL", null),
-                        new ProcessPlan.StepMaterial("MAT-QA-SPICE", 2, "AUXILIARY", "SPICE-002", "复合香辛料超长添加物名称", "POWDER", new BigDecimal("1"), "F-SPICE", null, "EXTERNAL", null)),
+                        com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, "MAT-QA-BEEF", 1, "PRIMARY", "BEEF-001", "特级超长名称冷冻牛腩主料", "FROZEN_SOLID", new BigDecimal("100"), "F-BEEF", null, "EXTERNAL", null),
+                        com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, "MAT-QA-SPICE", 2, "AUXILIARY", "SPICE-002", "复合香辛料超长添加物名称", "POWDER", new BigDecimal("1"), "F-SPICE", null, "EXTERNAL", null)),
                 List.of(new ProcessPlan.StepOutput(firstOutputId, 1, "INTERMEDIATE", "调味牛腩", "MARINATED", new BigDecimal("100"), true, true, null)), List.of());
         var cooking = new ProcessPlan.MinorStep(
                 "STEP-QA-2", 2, "COOK", "慢火熟制", "NORMAL", null, null, null,
                 null, null, null, "夹层锅", "按本次试验记录完成熟制",
-                List.of(new ProcessPlan.StepMaterial("MAT-QA-PREP", 1, "PRIMARY", null, "调味牛腩", "MARINATED", new BigDecimal("100"), null, null, "STEP_OUTPUT", firstOutputId)),
+                List.of(com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, "MAT-QA-PREP", 1, "PRIMARY", null, "调味牛腩", "MARINATED", new BigDecimal("100"), null, null, "STEP_OUTPUT", firstOutputId)),
                 List.of(new ProcessPlan.StepOutput(secondOutputId, 1, "INTERMEDIATE", "熟制牛腩", "COOKED", new BigDecimal("80"), true, true, null)), List.of());
         var packaging = new ProcessPlan.MinorStep(
                 "STEP-QA-3", 1, "PACK", "冷却与包装", "NORMAL", null, null, null,
                 null, null, null, "冷却台与封口机", "按本次试验记录完成冷却包装",
                 List.of(
-                        new ProcessPlan.StepMaterial("MAT-QA-COOK", 1, "PRIMARY", null, "熟制牛腩", "COOKED", new BigDecimal("80"), null, null, "STEP_OUTPUT", secondOutputId),
-                        new ProcessPlan.StepMaterial("MAT-QA-WATER", 2, "AUXILIARY", "WATER-003", "工艺用水超长名称", "LIQUID", new BigDecimal("1"), "F-WATER", null, "EXTERNAL", null)),
+                        com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, "MAT-QA-COOK", 1, "PRIMARY", null, "熟制牛腩", "COOKED", new BigDecimal("80"), null, null, "STEP_OUTPUT", secondOutputId),
+                        com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, "MAT-QA-WATER", 2, "AUXILIARY", "WATER-003", "工艺用水超长名称", "LIQUID", new BigDecimal("1"), "F-WATER", null, "EXTERNAL", null)),
                 List.of(new ProcessPlan.StepOutput("OUT-QA-PACKED", 1, "FINISHED", "包装熟制牛腩", "PACKED", new BigDecimal("72"), true, false, null)), List.of());
         var plan = new ProcessPlan("PLAN-QA-TWO-MAJOR", FORM_ID, 1, "DRAFT", List.of(
                 new ProcessPlan.MajorProcess("MAJOR-QA-1", 1, "HEAT", "复合调味牛腩热加工序", null, "PRIMARY_INPUT", null, List.of(preparation, cooking), List.of(), List.of(), null),
@@ -720,7 +720,7 @@ class ProcessArtifactServiceTest {
         var firstMaterials = new java.util.ArrayList<ProcessPlan.StepMaterial>();
         var secondMaterials = new java.util.ArrayList<ProcessPlan.StepMaterial>();
         for (int index = 0; index < 30; index++) {
-            var material = new ProcessPlan.StepMaterial(
+            var material = com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, 
                     "MAT-LONG-" + index, index + 1, index == 0 ? "PRIMARY" : "AUXILIARY",
                     "LONG-" + String.format("%02d", index + 1), "超长研发辅料名称" + String.format("%02d", index + 1) + "用于多页配方打印验证",
                     index % 2 == 0 ? "POWDER" : "LIQUID", index == 0 ? new BigDecimal("73") : BigDecimal.ONE,
@@ -732,7 +732,7 @@ class ProcessArtifactServiceTest {
                 "STEP-LONG-1", 1, "PREP", "复合调味长名称原料预处理", "NORMAL", null, null, null,
                 null, null, null, "混合机", "按本次试验记录混合", firstMaterials,
                 List.of(new ProcessPlan.StepOutput(intermediateId, 1, "INTERMEDIATE", "复合调味中间物", "MARINATED", new BigDecimal("91"), true, true, null)), List.of());
-        secondMaterials.add(0, new ProcessPlan.StepMaterial(
+        secondMaterials.add(0, com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, 
                 "MAT-LONG-STEP", 1, "PRIMARY", null, "复合调味中间物", "MARINATED", new BigDecimal("91"),
                 null, null, "STEP_OUTPUT", intermediateId));
         var finishing = new ProcessPlan.MinorStep(
@@ -844,10 +844,10 @@ class ProcessArtifactServiceTest {
         var measurement = new ProcessPlan.ControlMeasurement("CM-ARTIFACT", 1, new BigDecimal("76"), "2026-08-19T22:00:00", "PASS", null, "复测合格哨兵", "实测正常哨兵");
         var control = new ProcessPlan.ControlPoint("CP-ARTIFACT", 1, "FOOD_SAFETY", "CRITICAL", "中心温度", new BigDecimal("75"), new BigDecimal("72"), new BigDecimal("85"), "℃", "探针测温", "数字探针", "每锅", "继续加热", true, "制品研发", "2026-08-19T22:05:00", "研发依据", List.of(measurement));
         var first = new ProcessPlan.MinorStep(null, 1, "MARINATE", "腌制", "NORMAL", "时间", "30", "min", null, null, null, "滚揉机", "均匀腌制", List.of(
-                new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF", "鲜牛腩", "SOLID", new BigDecimal("10.0000"), "MAT-BEEF", "外部料备注哨兵", "EXTERNAL", null)),
+                com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, null, 1, "PRIMARY", "BEEF", "鲜牛腩", "SOLID", new BigDecimal("10.0000"), "MAT-BEEF", "外部料备注哨兵", "EXTERNAL", null)),
                 List.of(new ProcessPlan.StepOutput(intermediateId, 1, "INTERMEDIATE", "腌制牛腩", "SEMI_SOLID", new BigDecimal("9.5000"), true, true, "流转熟制")), List.of());
         var second = new ProcessPlan.MinorStep(null, 2, "COOK", "熟制", "NORMAL", "温度", "85", "℃", null, null, null, "夹层锅", "加热至中心温度达标", List.of(
-                new ProcessPlan.StepMaterial(null, 1, "PRIMARY", null, "腌制牛腩", "SEMI_SOLID", new BigDecimal("9.5000"), null, null, "STEP_OUTPUT", intermediateId)),
+                com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, null, 1, "PRIMARY", null, "腌制牛腩", "SEMI_SOLID", new BigDecimal("9.5000"), null, null, "STEP_OUTPUT", intermediateId)),
                 List.of(new ProcessPlan.StepOutput("OUT-FINISHED", 1, "FINISHED", "熟制牛腩", "SEMI_SOLID", new BigDecimal("9.0000"), true, false, "成品产出备注哨兵")), List.of(control));
         var major = new ProcessPlan.MajorProcess(null, 1, "COOK", "熟制", "熟制描述哨兵", "PRIMARY_INPUT", "熟制备注哨兵", List.of(first, second), List.of(), List.of(), null);
         var current = planService.find(FORM_ID);
@@ -868,7 +868,7 @@ class ProcessArtifactServiceTest {
         var first = new ProcessPlan.MinorStep(
                 null, 1, "MARINATE-SOP", "腌制步骤-SOP", "NORMAL", "时长参数-SOP", "31.7", "min-SOP",
                 "真空参数-SOP", "-0.08", "MPa-SOP", "滚揉设备-SOP-唯一", "均匀腌制操作要求-SOP-唯一",
-                List.of(new ProcessPlan.StepMaterial(
+                List.of(com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, 
                         null, 1, "PRIMARY", "BEEF-SOP-001", "外部鲜牛腩-SOP", "FROZEN-SOLID-SOP",
                         new BigDecimal("12.5000"), "MAT-BEEF-SOP-001", "外部投料备注-SOP", "EXTERNAL", null)),
                 List.of(
@@ -883,7 +883,7 @@ class ProcessArtifactServiceTest {
         var second = new ProcessPlan.MinorStep(
                 null, 2, "COOK-SOP", "熟制步骤-SOP", "NORMAL", "中心温度参数-SOP", "88.8", "℃-SOP",
                 null, null, null, "夹层锅设备-SOP-唯一", "加热至中心温度达标-SOP-唯一",
-                List.of(new ProcessPlan.StepMaterial(
+                List.of(com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, 
                         null, 1, "PRIMARY", null, "腌制中间产物-SOP", "MARINATED-STATE-SOP",
                         new BigDecimal("10.0000"), null, "中间投入备注-SOP", "STEP_OUTPUT", outputId)),
                 List.of(new ProcessPlan.StepOutput(
@@ -914,7 +914,7 @@ class ProcessArtifactServiceTest {
         var suffix = UUID.randomUUID().toString();
         var materials = new java.util.ArrayList<ProcessPlan.StepMaterial>();
         for (int index = 0; index < weights.size(); index++) {
-            materials.add(new ProcessPlan.StepMaterial(null, index + 1, index == 0 ? "PRIMARY" : "AUXILIARY",
+            materials.add(com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, null, index + 1, index == 0 ? "PRIMARY" : "AUXILIARY",
                     Character.toString('A' + index), "物料" + index, "SOLID", weights.get(index), "MAT-" + suffix + "-" + index,
                     null, "EXTERNAL", null));
         }

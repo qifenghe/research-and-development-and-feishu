@@ -133,8 +133,17 @@ public record ProcessPlan(
             String sourceType,
             String sourceStepOutputId,
             String additionTiming,
-            String additionMethod
+            String additionMethod,
+            String catalogMaterialId,
+            String catalogSpecification,
+            String catalogUnit
     ) {
+        public StepMaterial(String id, int sequence, String materialRole, String materialCode, String materialName,
+                String materialState, BigDecimal weightKg, String formulaMaterialId, String remark,
+                String sourceType, String sourceStepOutputId, String additionTiming, String additionMethod) {
+            this(id, sequence, materialRole, materialCode, materialName, materialState, weightKg, formulaMaterialId,
+                remark, sourceType, sourceStepOutputId, additionTiming, additionMethod, null, null, null);
+        }
         public StepMaterial(String id, int sequence, String materialRole, String materialCode, String materialName,
                 String materialState, BigDecimal weightKg, String formulaMaterialId, String remark,
                 String sourceType, String sourceStepOutputId) {

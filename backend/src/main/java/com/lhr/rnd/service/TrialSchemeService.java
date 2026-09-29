@@ -28,6 +28,7 @@ public class TrialSchemeService {
     private final TrialSchemeCopyService copyService;
     private final TrialControlEvidenceService evidence;
     private final AuditLogService audit;
+    private final MaterialReferenceService materialReferences;
 
     public TrialSchemeService(JdbcTemplate jdbc, ObjectMapper objectMapper, ProcessPlanService processPlanService,
                               TrialSchemeCopyService copyService, TrialControlEvidenceService evidence, AuditLogService audit) {
@@ -37,6 +38,7 @@ public class TrialSchemeService {
         this.copyService = copyService;
         this.evidence = evidence;
         this.audit = audit;
+        this.materialReferences = new MaterialReferenceService(new MaterialCatalogService(jdbc, audit));
     }
 
     @Transactional(readOnly = true)
@@ -91,7 +93,7 @@ public class TrialSchemeService {
     public TrialScheme create(String formId, CreateCommand command, SessionPrincipal principal) {
         requireMutationAccess(formId, principal);
         if (command == null) throw invalid("TRIAL_REQUEST_REQUIRED", "试验方案请求不能为空");
-        var normalized = copyService.normalizeNew(command.plan(), command.plannedData());
+        var normalized = copyService.normalizeNew(materialReferences.resolvePlan(command.plan(), null), command.plannedData());
         var id = "TRIAL-" + UUID.randomUUID();
         var now = LocalDateTime.now();
         var plan = trialPlan(normalized.plan(), formId);
@@ -116,7 +118,7 @@ public class TrialSchemeService {
         validateSave(command);
         var stored = findInternal(formId, trialId, true);
         if (stored.trial().versionNo() != command.versionNo()) throw conflict();
-        var normalized = copyService.normalizeForSave(command.plan(), command.plannedData(), stored.trial().plan(),
+        var normalized = copyService.normalizeForSave(materialReferences.resolvePlan(command.plan(), stored.trial().plan()), command.plannedData(), stored.trial().plan(),
                 stored.trial().majorOrigins(), stored.inheritedMeasurementIds(), stored.inheritedMeasurementFingerprints());
         var nextVersion = command.versionNo() + 1;
         var plan = trialPlan(evidence.preserveUnchanged(normalized.plan(), stored.trial().plan()), formId);

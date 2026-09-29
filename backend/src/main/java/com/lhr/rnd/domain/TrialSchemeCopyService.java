@@ -58,7 +58,8 @@ public class TrialSchemeCopyService {
                 var materials = values(step.materials()).stream().map(material -> new ProcessPlan.StepMaterial(
                         ids.id("TMAT", material.id()), material.sequence(), material.materialRole(), material.materialCode(), material.materialName(),
                         material.materialState(), includeActuals ? material.weightKg() : null, material.formulaMaterialId(), material.remark(),
-                        material.sourceType(), ids.reference(material.sourceStepOutputId()), material.additionTiming(), material.additionMethod())).toList();
+                        material.sourceType(), ids.reference(material.sourceStepOutputId()), material.additionTiming(), material.additionMethod(),
+                        material.catalogMaterialId(), material.catalogSpecification(), material.catalogUnit())).toList();
                 var outputs = values(step.outputs()).stream().map(output -> new ProcessPlan.StepOutput(
                         ids.id("TOUT", output.id()), output.sequence(), output.outputType(), output.outputName(), output.materialState(),
                         includeActuals ? output.weightKg() : null, output.primaryOutput(), output.continueFlow(), output.remark())).toList();

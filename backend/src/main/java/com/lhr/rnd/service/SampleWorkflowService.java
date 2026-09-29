@@ -148,6 +148,7 @@ public class SampleWorkflowService {
     @Autowired(required = false) private ProcessRevisionService processRevisionService;
     @Autowired(required = false) private TrialPromotionService trialPromotionService;
     @Autowired(required = false) private PricingBasisService pricingBasisService;
+    @Autowired private MaterialReferenceService materialReferences;
 
     @Transactional
     public byte[] previewPricingBasis(String id, int expectedVersion, SessionPrincipal principal) {
@@ -526,6 +527,8 @@ public class SampleWorkflowService {
         var existing = currentExperimentForm(command.taskId(), task.versionId());
         var id = existing == null ? nextExperimentFormId() : existing.id();
         var materials = normalizeExperimentMaterials(command.materials());
+        if (materialReferences != null) materials = materialReferences.resolveLegacy(materials, existing == null ? List.of() : existing.materials());
+        else if (materials.stream().anyMatch(m -> m.catalogMaterialId() != null)) throw new BusinessException("MATERIAL_CATALOG_UNAVAILABLE", "物料库服务不可用");
         validateExperimentMaterials(materials);
         materials = recalculateFormulaRatios(materials);
         var processSteps = recalculateProcessLosses(command.processSteps());
@@ -592,6 +595,10 @@ public class SampleWorkflowService {
         var formalRevision = principal == null || processRevisionService == null ? null : processRevisionService.requireCurrentFormalForTest(experimentFormId);
         if (principal != null && formalRevision == null) {
             throw new BusinessException("PROCESS_FORMAL_REVISION_REQUIRED", "通知测试前请先正式提交当前工艺版本");
+        }
+        if (formalRevision == null && materialReferences != null) {
+            for (var material : form.materials()) materialReferences.requireActiveReference(new MaterialReferenceService.Reference(
+                    material.catalogMaterialId(), material.materialCode(), material.materialName(), material.catalogSpecification(), material.catalogUnit()));
         }
         var nextTaskStatus = taskStatusAfter(SampleStatus.SAMPLING, SampleAction.SUBMIT_EXPERIMENT);
         var submitted = form.submit(now());
@@ -1547,7 +1554,8 @@ public class SampleWorkflowService {
                                 : material.getMaterialCategory(),
                         Boolean.TRUE.equals(material.getPrimaryMaterial()),
                         material.getFormulaRatio(),
-                        material.getInputUnit() == null ? "kg" : material.getInputUnit()
+                        material.getInputUnit() == null ? "kg" : material.getInputUnit(),
+                        material.getCatalogMaterialId(), material.getCatalogSpecification(), material.getCatalogUnit()
                 ))
                 .toList();
         var processSteps = experimentProcessRepository == null
@@ -2758,7 +2766,8 @@ public class SampleWorkflowService {
                                 : material.materialCategory(),
                         material.primaryMaterial(),
                         null,
-                        material.inputUnit() == null ? "kg" : material.inputUnit()
+                        material.inputUnit() == null ? "kg" : material.inputUnit(),
+                        material.catalogMaterialId(), material.catalogSpecification(), material.catalogUnit()
                 ))
                 .toList();
     }
@@ -2830,7 +2839,7 @@ public class SampleWorkflowService {
                         material.materialCategory(),
                         material.primaryMaterial(),
                         formulaRatio(material.weightKg(), formulaInputWeight),
-                        material.inputUnit()
+                        material.inputUnit(), material.catalogMaterialId(), material.catalogSpecification(), material.catalogUnit()
                 ))
                 .toList();
     }
@@ -2919,7 +2928,7 @@ public class SampleWorkflowService {
                     material.materialCategory(),
                     material.primaryMaterial(),
                     material.formulaRatio(),
-                    material.inputUnit()
+                    material.inputUnit(), material.catalogMaterialId(), material.catalogSpecification(), material.catalogUnit()
             ));
         }
         experimentMaterialRepository.saveAll(materialEntities);

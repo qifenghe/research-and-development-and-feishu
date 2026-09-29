@@ -24,6 +24,30 @@ class ProcessPlanServiceTest {
     @Autowired ProcessPlanService service;
     @Autowired ProcessRevisionService revisionService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired MaterialCatalogService catalog;
+
+    @Test void catalogIdentityRoundTripsAndRenamePreservesSnapshot() {
+        var admin=new SessionPrincipal("admin","admin","管理员",null,"SYSTEM_ADMIN",null);
+        var item=catalog.create(new MaterialCatalogService.Write("REF-"+java.util.UUID.randomUUID(),"牛肉旧名","RAW","旧规格","kg",null),admin);
+        var material=new ProcessPlan.StepMaterial(null,1,"PRIMARY","FAKE","伪造","SOLID",BigDecimal.TEN,null,null,
+                "EXTERNAL",null,null,null,item.id(),"伪造规格","L");
+        var step=new ProcessPlan.MinorStep(null,1,"CUT","切块","NORMAL",null,null,null,null,null,null,null,null,List.of(material));
+        var major=new ProcessPlan.MajorProcess(null,1,"PREP","准备",null,"PRIMARY_INPUT",null,List.of(step),List.of(),List.of(),null);
+        var current=service.find("FORM-PROCESS");
+        var saved=service.save("FORM-PROCESS",new ProcessPlan(null,"FORM-PROCESS",current.versionNo(),"DRAFT",List.of(major),null,false));
+        var first=saved.majorProcesses().get(0).steps().get(0).materials().get(0);
+        assertThat(first.materialName()).isEqualTo("牛肉旧名");
+        assertThat(first.catalogMaterialId()).isEqualTo(item.id());
+        assertThat(first.catalogUnit()).isEqualTo("kg");
+        catalog.update(item.id(),new MaterialCatalogService.Write(item.code(),"牛肉新名","RAW","新规格","kg",item.version()),admin);
+        var again=service.save("FORM-PROCESS",saved).majorProcesses().get(0).steps().get(0).materials().get(0);
+        assertThat(again.materialName()).isEqualTo("牛肉旧名");
+        assertThat(again.catalogSpecification()).isEqualTo("旧规格");
+        catalog.status(item.id(),"INACTIVE",1,admin);
+        var inactive=service.find("FORM-PROCESS");
+        assertThat(service.submissionCheck(inactive).errors()).extracting(e->e.code()).contains("MATERIAL_REFERENCE_INVALID");
+        assertThat(service.save("FORM-PROCESS",inactive).majorProcesses().get(0).steps().get(0).materials().get(0).materialName()).isEqualTo("牛肉旧名");
+    }
 
     @BeforeEach
     void seedForm() {

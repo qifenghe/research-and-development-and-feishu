@@ -48,6 +48,20 @@ public class ExperimentMaterialEntity {
 
     @Column(name = "input_unit", nullable = false)
     private String inputUnit;
+    @Column(name = "catalog_material_id") private String catalogMaterialId;
+    @Column(name = "catalog_specification") private String catalogSpecification;
+    @Column(name = "catalog_unit") private String catalogUnit;
+
+    public String getCatalogMaterialId() { return catalogMaterialId; }
+    public String getCatalogSpecification() { return catalogSpecification; }
+    public String getCatalogUnit() { return catalogUnit; }
+
+    public ExperimentMaterialEntity(String id,String experimentFormId,String stage,Integer sequence,String materialCode,String materialName,
+            BigDecimal weightKg,BigDecimal utilizationRate,String remark,String materialCategory,Boolean primaryMaterial,BigDecimal formulaRatio,
+            String inputUnit,String catalogMaterialId,String catalogSpecification,String catalogUnit) {
+        this(id,experimentFormId,stage,sequence,materialCode,materialName,weightKg,utilizationRate,remark,materialCategory,primaryMaterial,formulaRatio,inputUnit);
+        this.catalogMaterialId=catalogMaterialId; this.catalogSpecification=catalogSpecification; this.catalogUnit=catalogUnit;
+    }
 
     protected ExperimentMaterialEntity() {
     }

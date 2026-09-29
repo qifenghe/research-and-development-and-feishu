@@ -41,7 +41,7 @@ public class TrialPromotionService {
         if (command == null) throw error("TRIAL_REQUEST_REQUIRED", "预览请求不能为空");
         lock(formId, trialId, principal, true);
         var current = current(formId, trialId, command.trialVersionNo(), command.expectedProcessVersionNo(), principal);
-        var checks = validator.validate(current.trial().plan());
+        var checks = plans.submissionCheck(current.trial().plan());
         var token = "TPRE-" + UUID.randomUUID();
         var hash = snapshotHash(current);
         jdbc.update("insert into experiment_trial_submission_preview(token,experiment_form_id,trial_id,trial_version_no,process_version_no,snapshot_hash,created_by_user_id,created_at) values (?,?,?,?,?,?,?,?)",
@@ -69,7 +69,7 @@ public class TrialPromotionService {
         var previews = jdbc.query("select snapshot_hash from experiment_trial_submission_preview where token=? and experiment_form_id=? and trial_id=? and trial_version_no=? and process_version_no=? and created_by_user_id=?",
                 (rs, row) -> rs.getString(1), command.previewToken(), formId, trialId, command.trialVersionNo(), command.expectedProcessVersionNo(), principal.userId());
         if (previews.isEmpty() || !equal(previews.get(0), snapshotHash(current))) throw error("TRIAL_PREVIEW_STALE", "预览已失效，请重新检查当前方案及正式草稿");
-        var checks = validator.validate(current.trial().plan());
+        var checks = plans.submissionCheck(current.trial().plan());
         if (!checks.ready()) throw error("PROCESS_PLAN_NOT_READY", "试验方案未达到正式提交条件");
         var displaced = differingDraft(current) ? json(current.active()) : null;
         // All client-supplied evidence was stripped at create/save. Only persisted confirmation survives remapping.

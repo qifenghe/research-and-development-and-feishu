@@ -628,7 +628,7 @@ class SessionAuthenticationInterceptorTest {
 
     private ProcessPlan readyPlan(String formId, int versionNo) {
         var step = new ProcessPlan.MinorStep(null, 1, "COOK", "熟制", "NORMAL", null, null, null, null, null, null,
-                "软件测试设备", "软件测试完整操作说明", List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF", "鲜牛腩", "SOLID",
+                "软件测试设备", "软件测试完整操作说明", List.of(com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, null, 1, "PRIMARY", "BEEF", "鲜牛腩", "SOLID",
                 new BigDecimal("10"), "MAT-BEEF", null, "EXTERNAL", null)), List.of(
                 new ProcessPlan.StepOutput(null, 1, "FINISHED", "熟制牛腩", "SEMI_SOLID", new BigDecimal("10"), true, false, null)), List.of());
         var major = new ProcessPlan.MajorProcess(null, 1, "COOK", "熟制", null, "PRIMARY_INPUT", null,

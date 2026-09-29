@@ -28,6 +28,7 @@ public class ProcessPlanService {
     private final ExperimentFormRepository formRepository;
     private final ExperimentProcessRepository legacyRepository;
     private final AuditLogService auditLogService;
+    private final MaterialReferenceService materialReferences;
     private final ProcessPlanCalculationService calculations = new ProcessPlanCalculationService();
     private static final ObjectMapper PARAMETER_JSON = new ObjectMapper();
 
@@ -41,6 +42,7 @@ public class ProcessPlanService {
         this.formRepository = formRepository;
         this.legacyRepository = legacyRepository;
         this.auditLogService = auditLogService;
+        this.materialReferences = new MaterialReferenceService(new MaterialCatalogService(jdbc, auditLogService));
     }
 
     @Transactional(readOnly = true)
@@ -59,6 +61,13 @@ public class ProcessPlanService {
                 header.balanceToleranceKg(), false, header.sourceRevisionId(), header.changeReason());
         return new ProcessPlan(plan.id(), plan.experimentFormId(), plan.versionNo(), plan.status(), plan.majorProcesses(),
                 calculations.calculateBatch(plan), plan.balanceToleranceKg(), false, plan.sourceRevisionId(), plan.changeReason());
+    }
+
+    public com.lhr.rnd.model.ProcessSubmissionCheck submissionCheck(ProcessPlan plan) {
+        var base = new com.lhr.rnd.domain.ProcessSubmissionValidator().validate(plan);
+        var errors = new ArrayList<>(base.errors());
+        errors.addAll(materialReferences.submissionIssues(plan));
+        return new com.lhr.rnd.model.ProcessSubmissionCheck(errors.isEmpty(), errors, base.warnings());
     }
 
     @Transactional
@@ -84,6 +93,8 @@ public class ProcessPlanService {
 
     private ProcessPlan saveInternal(String formId, ProcessPlan request, boolean preserveMaterialIds) {
         requireForm(formId);
+        // Promotion supplies a server-read, remapped trial snapshot. Ordinary writes must resolve against this form only.
+        if (!preserveMaterialIds) request = materialReferences.resolvePlan(request, find(formId));
         var balanceTolerance = requireBalanceTolerance(request.balanceToleranceKg());
         var current = jdbc.query("select id, version_no, status, balance_tolerance_kg, source_revision_id, change_reason from experiment_process_plan where experiment_form_id = ?",
                 (rs, row) -> new PlanHeader(rs.getString("id"), rs.getInt("version_no"), rs.getString("status"),
@@ -413,10 +424,11 @@ public class ProcessPlanService {
         for (int index = 0; index < materials.size(); index++) {
             var item = materials.get(index);
             requireNonNegative(item.weightKg());
-            jdbc.update("insert into experiment_step_material(id, minor_step_id, sequence, material_role, material_code, material_name, material_state, weight_kg, formula_material_id, remark, source_type, source_step_output_id, addition_timing, addition_method) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            jdbc.update("insert into experiment_step_material(id, minor_step_id, sequence, material_role, material_code, material_name, material_state, weight_kg, formula_material_id, remark, source_type, source_step_output_id, addition_timing, addition_method, catalog_material_id, catalog_specification, catalog_unit) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     preserveMaterialIds ? valueOr(item.id(), id("MAT")) : id("MAT"), stepId, index + 1, valueOr(item.materialRole(), "AUXILIARY"), item.materialCode(),
                     valueOr(item.materialName(), "未命名物料"), valueOr(item.materialState(), "SOLID"), item.weightKg(),
-                    item.formulaMaterialId(), item.remark(), valueOr(item.sourceType(), "EXTERNAL"), item.sourceStepOutputId(), item.additionTiming(), item.additionMethod());
+                    item.formulaMaterialId(), item.remark(), valueOr(item.sourceType(), "EXTERNAL"), item.sourceStepOutputId(), item.additionTiming(), item.additionMethod(),
+                    item.catalogMaterialId(), item.catalogSpecification(), item.catalogUnit());
         }
         var controlPoints = step.controlPoints() == null ? List.<ProcessPlan.ControlPoint>of() : step.controlPoints();
         for (int index = 0; index < controlPoints.size(); index++) {
@@ -463,7 +475,8 @@ public class ProcessPlanService {
                         item.getString("material_role"), item.getString("material_code"), item.getString("material_name"),
                         item.getString("material_state"), item.getBigDecimal("weight_kg"),
                         item.getString("formula_material_id"), item.getString("remark"), item.getString("source_type"),
-                        item.getString("source_step_output_id"), item.getString("addition_timing"), item.getString("addition_method")), stepId);
+                        item.getString("source_step_output_id"), item.getString("addition_timing"), item.getString("addition_method"),
+                        item.getString("catalog_material_id"), item.getString("catalog_specification"), item.getString("catalog_unit")), stepId);
         var outputs = jdbc.query("select * from experiment_step_output where minor_step_id = ? order by sequence",
                 (item, row) -> new ProcessPlan.StepOutput(item.getString("id"), item.getInt("sequence"),
                         item.getString("output_type"), item.getString("output_name"), item.getString("material_state"),

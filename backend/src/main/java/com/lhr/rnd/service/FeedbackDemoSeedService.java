@@ -21,15 +21,18 @@ public class FeedbackDemoSeedService {
     private final SampleWorkflowService workflowService;
     private final WorkflowSettingsService workflowSettingsService;
     private final RolePermissionService rolePermissionService;
+    private final MaterialCatalogService materialCatalog;
 
     public FeedbackDemoSeedService(
             SampleWorkflowService workflowService,
             WorkflowSettingsService workflowSettingsService,
-            RolePermissionService rolePermissionService
+            RolePermissionService rolePermissionService,
+            MaterialCatalogService materialCatalog
     ) {
         this.workflowService = workflowService;
         this.workflowSettingsService = workflowSettingsService;
         this.rolePermissionService = rolePermissionService;
+        this.materialCatalog = materialCatalog;
     }
 
     public boolean alreadySeeded() {
@@ -43,6 +46,8 @@ public class FeedbackDemoSeedService {
         if (alreadySeeded()) {
             return snapshot("演示数据已存在，无需重复初始化");
         }
+        // Demo bootstrapping must not create free-text materials behind the catalog gate.
+        if (demoMaterial() == null) return snapshot("未创建演示数据：请先在物料库建立启用的DEMO-PRIMARY原料；不会自动创建物料");
 
         var pendingShipmentTask = seedCompletedTask("红烧牛腩粒", "500g/袋", "速冻调理");
         seedCompletedTaskWithShipment("500g香卤大肠头", "500g/袋", "冷冻即热菜");
@@ -113,21 +118,27 @@ public class FeedbackDemoSeedService {
     }
 
     private List<ExperimentMaterial> defaultMaterials() {
+        var material = demoMaterial();
         return List.of(
                 new ExperimentMaterial(
                         "原料",
                         1,
-                        "YL-001",
-                        "主原料",
+                        material.code(),
+                        material.name(),
                         new BigDecimal("100"),
                         new BigDecimal("0.82"),
                         "按实际投入量记录",
                         "RAW",
                         true,
                         null,
-                        "kg"
+                        "kg", material.id(), material.specification(), material.unit()
                 )
         );
+    }
+
+    private com.lhr.rnd.model.MaterialCatalogItem demoMaterial() {
+        return materialCatalog.list("DEMO-PRIMARY", "RAW", "ACTIVE", 1, 100).items().stream()
+                .filter(item -> "DEMO-PRIMARY".equals(item.code()) && "kg".equals(item.unit())).findFirst().orElse(null);
     }
 
     private List<ExperimentProcessStep> defaultProcessSteps() {

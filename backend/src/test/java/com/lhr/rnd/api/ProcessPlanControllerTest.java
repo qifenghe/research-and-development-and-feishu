@@ -271,7 +271,7 @@ class ProcessPlanControllerTest {
     }
 
     private String criticalDeviationDraft(String instruction) {
-        return """
+        return com.lhr.rnd.MaterialCatalogFixtures.json(jdbc, """
                 {"versionNo":0,"status":"DRAFT","majorProcesses":[{
                   "sequence":1,"processCode":"HEAT","processName":"热加工","yieldBasis":"PRIMARY_INPUT","remark":"损耗已说明","steps":[{
                     "sequence":1,"stepCode":"COOK","stepName":"熟制","stepType":"NORMAL","instruction":"%s",
@@ -280,7 +280,7 @@ class ProcessPlanControllerTest {
                     "controlPoints":[{"id":"CP-DEVIATION","sequence":1,"controlType":"FOOD_SAFETY","importance":"CRITICAL","itemName":"中心温度","lowerLimit":75,
                       "resolved":true,"confirmedBy":"伪造总监","confirmedAt":"2026-08-19T21:15:00","basisOrRemark":"复测合格","measurements":[{"id":"M-DEVIATION","sequence":1,"measuredValue":72,"result":"FAIL","deviationAction":"继续加热","retestResult":"PASS"}]}]
                   }],"inputs":[],"outputs":[]
-                }]}""".formatted(instruction);
+                }]}""".formatted(instruction));
     }
 
     private void saveAndConfirmCriticalDeviation() throws Exception {
@@ -501,7 +501,7 @@ class ProcessPlanControllerTest {
                 }]}""";
         mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan", FORM_ID)
                         .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
-                        .contentType(MediaType.APPLICATION_JSON).content(readyDraft))
+                        .contentType(MediaType.APPLICATION_JSON).content(com.lhr.rnd.MaterialCatalogFixtures.json(jdbc, readyDraft)))
                 .andExpect(status().isOk());
     }
 

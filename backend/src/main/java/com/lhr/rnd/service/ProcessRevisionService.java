@@ -63,7 +63,7 @@ public class ProcessRevisionService {
         if (plan.versionNo() != command.versionNo()) {
             throw new BusinessException("PROCESS_PLAN_VERSION_CONFLICT", "工艺方案已被更新，请刷新后重试");
         }
-        var check = validator.validate(plan);
+        var check = planService.submissionCheck(plan);
         if (!check.ready()) {
             throw new BusinessException("PROCESS_PLAN_NOT_READY", "工艺方案未达到正式提交条件");
         }

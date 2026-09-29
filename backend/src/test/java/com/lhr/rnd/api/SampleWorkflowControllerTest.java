@@ -66,6 +66,30 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class SampleWorkflowControllerTest {
+    @Autowired private com.lhr.rnd.service.MaterialCatalogService catalog;
+
+    @Test void unlinkedLegacyDraftCannotUseLegacyTestHandoff() throws Exception {
+        var taskId=createApprovedRequest(); assignTask(taskId); acceptTask(taskId);
+        var formId=saveExperimentDraft(taskId);
+        assertThatThrownBy(()->workflowService.submitExperimentForTest(formId,"内部测试员"))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("关联物料库");
+    }
+
+    @Test void legacyDraftResolvesAndPersistsCatalogIdentity() throws Exception {
+        var taskId=createApprovedRequest(); assignTask(taskId); acceptTask(taskId);
+        var item=catalog.create(new com.lhr.rnd.service.MaterialCatalogService.Write("LEG-"+java.util.UUID.randomUUID(),"库内牛肉","RAW","规格A","kg",null),taskPrincipal(taskId));
+        var json="""
+            {"operatorName":"张研发","materials":[{"sequence":1,"materialName":"伪造名称","materialCode":"FAKE","weightKg":10,
+            "materialCategory":"RAW","primaryMaterial":true,"catalogMaterialId":"%s"}],"finishedOutputUnit":"袋"}
+            """.formatted(item.id());
+        var result=mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft",taskId)
+            .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,taskPrincipal(taskId))
+            .contentType(MediaType.APPLICATION_JSON).content(json))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.materials[0].materialName").value("库内牛肉"))
+            .andExpect(jsonPath("$.data.materials[0].catalogMaterialId").value(item.id())).andReturn();
+        var id=objectMapper.readTree(result.getResponse().getContentAsString()).at("/data/id").asText();
+        assertThat(jdbcTemplate.queryForObject("select catalog_material_id from experiment_material where experiment_form_id=?",String.class,id)).isEqualTo(item.id());
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -3040,7 +3064,7 @@ class SampleWorkflowControllerTest {
     private String submitFormalProcessRevision(String formId, SessionPrincipal principal) {
         var current = processPlanService.find(formId);
         var step = new ProcessPlan.MinorStep(null, 1, "COOK", "熟制", "NORMAL", null, null, null, null, null,
-                null, null, null, List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "YRP00033", "主料", "SOLID",
+                null, null, null, List.of(com.lhr.rnd.MaterialCatalogFixtures.material(jdbcTemplate, null, 1, "PRIMARY", "YRP00033", "主料", "SOLID",
                 new BigDecimal("10"), "YRP00033", null, "EXTERNAL", null)), List.of(
                 new ProcessPlan.StepOutput("OUT-TEST-HANDOFF-" + formId, 1, "FINISHED", "成品", "SOLID", new BigDecimal("8"), true, false, null)), List.of());
         var major = new ProcessPlan.MajorProcess(null, 1, "COOK", "熟制", null, "PRIMARY_INPUT", "熟制损耗已说明",
@@ -3555,7 +3579,7 @@ class SampleWorkflowControllerTest {
                         java.util.List.of(new ProcessPlan.MinorStep(
                                 "STEP-" + revisionId, 1, "COOK", "熟制", "NORMAL", null, null, null,
                                 null, null, null, null, null,
-                                java.util.List.of(new ProcessPlan.StepMaterial(
+                                java.util.List.of(com.lhr.rnd.MaterialCatalogFixtures.material(jdbcTemplate, 
                                         "MATERIAL-" + revisionId, 1, "PRIMARY", "YRP00033", "正式主料名称", "SOLID",
                                         new BigDecimal("100"), "YRP00033", null, "EXTERNAL", null)),
                                 outputWeightKg == null ? java.util.List.of() : java.util.List.of(new ProcessPlan.StepOutput(

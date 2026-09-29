@@ -31,6 +31,33 @@ class TrialPromotionServiceTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired RolePermissionService permissions;
     @Autowired ProcessArtifactService artifacts;
+    @Autowired MaterialCatalogService catalog;
+
+    @Test void inactiveCatalogBlocksNewPromotionButNotArchivedRevisionRead() {
+        var trial=confirm(create());
+        var revision=promotion.submit(form,trial.id(),command(trial,preview(trial),true,"catalog-history"),owner);
+        var material=revision.snapshot().majorProcesses().get(0).steps().get(0).materials().get(0);
+        var item=catalog.find(material.catalogMaterialId());
+        catalog.status(item.id(),"INACTIVE",item.version(),director);
+        assertThat(revisions.find(form,revision.id(),owner).snapshot().majorProcesses().get(0).steps().get(0).materials().get(0).materialName()).isEqualTo("牛腩");
+        assertThat(artifacts.revisionView(form,revision.id(),owner)).isNotNull();
+        var copied=trials.copy(form,trial.id(),new TrialSchemeService.CopyCommand(trial.versionNo(),"停用后复制",true),owner);
+        assertThat(copied.plan().majorProcesses().get(0).steps().get(0).materials().get(0).catalogMaterialId()).isEqualTo(item.id());
+        assertThat(preview(copied).checks().errors()).extracting(e->e.code()).contains("MATERIAL_REFERENCE_INVALID");
+    }
+
+    @Test void trialSaveResolvesCatalogAndKeepsRenamedSnapshot() {
+        var item=catalog.create(new MaterialCatalogService.Write("TRIAL-"+java.util.UUID.randomUUID(),"旧牛肉","RAW","旧规格","kg",null),director);
+        var source=edit(graph(),n->((ObjectNode)n.at("/majorProcesses/0/steps/0/materials/0"))
+            .put("catalogMaterialId",item.id()).put("materialName","伪造名称"));
+        var trial=trials.create(form,new TrialSchemeService.CreateCommand("物料测试",null,null,source,TrialScheme.PlannedData.empty()),owner);
+        assertThat(trial.plan().majorProcesses().get(0).steps().get(0).materials().get(0).materialName()).isEqualTo("旧牛肉");
+        catalog.update(item.id(),new MaterialCatalogService.Write(item.code(),"新牛肉","RAW","新规格","kg",item.version()),director);
+        var saved=save(trial,trial.plan());
+        assertThat(saved.plan().majorProcesses().get(0).steps().get(0).materials().get(0).materialName()).isEqualTo("旧牛肉");
+        var copy=trials.copy(form,saved.id(),new TrialSchemeService.CopyCommand(saved.versionNo(),"物料副本",true),owner);
+        assertThat(copy.plan().majorProcesses().get(0).steps().get(0).materials().get(0).catalogSpecification()).isEqualTo("旧规格");
+    }
 
     @Test void extensibleParametersPersistInTrialAndImmutablePromotion() {
         var source = edit(graph(), node -> {
@@ -398,7 +425,7 @@ class TrialPromotionServiceTest {
     private void code(Runnable action, String code) { assertThatThrownBy(action::run).isInstanceOf(BusinessException.class).extracting(e -> ((BusinessException)e).code()).isEqualTo(code); }
     private ProcessPlan graph() {
         var cp = new ProcessPlan.ControlPoint("cp", 1, "QUALITY", "CRITICAL", "中心温度", new BigDecimal("75"), new BigDecimal("70"), new BigDecimal("85"), "℃", "探针", "温度计", "每锅", null, true, "伪造", "2026-09-15T10:00", null, List.of(new ProcessPlan.ControlMeasurement("cm", 1, new BigDecimal("76"), "2026-09-15T10:00", "PASS", null, "PASS", null)));
-        var step = new ProcessPlan.MinorStep("step", 1, "COOK", "熟制", "NORMAL", null, null, null, null, null, null, null, null, List.of(new ProcessPlan.StepMaterial("mat", 1, "PRIMARY", "BEEF", "牛腩", "SOLID", BigDecimal.TEN, null, null, "EXTERNAL", null)), List.of(new ProcessPlan.StepOutput("out", 1, "FINISHED", "成品", "SEMI_SOLID", BigDecimal.TEN, true, false, null)), List.of(cp));
+        var step = new ProcessPlan.MinorStep("step", 1, "COOK", "熟制", "NORMAL", null, null, null, null, null, null, null, null, List.of(com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, "mat", 1, "PRIMARY", "BEEF", "牛腩", "SOLID", BigDecimal.TEN, null, null, "EXTERNAL", null)), List.of(new ProcessPlan.StepOutput("out", 1, "FINISHED", "成品", "SEMI_SOLID", BigDecimal.TEN, true, false, null)), List.of(cp));
         return new ProcessPlan("plan", form, 0, "DRAFT", List.of(new ProcessPlan.MajorProcess("major", 1, "COOK", "熟制", null, "PRIMARY_INPUT", null, List.of(step), List.of(), List.of(), null)), null, false);
     }
 }

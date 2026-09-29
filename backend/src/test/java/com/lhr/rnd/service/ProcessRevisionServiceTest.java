@@ -319,7 +319,7 @@ class ProcessRevisionServiceTest {
         var controlPointId = "CP-REVISION-" + UUID.randomUUID();
         var measurementId = "CM-REVISION-" + UUID.randomUUID();
         var step = new ProcessPlan.MinorStep(null, 1, "COOK", "熟制", "NORMAL", null, null, null, null, null, null,
-                null, null, List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF", "鲜牛腩", "SOLID",
+                null, null, List.of(com.lhr.rnd.MaterialCatalogFixtures.material(jdbc, null, 1, "PRIMARY", "BEEF", "鲜牛腩", "SOLID",
                 new BigDecimal("10.0000"), "MAT-BEEF", null, "EXTERNAL", null)), List.of(
                 new ProcessPlan.StepOutput(outputId, 1, "FINISHED", "熟制牛腩", "SEMI_SOLID", new BigDecimal("10.0000"), true, false, null)), List.of(
                 new ProcessPlan.ControlPoint(controlPointId, 1, "QUALITY", "NORMAL", "中心温度", new BigDecimal("75"),

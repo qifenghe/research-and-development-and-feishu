@@ -68,7 +68,7 @@ public class ProcessPlanController {
     @GetMapping("/submission-check")
     public ApiResponse<ProcessSubmissionCheck> submissionCheck(@PathVariable String formId, HttpServletRequest servletRequest) {
         service.requireDraftReadAccess(formId, requiredSessionPrincipal(servletRequest));
-        return ApiResponse.success(submissionValidator.validate(service.find(formId)));
+        return ApiResponse.success(service.submissionCheck(service.find(formId)));
     }
 
     @GetMapping("/legacy-summary")
