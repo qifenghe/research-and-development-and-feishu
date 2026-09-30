@@ -35,6 +35,22 @@ class TrialSchemeServiceTest {
     @Autowired TrialSchemeService service;
     @Autowired RolePermissionService permissions;
     @Autowired JdbcTemplate jdbc;
+    @Autowired ProcessPlanService processPlans;
+    @Autowired MaterialCatalogService catalog;
+
+    @Test void newTrialKeepsTrustedFormalSnapshotAfterCatalogRenameAndDisable() {
+        var item=catalog.create(new MaterialCatalogService.Write("TRIAL-SNAPSHOT-"+java.util.UUID.randomUUID(),"旧牛肉","RAW","旧规格","kg",null),OWNER);
+        var material=new ProcessPlan.StepMaterial("source",1,"PRIMARY",item.code(),item.name(),"SOLID",BigDecimal.TEN,null,null,
+                "EXTERNAL",null,null,null,item.id(),item.specification(),item.unit());
+        var formal=processPlans.save(FORM_ID,replaceMaterials(graph("SNAP","10"),List.of(material)),OWNER);
+        var renamed=catalog.update(item.id(),new MaterialCatalogService.Write(item.code(),"新牛肉","RAW","新规格","kg",item.version()),OWNER);
+        catalog.status(item.id(),"INACTIVE",renamed.version(),OWNER);
+        var trial=service.create(FORM_ID,new TrialSchemeService.CreateCommand("来源快照",null,null,formal,TrialScheme.PlannedData.empty()),OWNER);
+        var copied=trial.plan().majorProcesses().get(0).steps().get(0).materials().get(0);
+        assertThat(copied.materialName()).isEqualTo("旧牛肉");
+        assertThat(copied.catalogSpecification()).isEqualTo("旧规格");
+        assertThat(copied.id()).isNotEqualTo(formal.majorProcesses().get(0).steps().get(0).materials().get(0).id());
+    }
 
     @BeforeEach
     void seedForm() {

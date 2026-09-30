@@ -113,6 +113,17 @@ class SampleWorkflowControllerTest {
         assertThat(jdbcTemplate.queryForObject("select catalog_material_id from experiment_material where experiment_form_id=?",String.class,id)).isEqualTo(item.id());
         catalog.update(item.id(),new com.lhr.rnd.service.MaterialCatalogService.Write(item.code(),"新名称","RAW","规格B","kg",item.version()),taskPrincipal(taskId));
         var request=objectMapper.readTree(json);
+        var rowId=objectMapper.readTree(result.getResponse().getContentAsString()).at("/data/materials/0/id").asText();
+        assertThat(rowId).isNotBlank();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)request.at("/materials/0")).put("id",rowId);
+        var renamed=catalog.find(item.id());
+        catalog.status(item.id(),"INACTIVE",renamed.version(),taskPrincipal(taskId));
+        mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft",taskId)
+            .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,taskPrincipal(taskId))
+            .contentType(MediaType.APPLICATION_JSON).content(request.toString()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.materials[0].id").value(rowId))
+            .andExpect(jsonPath("$.data.materials[0].materialName").value("库内牛肉"));
+        catalog.status(item.id(),"ACTIVE",catalog.find(item.id()).version(),taskPrincipal(taskId));
         ((com.fasterxml.jackson.databind.node.ObjectNode)request.at("/materials/0")).put("refreshCatalogSnapshot",true);
         mockMvc.perform(post("/api/v1/rnd-tasks/{id}/experiment-form/draft",taskId)
             .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,taskPrincipal(taskId))

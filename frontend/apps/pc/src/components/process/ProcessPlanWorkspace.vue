@@ -116,6 +116,7 @@ import { diffProcessPlans } from "./processPlanDiff";
 import { ProcessPlanSaveCoordinator, type ProcessPlanSaveState } from "./processPlanAutosave";
 import { RequestGeneration } from "./requestGeneration";
 import { cloneVueValue } from "./cloneVueValue";
+import { mergeProcessMaterialAcknowledgements } from '@rnd/shared';
 
 const props = defineProps<{
   modelValue: ProcessPlanDraft;
@@ -153,14 +154,14 @@ const coordinator = new ProcessPlanSaveCoordinator<ProcessPlanDraft>({
   formId: props.formId,
   debounceMs: 1200,
   isDraft: value => value.status === "DRAFT",
-  mergeAck: (local, ack) => normalizeProcessPlan({ ...local, legacy: ack.legacy, versionNo: ack.versionNo, status: ack.status, sourceRevisionId: ack.sourceRevisionId, changeReason: ack.changeReason, balanceToleranceKg: ack.balanceToleranceKg }),
+  mergeAck: (local, ack, sent) => normalizeProcessPlan({ ...mergeProcessMaterialAcknowledgements(local,sent,ack), legacy: ack.legacy, versionNo: ack.versionNo, status: ack.status, sourceRevisionId: ack.sourceRevisionId, changeReason: ack.changeReason, balanceToleranceKg: ack.balanceToleranceKg }),
   save: (formId, value) => api.task.saveProcessPlan(formId, { ...normalizeProcessPlan(value), experimentFormId: formId }),
   onChange: (value, state) => {
     saveState.value = state;
-    if (state === "saved") {
+    if (state === "saved" || state === "dirty" || state === "saving") {
       plan.value = normalizeProcessPlan(value);
       emit("update:modelValue", clonePlan(plan.value));
-      emit("saved", clonePlan(plan.value));
+      if (state === "saved") emit("saved", clonePlan(plan.value));
     }
   },
   onError: error => message.error(error instanceof Error ? error.message : "工艺草稿保存失败，请刷新后比较差异"),

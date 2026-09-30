@@ -212,9 +212,11 @@ import { RequestGeneration } from "../../components/process/requestGeneration";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
 import MaterialPicker from '../../components/materials/MaterialPicker.vue';
-import {selectCatalogMaterial,type MaterialCatalogItem} from '@rnd/shared';
+import {selectCatalogMaterial,mergeMaterialAcknowledgement,type MaterialCatalogItem} from '@rnd/shared';
 
 type MaterialRow = {
+  id?:string;
+  selectionToken?:string;
   refreshCatalogSnapshot?:boolean;
   catalogMaterialId?:string;
   catalogSpecification?:string;
@@ -334,7 +336,7 @@ function changeOutputUnit(unit: typeof form.finishedOutputUnit) {
   if (unit === 'kg') message.info('kg 数量与成品重量同步，不作为袋数');
   form.finishedOutputUnit = unit;
 }
-watch(() => form.finishedOutputWeightKg, value => {if (form.finishedOutputUnit === 'kg') form.finishedOutputQuantity = value;}, {flush:'sync'});
+watch(() => [form.finishedOutputWeightKg,form.finishedOutputQuantity,form.finishedOutputUnit], () => {if (form.finishedOutputUnit === 'kg') form.finishedOutputQuantity = form.finishedOutputWeightKg;}, {flush:'pre'});
 const materialCategoryOptions = [
   { label: "原料", value: "RAW" },
   { label: "辅料", value: "AUXILIARY" },
@@ -475,6 +477,7 @@ function buildMaterials(): ExperimentMaterial[] {
     .filter((item) => item.materialName.trim())
     .map((item, index) => ({
       stage: categoryLabel(item.materialCategory),
+      id:item.id,
       sequence: index + 1,
       catalogMaterialId:item.catalogMaterialId,catalogSpecification:item.catalogSpecification,catalogUnit:item.catalogUnit,refreshCatalogSnapshot:item.refreshCatalogSnapshot,
       materialCode: item.materialCode.trim() || undefined,
@@ -566,6 +569,7 @@ async function resetAndLoad(taskId: string, generation: number) {
       || (/酱汁|复合调味/.test(loadedDetail.project?.productType || "") ? "TOTAL_PICKING_WEIGHT" : "SELECTED_PRIMARY_MATERIALS");
     if (loadedDetail.currentExperimentForm?.materials?.length) {
       materials.value = loadedDetail.currentExperimentForm.materials.map(item => ({
+        id:item.id,
         catalogMaterialId:item.catalogMaterialId,catalogSpecification:item.catalogSpecification,catalogUnit:item.catalogUnit,
         key: rowKey++, materialCategory: item.materialCategory ?? categoryFromStage(item.stage),
         primaryMaterial: item.primaryMaterial ?? false, materialCode: item.materialCode || "",
@@ -742,6 +746,7 @@ async function saveDraft(options: { silent?: boolean } = {}) {
   saving.value = true;
   draftSyncState.value = "syncing";
   try {
+    const submittedRows = materials.value.filter(item=>item.materialName.trim()).map(item=>({...item}));
     const saved = await api.task.saveExperimentDraft(taskId, {
       operatorName: auth.displayName,
       summary: buildSummary(),
@@ -754,6 +759,11 @@ async function saveDraft(options: { silent?: boolean } = {}) {
     });
     if (!requestGeneration.isCurrent(generation) || taskId !== activeTaskId.value) return false;
     detail.value = { ...detail.value!, currentExperimentForm: saved };
+    if (!hasProcessPlanData.value) materials.value.forEach(row=>{
+      const index=submittedRows.findIndex(item=>item.key===row.key);
+      const ack=saved.materials?.find(item=>item.sequence===index+1);
+      if(index>=0&&ack)Object.assign(row,mergeMaterialAcknowledgement(row,submittedRows[index]!,ack));
+    });
     if (processPlan.value.majorProcesses.length) {
       await nextTick();
       if (!requestGeneration.isCurrent(generation)) return false;

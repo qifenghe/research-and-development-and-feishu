@@ -105,10 +105,12 @@ import { useAuthStore } from "../stores/auth";
 import { api } from "../services/api";
 import { commitLatestRouteRequest } from "./latestRouteRequest";
 import MaterialPicker from '../components/MaterialPicker.vue';
-import {selectCatalogMaterial,type MaterialCatalogItem} from '@rnd/shared';
+import {selectCatalogMaterial,mergeMaterialAcknowledgement,type MaterialCatalogItem} from '@rnd/shared';
 
 type Phase = "arrange" | "execute" | "readonly";
 type EditableMaterial = {
+  id?:string;
+  selectionToken?:string;
   refreshCatalogSnapshot?:boolean;
   catalogMaterialId?:string;
   catalogSpecification?:string;
@@ -199,6 +201,7 @@ function applyDetail(data:RndTaskDetailView){
   else if(/酱汁|复合调味/.test(data.project?.productType||"")){yieldCalculationMode.value="TOTAL_PICKING_WEIGHT"}
   if(existing?.materials?.length){
     const savedMaterials=existing.materials.map(item=>({
+    id:item.id,
     catalogMaterialId:item.catalogMaterialId,catalogSpecification:item.catalogSpecification,catalogUnit:item.catalogUnit,
     materialCategory:item.materialCategory??categoryFromStage(item.stage),
     primaryMaterial:item.primaryMaterial??false,
@@ -319,7 +322,7 @@ function formulaRatioAt(index:number){
 }
 
 function chooseMaterial(row:EditableMaterial,item:MaterialCatalogItem){Object.assign(row,selectCatalogMaterial(row,item));}
-function buildMaterials():ExperimentMaterial[]{return materials.value.filter(item=>item.materialName.trim()).map((item,index)=>({stage:categoryLabel(item.materialCategory),sequence:index+1,materialCode:item.materialCode.trim()||undefined,materialName:item.materialName.trim(),weightKg:Number(item.weightKg||0),utilizationRate:Number(item.utilizationRate||100)/100,materialCategory:item.materialCategory,primaryMaterial:item.materialCategory==="RAW"&&item.primaryMaterial,inputUnit:"kg",remark:item.remark.trim()||undefined,catalogMaterialId:item.catalogMaterialId,catalogSpecification:item.catalogSpecification,catalogUnit:item.catalogUnit,refreshCatalogSnapshot:item.refreshCatalogSnapshot}))}
+function buildMaterials():ExperimentMaterial[]{return materials.value.filter(item=>item.materialName.trim()).map((item,index)=>({id:item.id,stage:categoryLabel(item.materialCategory),sequence:index+1,materialCode:item.materialCode.trim()||undefined,materialName:item.materialName.trim(),weightKg:Number(item.weightKg||0),utilizationRate:Number(item.utilizationRate||100)/100,materialCategory:item.materialCategory,primaryMaterial:item.materialCategory==="RAW"&&item.primaryMaterial,inputUnit:"kg",remark:item.remark.trim()||undefined,catalogMaterialId:item.catalogMaterialId,catalogSpecification:item.catalogSpecification,catalogUnit:item.catalogUnit,refreshCatalogSnapshot:item.refreshCatalogSnapshot}))}
 
 function validateFinishedOutputQuantity(){
   if(form.finishedOutputUnit==='kg') return form.finishedOutputWeightKg===''?undefined:Number(form.finishedOutputWeightKg);
@@ -333,7 +336,7 @@ function changeOutputUnit(unit:FinishedOutputUnit){
   form.finishedOutputQuantity=next.quantity==null?'':String(next.quantity);
   form.finishedOutputUnit=unit;
 }
-watch(()=>form.finishedOutputWeightKg,value=>{if(form.finishedOutputUnit==='kg')form.finishedOutputQuantity=value;},{flush:'sync'});
+watch(()=>[form.finishedOutputWeightKg,form.finishedOutputQuantity,form.finishedOutputUnit],()=>{if(form.finishedOutputUnit==='kg')form.finishedOutputQuantity=form.finishedOutputWeightKg;},{flush:'pre'});
 
 function captureActionContext():ActionContext{
   return {taskId:activeTaskId.value,generation:routeRequestGeneration,formId:detail.value?.currentExperimentForm?.id||null,localDraftKey:localDraftKey.value,operatorName:auth.displayName};
@@ -382,9 +385,15 @@ async function saveDraft(options:{silent?:boolean;context?:ActionContext;payload
   if(form.finishedOutputQuantity!==""&&finishedOutputQuantity===undefined)return;
   const context=options.context??captureActionContext();
   const payload=options.payload??buildDraftPayload(finishedOutputQuantity);
+  const submittedRows=materials.value.filter(item=>item.materialName.trim()).map(row=>({row,snapshot:{...row}}));
   saving.value=true;
   draftSyncState.value="syncing";
-  try{const saved=await api.task.saveExperimentDraft(context.taskId,payload);if(!isActionContextCurrent(context))return false;detail.value={...detail.value!,currentExperimentForm:saved};draftSaved.value=true;draftSyncState.value="saved";writeExperimentDraft(localStorage,context.localDraftKey,draftSnapshot(),saved.savedAt);if(!options.silent)showSuccessToast("草稿已保存");return saved}
+  try{const saved=await api.task.saveExperimentDraft(context.taskId,payload);if(!isActionContextCurrent(context))return false;detail.value={...detail.value!,currentExperimentForm:saved};
+    for(const [index,sent] of submittedRows.entries()){
+      const ack=saved.materials?.find(item=>item.sequence===index+1);
+      if(ack&&materials.value.includes(sent.row))Object.assign(sent.row,mergeMaterialAcknowledgement(sent.row,sent.snapshot,ack));
+    }
+    draftSaved.value=true;draftSyncState.value="saved";writeExperimentDraft(localStorage,context.localDraftKey,draftSnapshot(),saved.savedAt);if(!options.silent)showSuccessToast("草稿已保存");return saved}
   catch(error){if(!isActionContextCurrent(context))return false;draftSyncState.value="error";persistLocalDraft();if(!options.silent)showFailToast(error instanceof Error?error.message:"保存失败");return false}
   finally{if(isActionContextCurrent(context,context.formId===null?null:context.formId))saving.value=false}
 }

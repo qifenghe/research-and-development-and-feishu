@@ -15,7 +15,7 @@ export class ProcessPlanSaveCoordinator<T> {
   private readonly options: {
     debounceMs: number;
     isDraft: (value: T) => boolean;
-    mergeAck: (local: T, acknowledgement: T) => T;
+    mergeAck: (local: T, acknowledgement: T, submitted: T) => T;
     formId?: string;
     save: (formId: string, value: T) => Promise<T>;
     onChange?: (value: T, state: ProcessPlanSaveState) => void;
@@ -25,7 +25,7 @@ export class ProcessPlanSaveCoordinator<T> {
   constructor(options: {
     debounceMs: number;
     isDraft: (value: T) => boolean;
-    mergeAck: (local: T, acknowledgement: T) => T;
+    mergeAck: (local: T, acknowledgement: T, submitted: T) => T;
     formId?: string;
     save: (formId: string, value: T) => Promise<T>;
     onChange?: (value: T, state: ProcessPlanSaveState) => void;
@@ -110,7 +110,7 @@ export class ProcessPlanSaveCoordinator<T> {
         const acknowledgement = await this.options.save(saveFormId!, snapshot);
         if (this.disposed || saveEpoch !== this.epoch || saveFormId !== this.formId) return;
         this.persistedGeneration = saveGeneration;
-        this.value = this.options.mergeAck(this.value, acknowledgement);
+        this.value = this.options.mergeAck(this.value, acknowledgement, snapshot);
         this.state = this.generation === saveGeneration ? "saved" : "dirty";
         this.publish();
       } catch (error) {

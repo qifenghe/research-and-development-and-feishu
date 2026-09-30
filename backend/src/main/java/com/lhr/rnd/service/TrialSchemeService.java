@@ -93,7 +93,7 @@ public class TrialSchemeService {
     public TrialScheme create(String formId, CreateCommand command, SessionPrincipal principal) {
         requireMutationAccess(formId, principal);
         if (command == null) throw invalid("TRIAL_REQUEST_REQUIRED", "试验方案请求不能为空");
-        var normalized = copyService.normalizeNew(materialReferences.resolvePlan(command.plan(), null), command.plannedData());
+        var normalized = copyService.normalizeNew(materialReferences.resolvePlan(command.plan(), processPlanService.find(formId)), command.plannedData());
         var id = "TRIAL-" + UUID.randomUUID();
         var now = LocalDateTime.now();
         var plan = trialPlan(normalized.plan(), formId);

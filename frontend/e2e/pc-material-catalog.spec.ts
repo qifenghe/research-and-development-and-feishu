@@ -12,7 +12,8 @@ test('administrator creates a classification and a material',async({page})=>{
  await material.getByRole('textbox').nth(0).fill(`QA-${stamp}`);await material.getByRole('textbox').nth(1).fill(`验收牛肉${stamp}`);
  await material.locator('.ant-select').first().click();await page.locator('.ant-select-item-option').filter({hasText:name}).click();
   await material.getByRole('button',{name:'OK',exact:true}).click();await expect(page.getByText(`验收牛肉${stamp}`,{exact:true})).toBeVisible();
- await page.screenshot({path:'test-results/material-catalog-admin.png',fullPage:true});
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ await page.screenshot({path:'test-results/material-catalog-admin.png',fullPage:true,animations:'disabled'});
 });
 test('assistant can maintain materials but cannot manage classification',async({page})=>{
  await login(page,'rnd_assistant');await expect(page.getByRole('button',{name:'新增物料',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'管理分类',exact:true})).toHaveCount(0);

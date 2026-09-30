@@ -76,6 +76,32 @@ async function mountView(aHasForm:boolean){
   return {api,router,view,setup,unmount:()=>app.unmount()};
 }
 
+test('mounted legacy save adopts server row ID and consumes one-time selection',async()=>{
+ const mounted=await mountView(true);
+ const row=mounted.setup.materials[0];
+ mounted.setup.chooseMaterial(row,{id:'MC1',code:'BEEF',name:'牛肉',category:'RAW',unit:'kg',status:'ACTIVE',version:0});
+ const saved=deferred<any>();let submitted:any;
+ mounted.api.task.saveExperimentDraft=async(_id:string,payload:any)=>{submitted=payload;return saved.promise};
+ const saving=mounted.setup.saveDraft({silent:true});await flush();
+ row.weightKg='12';
+ saved.resolve({...form('task-a'),materials:submitted.materials.map((item:any)=>({...item,id:'stable-row',refreshCatalogSnapshot:false}))});
+ await saving;await flush();
+ assert.equal(row.id,'stable-row');assert.equal(row.refreshCatalogSnapshot,false);assert.equal(row.weightKg,'12');
+ assert.equal(mounted.setup.buildMaterials()[0].id,'stable-row');
+ mounted.unmount();
+});
+
+test('restored kg state cannot retain a stale read-only bag count',async()=>{
+ const mounted=await mountView(true);
+ Object.assign(mounted.setup.form,{finishedOutputWeightKg:'12.345',finishedOutputQuantity:'178',finishedOutputUnit:'kg'});
+ await flush();assert.equal(mounted.setup.form.finishedOutputQuantity,'12.345');
+ Object.assign(mounted.setup.form,{finishedOutputWeightKg:'',finishedOutputQuantity:'178',finishedOutputUnit:'kg'});
+ await flush();assert.equal(mounted.setup.form.finishedOutputQuantity,'');
+ Object.assign(mounted.setup.form,{finishedOutputWeightKg:'10',finishedOutputQuantity:'20',finishedOutputUnit:'袋'});
+ await flush();assert.equal(mounted.setup.form.finishedOutputQuantity,'20');
+ mounted.unmount();
+});
+
 test("mounted A upload stops after deferred draft save when the memory router reuses the view for B",async()=>{
   const mounted=await mountView(false);const save=deferred<any>();const uploads:string[]=[];
   mounted.api.task.saveExperimentDraft=async(taskId:string)=>{assert.equal(taskId,"task-a");return save.promise};

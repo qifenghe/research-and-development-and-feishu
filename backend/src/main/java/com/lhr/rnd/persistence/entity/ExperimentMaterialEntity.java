@@ -52,6 +52,7 @@ public class ExperimentMaterialEntity {
     @Column(name = "catalog_specification") private String catalogSpecification;
     @Column(name = "catalog_unit") private String catalogUnit;
 
+    public String getId() { return id; }
     public String getCatalogMaterialId() { return catalogMaterialId; }
     public String getCatalogSpecification() { return catalogSpecification; }
     public String getCatalogUnit() { return catalogUnit; }

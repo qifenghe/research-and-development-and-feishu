@@ -14,13 +14,13 @@
 </template>
 <script setup lang="ts">
 import {computed,onBeforeUnmount,ref,watch} from 'vue';
-import {classificationOptions,materialLinkLabel,LatestMaterialQuery,type MaterialCatalogItem,type MaterialClassification,type MaterialIdentity} from '@rnd/shared';
+import {classificationOptions,materialLinkLabel,LatestMaterialQuery,loadIngredientOptions,type MaterialCatalogItem,type MaterialClassification,type MaterialIdentity} from '@rnd/shared';
 import {client} from '../services/api';
 const props=defineProps<{currentMaterial:MaterialIdentity;readonly?:boolean}>();const emit=defineEmits<{select:[item:MaterialCatalogItem]}>();
 const open=ref(false),query=ref(''),classificationId=ref(''),page=ref(1),total=ref(0),busy=ref(false),error=ref(''),items=ref<MaterialCatalogItem[]>([]),categories=ref<MaterialClassification[]>([]),gate=new LatestMaterialQuery();
 const options=computed(()=>classificationOptions(categories.value.filter(c=>c.businessType!=='PACKAGING')));
 function show(){if(props.readonly)return;open.value=true;query.value='';classificationId.value='';page.value=1;void load();}
-async function load(){busy.value=true;error.value='';const q=new URLSearchParams({query:query.value,classificationId:classificationId.value,page:String(page.value),size:'20',status:'ACTIVE',ingredientsOnly:'true'});try{await gate.run(async()=>({data:await client.get<{items:MaterialCatalogItem[];total:number}>(`/materials?${q}`),classes:await client.get<MaterialClassification[]>('/material-classifications')}),r=>{items.value=r.data.items;total.value=r.data.total;categories.value=r.classes;busy.value=false;});}catch(e){busy.value=false;error.value=e instanceof Error?e.message:'加载失败';}}
+async function load(){busy.value=true;error.value='';const q=new URLSearchParams({query:query.value,classificationId:classificationId.value,page:String(page.value),size:'20',status:'ACTIVE',ingredientsOnly:'true'});try{await gate.run(()=>loadIngredientOptions(()=>client.get<{items:MaterialCatalogItem[];total:number}>(`/materials?${q}`),()=>client.get<MaterialClassification[]>('/material-classifications')),r=>{items.value=r.data.items;total.value=r.data.total;categories.value=r.categories;busy.value=false;});}catch(e){busy.value=false;error.value=e instanceof Error?e.message:'加载失败';}}
 function search(){page.value=1;void load();}function choose(item:MaterialCatalogItem){if(props.readonly)return;emit('select',item);open.value=false;gate.invalidate();}
 watch(()=>props.currentMaterial,()=>{open.value=false;gate.invalidate();});onBeforeUnmount(()=>gate.invalidate());
 </script>

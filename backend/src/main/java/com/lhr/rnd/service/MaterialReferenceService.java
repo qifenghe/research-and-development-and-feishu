@@ -40,12 +40,16 @@ public class MaterialReferenceService {
    incoming.balanceToleranceKg(),incoming.legacy(),incoming.sourceRevisionId(),incoming.changeReason());
  }
  public List<com.lhr.rnd.model.ExperimentMaterial> resolveLegacy(List<com.lhr.rnd.model.ExperimentMaterial> incoming,List<com.lhr.rnd.model.ExperimentMaterial> persisted){
+  var usedIds=new java.util.HashSet<String>();
   return values(incoming).stream().map(m->{
-   var old=values(persisted).stream().filter(p->p.sequence()==m.sequence()).findFirst().orElse(null);
+   var old=m.id()==null?null:values(persisted).stream().filter(p->Objects.equals(p.id(),m.id())).findFirst().orElse(null);
+   // Only a row belonging to this form can carry an existing identity forward.
+   var rowId=old==null?java.util.UUID.randomUUID().toString().replace("-", ""):old.id();
+   if(!usedIds.add(rowId))throw invalid("投料行重复，请刷新后重试");
    var ref=resolveForSave(new Reference(m.catalogMaterialId(),m.materialCode(),m.materialName(),m.catalogSpecification(),m.catalogUnit()),
     old==null||m.refreshCatalogSnapshot()?null:new Reference(old.catalogMaterialId(),old.materialCode(),old.materialName(),old.catalogSpecification(),old.catalogUnit()));
    return new com.lhr.rnd.model.ExperimentMaterial(m.stage(),m.sequence(),ref.code(),ref.name(),m.weightKg(),m.utilizationRate(),m.remark(),
-    m.materialCategory(),m.primaryMaterial(),m.formulaRatio(),m.inputUnit(),ref.catalogMaterialId(),ref.specification(),ref.unit());
+    m.materialCategory(),m.primaryMaterial(),m.formulaRatio(),m.inputUnit(),ref.catalogMaterialId(),ref.specification(),ref.unit(),false,rowId);
   }).toList();
  }
  public ProcessPlan.StepMaterial resolveMaterial(ProcessPlan.StepMaterial m,ProcessPlan.StepMaterial persisted){

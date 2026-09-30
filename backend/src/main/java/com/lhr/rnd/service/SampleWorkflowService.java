@@ -1553,7 +1553,7 @@ public class SampleWorkflowService {
                         Boolean.TRUE.equals(material.getPrimaryMaterial()),
                         material.getFormulaRatio(),
                         material.getInputUnit() == null ? "kg" : material.getInputUnit(),
-                        material.getCatalogMaterialId(), material.getCatalogSpecification(), material.getCatalogUnit()
+                        material.getCatalogMaterialId(), material.getCatalogSpecification(), material.getCatalogUnit(), false, material.getId()
                 ))
                 .toList();
         var processSteps = experimentProcessRepository == null
@@ -2765,7 +2765,7 @@ public class SampleWorkflowService {
                         material.primaryMaterial(),
                         null,
                         material.inputUnit() == null ? "kg" : material.inputUnit(),
-                        material.catalogMaterialId(), material.catalogSpecification(), material.catalogUnit(), material.refreshCatalogSnapshot()
+                        material.catalogMaterialId(), material.catalogSpecification(), material.catalogUnit(), material.refreshCatalogSnapshot(), material.id()
                 ))
                 .toList();
     }
@@ -2837,7 +2837,7 @@ public class SampleWorkflowService {
                         material.materialCategory(),
                         material.primaryMaterial(),
                         formulaRatio(material.weightKg(), formulaInputWeight),
-                        material.inputUnit(), material.catalogMaterialId(), material.catalogSpecification(), material.catalogUnit()
+                        material.inputUnit(), material.catalogMaterialId(), material.catalogSpecification(), material.catalogUnit(), false, material.id()
                 ))
                 .toList();
     }
@@ -2914,7 +2914,7 @@ public class SampleWorkflowService {
         var materialEntities = new ArrayList<ExperimentMaterialEntity>();
         for (var material : draft.materials()) {
             materialEntities.add(new ExperimentMaterialEntity(
-                    "%s-M%04d".formatted(draft.id(), material.sequence()),
+                    material.id() == null ? UUID.randomUUID().toString().replace("-", "") : material.id(),
                     draft.id(),
                     material.stage(),
                     material.sequence(),

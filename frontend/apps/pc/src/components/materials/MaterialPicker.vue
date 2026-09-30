@@ -17,7 +17,7 @@
 </template>
 <script setup lang="ts">
 import {computed,onBeforeUnmount,ref,watch} from 'vue';
-import {classificationOptions,LatestMaterialQuery,type MaterialCatalogItem,type MaterialClassification,type MaterialIdentity} from '@rnd/shared';
+import {classificationOptions,LatestMaterialQuery,loadIngredientOptions,type MaterialCatalogItem,type MaterialClassification,type MaterialIdentity} from '@rnd/shared';
 import {materialCatalogApi} from '../../services/materialCatalogApi';
 const props=defineProps<{currentMaterial?:MaterialIdentity;readonly?:boolean}>();
 const emit=defineEmits<{select:[item:MaterialCatalogItem]}>();
@@ -26,7 +26,7 @@ const items=ref<MaterialCatalogItem[]>([]),classifications=ref<MaterialClassific
 const options=computed(()=>classificationOptions(classifications.value.filter(c=>c.businessType!=='PACKAGING')));
 const columns=[{title:'编码',dataIndex:'code'},{title:'名称',dataIndex:'name'},{title:'规格',dataIndex:'specification'},{title:'单位',dataIndex:'unit'},{title:'',key:'action',width:70}];
 async function show(){if(props.readonly)return;open.value=true;page.value=1;query.value='';classificationId.value=undefined;await load();}
-async function load(){busy.value=true;error.value='';try{await gate.run(async()=>({data:await materialCatalogApi.list({query:query.value,classificationId:classificationId.value,page:page.value,size:20,status:'ACTIVE',ingredientsOnly:'true'}),categories:await materialCatalogApi.classifications()}),r=>{items.value=r.data.items;total.value=r.data.total;canCreate.value=!!r.data.access?.create;classifications.value=r.categories;busy.value=false;});}catch(e){busy.value=false;error.value=e instanceof Error?e.message:'物料加载失败';}}
+async function load(){busy.value=true;error.value='';try{await gate.run(()=>loadIngredientOptions(()=>materialCatalogApi.list({query:query.value,classificationId:classificationId.value,page:page.value,size:20,status:'ACTIVE',ingredientsOnly:'true'}),()=>materialCatalogApi.classifications()),r=>{items.value=r.data.items;total.value=r.data.total;canCreate.value=!!r.data.access?.create;classifications.value=r.categories;busy.value=false;});}catch(e){busy.value=false;error.value=e instanceof Error?e.message:'物料加载失败';}}
 function search(){page.value=1;void load();}
 function paginationChanged(p:{current?:number}){page.value=p.current||1;void load();}
 function choose(item:MaterialCatalogItem){if(props.readonly)return;emit('select',item);open.value=false;gate.invalidate();}

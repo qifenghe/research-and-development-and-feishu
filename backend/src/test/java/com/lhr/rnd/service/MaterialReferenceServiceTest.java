@@ -6,6 +6,15 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class MaterialReferenceServiceTest {
+ @Test void deletingFirstLegacyRowRetainsRemainingSnapshotByIdentity() throws Exception {
+  var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+  mapper.disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+  var first=mapper.readValue("{\"id\":\"row-a\",\"sequence\":1,\"catalogMaterialId\":\"MC1\",\"materialName\":\"最早快照\"}",com.lhr.rnd.model.ExperimentMaterial.class);
+  var second=mapper.readValue("{\"id\":\"row-b\",\"sequence\":2,\"catalogMaterialId\":\"MC1\",\"materialName\":\"保留快照\"}",com.lhr.rnd.model.ExperimentMaterial.class);
+  var incoming=mapper.readValue("{\"id\":\"row-b\",\"sequence\":1,\"catalogMaterialId\":\"MC1\",\"materialName\":\"客户端\"}",com.lhr.rnd.model.ExperimentMaterial.class);
+  assertThat(service.resolveLegacy(java.util.List.of(incoming),java.util.List.of(first,second)).get(0).materialName()).isEqualTo("保留快照");
+  verifyNoInteractions(catalog);
+ }
  @Test void intermediateDoesNotRequireCatalog(){
   var m=new com.lhr.rnd.model.ProcessPlan.StepMaterial("m",1,"PRIMARY",null,"切块牛肉","SOLID",java.math.BigDecimal.TEN,null,null,
    "STEP_OUTPUT","out",null,null,"MC1","错误规格","kg");
