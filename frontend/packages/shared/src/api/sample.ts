@@ -1,11 +1,12 @@
 import type { ApiClient } from "./client";
+import type { SampleRequestTemplateFields } from "../sample-request-template";
 import type {
   PagedResult,
   SampleRequest,
   StoppedSampleProjectView,
 } from "../types";
 
-export interface CreateSampleRequestPayload {
+export interface CreateSampleRequestPayload extends SampleRequestTemplateFields {
   productName: string;
   productType: string;
   customerName: string;

@@ -75,6 +75,17 @@ export interface FeishuLoginResult extends AuthLoginResult {
 }
 
 export interface SampleRequest {
+  referenceSampleProvided?: boolean | null;
+  cutShape?: string | null;
+  mainMaterialRequirement?: string | null;
+  textureRequirement?: string | null;
+  packagingRequirement?: string | null;
+  storageRequirement?: string | null;
+  customerTargetPrice?: string | null;
+  monthlyDemand?: string | null;
+  specialRequirements?: string | null;
+  referenceMarketPrice?: string | null;
+  additionalNotes?: string | null;
   id: string;
   sampleNo: string;
   productName: string;

@@ -11,3 +11,4 @@ export * from "./pricing-basis";
 export * from "./material-catalog";
 export * from "./material-save-ack";
 export * from "./finished-output";
+export * from "./sample-request-template";
