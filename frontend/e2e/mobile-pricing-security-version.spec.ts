@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
+import {templateRequirementFixture} from './sample-request-fixture';
 
 const API_BASE_URL = process.env.BACKEND_BASE_URL ?? "http://127.0.0.1:8080";
 
@@ -7,7 +8,7 @@ type LockedVersion = { projectId: string; versionId: string; testAssignmentId: s
 
 async function api(
   request: APIRequestContext,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PUT",
   path: string,
   options: { token?: string; data?: unknown } = {},
 ) {
@@ -37,6 +38,7 @@ async function createTestableVersion(
     token: sessions.assistant.token,
     data: {
       productName: `H5核价安全回归${suffix}`,
+      ...templateRequirementFixture,
       productType: "冷冻即热菜",
       customerName: "闭环验收客户",
       specification: "500g/袋",
@@ -86,6 +88,23 @@ async function createTestableVersion(
     },
   });
   expect(draft.response).toBeOK();
+
+  // Current workflow requires a formally submitted process before test handoff.
+  // Read an existing catalog reference; do not create or change real materials.
+  const catalog = await api(request, "GET", "/api/v1/materials?category=RAW&size=1", {token:sessions.engineer.token});
+  expect(catalog.response).toBeOK();
+  const material=catalog.body.data.items[0];expect(material).toBeTruthy();
+  const planPath=`/api/v1/experiment-forms/${draft.body.data.id}/process-plan`;
+  const current=await api(request,"GET",planPath,{token:sessions.engineer.token});expect(current.response).toBeOK();
+  const saved=await api(request,"PUT",planPath,{token:sessions.engineer.token,data:{
+    ...current.body.data,majorProcesses:[{sequence:1,processCode:'COOK',processName:'软件验收熟制',yieldBasis:'PRIMARY_INPUT',inputs:[],outputs:[],steps:[{
+      sequence:1,stepCode:'COOK',stepName:'软件验收熟制',stepType:'NORMAL',equipment:'验收设备',instruction:'仅用于软件流程验收，不作为生产工艺',parameters:[],controlPoints:[],
+      materials:[{sequence:1,materialRole:'PRIMARY',sourceType:'EXTERNAL',catalogMaterialId:material.id,materialCode:material.code,materialName:material.name,materialState:'SOLID',weightKg:10}],
+      outputs:[{sequence:1,outputType:'FINISHED',outputName:'软件验收成品',materialState:'SOLID',weightKg:10,primaryOutput:true,continueFlow:false}]
+    }]}]
+  }});expect(saved.response).toBeOK();
+  const formal=await api(request,"POST",planPath+'/submit',{token:sessions.engineer.token,data:{versionNo:saved.body.data.versionNo,confirmed:true,changeReason:'核价安全回归准备'}});
+  expect(formal.response).toBeOK();
 
   const submitted = await api(request, "POST", `/api/v1/experiment-forms/${draft.body.data.id}/submit-test`, {
     token: sessions.engineer.token,
@@ -137,6 +156,18 @@ test("H5 sessions enforce pricing review gates and preserve pricing versions", a
   });
   expect(unauthorizedReview.response.status()).toBe(403);
   expect(unauthorizedReview.body.code).toBe("SESSION_ROLE_FORBIDDEN");
+
+  const basisPath=`/api/v1/pricing-files/${first.body.data.id}/basis`;
+  const basis=await api(request,'GET',basisPath,{token:sessions.engineer.token});expect(basis.response).toBeOK();
+  const source=basis.body.data.source;
+  const savedBasis=await api(request,'PUT',basisPath,{token:sessions.engineer.token,data:{expectedVersion:basis.body.data.version,draft:{
+    ...source,header:{...source.header,specification:'500g/袋，20袋/箱',ownerName:sessions.engineer.name,authorName:sessions.engineer.name,category:'软件验收',documentNumber:'E2E-'+suffix,effectiveDate:'2026-09-30'},
+    materials:source.materials.map((m:any)=>({...m,weightBasis:'AFTER_PROCESS',utilizationRate:1,confirmationBasis:'软件回归确认'})),
+    mainScopeBasis:'软件回归主料范围确认',unitWeightKg:0.5,bagsPerBox:20,
+    packaging:source.packaging.map((p:any)=>({...p,quantityUnit:p.quantityUnit||'个',adjustmentReason:'软件回归单位确认'}))
+  }}});expect(savedBasis.response).toBeOK();
+  const confirmedBasis=await api(request,'POST',basisPath+'/confirm',{token:sessions.engineer.token,data:{expectedVersion:savedBasis.body.data.version}});expect(confirmedBasis.response).toBeOK();
+  const generated=await api(request,'POST',basisPath+'/generate',{token:sessions.engineer.token,data:{expectedVersion:confirmedBasis.body.data.version}});expect(generated.response).toBeOK();
 
   const rejected = await api(request, "POST", `/api/v1/pricing-files/${first.body.data.id}/review`, {
     token: sessions.engineer.token,

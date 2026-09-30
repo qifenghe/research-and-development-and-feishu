@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {templateRequirementFixture} from './sample-request-fixture';
 const base=process.env.PC_BASE_URL??'http://127.0.0.1:5193';
 test('kg weight saves reloads and switching to bags clears counted quantity',async({page,request})=>{
   async function call(actor:any,method:string,path:string,data?:unknown){
@@ -7,7 +8,7 @@ test('kg weight saves reloads and switching to bags clears counted quantity',asy
   }
   const login=(username:string)=>call(null,'POST','/auth/login',{username,password:'123456'});
   const assistant=await login('rnd_assistant'),director=await login('rnd_director'),engineer=await login('rnd_engineer');
-  const req=await call(assistant,'POST','/sample-requests',{productName:`kg浏览器验收-${Date.now()}`,productType:'预制菜',customerName:'内部验收',specification:'散装kg',applicationScenario:'软件验收',flavorRequirement:'软件验收，非生产数据',creatorName:assistant.user.name});
+  const req=await call(assistant,'POST','/sample-requests',{...templateRequirementFixture,productName:`kg浏览器验收-${Date.now()}`,productType:'预制菜',customerName:'内部验收',specification:'散装kg',applicationScenario:'软件验收',flavorRequirement:'软件验收，非生产数据',creatorName:assistant.user.name});
   const approved=await call(director,'POST',`/sample-requests/${req.id}/approve`,{reviewerName:director.user.name});
   const task=approved.task;
   await call(director,'POST',`/rnd-tasks/${task.id}/assign`,{assigneeName:engineer.user.name,productOwnerName:engineer.user.name,dueDate:'2026-12-31'});

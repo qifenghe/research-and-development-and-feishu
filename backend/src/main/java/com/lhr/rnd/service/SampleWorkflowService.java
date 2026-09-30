@@ -3734,6 +3734,13 @@ public class SampleWorkflowService {
         String additionalNotes
     ) {
         public CreateSampleRequestCommand {
+            productName=com.lhr.rnd.domain.SampleRequirementValidation.text(productName,"产品名称",true,200);
+            customerName=com.lhr.rnd.domain.SampleRequirementValidation.text(customerName,"客户名称",true,200);
+            specification=com.lhr.rnd.domain.SampleRequirementValidation.text(specification,"产品规格",true,100);
+            productType=com.lhr.rnd.domain.SampleRequirementValidation.text(productType,"产品类型",true,100);
+            creatorName=com.lhr.rnd.domain.SampleRequirementValidation.text(creatorName,"申请人",true,100);
+            applicationScenario=com.lhr.rnd.domain.SampleRequirementValidation.text(applicationScenario,"应用场景",true,500);
+            flavorRequirement=com.lhr.rnd.domain.SampleRequirementValidation.text(flavorRequirement,"味型",true,500);
             if(referenceSampleProvided==null)throw new BusinessException("SAMPLE_REQUIREMENT_REQUIRED","请填写是否提供标样");
             cutShape=com.lhr.rnd.domain.SampleRequirementValidation.text(cutShape,"块型",true);
             mainMaterialRequirement=com.lhr.rnd.domain.SampleRequirementValidation.text(mainMaterialRequirement,"主要原料要求",true);

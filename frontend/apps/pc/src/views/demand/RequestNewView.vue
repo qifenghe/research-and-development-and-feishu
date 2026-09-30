@@ -9,7 +9,7 @@
      <a-col v-for="field in group.fields" :key="field.key" :xs="24" :md="field.key==='specialRequirements'||field.key==='additionalNotes'?24:12">
       <a-form-item :label="field.label" :name="field.key" :required="field.required" :validate-status="errors[field.key]?'error':undefined" :help="errors[field.key]">
        <a-radio-group v-if="field.key==='referenceSampleProvided'" v-model:value="form.referenceSampleProvided"><a-radio :value="true">是</a-radio><a-radio :value="false">否</a-radio></a-radio-group>
-       <a-textarea v-else v-model:value="form[field.key]" :placeholder="field.placeholder" :auto-size="{minRows:1,maxRows:5}" :maxlength="2000" />
+       <a-textarea v-else v-model:value="form[field.key]" :placeholder="field.placeholder" :auto-size="{minRows:1,maxRows:5}" :maxlength="sampleRequestMaxLength(field.key)" />
       </a-form-item>
      </a-col>
     </a-row>
@@ -24,7 +24,7 @@
 </template>
 <script setup lang="ts">
 import {reactive,ref,watch} from 'vue';
-import {emptySampleRequestTemplate,sampleRequestTemplateGroups,validateSampleRequestTemplate} from '@rnd/shared';
+import {emptySampleRequestTemplate,sampleRequestTemplateGroups,validateSampleRequestTemplate,sampleRequestMaxLength} from '@rnd/shared';
 import {useAuthStore} from '../../stores/auth';
 import {api} from '../../services/api';
 const auth=useAuthStore(),loading=ref(false),submitError=ref(''),success=ref(false);
@@ -34,6 +34,7 @@ watch(form,()=>{
  if(!Object.keys(errors.value).length)return;
  const current=validateSampleRequestTemplate(form);
  if(!form.productType.trim())current.productType='请填写产品类型';
+ else if(form.productType.trim().length>100)current.productType='产品类型不能超过100字';
  errors.value=Object.fromEntries(Object.keys(errors.value).filter(key=>current[key]).map(key=>[key,current[key]]));
  if(!Object.keys(errors.value).length)submitError.value='';
 });
@@ -41,6 +42,7 @@ async function submit(){
  if(loading.value)return;
  errors.value=validateSampleRequestTemplate(form);
  if(!form.productType.trim())errors.value.productType='请填写产品类型';
+ else if(form.productType.trim().length>100)errors.value.productType='产品类型不能超过100字';
  submitError.value='';success.value=false;
  if(Object.keys(errors.value).length){submitError.value='请补充或修正标出的项目';return;}
  loading.value=true;

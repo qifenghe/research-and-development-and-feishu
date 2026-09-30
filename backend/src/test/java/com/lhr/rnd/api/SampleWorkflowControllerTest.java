@@ -124,6 +124,20 @@ class SampleWorkflowControllerTest {
         value.put("additionalNotes","字".repeat(2000));
         mockMvc.perform(post("/api/v1/sample-requests").contentType(MediaType.APPLICATION_JSON).content(value.toString())).andExpect(status().isOk());
     }
+    @Test void legacyTemplateFieldLimitsMatchPersistence() throws Exception {
+        var limits=java.util.Map.of("productName",200,"customerName",200,"specification",100,"applicationScenario",500,"flavorRequirement",500,"productType",100);
+        for(var entry:limits.entrySet()) {
+            var value=templateRequest();value.put(entry.getKey(),"字".repeat(entry.getValue()+1));
+            mockMvc.perform(post("/api/v1/sample-requests").contentType(MediaType.APPLICATION_JSON).content(value.toString()))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("SAMPLE_REQUIREMENT_TOO_LONG"));
+            value.put(entry.getKey(),"字".repeat(entry.getValue()));
+            var created=mockMvc.perform(post("/api/v1/sample-requests").contentType(MediaType.APPLICATION_JSON).content(value.toString()))
+                .andExpect(status().isOk()).andReturn();
+            var id=objectMapper.readTree(created.getResponse().getContentAsString()).at("/data/id").asText();
+            mockMvc.perform(post("/api/v1/sample-requests/{id}/approve",id).contentType(MediaType.APPLICATION_JSON).content("{\"reviewerName\":\"赵总监\"}"))
+                .andExpect(status().isOk());
+        }
+    }
     @Test void kgPricingBasisDoesNotTreatWeightAsActualBags() throws Exception {
         var versionId=createLockedSampleVersion("张研发",true);
         var pricingId=createPricingDraft(versionId);

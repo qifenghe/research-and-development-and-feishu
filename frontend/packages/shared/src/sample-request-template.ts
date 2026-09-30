@@ -17,6 +17,10 @@ export interface SampleRequestTemplateFields {
  additionalNotes: string;
 }
 export interface SampleRequestField {key:keyof SampleRequestTemplateFields;label:string;placeholder:string;required:boolean}
+export function sampleRequestMaxLength(key:keyof SampleRequestTemplateFields):number {
+ const limits:Partial<Record<keyof SampleRequestTemplateFields,number>>={productName:200,customerName:200,specification:100,applicationScenario:500,flavorRequirement:500};
+ return limits[key]??2000;
+}
 export const sampleRequestTemplateGroups:Array<{title:string;fields:SampleRequestField[]}>=[
   {
     "title": "基本信息",
@@ -143,7 +147,7 @@ export function validateSampleRequestTemplate(value:SampleRequestTemplateFields)
   if(field.key==='referenceSampleProvided'){if(typeof raw!=='boolean')errors[field.key]='请选择是否提供标样';continue;}
   const text=typeof raw==='string'?raw.trim():'';
   if(field.required&&!text)errors[field.key]='请填写'+field.label;
-  else if(text.length>2000)errors[field.key]=field.label+'不能超过2000字';
+  else if(text.length>sampleRequestMaxLength(field.key))errors[field.key]=field.label+'不能超过'+sampleRequestMaxLength(field.key)+'字';
  }
  return errors;
 }

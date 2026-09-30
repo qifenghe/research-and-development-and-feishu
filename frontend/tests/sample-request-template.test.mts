@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {emptySampleRequestTemplate,validateSampleRequestTemplate,sampleRequestTemplateGroups} from '../packages/shared/src/sample-request-template.ts';
+test('legacy fields reject values beyond persisted capacities',()=>{
+ const limits={productName:200,customerName:200,specification:100,applicationScenario:500,flavorRequirement:500};
+ for(const [key,max] of Object.entries(limits)){
+  const form=emptySampleRequestTemplate();form[key]='字'.repeat(max+1);
+  assert.match(validateSampleRequestTemplate(form)[key]??'',new RegExp(String(max)));
+  form[key]='字'.repeat(max);assert.equal(validateSampleRequestTemplate(form)[key],undefined);
+ }
+});
 test('blank defaults require all fourteen answers and never submit examples',()=>{
  const form=emptySampleRequestTemplate();assert.equal(form.referenceSampleProvided,null);
  assert.equal(Object.keys(validateSampleRequestTemplate(form)).length,14);
