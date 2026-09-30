@@ -90,7 +90,8 @@ public class FeedbackDemoSeedService {
                 specification,
                 "餐饮渠道试吃",
                 "香卤风味",
-                ASSISTANT
+                ASSISTANT,
+                false,"演示块型","演示主料要求","演示口感","演示包装","冷冻","演示目标价格","演示月需求量","无",null,null
         ));
         var approved = workflowService.approveRequest(request.id(), DIRECTOR);
         var taskId = approved.task().id();

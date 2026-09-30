@@ -9,6 +9,17 @@ public record CreateSampleRequestRequest(
         @NotBlank String specification,
         @NotBlank String applicationScenario,
         @NotBlank String flavorRequirement,
-        @NotBlank String creatorName
+        @NotBlank String creatorName,
+        Boolean referenceSampleProvided,
+        String cutShape,
+        String mainMaterialRequirement,
+        String textureRequirement,
+        String packagingRequirement,
+        String storageRequirement,
+        String customerTargetPrice,
+        String monthlyDemand,
+        String specialRequirements,
+        String referenceMarketPrice,
+        String additionalNotes
 ) {
 }

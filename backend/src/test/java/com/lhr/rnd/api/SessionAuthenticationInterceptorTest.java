@@ -678,7 +678,10 @@ class SessionAuthenticationInterceptorTest {
                   "specification": "500g/袋",
                   "applicationScenario": "商超零售冷冻即热，家庭复热即食",
                   "flavorRequirement": "香卤风味，微辣，复热后卤香明显",
-                  "creatorName": "研发内勤"
+                  "creatorName": "研发内勤",
+                  "referenceSampleProvided": false, "cutShape": "块状", "mainMaterialRequirement": "牛腩",
+                  "textureRequirement": "软烂", "packagingRequirement": "真空袋", "storageRequirement": "冷冻",
+                  "customerTargetPrice": "18元/袋，未税", "monthlyDemand": "3吨/月", "specialRequirements": "无"
                 }
                 """;
     }

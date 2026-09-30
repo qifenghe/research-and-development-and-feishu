@@ -1,0 +1,11 @@
+alter table sample_request add column reference_sample_provided boolean;
+alter table sample_request add column cut_shape varchar(2000);
+alter table sample_request add column main_material_requirement varchar(2000);
+alter table sample_request add column texture_requirement varchar(2000);
+alter table sample_request add column packaging_requirement varchar(2000);
+alter table sample_request add column storage_requirement varchar(2000);
+alter table sample_request add column customer_target_price varchar(2000);
+alter table sample_request add column monthly_demand varchar(2000);
+alter table sample_request add column special_requirements varchar(2000);
+alter table sample_request add column reference_market_price varchar(2000);
+alter table sample_request add column additional_notes varchar(2000);

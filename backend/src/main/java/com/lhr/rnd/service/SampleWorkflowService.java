@@ -372,7 +372,8 @@ public class SampleWorkflowService {
                 command.flavorRequirement(),
                 command.creatorName(),
                 SampleStatus.PENDING_REVIEW,
-                now()
+                now(),
+                command.referenceSampleProvided(), command.cutShape(), command.mainMaterialRequirement(), command.textureRequirement(), command.packagingRequirement(), command.storageRequirement(), command.customerTargetPrice(), command.monthlyDemand(), command.specialRequirements(), command.referenceMarketPrice(), command.additionalNotes()
         );
 
         requests.put(request.id(), request);
@@ -399,7 +400,8 @@ public class SampleWorkflowService {
                 request.flavorRequirement(),
                 request.creatorName(),
                 projectStatus,
-                request.createdAt()
+                request.createdAt(),
+                request.referenceSampleProvided(), request.cutShape(), request.mainMaterialRequirement(), request.textureRequirement(), request.packagingRequirement(), request.storageRequirement(), request.customerTargetPrice(), request.monthlyDemand(), request.specialRequirements(), request.referenceMarketPrice(), request.additionalNotes()
         );
         var project = new SampleProject(
                 nextAvailableId("PROJ", projects.size() + 1, projects, sampleProjectRepository),
@@ -1443,7 +1445,7 @@ public class SampleWorkflowService {
     private SampleRequest hydrateRequest(SampleRequestEntity entity) {
         return new SampleRequest(entity.id(), entity.sampleNo(), entity.productName(), entity.productType(),
                 entity.customerName(), entity.specification(), entity.applicationScenario(), entity.flavorRequirement(),
-                entity.creatorName(), SampleStatus.valueOf(entity.status()), entity.createdAt());
+                entity.creatorName(), SampleStatus.valueOf(entity.status()), entity.createdAt(), entity.referenceSampleProvided(), entity.cutShape(), entity.mainMaterialRequirement(), entity.textureRequirement(), entity.packagingRequirement(), entity.storageRequirement(), entity.customerTargetPrice(), entity.monthlyDemand(), entity.specialRequirements(), entity.referenceMarketPrice(), entity.additionalNotes());
     }
 
     private void restoreTaskCache() {
@@ -2646,7 +2648,8 @@ public class SampleWorkflowService {
                 request.flavorRequirement(),
                 request.creatorName(),
                 request.status().name(),
-                request.createdAt()
+                request.createdAt(),
+                request.referenceSampleProvided(), request.cutShape(), request.mainMaterialRequirement(), request.textureRequirement(), request.packagingRequirement(), request.storageRequirement(), request.customerTargetPrice(), request.monthlyDemand(), request.specialRequirements(), request.referenceMarketPrice(), request.additionalNotes()
         ));
     }
 
@@ -3708,8 +3711,32 @@ public class SampleWorkflowService {
             String specification,
             String applicationScenario,
             String flavorRequirement,
-            String creatorName
+            String creatorName,
+        Boolean referenceSampleProvided,
+        String cutShape,
+        String mainMaterialRequirement,
+        String textureRequirement,
+        String packagingRequirement,
+        String storageRequirement,
+        String customerTargetPrice,
+        String monthlyDemand,
+        String specialRequirements,
+        String referenceMarketPrice,
+        String additionalNotes
     ) {
+        public CreateSampleRequestCommand {
+            if(referenceSampleProvided==null)throw new BusinessException("SAMPLE_REQUIREMENT_REQUIRED","请填写是否提供标样");
+            cutShape=com.lhr.rnd.domain.SampleRequirementValidation.text(cutShape,"块型",true);
+            mainMaterialRequirement=com.lhr.rnd.domain.SampleRequirementValidation.text(mainMaterialRequirement,"主要原料要求",true);
+            textureRequirement=com.lhr.rnd.domain.SampleRequirementValidation.text(textureRequirement,"口感",true);
+            packagingRequirement=com.lhr.rnd.domain.SampleRequirementValidation.text(packagingRequirement,"包装要求",true);
+            storageRequirement=com.lhr.rnd.domain.SampleRequirementValidation.text(storageRequirement,"储存方式",true);
+            customerTargetPrice=com.lhr.rnd.domain.SampleRequirementValidation.text(customerTargetPrice,"客户目标价格",true);
+            monthlyDemand=com.lhr.rnd.domain.SampleRequirementValidation.text(monthlyDemand,"需求量（每月）",true);
+            specialRequirements=com.lhr.rnd.domain.SampleRequirementValidation.text(specialRequirements,"其他特殊要求",true);
+            referenceMarketPrice=com.lhr.rnd.domain.SampleRequirementValidation.text(referenceMarketPrice,"行情/参考价格",false);
+            additionalNotes=com.lhr.rnd.domain.SampleRequirementValidation.text(additionalNotes,"其他补充说明",false);
+        }
     }
 
     public record SaveExperimentDraftCommand(

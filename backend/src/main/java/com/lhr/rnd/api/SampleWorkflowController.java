@@ -62,7 +62,8 @@ public class SampleWorkflowController {
                 request.specification(),
                 request.applicationScenario(),
                 request.flavorRequirement(),
-                request.creatorName()
+                request.creatorName(),
+                request.referenceSampleProvided(), request.cutShape(), request.mainMaterialRequirement(), request.textureRequirement(), request.packagingRequirement(), request.storageRequirement(), request.customerTargetPrice(), request.monthlyDemand(), request.specialRequirements(), request.referenceMarketPrice(), request.additionalNotes()
         ));
         return ApiResponse.success(created);
     }

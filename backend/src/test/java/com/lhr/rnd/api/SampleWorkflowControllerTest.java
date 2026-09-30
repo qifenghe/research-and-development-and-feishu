@@ -66,6 +66,58 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class SampleWorkflowControllerTest {
+    private com.fasterxml.jackson.databind.node.ObjectNode templateRequest() throws Exception {
+        return (com.fasterxml.jackson.databind.node.ObjectNode)objectMapper.readTree("""
+        {"productName":"模板验收","productType":"预制菜","customerName":"客户","specification":"500g/袋，10袋/件",
+         "applicationScenario":"餐饮","flavorRequirement":"香辣","creatorName":"研发内勤",
+         "referenceSampleProvided":false,"cutShape":"20×30×40 mm","mainMaterialRequirement":"牛腩，肥瘦2:8",
+         "textureRequirement":"软烂","packagingRequirement":"真空袋","storageRequirement":"冷冻",
+         "customerTargetPrice":"18元/袋，未税","monthlyDemand":"3吨/月","specialRequirements":"无",
+         "referenceMarketPrice":" ","additionalNotes":" 两行\\n说明 "}
+        """);
+    }
+    @Test void templateFieldsRoundTripThroughApproval() throws Exception {
+        var response=mockMvc.perform(post("/api/v1/sample-requests").contentType(MediaType.APPLICATION_JSON).content(templateRequest().toString()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.referenceSampleProvided").value(false))
+            .andExpect(jsonPath("$.data.cutShape").value("20×30×40 mm"))
+            .andExpect(jsonPath("$.data.referenceMarketPrice").isEmpty())
+            .andExpect(jsonPath("$.data.additionalNotes").value("两行\n说明")).andReturn();
+        var id=objectMapper.readTree(response.getResponse().getContentAsString()).at("/data/id").asText();
+        mockMvc.perform(post("/api/v1/sample-requests/{id}/approve",id).contentType(MediaType.APPLICATION_JSON).content("{\"reviewerName\":\"研发总监\"}"))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/sample-requests/{id}",id)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.customerTargetPrice").value("18元/袋，未税"))
+            .andExpect(jsonPath("$.data.monthlyDemand").value("3吨/月"));
+        assertThat(jdbcTemplate.queryForObject("select cut_shape from sample_request where id=?",String.class,id)).isEqualTo("20×30×40 mm");
+        ((java.util.Map<?,?>)org.springframework.test.util.ReflectionTestUtils.getField(workflowService,"requests")).remove(id);
+        mockMvc.perform(get("/api/v1/sample-requests/{id}",id)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.referenceSampleProvided").value(false))
+            .andExpect(jsonPath("$.data.cutShape").value("20×30×40 mm"))
+            .andExpect(jsonPath("$.data.storageRequirement").value("冷冻"));
+    }
+    @Test void historicalNullRequirementsStillApprove() throws Exception {
+        var id=createPendingSampleRequest();
+        jdbcTemplate.update("update sample_request set reference_sample_provided=null,cut_shape=null,main_material_requirement=null,texture_requirement=null,packaging_requirement=null,storage_requirement=null,customer_target_price=null,monthly_demand=null,special_requirements=null where id=?",id);
+        ((java.util.Map<?,?>)org.springframework.test.util.ReflectionTestUtils.getField(workflowService,"requests")).remove(id);
+        mockMvc.perform(post("/api/v1/sample-requests/{id}/approve",id).contentType(MediaType.APPLICATION_JSON).content("{\"reviewerName\":\"研发总监\"}"))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/sample-requests/{id}",id)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.referenceSampleProvided").isEmpty()).andExpect(jsonPath("$.data.cutShape").isEmpty());
+    }
+    @Test void newRequestRejectsMissingTemplateFields() throws Exception {
+        for(var field:java.util.List.of("referenceSampleProvided","cutShape","mainMaterialRequirement","textureRequirement","packagingRequirement","storageRequirement","customerTargetPrice","monthlyDemand","specialRequirements")){
+            var payload=templateRequest();payload.remove(field);
+            mockMvc.perform(post("/api/v1/sample-requests").contentType(MediaType.APPLICATION_JSON).content(payload.toString())).andExpect(status().isBadRequest());
+        }
+        var blank=templateRequest();blank.put("cutShape","  ");
+        mockMvc.perform(post("/api/v1/sample-requests").contentType(MediaType.APPLICATION_JSON).content(blank.toString())).andExpect(status().isBadRequest());
+    }
+    @Test void templateTextLengthLimit() throws Exception {
+        var value=templateRequest();value.put("additionalNotes","字".repeat(2001));
+        mockMvc.perform(post("/api/v1/sample-requests").contentType(MediaType.APPLICATION_JSON).content(value.toString())).andExpect(status().isBadRequest());
+        value.put("additionalNotes","字".repeat(2000));
+        mockMvc.perform(post("/api/v1/sample-requests").contentType(MediaType.APPLICATION_JSON).content(value.toString())).andExpect(status().isOk());
+    }
     @Test void kgPricingBasisDoesNotTreatWeightAsActualBags() throws Exception {
         var versionId=createLockedSampleVersion("张研发",true);
         var pricingId=createPricingDraft(versionId);
@@ -3333,7 +3385,10 @@ class SampleWorkflowControllerTest {
                   "specification": "500g/袋",
                   "applicationScenario": "商超零售冷冻即热，家庭复热即食",
                   "flavorRequirement": "香卤风味，微辣，复热后卤香明显",
-                  "creatorName": "研发内勤"
+                  "creatorName": "研发内勤",
+                  "referenceSampleProvided": false, "cutShape": "块状", "mainMaterialRequirement": "牛腩",
+                  "textureRequirement": "软烂", "packagingRequirement": "真空袋", "storageRequirement": "冷冻",
+                  "customerTargetPrice": "18元/袋，未税", "monthlyDemand": "3吨/月", "specialRequirements": "无"
                 }
                 """;
 
