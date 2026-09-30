@@ -75,4 +75,5 @@ public class SampleProjectEntity {
     public void updateStatus(String status) {
         this.status = status;
     }
+    public String requestId() { return requestId; }
 }

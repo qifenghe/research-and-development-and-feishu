@@ -18,6 +18,7 @@
 
         <a-row :gutter="16">
           <a-col :span="15">
+            <a-card v-if="detail.sourceRequest" title="原始产品需求" class="page-card"><RequestRequirementSummary :request="detail.sourceRequest" /></a-card>
             <a-card title="样品项目" class="page-card">
               <a-descriptions bordered size="small" :column="2">
                 <a-descriptions-item v-for="row in summaryRows" :key="row.label" :label="row.label">
@@ -121,6 +122,7 @@ import {
 import TaskWorkflowPanel from "../../components/TaskWorkflowPanel.vue";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
+import RequestRequirementSummary from '../../components/requests/RequestRequirementSummary.vue';
 import { useAdminContext } from "../../composables/adminContext";
 
 const route = useRoute();

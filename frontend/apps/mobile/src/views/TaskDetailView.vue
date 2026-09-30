@@ -11,6 +11,7 @@
 
       <template v-else>
         <InfoCard title="样品信息" :rows="detailFields" />
+        <section v-if="detail?.sourceRequest" class="mobile-detail-block"><h2>原始产品需求</h2><RequestRequirementSummary :request="detail.sourceRequest" /></section>
 
         <div v-if="assigneeHint" class="mobile-detail-block">
           <p>{{ assigneeHint }}</p>
@@ -88,6 +89,7 @@ import InfoCard from "../components/InfoCard.vue";
 import FixedActionBar from "../components/FixedActionBar.vue";
 import { useAuthStore } from "../stores/auth";
 import { api } from "../services/api";
+import RequestRequirementSummary from '../components/RequestRequirementSummary.vue';
 
 const route = useRoute();
 const router = useRouter();

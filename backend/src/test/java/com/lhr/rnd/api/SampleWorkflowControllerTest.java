@@ -104,6 +104,12 @@ class SampleWorkflowControllerTest {
         mockMvc.perform(get("/api/v1/sample-requests/{id}",id)).andExpect(status().isOk())
             .andExpect(jsonPath("$.data.referenceSampleProvided").isEmpty()).andExpect(jsonPath("$.data.cutShape").isEmpty());
     }
+    @Test void approvedTaskIncludesSourceRequirements() throws Exception {
+        var taskId=createApprovedRequest();
+        mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail",taskId).param("role","RND_DIRECTOR"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.sourceRequest.referenceSampleProvided").value(false))
+            .andExpect(jsonPath("$.data.sourceRequest.monthlyDemand").value("3吨/月"));
+    }
     @Test void newRequestRejectsMissingTemplateFields() throws Exception {
         for(var field:java.util.List.of("referenceSampleProvided","cutShape","mainMaterialRequirement","textureRequirement","packagingRequirement","storageRequirement","customerTargetPrice","monthlyDemand","specialRequirements")){
             var payload=templateRequest();payload.remove(field);

@@ -9,6 +9,7 @@ public record RndTaskDetailView(
         ExperimentForm currentExperimentForm,
         TestAssignment currentTestAssignment,
         List<DetailFieldGroup> fieldGroups,
-        List<DetailAction> availableActions
+        List<DetailAction> availableActions,
+        SampleRequest sourceRequest
 ) {
 }

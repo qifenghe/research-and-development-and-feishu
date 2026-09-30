@@ -907,8 +907,17 @@ public class SampleWorkflowService {
                 currentExperimentForm,
                 currentTestAssignment,
                 detailFieldGroups(task, version, currentExperimentForm, currentTestAssignment),
-                detailActions(task, currentExperimentForm, currentTestAssignment, role, operatorName)
+                detailActions(task, currentExperimentForm, currentTestAssignment, role, operatorName),
+                sourceRequestForTask(task)
         );
+    }
+
+    private SampleRequest sourceRequestForTask(RndTask task) {
+        if(sampleProjectRepository==null||sampleRequestRepository==null)return null;
+        return sampleProjectRepository.findById(task.projectId())
+                .map(SampleProjectEntity::requestId)
+                .flatMap(sampleRequestRepository::findById)
+                .map(this::hydrateRequest).orElse(null);
     }
 
     private ExperimentForm formalExperimentFormOrNull(ExperimentForm draft, TestAssignment assignment) {

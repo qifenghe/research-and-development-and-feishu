@@ -9,6 +9,7 @@
         :loading="loading"
         :custom-row="customRow"
       >
+        <template #expandedRowRender="{record}"><RequestRequirementSummary :request="record" /></template>
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
             <a-tag>{{ SAMPLE_STATUS_LABELS[record.status as keyof typeof SAMPLE_STATUS_LABELS] ?? record.status }}</a-tag>
@@ -29,6 +30,7 @@ import { message } from "ant-design-vue";
 import { canPerformAction, SAMPLE_STATUS_LABELS, type SampleRequest } from "@rnd/shared";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
+import RequestRequirementSummary from '../../components/requests/RequestRequirementSummary.vue';
 import { createDemandRowProps } from "./demand-row-navigation";
 
 const auth = useAuthStore();
@@ -42,7 +44,7 @@ const columns = [
   { title: "产品", dataIndex: "productName", key: "productName" },
   { title: "客户", dataIndex: "customerName", key: "customerName" },
   { title: "应用场景", dataIndex: "applicationScenario", key: "applicationScenario", ellipsis: true },
-  { title: "口味/风味要求", dataIndex: "flavorRequirement", key: "flavorRequirement", ellipsis: true },
+  { title: "味型", dataIndex: "flavorRequirement", key: "flavorRequirement", ellipsis: true },
   { title: "申请人", dataIndex: "creatorName", key: "creatorName" },
   { title: "状态", key: "status" },
   { title: "操作", key: "action" },

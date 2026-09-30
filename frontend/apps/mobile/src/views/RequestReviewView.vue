@@ -20,6 +20,7 @@
           <p><strong>口味/风味：</strong>{{ request.flavorRequirement }}</p>
           <p><strong>申请人：</strong>{{ request.creatorName }}</p>
         </div>
+        <details class="mobile-detail-block"><summary>查看完整产品需求</summary><RequestRequirementSummary :request="request" /></details>
         <van-button
           v-if="canApprove"
           block
@@ -44,6 +45,7 @@ import PageHeader from "../components/PageHeader.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import { useAuthStore } from "../stores/auth";
 import { api } from "../services/api";
+import RequestRequirementSummary from '../components/RequestRequirementSummary.vue';
 
 const auth = useAuthStore();
 const canApprove = computed(() => canPerformAction(auth.role, "APPROVE_REQUEST"));

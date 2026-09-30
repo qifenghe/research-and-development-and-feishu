@@ -9,13 +9,11 @@
       <a-descriptions bordered :column="2">
         <a-descriptions-item label="样品编号">{{ detail.sampleNo }}</a-descriptions-item>
         <a-descriptions-item label="产品类型">{{ detail.productType }}</a-descriptions-item>
-        <a-descriptions-item label="客户">{{ detail.customerName }}</a-descriptions-item>
-        <a-descriptions-item label="规格">{{ detail.specification }}</a-descriptions-item>
-        <a-descriptions-item label="应用场景">{{ detail.applicationScenario }}</a-descriptions-item>
-        <a-descriptions-item label="风味要求">{{ detail.flavorRequirement }}</a-descriptions-item>
         <a-descriptions-item label="申请人">{{ detail.creatorName }}</a-descriptions-item>
         <a-descriptions-item label="创建时间">{{ detail.createdAt }}</a-descriptions-item>
       </a-descriptions>
+      <a-divider />
+      <RequestRequirementSummary :request="detail" />
     </a-card>
   </div>
 </template>
@@ -25,6 +23,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { SampleRequest } from "@rnd/shared";
 import { api } from "../../services/api";
+import RequestRequirementSummary from '../../components/requests/RequestRequirementSummary.vue';
 
 const route = useRoute();
 const router = useRouter();

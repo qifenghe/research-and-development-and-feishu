@@ -285,6 +285,7 @@ export interface SampleProjectSummary {
 }
 
 export interface RndTaskDetailView {
+  sourceRequest?: SampleRequest | null;
   task: RndTask;
   version: SampleVersion;
   project: SampleProjectSummary | null;
