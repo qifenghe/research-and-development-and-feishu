@@ -3,7 +3,7 @@
   <a-page-header title="录入样品需求" sub-title="按产品需求填报表填写；其他特殊要求如无，请填写“无”" />
   <a-alert v-if="submitError" type="error" :message="submitError" show-icon />
   <a-alert v-if="success" type="success" message="需求已提交，等待研发总监审核" show-icon />
-  <a-form layout="vertical" :model="form" @finish="submit">
+  <a-form layout="vertical" :model="form" @finish="submit" @finishFailed="submit">
    <a-card v-for="group in sampleRequestTemplateGroups" :key="group.title" :title="group.title">
     <a-row :gutter="[24,0]">
      <a-col v-for="field in group.fields" :key="field.key" :xs="24" :md="field.key==='specialRequirements'||field.key==='additionalNotes'?24:12">
@@ -23,13 +23,20 @@
  </div>
 </template>
 <script setup lang="ts">
-import {reactive,ref} from 'vue';
+import {reactive,ref,watch} from 'vue';
 import {emptySampleRequestTemplate,sampleRequestTemplateGroups,validateSampleRequestTemplate} from '@rnd/shared';
 import {useAuthStore} from '../../stores/auth';
 import {api} from '../../services/api';
 const auth=useAuthStore(),loading=ref(false),submitError=ref(''),success=ref(false);
 const errors=ref<Record<string,string>>({});
 const form=reactive({...emptySampleRequestTemplate(),productType:'',creatorName:auth.displayName});
+watch(form,()=>{
+ if(!Object.keys(errors.value).length)return;
+ const current=validateSampleRequestTemplate(form);
+ if(!form.productType.trim())current.productType='请填写产品类型';
+ errors.value=Object.fromEntries(Object.keys(errors.value).filter(key=>current[key]).map(key=>[key,current[key]]));
+ if(!Object.keys(errors.value).length)submitError.value='';
+});
 async function submit(){
  if(loading.value)return;
  errors.value=validateSampleRequestTemplate(form);

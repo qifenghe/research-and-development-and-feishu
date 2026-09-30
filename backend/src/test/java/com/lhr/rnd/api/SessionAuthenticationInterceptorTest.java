@@ -338,6 +338,12 @@ class SessionAuthenticationInterceptorTest {
 
             var tester = tokenFor("已提交测试查看", "ou_formal_detail_submitted", "TESTER");
             assignRevisionToTester(formId, revision.id(), "ou_formal_detail_submitted", "已提交测试查看");
+            var otherTester = tokenFor("其他需求查看测试", "ou_other_requirement_tester", "TESTER");
+            mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
+                            .header("Authorization", "Bearer " + otherTester))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("TEST_ASSIGNMENT_TESTER_MISMATCH"))
+                    .andExpect(jsonPath("$.data.sourceRequest").doesNotExist());
             mockMvc.perform(get("/api/v1/rnd-tasks/{id}/detail", taskId)
                             .header("Authorization", "Bearer " + tester))
                     .andExpect(status().isOk())

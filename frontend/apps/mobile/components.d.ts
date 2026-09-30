@@ -15,6 +15,7 @@ declare module 'vue' {
     PageHeader: typeof import('./src/components/PageHeader.vue')['default']
     ProcessHierarchyReadonly: typeof import('./src/components/ProcessHierarchyReadonly.vue')['default']
     ProcessStepEditor: typeof import('./src/components/ProcessStepEditor.vue')['default']
+    RequestRequirementSummary: typeof import('./src/components/RequestRequirementSummary.vue')['default']
     RoleEntryGrid: typeof import('./src/components/RoleEntryGrid.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
