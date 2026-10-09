@@ -7,6 +7,9 @@ import router from "./router";
 import { setUnauthorizedHandler } from "./services/api";
 import { useAuthStore } from "./stores/auth";
 import "./styles/global.css";
+import "./styles/longhui.css";
+import "./styles/business.css";
+import "./styles/paper.css";
 
 const app = createApp(App);
 const pinia = createPinia();

@@ -59,7 +59,9 @@ public class TrialSchemeCopyService {
                         ids.id("TMAT", material.id()), material.sequence(), material.materialRole(), material.materialCode(), material.materialName(),
                         material.materialState(), includeActuals ? material.weightKg() : null, material.formulaMaterialId(), material.remark(),
                         material.sourceType(), ids.reference(material.sourceStepOutputId()), material.additionTiming(), material.additionMethod(),
-                        material.catalogMaterialId(), material.catalogSpecification(), material.catalogUnit())).toList();
+                        material.catalogMaterialId(), material.catalogSpecification(), material.catalogUnit(),false,
+                        ids.temporaryId(material.temporaryMaterialId()),material.temporaryClassificationId(),material.temporarySpecification(),
+                        includeActuals?material.quantity():null,material.quantityUnit())).toList();
                 var outputs = values(step.outputs()).stream().map(output -> new ProcessPlan.StepOutput(
                         ids.id("TOUT", output.id()), output.sequence(), output.outputType(), output.outputName(), output.materialState(),
                         includeActuals ? output.weightKg() : null, output.primaryOutput(), output.continueFlow(), output.remark())).toList();
@@ -296,6 +298,7 @@ public class TrialSchemeCopyService {
 
     private static final class Remapper {
         private final Map<String, String> ids = new HashMap<>();
+        private final Map<String, String> temporaryIds = new HashMap<>();
         private final Set<String> outputReferences = new HashSet<>();
         private final Set<String> materialReferences = new HashSet<>();
         private final Set<String> seen = new HashSet<>();
@@ -316,6 +319,11 @@ public class TrialSchemeCopyService {
         }
 
         String planId() { return planId; }
+
+        String temporaryId(String sourceId) {
+            if(blank(sourceId))return null;
+            return temporaryIds.computeIfAbsent(sourceId,key->!replaceAll&&persistedIds.contains("TEMP:"+key)?key:newId("TMP"));
+        }
 
         String id(String prefix, String sourceId) {
             if (blank(sourceId)) return newId(prefix);
@@ -385,6 +393,7 @@ public class TrialSchemeCopyService {
                 for (var step : values(major.steps())) {
                     if (!blank(step.id())) result.add(step.id());
                     for (var material : values(step.materials())) if (!blank(material.id())) result.add(material.id());
+                    for (var material : values(step.materials())) if (!blank(material.temporaryMaterialId())) result.add("TEMP:"+material.temporaryMaterialId());
                     for (var output : values(step.outputs())) if (!blank(output.id())) result.add(output.id());
                     for (var point : values(step.controlPoints())) {
                         if (!blank(point.id())) result.add(point.id());

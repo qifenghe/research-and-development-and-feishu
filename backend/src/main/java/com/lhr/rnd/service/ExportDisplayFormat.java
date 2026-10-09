@@ -11,7 +11,7 @@ public final class ExportDisplayFormat {
     public static final String CJK_FONT = "Arial Unicode MS";
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Map<String, String> MATERIAL_ROLES = Map.of(
-            "PRIMARY", "主料", "AUXILIARY", "辅料", "PROCESS_WATER", "工艺用水");
+            "PRIMARY", "主料", "AUXILIARY", "辅料", "PROCESS_WATER", "工艺用水", "PACKAGING", "包装物");
     private static final Map<String, String> MATERIAL_STATES = Map.ofEntries(
             Map.entry("SOLID", "固态"), Map.entry("LIQUID", "液态"), Map.entry("POWDER", "粉状"),
             Map.entry("FROZEN_SOLID", "冷冻固态"), Map.entry("SEMI_SOLID", "半固态"),

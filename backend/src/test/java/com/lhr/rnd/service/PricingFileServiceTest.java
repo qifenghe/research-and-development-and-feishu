@@ -123,9 +123,9 @@ class PricingFileServiceTest {
         var revision = new ProcessRevision("FIXED", "P", "F", 2, null, null, "研发", "2026-09-22T10:00:00", "hash", view.snapshot());
         var result = new PricingFileService().generate(legacy, "V1", "LHYC", revision, view.packaging(), view.finishedQuantity(), null);
         try (var book = new XSSFWorkbook(new ByteArrayInputStream(result.content()))) {
-            assertThat(book.getSheetAt(0).getRow(6).getCell(1).getStringCellValue()).isEqualTo("BEEF");
-            assertThat(book.getSheetAt(0).getRow(6).getCell(4).getNumericCellValue()).isEqualTo(100);
-            assertThat(book.getSheetAt(2).getRow(6).getCell(2).getNumericCellValue()).isEqualTo(74);
+            assertThat(book.getSheetAt(0).getRow(11).getCell(3).getStringCellValue()).isEqualTo("BEEF");
+            assertThat(book.getSheetAt(0).getRow(11).getCell(5).getNumericCellValue()).isEqualTo(100);
+            assertThat(book.getSheetAt(0).getRow(39).getCell(5).getNumericCellValue()).isEqualTo(74);
         }
     }
 

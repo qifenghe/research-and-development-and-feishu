@@ -65,6 +65,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@org.springframework.context.annotation.Import(IntakeTestSessionConfiguration.class)
 class SampleWorkflowControllerTest {
     private com.fasterxml.jackson.databind.node.ObjectNode templateRequest() throws Exception {
         return (com.fasterxml.jackson.databind.node.ObjectNode)objectMapper.readTree("""
@@ -144,6 +145,19 @@ class SampleWorkflowControllerTest {
         var source=workflowService.pricingBasis(pricingId,principal("张研发","RND_ENGINEER")).source();
         assertThat(source.finishedNetKg()).isEqualByComparingTo("12.345");
         assertThat(source.actualBags()).isNull();
+    }
+    @Test void pricingDraftTakesActualPackagingFromFormalProcessAndExcludesItFromFoodRows() throws Exception {
+        var versionId=createLockedSampleVersion();var formId=valueByColumn("experiment_form","version_id",versionId,"id");
+        var revisionId="PREV-PACK-"+java.util.UUID.randomUUID();insertFormalPricingRevision(formId,revisionId,1,"80");
+        var tree=objectMapper.readTree(jdbcTemplate.queryForObject("select snapshot_json from experiment_process_revision where id=?",String.class,revisionId));
+        ((com.fasterxml.jackson.databind.node.ArrayNode)tree.at("/majorProcesses/0/steps/0/materials")).add(objectMapper.readTree("""
+          {"id":"ACTUAL-BAG","sequence":2,"sourceType":"EXTERNAL","materialRole":"PACKAGING","materialCode":"REAL-BAG","materialName":"实际袋","quantity":277,"quantityUnit":"个"}
+          """));
+        var json=objectMapper.writeValueAsString(tree);
+        jdbcTemplate.update("update experiment_process_revision set snapshot_json=?,snapshot_hash=? where id=?",json,sha256(json),revisionId);
+        var pricingId=createPricingDraft(versionId);var basis=workflowService.pricingBasis(pricingId,principal("张研发","RND_ENGINEER")).source();
+        assertThat(basis.materials()).noneMatch(m->"PACKAGING".equals(m.role()));
+        assertThat(basis.packaging()).singleElement().satisfies(p->{assertThat(p.materialCode()).isEqualTo("REAL-BAG");assertThat(p.quantity()).isEqualByComparingTo("277");assertThat(p.quantityUnit()).isEqualTo("个");});
     }
     @Test void kgFinishedOutputPersistsDecimalsAndRejectsMismatch() throws Exception {
         var taskId=createApprovedRequest(); assignTask(taskId); acceptTask(taskId);
@@ -2264,7 +2278,8 @@ class SampleWorkflowControllerTest {
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(workflowService.downloadPricingFile(pricingId).content()))) {
             assertThat(workbook.getNumberOfSheets()).isEqualTo(1);
             var text=new StringBuilder(); for(var row:workbook.getSheetAt(0))for(var cell:row)text.append(new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(cell));
-            assertThat(text.toString()).contains("可分装成品净重：8.5", "参考包数");
+            assertThat(text.toString()).contains("研发部参考出成", "参考包数");
+            assertThat(workbook.getSheetAt(0).getRow(39).getCell(5).getNumericCellValue()).isEqualTo(8.5);
         }
     }
 
@@ -3661,8 +3676,8 @@ class SampleWorkflowControllerTest {
             var sheet = workbook.getSheetAt(0);
             assertThat(workbook.getNumberOfSheets()).isEqualTo(1);
             var found=false;
-            for(var row:sheet) if(row.getCell(0)!=null && "主料得率（%）".equals(new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(row.getCell(0)))) {
-                assertThat(workbook.getCreationHelper().createFormulaEvaluator().evaluate(row.getCell(6)).getNumberValue()).isCloseTo(new BigDecimal(finishedYield).doubleValue()/100,org.assertj.core.data.Offset.offset(.000001)); found=true;
+            for(var row:sheet) if(row.getCell(3)!=null && "肉的得率（%）".equals(new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(row.getCell(3)))) {
+                assertThat(workbook.getCreationHelper().createFormulaEvaluator().evaluate(row.getCell(5)).getNumberValue()).isCloseTo(new BigDecimal(finishedYield).doubleValue()/100,org.assertj.core.data.Offset.offset(.000001)); found=true;
             }
             assertThat(found).isTrue();
         }

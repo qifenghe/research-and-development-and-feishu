@@ -424,11 +424,12 @@ public class ProcessPlanService {
         for (int index = 0; index < materials.size(); index++) {
             var item = materials.get(index);
             requireNonNegative(item.weightKg());
-            jdbc.update("insert into experiment_step_material(id, minor_step_id, sequence, material_role, material_code, material_name, material_state, weight_kg, formula_material_id, remark, source_type, source_step_output_id, addition_timing, addition_method, catalog_material_id, catalog_specification, catalog_unit) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            requireNonNegative(item.quantity());
+            jdbc.update("insert into experiment_step_material(id, minor_step_id, sequence, material_role, material_code, material_name, material_state, weight_kg, formula_material_id, remark, source_type, source_step_output_id, addition_timing, addition_method, catalog_material_id, catalog_specification, catalog_unit,temporary_material_id,temporary_classification_id,temporary_specification,quantity,quantity_unit) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     preserveMaterialIds ? valueOr(item.id(), id("MAT")) : id("MAT"), stepId, index + 1, valueOr(item.materialRole(), "AUXILIARY"), item.materialCode(),
                     valueOr(item.materialName(), "未命名物料"), valueOr(item.materialState(), "SOLID"), item.weightKg(),
                     item.formulaMaterialId(), item.remark(), valueOr(item.sourceType(), "EXTERNAL"), item.sourceStepOutputId(), item.additionTiming(), item.additionMethod(),
-                    item.catalogMaterialId(), item.catalogSpecification(), item.catalogUnit());
+                    item.catalogMaterialId(), item.catalogSpecification(), item.catalogUnit(),item.temporaryMaterialId(),item.temporaryClassificationId(),item.temporarySpecification(),item.quantity(),item.quantityUnit());
         }
         var controlPoints = step.controlPoints() == null ? List.<ProcessPlan.ControlPoint>of() : step.controlPoints();
         for (int index = 0; index < controlPoints.size(); index++) {
@@ -476,7 +477,8 @@ public class ProcessPlanService {
                         item.getString("material_state"), item.getBigDecimal("weight_kg"),
                         item.getString("formula_material_id"), item.getString("remark"), item.getString("source_type"),
                         item.getString("source_step_output_id"), item.getString("addition_timing"), item.getString("addition_method"),
-                        item.getString("catalog_material_id"), item.getString("catalog_specification"), item.getString("catalog_unit")), stepId);
+                        item.getString("catalog_material_id"), item.getString("catalog_specification"), item.getString("catalog_unit"),false,
+                        item.getString("temporary_material_id"),item.getString("temporary_classification_id"),item.getString("temporary_specification"),item.getBigDecimal("quantity"),item.getString("quantity_unit")), stepId);
         var outputs = jdbc.query("select * from experiment_step_output where minor_step_id = ? order by sequence",
                 (item, row) -> new ProcessPlan.StepOutput(item.getString("id"), item.getInt("sequence"),
                         item.getString("output_type"), item.getString("output_name"), item.getString("material_state"),

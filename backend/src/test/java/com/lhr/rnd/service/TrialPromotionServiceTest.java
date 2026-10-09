@@ -33,6 +33,21 @@ class TrialPromotionServiceTest {
     @Autowired ProcessArtifactService artifacts;
     @Autowired MaterialCatalogService catalog;
 
+    @Test void promotedFinishedQuantityIsIndependentAndImmutable() {
+        var initial = confirm(create());
+        var saved = trials.save(form, initial.id(), new TrialSchemeService.SaveCommand(initial.versionNo(), initial.name(),
+                initial.purpose(), initial.variables(), initial.conclusion(), initial.recommendationReason(), initial.qualityScore(),
+                initial.qualityNotes(), initial.difficulty(), initial.plan(), initial.plannedData(),
+                new TrialScheme.FinishedOutput(new BigDecimal("277"),"袋","本方案成品")), owner);
+        var trial = confirm(saved);
+        var before = artifacts.trialView(form,trial.id(),trial.versionNo(),owner);
+        assertThat(before.finishedQuantity()).isNotNull();
+        assertThat(before.finishedQuantity().quantity()).isEqualByComparingTo("277");
+        var revision = promotion.submit(form,trial.id(),command(trial,preview(trial),true,"finished-snapshot"),owner);
+        jdbc.update("update experiment_form set finished_output_quantity=999 where id=?",form);
+        assertThat(artifacts.revisionView(form,revision.id(),owner).finishedQuantity().quantity()).isEqualByComparingTo("277");
+    }
+
     @Test void inactiveCatalogBlocksNewPromotionButNotArchivedRevisionRead() {
         var trial=confirm(create());
         var revision=promotion.submit(form,trial.id(),command(trial,preview(trial),true,"catalog-history"),owner);

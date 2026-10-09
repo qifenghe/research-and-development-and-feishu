@@ -54,22 +54,49 @@ public class MaterialReferenceService {
  }
  public ProcessPlan.StepMaterial resolveMaterial(ProcessPlan.StepMaterial m,ProcessPlan.StepMaterial persisted){
   boolean intermediate="STEP_OUTPUT".equals(m.sourceType());
-  var ref=intermediate?new Reference(null,m.materialCode(),m.materialName(),null,null):
-   resolveForSave(reference(m),m.refreshCatalogSnapshot()||persisted==null||"STEP_OUTPUT".equals(persisted.sourceType())?null:reference(persisted));
+  boolean packaging="PACKAGING".equals(m.materialRole());
+  if(packaging&&intermediate)throw invalid("包装物不可引用食品中间产物");
+  if(packaging&&(m.weightKg()!=null||m.quantity()!=null&&m.quantity().signum()<0))throw invalid("包装物请填写非负数量，不可填写食品重量");
+  if(!packaging&&(m.quantity()!=null||m.quantityUnit()!=null))throw invalid("原辅料请填写kg重量，不可填写包材数量");
+  var ref=intermediate?new Reference(null,null,m.materialName(),null,null):
+   resolveStepReference(m,m.refreshCatalogSnapshot()||persisted==null||!Objects.equals(m.materialRole(),persisted.materialRole())||"STEP_OUTPUT".equals(persisted.sourceType())?null:persisted);
+  if(packaging&&!List.of("个","张","只","袋","盒","箱","米").contains(m.quantityUnit()==null?ref.unit()==null?"":ref.unit():m.quantityUnit()))throw invalid("请选择包装数量单位");
+  if(packaging&&ref.catalogMaterialId()!=null&&m.quantityUnit()!=null&&!Objects.equals(m.quantityUnit(),ref.unit()))throw invalid("包装数量单位与物料库不一致");
   return new ProcessPlan.StepMaterial(m.id(),m.sequence(),m.materialRole(),ref.code(),ref.name(),m.materialState(),m.weightKg(),
-   m.formulaMaterialId(),m.remark(),m.sourceType(),intermediate?m.sourceStepOutputId():null,m.additionTiming(),m.additionMethod(),
-   ref.catalogMaterialId(),ref.specification(),ref.unit());
+   intermediate?null:m.formulaMaterialId(),m.remark(),m.sourceType(),intermediate?m.sourceStepOutputId():null,m.additionTiming(),m.additionMethod(),
+   ref.catalogMaterialId(),ref.specification(),ref.unit(),false,
+   intermediate||ref.catalogMaterialId()!=null?null:m.temporaryMaterialId(),
+   intermediate||ref.catalogMaterialId()!=null?null:m.temporaryClassificationId(),
+   intermediate||ref.catalogMaterialId()!=null?null:m.temporarySpecification(),
+   packaging?m.quantity():null,packaging?(ref.catalogMaterialId()!=null?ref.unit():m.quantityUnit()):null);
+ }
+ private Reference resolveStepReference(ProcessPlan.StepMaterial m,ProcessPlan.StepMaterial persisted){
+  if(!"PACKAGING".equals(m.materialRole()))return resolveForSave(reference(m),persisted==null?null:reference(persisted));
+  var incoming=reference(m);
+  if(incoming.catalogMaterialId()==null||incoming.catalogMaterialId().isBlank())return incoming;
+  if(persisted!=null&&Objects.equals(m.catalogMaterialId(),persisted.catalogMaterialId()))return reference(persisted);
+  var item=catalog.find(incoming.catalogMaterialId());requirePackaging(item);
+  return new Reference(item.id(),item.code(),item.name(),item.specification(),item.unit());
+ }
+ private void requireStepReference(ProcessPlan.StepMaterial m){
+  if(!"PACKAGING".equals(m.materialRole())){requireActiveReference(reference(m));return;}
+  if(m.catalogMaterialId()==null||m.catalogMaterialId().isBlank())throw invalid("包装物尚未关联物料库");
+  requirePackaging(catalog.find(m.catalogMaterialId()));
+  if(m.quantity()==null||m.quantity().signum()<0||!Objects.equals(m.quantityUnit(),m.catalogUnit()))throw invalid("包装数量或单位待完善");
+ }
+ private void requirePackaging(MaterialCatalogItem item){
+  if(!"ACTIVE".equals(item.status())||!"PACKAGING".equals(item.category()))throw invalid("请选择启用的包装物料");
  }
  public void requireActiveReferences(ProcessPlan plan){
   for(var major:values(plan.majorProcesses()))for(var step:values(major.steps()))for(var material:values(step.materials()))
-   if(!"STEP_OUTPUT".equals(material.sourceType()))requireActiveReference(reference(material));
+   if(!"STEP_OUTPUT".equals(material.sourceType()))requireStepReference(material);
  }
  public List<com.lhr.rnd.model.ProcessSubmissionCheck.Issue> submissionIssues(ProcessPlan plan){
   var issues=new java.util.ArrayList<com.lhr.rnd.model.ProcessSubmissionCheck.Issue>();
   if(plan==null)return issues;
   for(var major:values(plan.majorProcesses()))for(var step:values(major.steps()))for(var material:values(step.materials())){
    if("STEP_OUTPUT".equals(material.sourceType()))continue;
-   try {requireActiveReference(reference(material));}
+   try {requireStepReference(material);}
    catch(BusinessException e){issues.add(new com.lhr.rnd.model.ProcessSubmissionCheck.Issue("MATERIAL_REFERENCE_INVALID",
      material.materialName()+"："+e.getMessage(),major.sequence(),step.sequence()));}
   }

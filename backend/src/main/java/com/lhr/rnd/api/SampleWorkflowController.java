@@ -48,24 +48,16 @@ import java.util.List;
 @RequestMapping("/api/v1")
 public class SampleWorkflowController {
     private final SampleWorkflowService workflowService;
+    private final com.lhr.rnd.service.RequestIntakeService intake;
 
-    public SampleWorkflowController(SampleWorkflowService workflowService) {
+    public SampleWorkflowController(SampleWorkflowService workflowService, com.lhr.rnd.service.RequestIntakeService intake) {
         this.workflowService = workflowService;
+        this.intake = intake;
     }
 
     @PostMapping("/sample-requests")
-    public ApiResponse<SampleRequest> createSampleRequest(@Valid @RequestBody CreateSampleRequestRequest request) {
-        var created = workflowService.createRequest(new SampleWorkflowService.CreateSampleRequestCommand(
-                request.productName(),
-                request.productType(),
-                request.customerName(),
-                request.specification(),
-                request.applicationScenario(),
-                request.flavorRequirement(),
-                request.creatorName(),
-                request.referenceSampleProvided(), request.cutShape(), request.mainMaterialRequirement(), request.textureRequirement(), request.packagingRequirement(), request.storageRequirement(), request.customerTargetPrice(), request.monthlyDemand(), request.specialRequirements(), request.referenceMarketPrice(), request.additionalNotes()
-        ));
-        return ApiResponse.success(created);
+    public ApiResponse<?> createSampleRequest(@Valid @RequestBody CreateSampleRequestRequest request,HttpServletRequest http) {
+        return ApiResponse.success(intake.create(request.command(),sessionPrincipal(http)));
     }
 
     @GetMapping("/sample-requests")
@@ -74,12 +66,14 @@ public class SampleWorkflowController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
-            @RequestParam(required = false) String sort
+            @RequestParam(required = false) String sort,
+            HttpServletRequest http
     ) {
         if (page != null || size != null) {
-            return ApiResponse.success(workflowService.requests(status, keyword, page, size, sort));
+            var result=workflowService.requests(status, keyword, page, size, sort);
+            return ApiResponse.success(new com.lhr.rnd.model.PagedResult<>(result.items().stream().map(r->intake.view(r,sessionPrincipal(http))).toList(),result.total(),result.page(),result.size(),result.totalPages()));
         }
-        return ApiResponse.success(workflowService.requests(status, keyword));
+        return ApiResponse.success(workflowService.requests(status, keyword).stream().map(r->intake.view(r,sessionPrincipal(http))).toList());
     }
 
     @GetMapping("/dashboard/overview")
@@ -95,9 +89,20 @@ public class SampleWorkflowController {
     @PostMapping("/sample-requests/{id}/approve")
     public ApiResponse<ApproveSampleRequestResult> approveSampleRequest(
             @PathVariable String id,
-            @Valid @RequestBody ApproveSampleRequestRequest request
+            @Valid @RequestBody ApproveSampleRequestRequest request,
+            HttpServletRequest http
     ) {
-        return ApiResponse.success(workflowService.approveRequest(id, request.reviewerName()));
+        return ApiResponse.success(intake.approve(id, request.versionNo(),sessionPrincipal(http)));
+    }
+
+    @PostMapping("/sample-requests/{id}/reject")
+    public ApiResponse<?> rejectSampleRequest(@PathVariable String id,@Valid @RequestBody RejectSampleRequestRequest request,HttpServletRequest http) {
+        return ApiResponse.success(intake.reject(id,request.versionNo(),request.comment(),sessionPrincipal(http)));
+    }
+
+    @PutMapping("/sample-requests/{id}/resubmit")
+    public ApiResponse<?> resubmitSampleRequest(@PathVariable String id,@Valid @RequestBody ResubmitSampleRequestRequest request,HttpServletRequest http) {
+        return ApiResponse.success(intake.resubmit(id,request.versionNo(),request.request().command(),sessionPrincipal(http)));
     }
 
     @GetMapping("/rnd-tasks/pool")
@@ -419,8 +424,8 @@ public class SampleWorkflowController {
     }
 
     @GetMapping("/sample-requests/{id}")
-    public ApiResponse<SampleRequest> sampleRequestDetail(@PathVariable String id) {
-        return ApiResponse.success(workflowService.requestDetail(id));
+    public ApiResponse<?> sampleRequestDetail(@PathVariable String id,HttpServletRequest http) {
+        return ApiResponse.success(intake.view(workflowService.requestDetail(id),sessionPrincipal(http)));
     }
 
     @GetMapping("/sample-versions/{id}/archive-files")

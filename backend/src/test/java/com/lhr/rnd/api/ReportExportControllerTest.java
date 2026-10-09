@@ -26,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@org.springframework.context.annotation.Import(IntakeTestSessionConfiguration.class)
 class ReportExportControllerTest {
     @Autowired
     private MockMvc mockMvc;

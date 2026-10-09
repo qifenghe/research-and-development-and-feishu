@@ -15,6 +15,7 @@ export interface PagedResult<T> {
 export type SampleStatus =
   | "DRAFT"
   | "PENDING_REVIEW"
+  | "PENDING_ASSIGNMENT"
   | "APPROVED"
   | "REJECTED";
 
@@ -75,6 +76,11 @@ export interface FeishuLoginResult extends AuthLoginResult {
 }
 
 export interface SampleRequest {
+  recorderUserId?: string | null;
+  recorderName?: string | null;
+  reviewVersion?: number;
+  canResubmit?: boolean;
+  reviewHistory?: Array<{versionNo:number;action:string;actorName:string;actedAt:string;comment?:string|null}>;
   referenceSampleProvided?: boolean | null;
   cutShape?: string | null;
   mainMaterialRequirement?: string | null;
@@ -528,6 +534,7 @@ export const RND_TASK_STATUS_LABELS: Record<RndTaskStatus, string> = {
 export const SAMPLE_STATUS_LABELS: Record<SampleStatus, string> = {
   DRAFT: "草稿",
   PENDING_REVIEW: "待审核",
+  PENDING_ASSIGNMENT: "已通过",
   APPROVED: "已通过",
   REJECTED: "已退回",
 };

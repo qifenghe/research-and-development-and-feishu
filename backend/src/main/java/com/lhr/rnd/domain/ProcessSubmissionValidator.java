@@ -294,7 +294,7 @@ public final class ProcessSubmissionValidator {
             if (difference != null && difference.abs().compareTo(balanceTolerance) > 0) {
                 warnings.add(warning("MATERIAL_BALANCE_EXCEEDED", "物料平衡差超过允许范围", major.sequence(), null));
                 if (blank(major.remark())) {
-                    errors.add(error("MATERIAL_BALANCE_UNEXPLAINED", "物料平衡差超限，请填写差异说明", major.sequence(), null));
+                    warnings.add(warning("MATERIAL_BALANCE_UNEXPLAINED", "物料平衡差超限，尚未填写差异说明；确认后可提交", major.sequence(), null));
                 }
             }
         } catch (IllegalArgumentException ignored) {

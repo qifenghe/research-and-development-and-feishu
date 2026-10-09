@@ -16,6 +16,7 @@ export async function exerciseRequest(page:Page,mobile:boolean){
  for(const group of sampleRequestTemplateGroups)for(const f of group.fields){if(values[f.key])await page.getByPlaceholder(f.placeholder,{exact:true}).fill(values[f.key]);}
  await page.getByRole('radio',{name:/否$/}).click();
  await page.getByPlaceholder(mobile?'如：预制菜':'如：预制菜、冷冻即热菜',{exact:true}).fill('预制菜');
+ if(!mobile)await page.getByLabel('销售申请人',{exact:true}).fill('模板验收销售');
  await expect(page.getByText('请填写客户名称',{exact:true})).toHaveCount(0);
  await expect(page.getByText('请选择是否提供标样',{exact:true})).toHaveCount(0);
  await expect(page.getByText(/is required/)).toHaveCount(0);

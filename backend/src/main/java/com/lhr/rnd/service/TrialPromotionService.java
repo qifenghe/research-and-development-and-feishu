@@ -88,6 +88,10 @@ public class TrialPromotionService {
         var saved = plans.savePromotedTrial(formId, request);
         // The existing formal gate validates the persisted, recalculated graph and performs the revision transition.
         var revision = revisions.submit(formId, new ProcessRevisionService.SubmitCommand(saved.versionNo(), true, command.changeReason(), principal.name()), principal);
+        jdbc.update("update experiment_process_revision set finished_output_json=? where id=?",current.trial().finishedOutput()==null?null:json(current.trial().finishedOutput()),revision.id());
+        var finished=current.trial().finishedOutput();
+        jdbc.update("update experiment_form set finished_output_weight_kg=?,finished_output_quantity=?,finished_output_unit=? where id=?",
+                ProcessFinishedOutput.weight(saved),finished==null||finished.quantity()==null||finished.quantity().signum()==0?null:finished.quantity(),finished==null?"袋":finished.unit(),formId);
         var trialSnapshot = json(current.trial());
         jdbc.update("""
                 insert into experiment_trial_promotion(id,experiment_form_id,trial_id,trial_version_no,trial_name,
@@ -113,6 +117,9 @@ public class TrialPromotionService {
         revisions.find(form.id(), revision.id());
         return sourceMetadata(form.id(), revision.id());
     }
+
+    /** Caller already authorizes a formal-only SOP read; no private trial graph is returned. */
+    SourceMetadata sourceForSop(String formId,String revisionId) { return sourceMetadata(formId,revisionId); }
 
     private SourceMetadata sourceMetadata(String formId, String revisionId) {
         var rows = jdbc.query("select id,trial_id,trial_name,trial_version_no,trial_snapshot_hash,promoted_by,promoted_at,trial_snapshot_json from experiment_trial_promotion where experiment_form_id=? and revision_id=?",

@@ -30,9 +30,11 @@ const routes: RouteRecordRaw[] = [
       { path: "", redirect: "/dashboard" },
       { path: "dashboard", name: "dashboard", component: () => import("../views/DashboardView.vue") },
       { path: "materials", name: "materials", component: () => import("../views/materials/MaterialCatalogView.vue") },
+      { path: "material-intakes/review", name: "material-intakes-review", component: () => import("../views/materials/MaterialIntakeReviewView.vue") },
       { path: "flowchart", name: "flowchart", component: () => import("../views/FlowchartView.vue") },
       { path: "demand", name: "demand-module", component: () => import("../views/demand/DemandModuleView.vue") },
       { path: "demand/new", name: "request-new", component: () => import("../views/demand/RequestNewView.vue") },
+      { path: "demand/:id/edit", name: "request-edit", component: () => import("../views/demand/RequestNewView.vue") },
       { path: "demand/list", name: "demand-list", component: () => import("../views/demand/DemandListView.vue") },
       { path: "demand/review", name: "request-review", component: () => import("../views/demand/RequestReviewView.vue") },
       { path: "demand/:id", name: "demand-detail", component: () => import("../views/demand/DemandDetailView.vue") },
@@ -56,6 +58,8 @@ const routes: RouteRecordRaw[] = [
       { path: "finance", name: "finance", component: () => import("../views/shipment/FinanceView.vue") },
       { path: "archive", name: "archive", component: () => import("../views/shipment/ArchiveView.vue") },
       { path: "reports", name: "reports", component: () => import("../views/reports/ReportExportView.vue") },
+      { path: "sops", name: "sops", component: () => import("../views/sop/SopCatalogView.vue") },
+      { path: "sops/amendments/:id", name: "sop-amendment", props:true, component: () => import("../views/sop/SopAmendmentView.vue") },
       { path: "settings", name: "settings-module", component: () => import("../views/settings/SettingsModuleView.vue") },
       { path: "settings/users", name: "config", component: () => import("../views/settings/UsersSettingsView.vue") },
       { path: "settings/form-fields", name: "form-config", component: () => import("../views/settings/FormFieldsSettingsView.vue") },
@@ -93,7 +97,7 @@ router.beforeEach(async (to) => {
 
   const auth = useAuthStore();
   if (to.meta.public) return true;
-  if (!auth.isAuthenticated) {
+  if (!auth.isAuthenticated || !auth.principal) {
     const restored = await auth.restoreSession();
     if (!restored) {
       return { name: "login", query: { redirect: to.fullPath } };

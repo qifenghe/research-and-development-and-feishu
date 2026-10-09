@@ -1,0 +1,101 @@
+/* Shared business surfaces, including custom SOP tables and teleported dialogs.
+   Never recolor danger controls or amendment differences. */
+.content>div,.content>section{min-width:0;max-width:1480px;margin-inline:auto}
+.content .ant-page-header{
+ padding:0 0 22px;margin-bottom:24px;border-bottom:1px solid var(--pc-border);
+}
+.content .ant-page-header-heading{align-items:center;gap:12px;flex-wrap:wrap}
+.content .ant-page-header-heading-left{min-width:0;flex-wrap:wrap;gap:8px 18px}
+.content .ant-page-header-heading-title{white-space:normal;overflow-wrap:anywhere;margin:0;font-size:26px}
+.content .ant-page-header-heading-sub-title{white-space:normal;color:var(--pc-muted);font-size:13px;line-height:1.7;margin:0}
+.content .ant-page-header-heading-extra{display:flex;gap:8px;flex-wrap:wrap;margin:0}
+.content .ant-card{border-radius:10px;overflow:hidden}
+.content .ant-card .ant-card-head{min-height:58px;padding:0 24px;border-bottom-color:#edf0e8}
+.content .ant-card .ant-card-head-title{font-size:20px;color:#344943;white-space:normal;padding-block:15px}
+.content .ant-card .ant-card-body{padding:24px}
+.content .ant-card-body>.ant-space{display:flex;flex-wrap:wrap;gap:12px!important;padding-bottom:18px;border-bottom:1px solid #edf0e8;margin-bottom:20px!important}
+.content .ant-table-wrapper{max-width:100%;overflow-x:auto}
+.content .ant-table-content>table{min-width:960px}
+.content .ant-table{font-size:13px;color:#344943}
+.content .ant-table-thead>tr>th,.content .sop-page table th{
+ background:#f3f5f0!important;color:#52635c;font-size:13px;font-weight:500;
+ white-space:nowrap;padding:14px 16px!important;border-bottom-color:#e5e8df;
+}
+.content .ant-table-tbody>tr>td,.content .sop-page table td{
+ padding:15px 16px!important;line-height:1.65;vertical-align:middle;border-bottom-color:#edf0e8;
+ overflow-wrap:anywhere;min-width:86px;
+}
+.content .ant-table-tbody>tr>td:first-child{min-width:160px;font-variant-numeric:tabular-nums}
+.content .ant-table-tbody>tr>td:nth-child(2){min-width:145px}
+.content .ant-table-tbody>tr:hover>td,.content .sop-page tbody>tr:hover{background:#f8faf6!important}
+.content .ant-table-pagination{margin-top:24px!important}
+.content .ant-empty{padding-block:24px;color:var(--pc-muted)}
+.content .ant-card-body:has(>.ant-empty) .ant-table-placeholder{display:none}
+.content .ant-btn-link:not(.ant-btn-dangerous):not(:disabled),
+.ant-modal .ant-btn-link:not(.ant-btn-dangerous):not(:disabled),
+.ant-drawer .ant-btn-link:not(.ant-btn-dangerous):not(:disabled){color:var(--pc-primary)}
+.content .ant-btn,.ant-modal .ant-btn,.ant-drawer .ant-btn{box-shadow:none}
+.content .ant-tag{font-size:12px;border-radius:4px;line-height:20px}
+.content .ant-tag-blue,.content .ant-tag-processing,.ant-modal .ant-tag-blue{
+ background:#eaf2ee;border-color:#cfdfd5;color:#285d59;
+}
+.content .ant-tag-green,.content .ant-tag-success{background:#edf4ed;border-color:#d6e5d5;color:#4a7657}
+.content .ant-form-item-label>label{color:#52635c;font-size:13px}
+.content .ant-input,.content .ant-input-affix-wrapper,.content .ant-select-selector{border-color:#ddded5}
+.content .ant-descriptions-bordered .ant-descriptions-item-label{background:#f5f6f1;color:#64736a;font-size:13px}
+.content .ant-descriptions-item-content{line-height:1.8;overflow-wrap:anywhere}
+.content .list-summary-bar{background:#eef3ed;border-color:#dde6db;border-radius:8px;gap:32px;padding:16px 22px}
+.content .ant-tabs-nav:before{border-color:#e0e5da}
+.content .sop-page>header,.content .amendment-page>header{padding-bottom:20px;margin-bottom:24px;border-bottom:1px solid var(--pc-border)}
+.content .sop-page>header p{margin:6px 0 0;color:var(--pc-muted);font-size:13px;line-height:1.8}
+.content .sop-page .catalog-card{border-color:var(--pc-border);border-radius:10px;padding:24px;overflow-x:auto}
+.content .sop-page .search{padding-bottom:18px;margin-bottom:20px;border-bottom:1px solid #edf0e8;flex-wrap:wrap}
+.content .sop-page .search{justify-content:flex-start}
+.content .sop-page .search>span:not(.ant-input-affix-wrapper){margin-left:auto;color:var(--pc-muted);font-size:12px}
+.content .sop-page .history{background:#f8faf6}
+.content .sop-page .history-line{flex-wrap:wrap;gap:10px 16px;color:#748177}
+.content .sop-page table td:first-child strong{font-weight:500}
+.content .sop-page small{color:#859087}
+.content .amendment-page .card{border-color:var(--pc-border);border-radius:10px}
+.ant-modal .ant-modal-content,.ant-drawer .ant-drawer-content{background:#fffefb}
+.ant-modal .ant-modal-title,.ant-drawer .ant-drawer-title{font-family:var(--pc-title-font);font-size:22px;font-weight:400;letter-spacing:1px;color:#344943}
+.ant-modal .ant-modal-header{background:transparent;margin-bottom:22px}
+.ant-modal .ant-modal-footer{padding-top:18px;border-top:1px solid #edf0e8}
+.ant-modal .sop-snapshot{color:#344943}
+.ant-modal .sop-snapshot h2{background:#eef3ed;color:#285d59;font-family:var(--pc-title-font);font-weight:400}
+.ant-modal .sop-snapshot section{border-color:var(--pc-border)}
+.ant-modal .sop-snapshot .parameters{background:#f5f6f1}
+/* Workbench hierarchy retains drag targets and all measured-data controls. */
+.content .workspace{background:#f1f3ed;border-radius:10px;padding:16px;gap:16px}
+.content .workspace .workspace-top,.content .workspace .view,.content .workspace .side-card{border-color:var(--pc-border);border-radius:9px}
+.content .workspace .eyebrow,.content .workspace .save-saving{color:#285d59}
+.content .workspace .workspace-top{flex-wrap:wrap;gap:18px;padding:20px}
+.content .workspace .recovery{background:#edf4ee;border-color:#d5e4da}
+.content .major-board,.content .minor-workspace{background:#f3f5f0;border-color:var(--pc-border);border-radius:9px}
+.content .major-board .template-library,.content .minor-workspace .step-rail{border-color:#e0e5da;background:#fbfcf8}
+.content .major-board .template,.content .minor-workspace .step-item{background:#f2f5ee}
+.content .major-board .template:hover{background:#eaf1e9;border-color:#b5cbbb}
+.content .major-board .template span,.content .major-board .sequence,.content .minor-workspace .step-item span{color:#285d59}
+.content .major-board .sequence,.content .minor-workspace .step-item.active,.content .minor-workspace .step-moves button{background:#e5eee7;color:#285d59}
+.content .minor-workspace .step-item.active{border-color:#9abca8}
+.content .major-board .major-card.selected{border-color:#63917d;box-shadow:0 0 0 2px #e5eee7}
+.content .major-board .major-card,.content .minor-workspace .section{border-color:#dde4d8}
+.content .major-board .drop-zone,.content .major-board .empty{border-color:#9abca8;color:#285d59}
+.content .minor-workspace .live{background:#edf4ee;border-color:#d5e4da}
+.content .minor-workspace .live span{color:#285d59}
+.content .mode-choice--recommended{border-color:#63917d;background:#f2f7f1}
+.content .mode-choice span{color:#285d59}
+.ant-drawer .total{background:#edf4ee}.ant-drawer .total strong{color:#285d59}
+@media(max-width:900px){
+ .content .ant-card .ant-card-body,.content .sop-page .catalog-card{padding:18px}
+ .content .ant-page-header-heading-extra{margin-top:8px}
+ .content .ant-page-header-heading-title{font-size:23px}
+ .content .ant-table-tbody>tr>td{padding:12px 14px!important}
+ .content .sop-page .search .ant-input-affix-wrapper{flex:1;min-width:180px}
+}
+@media(max-width:640px){
+ .content .ant-page-header-heading-left{display:block}.content .ant-page-header-heading-sub-title{display:block;margin-top:8px}
+ .content .ant-card .ant-card-body{padding:14px}.content .ant-card .ant-card-head{padding-inline:14px}
+ .content .ant-card-body>.ant-space>.ant-space-item{max-width:100%}
+ .content .ant-card-body>.ant-space .ant-input-search{max-width:100%}
+}

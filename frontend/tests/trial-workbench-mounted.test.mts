@@ -49,6 +49,36 @@ function trial(id: "trial-a" | "trial-b") {
 }
 
 let server: ViteDevServer;
+test("material forms hide internal formula identity while retaining it in edited payloads", async () => {
+  const plan: any = observedPlan();
+  plan.majorProcesses[0].steps[0].materials[0].formulaMaterialId = "internal-formula-42";
+  const require = createRequire(new URL("../apps/pc/package.json", import.meta.url));
+  const { renderToString } = require("vue/server-renderer");
+  const { createSSRApp, h } = require("vue");
+  for (const [path, props] of [
+    ["/src/components/process/MinorStepWorkspace.vue", { modelValue: plan, majorKey: "m" }],
+    ["/src/components/process/ProcessPlanSnapshot.vue", { plan }],
+  ] as const) {
+    const component = (await server.ssrLoadModule(path)).default;
+    const app = createSSRApp(component, props);
+    app.component("a-input", { props: ["value", "placeholder"], render() { return h("input", { value: this.value, placeholder: this.placeholder }); } });
+    app.config.warnHandler = () => {};
+    const html = await renderToString(app);
+    assert.doesNotMatch(html, /配方物料 ID|物料\/配方 ID|internal-formula-42/);
+    assert.match(html, /牛肉/);
+  }
+  let saved: any;
+  const { app, setup } = await mountSetup("/src/components/process/MinorStepWorkspace.vue", {
+    modelValue: plan, majorKey: "m", "onUpdate:modelValue": (value: any) => { saved = value; },
+  });
+  try {
+    setup.selectedStep.materials[0].weightKg = 12;
+    setup.publishLocal();
+    await flush();
+    assert.equal(saved.majorProcesses[0].steps[0].materials[0].formulaMaterialId, "internal-formula-42");
+    assert.equal(saved.majorProcesses[0].steps[0].materials[0].weightKg, 12);
+  } finally { app.unmount(); }
+});
 test("readonly snapshot exposes every recorded parameter and material addition detail", async () => {
   const plan:any=observedPlan();
   plan.majorProcesses[0].steps[0].parameters=Array.from({length:4},(_,i)=>({key:`p${i}`,name:`参数${i}`,valueType:"NUMBER",unit:"min",actualValue:String(i),showInSummary:false}));
@@ -112,6 +142,21 @@ test("step drop ignores malformed data and readonly workspace rejects additions"
   }
 });
 
+test('trial publishes current editable source and keeps finished quantities scoped to selected trial',async()=>{
+ let selected:any;const {app,setup}=await mountSetup('/src/components/trials/TrialWorkbench.vue',{userId:'u',formalPlan:createEmptyProcessPlan(),'onSource-change':(v:any)=>{selected=v;}});
+ try{
+  setup.currentTrial={...trial('trial-a'),plan:observedPlan(138.5)};await flush();
+  assert.equal(selected?.id,'trial-a');assert.equal(selected.plan.majorProcesses[0].steps[0].materials[0].weightKg,138.5);
+  assert.equal(typeof setup.updateFinishedOutput,'function');setup.updateFinishedOutput({quantity:277,unit:'袋',remark:'本方案'});await flush();
+  assert.equal(selected.finishedOutput.quantity,277);
+  setup.currentTrial={...trial('trial-b'),plan:createEmptyProcessPlan()};await flush();
+  assert.equal(selected.id,'trial-b');assert.equal(selected.finishedOutput?.quantity,undefined);
+ }finally{app.unmount();}
+});
+test('new and copied schemes suggest next alphabetic name including archives',async()=>{
+ const {app,setup}=await mountSetup('/src/components/trials/TrialWorkbench.vue',{userId:'u',formalPlan:createEmptyProcessPlan()});
+ try{setup.trials=[{...trial('trial-a'),name:'方案 Z',archived:true}];setup.currentTrial=trial('trial-b');setup.newTrialOpen=true;await flush();assert.equal(setup.newTrialName,'方案 AA');setup.openCopy();assert.equal(setup.copyName,'方案 AA');}finally{app.unmount();}
+});
 async function mountSetup(path: string, props: any) {
   const component = (await server.ssrLoadModule(path)).default;
   component.render = () => null;
@@ -123,14 +168,52 @@ async function mountSetup(path: string, props: any) {
     insertStaticContent() { const node: HostNode = { parent: null, children: [], props: {} }; return [node, node]; },
   });
   const app = renderer.createApp(component, props); app.provide(Symbol.for("v-scx"), { modules: new Set<string>() });
+  if(path.includes('ExperimentFormView')) {
+    const pinia=await server.ssrLoadModule('pinia');
+    const instance=pinia.createPinia();pinia.setActivePinia(instance);app.use(instance);
+    const auth=await server.ssrLoadModule('/src/stores/auth.ts');auth.useAuthStore(instance);
+    const router=createRouter({history:createMemoryHistory(),routes:[{path:'/tasks/:id',component:{render:()=>null}}]});
+    await router.push('/tasks/TEST-PROMOTION');await router.isReady();app.use(router);
+  }
   const instance = app.mount({ parent: null, children: [], props: {} }) as any;
   await flush(); return { app, setup: instance.$.setupState };
 }
 function observedPlan(weight: number | undefined = 10) {
   return { ...createEmptyProcessPlan(), majorProcesses: [{ id: "m", key: "m", sequence: 1, processName: "热加工", yieldBasis: "PRIMARY_INPUT", inputs: [], outputs: [], steps: [{ id: "s", key: "s", sequence: 1, stepName: "煮制", stepType: "NORMAL", parameter1Name: "温度", parameter1Unit: "℃", parameter1Value: "97", materials: [{ id: "mat", key: "mat", sequence: 1, materialRole: "PRIMARY", sourceType: "EXTERNAL", materialName: "牛肉", weightKg: weight }], outputs: [{ id: "out", key: "out", sequence: 1, primaryOutput: true, continueFlow: false, outputType: "FINISHED", weightKg: weight }], controlPoints: [] }] }] };
 }
+test('promoted finished records replace old form values before pending autosave and survive reload',async()=>{
+ localStorage.clear();
+ const api=(await server.ssrLoadModule('/src/services/api.ts')).api;
+ let record:any={id:'form-1',finishedOutputQuantity:100,finishedOutputUnit:'袋',materials:[],processSteps:[]};
+ api.task.detail=async()=>({task:{status:'SAMPLING',productName:'回归',versionCode:'A0'},currentExperimentForm:{...record}});
+ api.task.getProcessPlan=async()=>observedPlan(50);
+ const writes:any[]=[];api.task.saveExperimentDraft=async(_id:string,c:any)=>{writes.push(c);record={...record,...c};return record;};
+ const {app,setup}=await mountSetup('/src/views/rnd/ExperimentFormView.vue',{});
+ try {
+  setup.auth.principal={role:'RND_DIRECTOR',name:'总监'};await flush();
+  setup.form.finishedOutputQuantity=101;await flush();
+  record={...record,finishedOutputQuantity:277,finishedOutputUnit:'袋',finishedOutputWeightKg:138.5};
+  await setup.onTrialPromoted({snapshot:observedPlan(138.5)},{quantity:277,unit:'袋',remark:'提升'});
+  await new Promise(r=>setTimeout(r,1600));
+  assert.equal(setup.form.finishedOutputQuantity,277);assert.equal(record.finishedOutputQuantity,277);
+  assert.ok(writes.every(c=>c.finishedOutputQuantity===277));
+  await setup.autoSave();assert.equal(writes.at(-1).finishedOutputQuantity,277);
+  const reloaded=await api.task.detail();assert.equal(reloaded.currentExperimentForm.finishedOutputQuantity,277);
+ }finally{app.unmount();}
+});
 
 test("graph replacement prunes deleted planned keys before saving material step and major deletions", async () => {
+  // Regression: displayed kg quantity must match the quantity sent to the server.
+  {
+    localStorage.clear();
+    const value={...trial("trial-a"),plan:observedPlan(138.5),finishedOutput:{quantity:138.5,unit:"kg",remark:"公斤"}};
+    const api=(await server.ssrLoadModule("/src/services/trialApi.ts")).trialApi;
+    api.list=async()=>[value];api.find=async()=>value;
+    let saved:any;api.save=async(_f:string,_t:string,c:any)=>{saved=c;return {...value,...c};};
+    const {app,setup}=await mountSetup("/src/components/trials/TrialWorkbench.vue",{formId:"form-1",userId:"engineer-1",formalPlan:createEmptyProcessPlan()});
+    try {setup.replacePlan(observedPlan(130));await setup.saveTrial();assert.equal(saved.finishedOutput.quantity,130);}
+    finally {app.unmount();}
+  }
   for (const deletion of ["material", "step", "major"]) {
     localStorage.clear();
     const value = { ...trial("trial-a"), plan: observedPlan(), plannedData: { materialWeightsKg: { mat: 10 }, stepParameters: { s: { parameter1Value: "95", parameter2Value: null } }, majorYieldTargets: { m: 80 }, batchYieldTarget: 72, yieldBasisNote: "主料" } };

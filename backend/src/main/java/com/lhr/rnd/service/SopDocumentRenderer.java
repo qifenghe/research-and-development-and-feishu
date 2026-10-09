@@ -138,7 +138,9 @@ public final class SopDocumentRenderer {
                     ExportDisplayFormat.blank(material.additionTiming()) ? null : "加入时机：" + material.additionTiming(),
                     ExportDisplayFormat.blank(material.additionMethod()) ? null : "加入方式：" + material.additionMethod()));
             cell(row, 2, join(" / ", ExportDisplayFormat.materialRole(material.materialRole()), ExportDisplayFormat.materialState(material.materialState())));
-            cell(row, 3, ExportDisplayFormat.actualKg(material.weightKg()));
+            cell(row, 3, "PACKAGING".equals(material.materialRole())
+                    ? material.quantity()==null ? "待填写" : ExportDisplayFormat.number(material.quantity())+" "+ExportDisplayFormat.required(material.quantityUnit())
+                    : ExportDisplayFormat.actualKg(material.weightKg()));
             if (remarks) cell(row, 4, ExportDisplayFormat.optional(material.remark()));
         }
     }

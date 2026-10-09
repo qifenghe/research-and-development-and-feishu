@@ -28,7 +28,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { message } from "ant-design-vue";
-import type { PricingFileRecord, PricingReadyVersion } from "@rnd/shared";
+import { PRICING_FILE_STATUS_LABELS, type PricingFileRecord, type PricingReadyVersion } from "@rnd/shared";
 import { api } from "../../services/api";
 import { useAuthStore } from "../../stores/auth";
 
@@ -49,11 +49,11 @@ const readyColumns = [
 ];
 
 const columns = [
-  { title: "文件名", dataIndex: "fileName", key: "fileName" },
-  { title: "产品", dataIndex: "productName", key: "productName" },
-  { title: "版本", dataIndex: "versionCode", key: "versionCode" },
-  { title: "状态", dataIndex: "status", key: "status" },
-  { title: "操作", key: "action" },
+  { title: "文件名", dataIndex: "fileName", key: "fileName", width:330 },
+  { title: "产品", dataIndex: "productName", key: "productName", width:230 },
+  { title: "版本", dataIndex: "versionCode", key: "versionCode", width:80 },
+  { title: "状态", dataIndex: "status", key: "status", width:130, customRender:({text}:{text:string})=>PRICING_FILE_STATUS_LABELS[text]??text },
+  { title: "操作", key: "action", width:100 },
 ];
 
 async function load() {

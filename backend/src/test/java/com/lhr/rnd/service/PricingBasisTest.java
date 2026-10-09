@@ -13,11 +13,10 @@ class PricingBasisTest {
         for (var weight : new String[]{null, "0", "5"}) {
             var bytes = new PricingFileService().renderBasis(ProcessExportCheckServiceTest.view(ProcessExportCheckServiceTest.nonePlan(weight)), true);
             try (var book = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
-                var row = book.getSheetAt(1).getRow(6);
-                assertThat(row.getCell(1).getStringCellValue()).isEqualTo("不参与");
-                for (var col : List.of(2, 3)) {
-                    if (weight == null) assertThat(new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(row.getCell(col))).isEqualTo("待填写");
-                    else assertThat(row.getCell(col).getNumericCellValue()).isEqualTo(Double.parseDouble(weight));
+                var row = book.getSheetAt(0).getRow(11);
+                for (var col : List.of(5, 7)) {
+                    if (weight == null) assertThat(new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(row.getCell(col))).isEmpty();
+                    else assertThat(row.getCell(col).getNumericCellValue()).isZero(); // the external observation is explicitly zero; legacy major weights are separate.
                 }
             }
         }
@@ -28,20 +27,19 @@ class PricingBasisTest {
                 .withMetadata(new ProcessExportView.Metadata("1kg/袋", "软件测试研发", "2026-09-22"));
         var bytes = new PricingFileService().renderBasis(view, false);
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
-            assertThat(workbook.getNumberOfSheets()).isEqualTo(3);
+            assertThat(workbook.getNumberOfSheets()).isEqualTo(1);
             var data = new org.apache.poi.ss.usermodel.DataFormatter();
             var text = new StringBuilder();
             for (var sheet : workbook) {
-                for (var row : sheet) for (var cell : row) text.append(data.formatCellValue(cell)).append('|');
+                for (var row : sheet) for (var cell : row) text.append(data.formatCellValue(cell,workbook.getCreationHelper().createFormulaEvaluator())).append('|');
                 assertThat(sheet.getPrintSetup().getFitWidth()).isEqualTo((short)1);
                 assertThat(sheet.getRepeatingRows()).isNotNull();
                 assertThat(workbook.getPrintArea(workbook.getSheetIndex(sheet))).isNotBlank();
             }
-            assertThat(text.toString()).contains("产品核价基础数据表", "102", "72", "74", "方案A V3", "独立", "个", "1kg", "1个/袋", "编制人", "日期", "产品规格")
-                    .doesNotContain("source=", "revisionId=", "利用率", "领料", "成本", "单价", "毛利", "税", "100kg折算", "100kg归一化");
-            assertThat(data.formatCellValue(workbook.getSheetAt(0).getRow(6).getCell(4))).isEqualTo("100");
-            assertThat(workbook.getSheetAt(0).getRow(8).getCell(1).getStringCellValue()).isEmpty();
-            assertThat(workbook.getSheetAt(0).getRow(6).getCell(4).getNumericCellValue()).isEqualTo(100);
+            assertThat(text.toString()).contains("原材料清单", "102", "72", "74", "方案A V3", "个", "1kg", "编写人", "日期", "规格")
+                    .doesNotContain("source=", "revisionId=", "成本", "单价", "毛利", "税", "100kg折算", "100kg归一化", "宁德时代", "162.6");
+            assertThat(workbook.getSheetAt(0).getRow(11).getCell(5).getNumericCellValue()).isEqualTo(100);
+            assertThat(workbook.getSheetAt(0).getRow(11).getCell(6).getCellType()).isEqualTo(org.apache.poi.ss.usermodel.CellType.BLANK);
         }
         var path = Path.of("target/task-4-export-qa"); Files.createDirectories(path);
         Files.write(path.resolve("formal-basis-102kg-72percent-74bags.xlsx"), bytes);
@@ -53,7 +51,7 @@ class PricingBasisTest {
         try (var book = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
             var data = new org.apache.poi.ss.usermodel.DataFormatter(); var text = new StringBuilder();
             for (var sheet : book) for (var row : sheet) for (var cell : row) text.append(data.formatCellValue(cell));
-            assertThat(text.toString()).contains("预览", "待填写", "未关联", "方案 B V2");
+            assertThat(text.toString()).contains("预览", "待补充", "包装物料", "方案 B V2");
         }
         var path = Path.of("target/task-4-export-qa"); Files.createDirectories(path);
         Files.write(path.resolve("trial-incomplete-preview.xlsx"), bytes);
@@ -72,9 +70,9 @@ class PricingBasisTest {
         var bytes = new PricingFileService().renderBasis(view, false);
         try (var book = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
             assertThat(book.getSheetAt(0).getLastRowNum()).isGreaterThan(40);
-            assertThat(book.getSheetAt(0).getRepeatingRows().getLastRow()).isEqualTo(5);
-            assertThat(book.getSheetAt(0).getRepeatingRows().getFirstRow()).isEqualTo(5);
-            assertThat(book.getSheetAt(0).getRow(8).getHeightInPoints()).isGreaterThan(38);
+            assertThat(book.getSheetAt(0).getRepeatingRows().getLastRow()).isEqualTo(10);
+            assertThat(book.getSheetAt(0).getRepeatingRows().getFirstRow()).isEqualTo(10);
+            assertThat(book.getSheetAt(0).getRow(13).getHeightInPoints()).isGreaterThan(38);
             assertThat(book.getSheetAt(0).getFooter().getRight()).contains("&P", "&N");
         }
         var path = Path.of("target/task-4-export-qa"); Files.createDirectories(path);

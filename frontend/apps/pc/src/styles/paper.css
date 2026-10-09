@@ -1,0 +1,74 @@
+/* Approved xuan-paper business theme. No paintings behind tables or forms.
+   Error/warning/success alerts and amendment redlines retain their semantics. */
+:root{--paper:#f8f6ef;--paper-head:#eeebe0;--paper-line:#ddd8c780;--paper-muted:#7c8575;--paper-wash:#eeeadd35}
+.content .ant-card.ant-card,.content .sop-page .catalog-card,
+.content .amendment-page .card,.content .catalog-page .catalog-body{
+ background-color:var(--paper);border:0;border-radius:3px;
+ background-image:radial-gradient(ellipse at 5% 0%,#ffffff66,transparent 55%),linear-gradient(110deg,#bfae8605,transparent 45%,#bfae8606);
+ box-shadow:0 1px 0 #c6c1b470,inset 0 2px 0 #77877955;
+}
+.content .ant-card.ant-card .ant-card-head{background:transparent;border-bottom-color:#ccc8ba80}
+.content .ant-card.ant-card .ant-card-body{background:transparent}
+.content .ant-card-body>.ant-space,.content .sop-page .search,
+.content .catalog-page .list-heading{border-bottom-color:#ccc8ba80}
+.content .ant-table.ant-table,.content .sop-page table{background:transparent;color:#36473d}
+.content .ant-table-container{border-radius:0}
+.content .ant-table.ant-table .ant-table-thead>tr>th,
+.content .sop-page table thead th,.ant-modal .ant-table-thead>tr>th,.ant-drawer .ant-table-thead>tr>th{
+ background:var(--paper-head)!important;color:#566450;letter-spacing:.5px;border-bottom:1px solid #bdc3b3!important;
+}
+.content .ant-table.ant-table .ant-table-tbody>tr>td,.content .sop-page table tbody>tr>td{
+ background:transparent!important;border-bottom:1px solid var(--paper-line);line-height:1.8;
+}
+.content .ant-table.ant-table .ant-table-tbody>tr:nth-child(even)>td,
+.content .sop-page table tbody>tr:nth-child(even)>td{background:var(--paper-wash)!important}
+.content .ant-table.ant-table .ant-table-tbody>tr:hover>td,
+.content .sop-page table tbody>tr:hover>td{background:#e9ede0!important}
+.content .ant-table.ant-table .ant-table-tbody>tr>td:first-child{color:var(--paper-muted);font-size:12px}
+.content .ant-tag:not(.ant-tag-red):not(.ant-tag-error):not(.ant-tag-orange):not(.ant-tag-warning):not(.ant-tag-volcano){background:#eeeee3;border-color:#c9d1bf;color:#566a53}
+.content .ant-input-affix-wrapper,.content .ant-select:not(.ant-select-disabled) .ant-select-selector,
+.content .ant-input-number,.content .ant-picker,
+.ant-modal .ant-input-affix-wrapper,.ant-modal .ant-input,.ant-modal .ant-select-selector,.ant-modal .ant-input-number,
+.ant-drawer .ant-input-affix-wrapper,.ant-drawer .ant-input,.ant-drawer .ant-select-selector{
+ background-color:#fffdf6!important;border-color:#d2cfbf!important;border-radius:4px;
+}
+.content .ant-input{background:#fffdf6;border-color:#d2cfbf}
+.content .ant-input-affix-wrapper>.ant-input{background:transparent}
+.content .ant-input-search-button,.content .ant-btn-default:not(.ant-btn-dangerous):not(:disabled){background:#eeeee3;border-color:#d2cfbf;color:#536851}
+.content .ant-pagination-item{background:transparent;border-radius:3px}
+.content .ant-pagination-item-active{background:#e9eee1;border-color:#8fa389}
+.content .ant-descriptions-bordered .ant-descriptions-view{border-color:#d9d4c6;border-radius:3px;background:transparent}
+.content .ant-descriptions-bordered .ant-descriptions-item-label{background:#eeebe0;color:#64735e}
+.content .ant-descriptions-bordered .ant-descriptions-item-content{background:#faf8f1}
+.content .list-summary-bar{background:#eeeee3;border-color:#c9d1bf;border-radius:3px}
+/* Material tree has its own scoped styles, so explicitly cover both panes. */
+.content .catalog-page .catalog-body aside{background:#f1eee3;border-color:#d9d4c6}
+.content .catalog-page .category-row.active,.content .catalog-page .catalog-body aside button.active{background:#e5e9db;color:#285d59;border-radius:3px}
+.content .catalog-page .category-children{border-color:#cbcdbd}
+.content .catalog-page .category-row:hover,.content .catalog-page .category-child:hover,.content .catalog-page .category-all:hover{background:#eaeadd}
+.content .catalog-page .inactive-toggle{border-color:#d6d2c4}
+.content .sop-page .history,.content .sop-page .history-line{background:transparent}
+/* Nested process panels stay paper-like, without hiding drop indicators. */
+.content .workspace.workspace{background:#eeebe0;border-radius:3px}
+.content .workspace .workspace-top,.content .workspace .view,.content .workspace .side-card,
+.content .major-board .major-card,.content .minor-workspace .section,
+.content .material-picker{background:var(--paper);border-color:#d9d4c6;border-radius:4px}
+.content .major-board.major-board,.content .minor-workspace.minor-workspace{background:#eeebe0;border-color:#d9d4c6;border-radius:4px}
+.content .major-board .template-library,.content .minor-workspace .step-rail{background:#f4f1e7;border-color:#d9d4c6}
+.content .major-board .template,.content .minor-workspace .step-item{background:#eaeadd;border-radius:3px}
+.content .major-board .major-card footer{background:#f1eee3;border-color:#d9d4c6}
+.content .major-board .drop-zone,.content .major-board .empty{background:#faf8f1}
+.content .minor-workspace .step-editor{background:#f4f1e7}
+.content .minor-workspace .live{background:#e9eee1}
+.content .mode-choice{background:var(--paper);border-color:#d9d4c6}
+.content .mode-choice--recommended{background:#edf0e3;border-color:#63917d}
+/* Teleported dialogs/drawers are outside .content. */
+.ant-modal .ant-modal-content,.ant-drawer .ant-drawer-content{background:var(--paper);background-image:linear-gradient(110deg,#bfae8605,transparent 45%,#bfae8606)}
+.ant-modal .ant-modal-header,.ant-drawer .ant-drawer-header{background:transparent;border-color:#d9d4c6}
+.ant-modal .ant-modal-footer{border-color:#d9d4c6}
+.ant-modal .ant-table,.ant-drawer .ant-table{background:transparent}
+.ant-modal .ant-table-tbody>tr>td,.ant-drawer .ant-table-tbody>tr>td{background:transparent;border-bottom-color:var(--paper-line)}
+.ant-modal .sop-snapshot h2{background:#eeebe0;color:#536851;border-radius:3px}
+.ant-modal .sop-snapshot section,.ant-drawer .material{border-color:#d9d4c6}
+.ant-modal .sop-snapshot .parameters,.ant-drawer .total{background:#eeebe0}
+@media(max-width:640px){.content .catalog-page .catalog-body{border-radius:3px}}

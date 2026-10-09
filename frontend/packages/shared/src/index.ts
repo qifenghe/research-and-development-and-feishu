@@ -9,6 +9,7 @@ export * from "./process-plan";
 export * from "./step-parameters";
 export * from "./pricing-basis";
 export * from "./material-catalog";
+export * from "./temporary-materials";
 export * from "./material-save-ack";
 export * from "./finished-output";
 export * from "./sample-request-template";

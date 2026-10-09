@@ -9,6 +9,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProcessExportCheckServiceTest {
     private final ProcessExportCheckService service = new ProcessExportCheckService();
 
+    @Test void packagingUsesCountAndDoesNotBecomeFoodMass() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree = mapper.valueToTree(plan("72", "90", "PRIMARY_INPUT"));
+        var materials = (com.fasterxml.jackson.databind.node.ArrayNode) tree.path("majorProcesses").get(1).path("steps").get(0).path("materials");
+        materials.add(mapper.readTree("""
+                {"id":"BAG","sequence":2,"sourceType":"EXTERNAL","materialRole":"PACKAGING","materialCode":"B001","materialName":"包装袋","quantity":277,"quantityUnit":"个"}
+                """));
+        var result = service.view("测试", "方案A", mapper.treeToValue(tree, ProcessPlan.class), null, List.of());
+        assertThat(result.externalInputKg()).isEqualByComparingTo("102");
+        assertThat(result.ingredients()).noneMatch(i -> "PACKAGING".equals(i.role()));
+        assertThat(result.packaging()).singleElement().satisfies(p -> {
+            assertThat(p.quantity()).isEqualByComparingTo("277");
+            assertThat(p.quantityUnit()).isEqualTo("个");
+        });
+        assertThat(service.check(result,"FORMULA_XLSX").ready()).isTrue();
+    }
+
     @Test void sopRequiresControlRequirementAndUsedParameterMeaningAndNumericUnit() throws Exception {
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         var tree = mapper.valueToTree(plan("72", "90", "PRIMARY_INPUT"));

@@ -1,6 +1,7 @@
 <template>
   <div class="login-page">
-    <a-card title="研发样品管理系统登录" class="login-card">
+    <a-card class="login-card">
+      <div class="login-brand"><img :src="longhuiLogo" alt="龙汇食品" /><h1>龙汇研发管理系统</h1><p>从需求到配方 · 让研发有据可循</p></div>
       <a-alert
         type="info"
         show-icon
@@ -37,6 +38,7 @@
 
 <script setup lang="ts">
 import { reactive } from "vue";
+import longhuiLogo from '../assets/longhui-logo.jpg';
 import { useRoute, useRouter } from "vue-router";
 import { message } from "ant-design-vue";
 import { ApiError } from "@rnd/shared";
@@ -94,7 +96,7 @@ async function login() {
 <style scoped>
 .login-page {
   align-items: center;
-  background: linear-gradient(180deg, #eef4ff, #f8fafc);
+  background: radial-gradient(ellipse at 10% 90%, #dce8df 0, transparent 45%), linear-gradient(135deg, #f6f4ef, #ecefe8);
   display: flex;
   justify-content: center;
   min-height: 100vh;
@@ -103,7 +105,10 @@ async function login() {
 
 .login-card {
   width: min(480px, 100%);
+  border: 1px solid var(--pc-border);
+  box-shadow: 0 18px 60px rgba(40, 72, 63, .06);
 }
+.login-brand{text-align:center;margin:4px 0 26px}.login-brand img{width:92px;height:100px;object-fit:contain}.login-brand h1{font-family:var(--pc-title-font);font-size:29px;font-weight:400;letter-spacing:2px;margin:12px 0 8px}.login-brand p{font-size:12px;letter-spacing:1px;color:var(--pc-muted)}
 
 .quick-accounts {
   display: grid;

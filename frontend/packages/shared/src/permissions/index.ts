@@ -17,11 +17,13 @@ type RouteRule = {
 
 /** Page-level access aligned with RolePermissionService defaults and RND-002. */
 const ROUTE_RULES: RouteRule[] = [
+  { pattern: /^\/material-intakes\/review$/, roles: ["RND_DIRECTOR"] },
   { pattern: /^\/materials$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", ...ADMIN_ROLES] },
   { pattern: /^\/dashboard$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/flowchart$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/demand$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/demand\/new$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", ...ADMIN_ROLES] },
+  { pattern: /^\/demand\/[^/]+\/edit$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", ...ADMIN_ROLES] },
   { pattern: /^\/demand\/list$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/demand\/review$/, roles: ["RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/demand\/[^/]+$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
@@ -45,6 +47,8 @@ const ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/finance$/, roles: ["RND_ASSISTANT", "FINANCE", ...ADMIN_ROLES] },
   { pattern: /^\/archive$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "MANAGER", ...ADMIN_ROLES] },
   { pattern: /^\/reports$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
+  { pattern: /^\/sops$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER"] },
+  { pattern: /^\/sops\/amendments\/[^/]+$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR"] },
   { pattern: /^\/settings/, roles: [...ADMIN_ROLES] },
   { pattern: /^\/403$/, roles: ["RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "TESTER", "QA_TESTER", "FINANCE", "MANAGER", ...ADMIN_ROLES] },
 ];

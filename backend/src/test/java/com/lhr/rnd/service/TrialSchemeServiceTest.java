@@ -37,6 +37,35 @@ class TrialSchemeServiceTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired ProcessPlanService processPlans;
     @Autowired MaterialCatalogService catalog;
+    @Test void kgQuantityIsDerivedFromCurrentTerminalOutput() throws Exception {
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules().disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        var a=service.create(FORM_ID,new TrialSchemeService.CreateCommand("公斤",null,null,graph("KG", "10"),TrialScheme.PlannedData.empty()),OWNER);
+        var node=(com.fasterxml.jackson.databind.node.ObjectNode)mapper.valueToTree(a);
+        node.putObject("finishedOutput").put("quantity",138.5).put("unit","kg");
+        var output=(com.fasterxml.jackson.databind.node.ObjectNode)node.at("/plan/majorProcesses/0/steps/0/outputs/0");
+        output.put("outputType","FINISHED").put("continueFlow",false);
+        var saved=service.save(FORM_ID,a.id(),mapper.treeToValue(node,TrialSchemeService.SaveCommand.class),OWNER);
+        assertThat(saved.finishedOutput().quantity()).isEqualByComparingTo(ProcessFinishedOutput.weight(saved.plan()));
+    }
+    @Test void unnamedTrialFollowsAlphabetAndIncludesArchivedNames(){
+        var z=service.create(FORM_ID,new TrialSchemeService.CreateCommand("方案 Z",null,null,graph("NAME","10"),TrialScheme.PlannedData.empty()),OWNER);
+        service.archive(FORM_ID,z.id(),new TrialSchemeService.ArchiveCommand(z.versionNo(),true),OWNER);
+        var next=service.create(FORM_ID,new TrialSchemeService.CreateCommand(null,null,null,graph("NEXT","10"),TrialScheme.PlannedData.empty()),OWNER);
+        assertThat(next.name()).isEqualTo("方案 AA");
+        var copy=service.copy(FORM_ID,next.id(),new TrialSchemeService.CopyCommand(next.versionNo(),null,true),OWNER);
+        assertThat(copy.name()).isEqualTo("方案 AB");
+    }
+    @Test void finishedQuantityIsSavedPerTrialAndCopiedWithActuals() throws Exception {
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules().disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        var a=service.create(FORM_ID,new TrialSchemeService.CreateCommand("成品A",null,null,graph("FIN", "10"),TrialScheme.PlannedData.empty()),OWNER);
+        var node=(com.fasterxml.jackson.databind.node.ObjectNode)mapper.valueToTree(a);
+        node.putObject("finishedOutput").put("quantity",277).put("unit","袋").put("remark","成品记录");
+        var saved=service.save(FORM_ID,a.id(),mapper.treeToValue(node,TrialSchemeService.SaveCommand.class),OWNER);
+        assertThat(mapper.valueToTree(service.find(FORM_ID,a.id(),OWNER)).at("/finishedOutput/quantity").decimalValue()).isEqualByComparingTo("277");
+        var copied=service.copy(FORM_ID,a.id(),new TrialSchemeService.CopyCommand(saved.versionNo(),"成品B",true),OWNER);
+        assertThat(mapper.valueToTree(copied).at("/finishedOutput/unit").asText()).isEqualTo("袋");
+        assertThat(mapper.valueToTree(copied).at("/finishedOutput/remark").asText()).isEqualTo("成品记录");
+    }
 
     @Test void newTrialKeepsTrustedFormalSnapshotAfterCatalogRenameAndDisable() {
         var item=catalog.create(new MaterialCatalogService.Write("TRIAL-SNAPSHOT-"+java.util.UUID.randomUUID(),"旧牛肉","RAW","旧规格","kg",null),OWNER);

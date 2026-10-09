@@ -70,6 +70,7 @@ test("real experiment parent autosaves a proxied plan and reloads cleanly from t
 
   await page.goto(harness("experiment-parent"));
   await expect(page.getByText("产品 A V-A", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "正式版本" }).click();
   await expect(page.getByText("服务端工序 A", { exact: true })).toBeVisible();
   expect(detailLoads).toEqual(["task-a"]);
   expect(planLoads).toEqual(["form-a"]);
@@ -81,6 +82,7 @@ test("real experiment parent autosaves a proxied plan and reloads cleanly from t
   await page.getByTestId("route-task-b").click();
   await expect(page.getByTestId("active-task-route")).toHaveText("task-b");
   await expect(page.getByText("产品 B V-B", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "正式版本" }).click();
   await expect(page.getByText("服务端工序 B", { exact: true })).toBeVisible();
   await expect(page.getByPlaceholder("填写本次打样说明")).toHaveValue("服务端摘要 B");
   expect(detailLoads).toEqual(["task-a", "task-b"]);
@@ -172,8 +174,12 @@ test("ordinary flow edits also require transactional repair confirmation", async
 test("artifact list and generation interleavings converge on the authoritative list", async ({ page }) => {
   const lists: Route[] = [];
   let generateRoute: Route | undefined;
+  await page.route("**/revisions/revision-1/export-check?*", route => fulfillJson(route, { ready: true, errors: [], warnings: [] }));
   await page.route("**/experiment-forms/form-artifacts/process-plan/revisions/revision-1/artifacts", async route => {
-    if (route.request().method() === "GET") lists.push(route);
+    if (route.request().method() === "GET") {
+      lists.push(route);
+      if (lists.length === 1) await fulfillJson(route, []);
+    }
     else generateRoute = route;
   });
   await page.goto(harness("artifacts"));
@@ -183,10 +189,9 @@ test("artifact list and generation interleavings converge on the authoritative l
   await expect(page.getByRole("button", { name: /生\s*成/ }).nth(1)).toBeDisabled();
   await fulfillJson(generateRoute!, artifact("formula", "FORMULA_XLSX"));
   await expect.poll(() => lists.length).toBe(2);
-  await fulfillJson(lists[0]!, [artifact("sop", "SOP_DOCX")]);
   await fulfillJson(lists[1]!, [artifact("formula", "FORMULA_XLSX"), artifact("sop", "SOP_DOCX")]);
-  await expect(page.getByText("FORMULA-R1")).toBeVisible();
-  await expect(page.getByText("SOP-R1")).toBeVisible();
+  await expect(page.getByRole("button", { name: "下载已归档版本 FORMULA-R1" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "下载已归档版本 SOP-R1" })).toBeVisible();
 
   generateRoute = undefined;
   await page.getByRole("button", { name: /重新生成/ }).nth(1).click();
@@ -194,7 +199,7 @@ test("artifact list and generation interleavings converge on the authoritative l
   await fulfillJson(generateRoute!, null, 500);
   await expect.poll(() => lists.length).toBe(3);
   await fulfillJson(lists[2]!, [artifact("formula", "FORMULA_XLSX"), artifact("sop", "SOP_DOCX")]);
-  await expect(page.getByText("SOP-R1")).toBeVisible();
+  await expect(page.getByRole("button", { name: "下载已归档版本 SOP-R1" })).toBeVisible();
 });
 
 function artifact(id: string, artifactType: "FORMULA_XLSX" | "SOP_DOCX") {

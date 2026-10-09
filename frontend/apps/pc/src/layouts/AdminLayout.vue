@@ -2,14 +2,14 @@
   <a-layout class="admin-layout">
     <a-layout-header class="topbar">
       <div class="brand">
-        <div class="brand-mark">研</div>
+        <img class="brand-logo" :src="longhuiLogo" alt="龙汇食品" />
         <div>
-          <div class="brand-title">飞书自建应用研发样品管理系统</div>
-          <div class="brand-sub">PC 管理后台</div>
+          <div class="brand-title">龙汇研发管理系统</div>
+          <div class="brand-sub">从需求到配方 · 让研发有据可循</div>
         </div>
       </div>
       <div class="topbar-actions">
-        <a-tag color="blue">{{ roleLabel(auth.role) }}</a-tag>
+        <a-tag color="cyan">{{ roleLabel(auth.role) }}</a-tag>
         <a-tag>{{ auth.displayName }}</a-tag>
         <a-button size="small" @click="signOut">退出</a-button>
       </div>
@@ -34,46 +34,12 @@
           mode="inline"
           @click="onMenuClick"
         >
-          <a-menu-item key="/dashboard">
-            <span>工作台</span>
-          </a-menu-item>
-          <a-sub-menu key="demand" title="样品需求">
-            <a-menu-item v-if="canSee('/demand')" key="/demand">模块首页</a-menu-item>
-            <a-menu-item v-if="canSee('/demand/new')" key="/demand/new">录入需求</a-menu-item>
-            <a-menu-item v-if="canSee('/demand/review')" key="/demand/review">需求审核</a-menu-item>
-          </a-sub-menu>
-          <a-sub-menu key="rnd" title="研发任务">
-            <a-menu-item v-if="canSee('/rnd')" key="/rnd">模块首页</a-menu-item>
-            <a-menu-item v-if="canSee('/rnd/my-tasks')" key="/rnd/my-tasks">我的打样任务</a-menu-item>
-            <a-menu-item v-if="canSee('/rnd/pending-tests')" key="/rnd/pending-tests">内部测试待办</a-menu-item>
-            <a-menu-item v-if="canSee('/rnd/pool')" key="/rnd/pool">任务池</a-menu-item>
-            <a-menu-item v-if="canSee('/rnd/assign')" key="/rnd/assign">任务分发</a-menu-item>
-            <a-menu-item v-if="canSee('/rnd/stopped')" key="/rnd/stopped">停止项目池</a-menu-item>
-          </a-sub-menu>
-          <a-sub-menu key="shipment" title="寄样核价">
-            <a-menu-item v-if="canSee('/shipment')" key="/shipment">模块首页</a-menu-item>
-            <a-menu-item v-if="canSee('/shipment/list')" key="/shipment/list">寄样反馈</a-menu-item>
-            <a-menu-item v-if="canSee('/shipment/record')" key="/shipment/record">录入反馈</a-menu-item>
-            <a-menu-item v-if="canSee('/pricing/list')" key="/pricing/list">核价文件</a-menu-item>
-            <a-menu-item v-if="canSee('/finance')" key="/finance">通知财务</a-menu-item>
-            <a-menu-item v-if="canSee('/archive')" key="/archive">文件归档</a-menu-item>
-          </a-sub-menu>
-          <a-menu-item v-if="canSee('/reports')" key="/reports">
-            <span>报表导出</span>
-          </a-menu-item>
-          <a-menu-item v-if="canReadMaterials" key="/materials">物料管理</a-menu-item>
-          <a-sub-menu v-if="canSee('/settings')" key="settings" title="系统设置">
-            <a-menu-item key="/settings">配置中心</a-menu-item>
-            <a-menu-item key="/settings/users">账号与权限</a-menu-item>
-            <a-menu-item key="/settings/form-fields">表单字段</a-menu-item>
-            <a-menu-item key="/settings/workflows">流程状态</a-menu-item>
-            <a-menu-item key="/settings/dictionaries">基础字典</a-menu-item>
-            <a-menu-item key="/settings/role-permissions">角色权限</a-menu-item>
-            <a-menu-item key="/settings/data-models">数据模型</a-menu-item>
-          </a-sub-menu>
-          <a-menu-item key="/flowchart">
-            <span>流程图</span>
-          </a-menu-item>
+          <template v-for="group in navigation" :key="group.key">
+            <a-sub-menu v-if="group.children" :key="group.key" :title="group.label">
+              <a-menu-item v-for="item in group.children" :key="item.key">{{ item.label }}</a-menu-item>
+            </a-sub-menu>
+            <a-menu-item v-else :key="group.key">{{ group.label }}</a-menu-item>
+          </template>
         </a-menu>
       </a-layout-sider>
       <a-layout-content class="content">
@@ -85,18 +51,27 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import longhuiLogo from '../assets/longhui-logo.jpg';
 import { useRoute, useRouter } from "vue-router";
 import { canAccessRoute, roleLabel } from "@rnd/shared";
 import { useAuthStore } from "../stores/auth";
 import { useAdminContext } from "../composables/adminContext";
 import {materialCatalogApi} from '../services/materialCatalogApi';
+import {sopCatalogApi} from '../services/sopCatalogApi';
+import {buildAdminNavigation,navigationSelection} from './adminNavigation';
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const canReadMaterials = ref(false);
+const canReadSops = ref(false);
+let sopAccessRequest=0;
+watch(()=>[auth.token,auth.role],async()=>{
+ const request=++sopAccessRequest;canReadSops.value=false;
+ try{await sopCatalogApi.list('',1,1);if(request===sopAccessRequest)canReadSops.value=true;}catch{/* Server-authorized SOP index only. */}
+},{immediate:true});
 let materialAccessRequest = 0;
-watch(() => auth.role, async () => {
+watch(() => [auth.token,auth.role], async () => {
   const request=++materialAccessRequest; canReadMaterials.value=false;
   try {await materialCatalogApi.list({size:1});if(request===materialAccessRequest)canReadMaterials.value=true;} catch {/* Menu follows server capability. */}
 }, {immediate:true});
@@ -108,14 +83,7 @@ function canSee(path: string) {
 
 const selectedKeys = ref<string[]>([route.path]);
 const openKeys = ref<string[]>([]);
-
-const moduleOpenKey = computed(() => {
-  if (route.path.startsWith("/demand")) return "demand";
-  if (route.path.startsWith("/rnd")) return "rnd";
-  if (route.path.startsWith("/shipment") || route.path.startsWith("/pricing") || route.path === "/finance" || route.path === "/archive") return "shipment";
-  if (route.path.startsWith("/settings")) return "settings";
-  return "";
-});
+const navigation=computed(()=>buildAdminNavigation(canSee,{materials:canReadMaterials.value,sops:canReadSops.value}));
 
 const panelTone = computed(() => {
   switch (panel.value?.statusTone) {
@@ -135,8 +103,9 @@ const panelTone = computed(() => {
 watch(
   () => route.path,
   (path) => {
-    selectedKeys.value = [path];
-    if (moduleOpenKey.value) openKeys.value = [moduleOpenKey.value];
+    const selection=navigationSelection(path);
+    selectedKeys.value = [selection.selectedKey];
+    openKeys.value = selection.openKey?[selection.openKey]:[];
   },
   { immediate: true },
 );
@@ -159,9 +128,9 @@ function signOut() {
 .topbar {
   align-items: center;
   background: #fff;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--pc-border);
   display: flex;
-  height: 72px;
+  height: 88px;
   line-height: normal;
   justify-content: space-between;
   padding: 0 24px;
@@ -170,25 +139,22 @@ function signOut() {
 .brand {
   align-items: center;
   display: flex;
-  gap: 12px;
+  gap: 18px;
 }
 
-.brand-mark {
-  align-items: center;
-  background: #246bfe;
-  border-radius: 12px;
-  color: #fff;
-  display: flex;
-  font-weight: 900;
-  height: 40px;
-  justify-content: center;
-  width: 40px;
+.brand-logo {
+  width: 62px;
+  height: 68px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .brand-title {
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 24px;
+  font-family: var(--pc-title-font);
+  font-size: 25px;
+  font-weight: 400;
+  line-height: 36px;
+  letter-spacing: 2px;
 }
 
 .brand-sub {
@@ -204,11 +170,11 @@ function signOut() {
 }
 
 .sidebar {
-  border-right: 1px solid #e5e7eb;
+  border-right: 1px solid var(--pc-border);
 }
 
 .context-panel {
-  background: linear-gradient(180deg, #eef4ff, #fff);
+  background: linear-gradient(180deg, #edf3ef, #fff);
   border-bottom: 1px solid #e5e7eb;
   margin-bottom: 8px;
   padding: 16px 16px 12px;
@@ -256,7 +222,9 @@ function signOut() {
 }
 
 .content {
-  min-height: calc(100vh - 72px);
-  padding: 24px;
+  min-height: calc(100vh - 88px);
+  padding: 30px;
 }
+@media(max-width:900px){.brand-title{font-size:21px;letter-spacing:1px}.topbar{padding:0 18px}.topbar-actions{gap:6px}.content{padding:20px}}
+@media(max-width:640px){.topbar{height:auto;min-height:88px;flex-wrap:wrap;padding:12px;gap:10px}.brand-logo{width:46px;height:50px}.brand{gap:12px}.brand-title{font-size:20px}.brand-sub{font-size:10px}.topbar-actions{margin-left:auto}}
 </style>

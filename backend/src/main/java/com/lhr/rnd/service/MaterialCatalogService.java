@@ -68,7 +68,7 @@ public class MaterialCatalogService {
   return new Write(w.code(),w.name(),classification.businessType(),w.specification(),w.unit(),w.expectedVersion(),classificationId);
  }
  private void validate(Write w){if(w==null||w.code()==null||w.code().isBlank()||w.code().trim().length()>100||w.name()==null||w.name().isBlank()||w.name().trim().length()>200||w.category()==null||!List.of("RAW","AUXILIARY","PROCESS_WATER","PACKAGING").contains(w.category())||w.specification()!=null&&w.specification().length()>300)throw invalid("请填写有效编码、名称、类别和规格");
-  if(w.unit()==null||("PACKAGING".equals(w.category())?!List.of("个","张","米","袋","盒","箱").contains(w.unit()):!"kg".equals(w.unit())))throw invalid("原辅料单位必须为kg，包装请选择计数单位");
+  if(w.unit()==null||("PACKAGING".equals(w.category())?!List.of("个","张","只","米","袋","盒","箱").contains(w.unit()):!"kg".equals(w.unit())))throw invalid("原辅料单位必须为kg，包装请选择计数单位");
  }
  private BusinessException invalid(String m){return new BusinessException("MATERIAL_INVALID",m);}
 }

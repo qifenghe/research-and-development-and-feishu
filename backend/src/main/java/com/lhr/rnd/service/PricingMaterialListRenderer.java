@@ -15,6 +15,10 @@ import org.springframework.stereotype.Service;
 public class PricingMaterialListRenderer {
     public byte[] render(PricingBasisDraft d,PricingBasisResult result,boolean preview) {
         if(!preview&&!result.issues().isEmpty()) throw new BusinessException("PRICING_BASIS_INCOMPLETE",result.issues().get(0).message());
+        return CompanyPricingRenderer.render(d,result,preview);
+    }
+    private byte[] legacyRender(PricingBasisDraft d,PricingBasisResult result,boolean preview) {
+        if(!preview&&!result.issues().isEmpty()) throw new BusinessException("PRICING_BASIS_INCOMPLETE",result.issues().get(0).message());
         try(var w=new XSSFWorkbook();var out=new ByteArrayOutputStream()) {
             var h=d.header(); var name=h==null?"原材料清单":h.productName();
             var s=w.createSheet(WorkbookUtil.createSafeSheetName(name==null?"原材料清单":name));

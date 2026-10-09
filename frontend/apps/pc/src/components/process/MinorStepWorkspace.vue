@@ -52,23 +52,36 @@
       <slot name="selected-step-extension" :major="major" :step="selectedStep" />
 
       <section class="section">
-        <div class="section-title"><b>本步骤投料</b><a-button v-if="!readonly" type="link" size="small" @click="addMaterial">＋ 添加投料</a-button></div>
+        <div class="section-title"><b>本步骤投料</b></div>
         <p class="hint">外部投料从物料库选择；中间产物引用前序步骤的产出，<b>不进入物料库</b>。</p>
-        <div v-for="(material, index) in selectedStep.materials" :key="material.key" class="material-row">
-          <a-select v-model:value="material.sourceType" :disabled="readonly" :options="sourceTypes" @change="onSourceChange(material)" />
+        <div v-for="(material, index) in selectedStep.materials" :key="material.key" class="material-row" :data-material-key="material.key">
+          <a-select v-model:value="material.sourceType" :disabled="readonly || material.materialRole==='PACKAGING'" :options="sourceTypes" @change="onSourceChange(material)" />
           <a-select v-if="material.sourceType === 'STEP_OUTPUT'" v-model:value="material.sourceStepOutputId" :disabled="readonly" :options="previousOutputsFor(material)" placeholder="选择前序产出" @change="applyOutputSource(material)" />
-          <MaterialPicker v-else :key="material.key" :current-material="material" :readonly="readonly" @select="selectMaterial(material,$event)" />
+          <template v-else>
+            <MaterialPicker :key="material.key" :purpose="material.materialRole==='PACKAGING'?'packaging':'ingredient'" :current-material="material" :readonly="readonly" @select="selectMaterial(material,$event)" />
+            <a-button v-if="!readonly && !material.temporaryMaterialId" size="small" @click="startTemporary(material)">临时填写（不入库）</a-button>
+            <TemporaryMaterialEditor v-if="material.temporaryMaterialId && !readonly" :model-value="material" @update:model-value="updateTemporary($event)" />
+            <a-select v-if="!readonly && temporaryOptions.length" placeholder="复用本方案临时物料" :options="temporaryOptions" @change="reuseTemporary(material,String($event))" />
+          </template>
           <a-select v-model:value="material.materialRole" :disabled="readonly" :options="materialRoles" @change="ensurePrimaryMaterial(material)" />
           <a-input v-if="material.sourceType === 'STEP_OUTPUT'" :value="material.materialName" disabled placeholder="前序产出名称" />
-          <a-input-number v-model:value="material.weightKg" :disabled="readonly" :min="0" addon-after="kg" @update:value="publishLocal" />
+          <template v-if="material.materialRole==='PACKAGING'">
+            <a-input-number v-model:value="material.quantity" :disabled="readonly" :min="0" placeholder="包材数量" @update:value="publishLocal" />
+            <a-select v-model:value="material.quantityUnit" :disabled="readonly || !!material.catalogMaterialId" :options="packagingUnits" placeholder="数量单位" @change="publishLocal" />
+          </template>
+          <a-input-number v-else v-model:value="material.weightKg" :disabled="readonly" :min="0" addon-after="kg" @update:value="publishLocal" />
           <a-button v-if="!readonly" type="text" danger @click="removeMaterial(index)">删除</a-button>
           <details class="material-details"><summary>加入时机与方式{{ material.additionTiming ? ` · ${material.additionTiming}` : '' }}</summary><a-input v-model:value="material.additionTiming" :disabled="readonly" placeholder="何时加入，例如水沸后加入" @update:value="publishLocal" /><a-input v-model:value="material.additionMethod" :disabled="readonly" placeholder="如何加入，例如分三次均匀加入" @update:value="publishLocal" /></details>
         </div>
+        <a-button v-if="!readonly" class="add-material-bottom" block @click="addMaterial">＋ 添加投料</a-button>
       </section>
 
       <section class="section">
         <div class="section-title"><b>产出与中间状态</b><a-button v-if="!readonly" type="link" size="small" @click="addOutput">＋ 添加产出</a-button></div>
-        <p class="hint">中间产物仅在本工艺版本流转，<b>不进入物料库</b>。每步最多一项主料产出。</p>
+        <p class="hint">中间产物仅在本工艺版本流转，<b>不进入物料库</b>。名称与状态可沿用投入，产出重量请实际称重填写。每步最多一项主料产出。</p>
+        <a-space v-if="!readonly" wrap style="margin-bottom:10px">
+          <a-button v-for="material in selectedStep.materials.filter(item => item.materialRole!=='PACKAGING' && item.materialName?.trim())" :key="material.key" size="small" @click="inheritInput(material)">沿用投入：{{ material.materialName }}</a-button>
+        </a-space>
         <div v-for="(output, index) in selectedStep.outputs || []" :key="output.key" class="output-row">
           <a-select v-model:value="output.outputType" :disabled="readonly" :options="outputTypes" @update:value="publishLocal" />
           <a-input v-model:value="output.outputName" :disabled="readonly" placeholder="产出名称/中间状态" @update:value="publishLocal" />
@@ -89,8 +102,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, nextTick, reactive, ref, watch } from "vue";
 import { Modal } from "ant-design-vue";
+import { outputFromInput } from './outputFromInput';
+import TemporaryMaterialEditor from '../materials/TemporaryMaterialEditor.vue';
 import {
   aggregateProcessRecipe, calculateBatchYield, calculateMajorProcessYield, calculateMinorStepYield,
   mainYieldUnavailableReason,
@@ -113,6 +128,11 @@ const props = withDefaults(defineProps<{ modelValue: ProcessPlanDraft; majorKey:
 const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft]; "confirm-pass": [point: ControlPointDraft]; "confirm-deviation": [point: ControlPointDraft] }>();
 const clonePlan = (value: ProcessPlanDraft) => cloneVueValue(value);
 const localPlan = ref(clonePlan(props.modelValue));
+const temporaryOptions=computed(()=>{
+ const rows=new Map<string,ProcessStepMaterialDraft>();
+ for(const m of localPlan.value.majorProcesses)for(const s of m.steps)for(const r of s.materials)if(r.temporaryMaterialId&&!r.catalogMaterialId&&r.sourceType!=='STEP_OUTPUT')rows.set(r.temporaryMaterialId,r);
+ return [...rows].map(([value,r])=>({value,label:`${r.materialName||'未命名'} · ${r.temporarySpecification||'未填规格'}`}));
+});
 const selectedStepKey = ref("");
 const expanded = reactive({ basic: false });
 const dragPayload = ref<{ kind: "template" | "existing"; name?: string; index?: number } | null>(null);
@@ -128,7 +148,8 @@ const finalYield = computed(() => calculateBatchYield(localPlan.value));
 const recipeTotal = computed(() => externalActualTotal(localPlan.value));
 
 const stepTemplates = ["验收", "解冻", "清洗", "修割", "切块", "配料", "滚揉", "搅拌", "斩拌", "腌制", "焯水", "煎制", "炒制", "油炸", "煮制", "蒸煮", "冷却", "速冻", "包装", "金检", "研发取样"];
-const materialRoles = [{ label: "主料", value: "PRIMARY" }, { label: "辅料", value: "AUXILIARY" }, { label: "加工用水", value: "PROCESS_WATER" }];
+const materialRoles = [{ label: "主料", value: "PRIMARY" }, { label: "辅料", value: "AUXILIARY" }, { label: "加工用水", value: "PROCESS_WATER" }, {label:"包装物",value:"PACKAGING"}];
+const packagingUnits=['个','张','只','袋','盒','箱','米'].map(value=>({label:value,value}));
 const sourceTypes = [{ label: "外部物料", value: "EXTERNAL" }, { label: "前序中间产物", value: "STEP_OUTPUT" }];
 const states = [{ label: "固体", value: "SOLID" }, { label: "液体", value: "LIQUID" }, { label: "半固体", value: "SEMI_SOLID" }];
 const outputTypes = [{ label: "中间产物", value: "INTERMEDIATE" }, { label: "成品", value: "FINISHED" }, { label: "合格产出", value: "QUALIFIED" }, { label: "余料", value: "REUSABLE" }, { label: "尾料", value: "TAILING" }, { label: "取样", value: "SAMPLE" }, { label: "废弃", value: "WASTE" }];
@@ -257,9 +278,15 @@ function moveStep(index: number, offset: number) {
   });
 }
 
-function addMaterial() { selectedStep.value?.materials.push({ key: nextProcessKey("material"), sequence: selectedStep.value.materials.length + 1, materialRole: "AUXILIARY", materialName: "", materialState: "SOLID", sourceType: "EXTERNAL" }); publishLocal(); }
+async function addMaterial() { if(!selectedStep.value)return;const key=nextProcessKey('material');selectedStep.value.materials.push({ key, sequence: selectedStep.value.materials.length + 1, materialRole: "AUXILIARY", materialName: "", materialState: "SOLID", sourceType: "EXTERNAL" }); publishLocal();await nextTick();document.querySelector(`[data-material-key="${key}"]`)?.scrollIntoView?.({block:'nearest',behavior:'smooth'}); }
 function removeMaterial(index: number) { selectedStep.value?.materials.splice(index, 1); publishLocal(); }
 function addOutput() { if (!selectedStep.value) return; const id = nextProcessKey("output"); (selectedStep.value.outputs ||= []).push({ id, key: id, sequence: selectedStep.value.outputs.length + 1, outputType: "INTERMEDIATE", outputName: "", materialState: "SOLID", primaryOutput: false, continueFlow: true }); publishLocal(); }
+function inheritInput(material: ProcessStepMaterialDraft) {
+  if (!selectedStep.value || props.readonly) return;
+  const outputs = selectedStep.value.outputs ||= [];
+  outputs.push(outputFromInput(material, outputs.length + 1, outputs.some(item => item.primaryOutput)));
+  publishLocal();
+}
 function removeOutput(index: number) { if (!selectedStep.value) return; selectedStep.value.outputs?.splice(index, 1); void publish(clonePlan(localPlan.value)); }
 function replaceControls(value: ControlPointDraft[]) { if (!selectedStep.value) return; selectedStep.value.controlPoints = cloneVueValue(value); publishLocal(); }
 function replaceParameters(value: StepParameterDraft[]) {
@@ -280,10 +307,19 @@ function onSourceChange(material: ProcessStepMaterialDraft) {
     delete material.sourceStepOutputId;
   }
 }
-function selectMaterial(material:ProcessStepMaterialDraft,item:MaterialCatalogItem){Object.assign(material,selectCatalogMaterial(material,item));publishLocal();}
+function selectMaterial(material:ProcessStepMaterialDraft,item:MaterialCatalogItem){const packaging=material.materialRole==='PACKAGING';Object.assign(material,selectCatalogMaterial(material,item,packaging?'packaging':'ingredient'),{temporaryMaterialId:undefined,temporaryClassificationId:undefined,temporarySpecification:undefined,...(packaging?{weightKg:undefined,quantityUnit:item.unit}:{} )});publishLocal();}
+function startTemporary(material:ProcessStepMaterialDraft){Object.assign(material,clearCatalogReference(material),{temporaryMaterialId:nextProcessKey('tmp'),temporaryClassificationId:undefined,temporarySpecification:undefined,materialCode:undefined});publishLocal();}
+function updateTemporary(definition:ProcessStepMaterialDraft){for(const m of localPlan.value.majorProcesses)for(const s of m.steps)for(const r of s.materials)if(r.temporaryMaterialId===definition.temporaryMaterialId)Object.assign(r,{materialName:definition.materialName,temporaryClassificationId:definition.temporaryClassificationId,temporarySpecification:definition.temporarySpecification});publishLocal();}
+function reuseTemporary(material:ProcessStepMaterialDraft,id:string){const rows=localPlan.value.majorProcesses.flatMap(m=>m.steps.flatMap(s=>s.materials));const source=rows.find(r=>r.temporaryMaterialId===id);if(!source)return;const packaging=source.materialRole==='PACKAGING';Object.assign(material,clearCatalogReference(material),{temporaryMaterialId:id,temporaryClassificationId:source.temporaryClassificationId,temporarySpecification:source.temporarySpecification,materialName:source.materialName,materialCode:undefined,materialRole:source.materialRole,sourceType:'EXTERNAL',sourceStepOutputId:undefined,quantityUnit:packaging?source.quantityUnit:undefined,quantity:undefined,...(packaging?{weightKg:undefined}:{})});publishLocal();}
 function previousOutputsFor(material: ProcessStepMaterialDraft) { return material.materialRole === "PRIMARY" ? previousOutputs.value.filter(item => item.output.primaryOutput) : previousOutputs.value; }
-function applyOutputSource(material: ProcessStepMaterialDraft) { const output = previousOutputs.value.find(item => item.value === material.sourceStepOutputId)?.output; if (output) { material.materialName = output.outputName; material.materialState = output.materialState; material.weightKg = output.weightKg; } publishLocal(); }
-function ensurePrimaryMaterial(material: ProcessStepMaterialDraft) { if (material.materialRole === "PRIMARY") selectedStep.value?.materials.forEach(item => { if (item.key !== material.key) item.materialRole = "AUXILIARY"; }); publishLocal(); }
+function applyOutputSource(material: ProcessStepMaterialDraft) { const output = previousOutputs.value.find(item => item.value === material.sourceStepOutputId)?.output; if (output) { Object.assign(material, clearCatalogReference(material)); material.materialCode=undefined; material.formulaMaterialId=undefined; material.materialName = output.outputName; material.materialState = output.materialState; material.weightKg = output.weightKg; } publishLocal(); }
+function ensurePrimaryMaterial(material: ProcessStepMaterialDraft) {
+ const packaging=material.materialRole==='PACKAGING',wasPackaging=!!material.quantityUnit||material.quantity!=null;
+ if(packaging){material.weightKg=undefined;material.sourceType='EXTERNAL';material.sourceStepOutputId=undefined;if(material.catalogUnit==='kg')Object.assign(material,clearCatalogReference(material),{materialName:'',materialCode:undefined});}
+ else if(wasPackaging){Object.assign(material,clearCatalogReference(material),{quantity:undefined,quantityUnit:undefined,materialName:'',materialCode:undefined,temporaryMaterialId:undefined,temporaryClassificationId:undefined,temporarySpecification:undefined});}
+ if(packaging&&material.temporaryClassificationId){material.temporaryClassificationId=undefined;material.temporaryMaterialId=nextProcessKey('tmp');}
+ if (material.materialRole === "PRIMARY") selectedStep.value?.materials.forEach(item => { if (item.key !== material.key && item.materialRole==='PRIMARY') item.materialRole = "AUXILIARY"; }); publishLocal();
+}
 function ensurePrimaryOutput(output: StepOutputDraft) { if (output.primaryOutput) selectedStep.value?.outputs?.forEach(item => { if (item.key !== output.key) item.primaryOutput = false; }); publishLocal(); }
 
 function dragTemplate(event: DragEvent, name: string) { dragPayload.value = { kind: "template", name }; event.dataTransfer?.setData("application/rnd-step", JSON.stringify(dragPayload.value)); }

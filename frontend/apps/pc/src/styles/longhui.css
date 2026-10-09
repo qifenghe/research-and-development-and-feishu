@@ -1,0 +1,31 @@
+/* Longhui's visual layer: decorative type only in headings, never data cells. */
+.content h1,.content h2,.content .ant-page-header-heading-title,.content .ant-card-head-title{
+ font-family:var(--pc-title-font);font-weight:400;letter-spacing:1px;line-height:1.55;
+}
+.content .ant-page-header-heading-title{font-size:27px}
+.content .ant-card-head-title{font-size:21px}
+.ant-card,.catalog-card{border-color:var(--pc-border)}
+.ant-table-thead>tr>th{background:#f3f4ef!important;color:#54625b;font-weight:500!important}
+.ant-table-cell{font-variant-numeric:tabular-nums}
+.sidebar .ant-menu{padding:12px 8px;background:transparent}
+.sidebar .ant-menu-item-selected{background:var(--pc-primary-soft);color:var(--pc-primary)}
+.sidebar .ant-menu-item{margin-block:6px}
+.topbar{position:relative;isolation:isolate}
+/* Generated ink painting: misty mountains upper-right, bamboo lower-left,
+   warm xuan paper, no text/logo. Decorative layers never intercept events. */
+.topbar:after{content:"";position:absolute;inset:0;z-index:-1;opacity:.62;pointer-events:none;background:url('../assets/longhui-ink.png') right top/1200px auto no-repeat;mask-image:linear-gradient(to right,transparent 30%,#000 62%);}
+.content{position:relative;isolation:isolate;background-color:var(--pc-bg)}
+.content:before{content:"";position:absolute;left:0;right:0;top:0;height:200px;z-index:-1;pointer-events:none;background:url('../assets/longhui-ink.png') right -88px/1200px auto no-repeat;opacity:.55;mask-image:linear-gradient(to bottom,#000 20%,transparent 100%)}
+.sidebar .ant-layout-sider-children{position:relative;isolation:isolate;background:#f8f7f2}
+.sidebar .ant-layout-sider-children:after{content:"";position:absolute;left:0;right:0;bottom:0;height:420px;z-index:-1;pointer-events:none;opacity:.65;background:url('../assets/longhui-ink.png') left bottom/1200px auto no-repeat;mask-image:linear-gradient(to bottom,transparent,#000 36%)}
+.sidebar .ant-menu{background:rgba(248,247,242,.88)}
+.sidebar .ant-menu-item-selected{background:radial-gradient(ellipse at 35% 50%,rgba(104,153,140,.23),rgba(215,228,220,.24) 75%,transparent);border-radius:4px}
+.login-page.login-page{background-image:url('../assets/longhui-ink.png');background-size:cover;background-position:center;background-color:var(--pc-bg)}
+.content .ant-card,.content .catalog-card,.content .card{background:#fff;box-shadow:none;border-color:#e1e0d8}
+@media(max-width:900px){.topbar:after,.content:before{opacity:.3;background-size:950px auto}.sidebar .ant-layout-sider-children:after{opacity:.35}}
+@media(max-width:640px){.topbar:after{opacity:.18}.content:before{display:none}.login-page.login-page{background-position:65% top}.sidebar .ant-layout-sider-children:after{display:none}}
+.brand-sub{letter-spacing:1px}
+.content .ant-page-header{padding-left:0;padding-right:0}
+.module-link-card .ant-card-meta-title,.quick-action-card .ant-card-meta-title{font-weight:500}
+.ant-input:focus-visible,.ant-btn:focus-visible{outline:2px solid #285d59;outline-offset:3px}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}}

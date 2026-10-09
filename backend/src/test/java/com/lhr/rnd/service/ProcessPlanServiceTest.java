@@ -25,6 +25,18 @@ class ProcessPlanServiceTest {
     @Autowired ProcessRevisionService revisionService;
     @Autowired JdbcTemplate jdbc;
     @Autowired MaterialCatalogService catalog;
+    @Test void packagingQuantityRoundTripsInDatabase() throws Exception {
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        var material=mapper.readValue("{\"materialRole\":\"PACKAGING\",\"sourceType\":\"EXTERNAL\",\"materialName\":\"试验袋\",\"quantity\":277,\"quantityUnit\":\"个\"}",ProcessPlan.StepMaterial.class);
+        var step=new ProcessPlan.MinorStep(null,1,"PACK","包装","NORMAL",null,null,null,null,null,null,null,null,List.of(material));
+        var major=new ProcessPlan.MajorProcess(null,1,"PACK","包装",null,"NONE",null,List.of(step),List.of(),List.of(),null);
+        var current=service.find("FORM-PROCESS");
+        service.save("FORM-PROCESS",new ProcessPlan(null,"FORM-PROCESS",current.versionNo(),"DRAFT",List.of(major),null,false));
+        var actual=service.find("FORM-PROCESS").majorProcesses().get(0).steps().get(0).materials().get(0);
+        assertThat(actual.quantity()).isEqualByComparingTo("277");
+        assertThat(actual.quantityUnit()).isEqualTo("个");
+        assertThat(actual.weightKg()).isNull();
+    }
 
     @Test void catalogIdentityRoundTripsAndRenamePreservesSnapshot() {
         var admin=new SessionPrincipal("admin","admin","管理员",null,"SYSTEM_ADMIN",null);
@@ -110,8 +122,8 @@ class ProcessPlanServiceTest {
                 new BigDecimal("10"), null, null, "EXTERNAL", null)), List.of(new ProcessPlan.StepOutput(outputId, 1,
                 "INTERMEDIATE", "修割牛腩", "SOLID", new BigDecimal("10"), true, true, null)), List.of());
         var second = new ProcessPlan.MinorStep(null, 2, "COOK", "熟制", "NORMAL", null, null, null, null, null, null,
-                null, null, List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", null, "修割牛腩", "SOLID",
-                new BigDecimal("10"), null, null, "STEP_OUTPUT", outputId)), List.of(new ProcessPlan.StepOutput("FLOW-OUTPUT-2", 1,
+                null, null, List.of(new ProcessPlan.StepMaterial(null, 1, "PRIMARY", "BEEF", "修割牛腩", "SOLID",
+                new BigDecimal("10"), "OLD-FORMULA", null, "STEP_OUTPUT", outputId)), List.of(new ProcessPlan.StepOutput("FLOW-OUTPUT-2", 1,
                 "FINISHED", "熟制牛腩", "SEMI_SOLID", new BigDecimal("8"), true, false, null)), List.of());
         var major = new ProcessPlan.MajorProcess(null, 1, "HEAT", "热加工", null, "PRIMARY_INPUT", null,
                 List.of(first, second), List.of(), List.of(), null);
@@ -122,10 +134,32 @@ class ProcessPlanServiceTest {
         var secondMaterial = reloaded.majorProcesses().get(0).steps().get(1).materials().get(0);
 
         assertThat(secondMaterial.sourceType()).isEqualTo("STEP_OUTPUT");
+        assertThat(secondMaterial.materialCode()).isNull();
+        assertThat(secondMaterial.formulaMaterialId()).isNull();
         assertThat(secondMaterial.sourceStepOutputId()).isEqualTo(outputId);
         var replaced = service.save("FORM-PROCESS", new ProcessPlan(reloaded.id(), "FORM-PROCESS", saved.versionNo(), "DRAFT",
                 reloaded.majorProcesses(), null, false));
         assertThat(replaced.majorProcesses().get(0).steps().get(1).materials().get(0).sourceStepOutputId()).isEqualTo(outputId);
+    }
+
+    @Test
+    void roundTripsTemporaryMaterialWithoutCatalogCreation() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        mapper.disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        var current = service.find("FORM-PROCESS");
+        var before = jdbc.queryForObject("select count(*) from material_catalog", Integer.class);
+        var draft = mapper.readValue("""
+          {"versionNo":%d,"status":"DRAFT","majorProcesses":[{"sequence":1,"processName":"试验","steps":[
+          {"sequence":1,"stepName":"领料","materials":[{"sequence":1,"materialRole":"PRIMARY","materialName":"试验牛肉",
+          "sourceType":"EXTERNAL","materialState":"SOLID","weightKg":10,"temporaryMaterialId":"TMP-1",
+          "temporaryClassificationId":"CAT-RAW","temporarySpecification":"20mm"}]}]}]}
+          """.formatted(current.versionNo()), ProcessPlan.class);
+        service.save("FORM-PROCESS", draft);
+        var material = mapper.valueToTree(service.find("FORM-PROCESS").majorProcesses().get(0).steps().get(0).materials().get(0));
+        assertThat(material.path("temporaryMaterialId").asText()).isEqualTo("TMP-1");
+        assertThat(material.path("temporaryClassificationId").asText()).isEqualTo("CAT-RAW");
+        assertThat(material.path("temporarySpecification").asText()).isEqualTo("20mm");
+        assertThat(jdbc.queryForObject("select count(*) from material_catalog", Integer.class)).isEqualTo(before);
     }
 
     @Test

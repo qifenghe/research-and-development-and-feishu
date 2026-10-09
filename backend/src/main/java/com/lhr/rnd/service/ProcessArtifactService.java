@@ -53,6 +53,7 @@ public class ProcessArtifactService {
     private final TrialSchemeService trials;
     private final TrialPromotionService promotions;
     private final ProcessExportCheckService exportChecks;
+    private final SopAccessService sopAccess;
     private final ProcessRecipeService recipeService = new ProcessRecipeService();
     private final ProcessPlanCalculationService calculationService = new ProcessPlanCalculationService();
 
@@ -63,7 +64,7 @@ public class ProcessArtifactService {
             AuditLogService auditLogService,
             ProcessArtifactCleanupLedgerService cleanupLedger,
             ProcessPlanService plans, TrialSchemeService trials, TrialPromotionService promotions,
-            ProcessExportCheckService exportChecks
+            ProcessExportCheckService exportChecks, SopAccessService sopAccess
     ) {
         this.jdbc = jdbc;
         this.revisionService = revisionService;
@@ -74,6 +75,7 @@ public class ProcessArtifactService {
         this.trials = trials;
         this.promotions = promotions;
         this.exportChecks = exportChecks;
+        this.sopAccess = sopAccess;
     }
 
     @Transactional(readOnly = true)
@@ -82,7 +84,7 @@ public class ProcessArtifactService {
         var source = promotions.source(formId, revisionId, principal);
         return exportChecks.view(productName(formId), "正式工艺 R" + revision.revisionNo()
                 + (source == null ? "" : " / 试验方案 " + source.trialName() + " V" + source.trialVersionNo()),
-                revision.snapshot(), null, List.of()).withMetadata(exportMetadata(formId, principal))
+                revision.snapshot(), revisionFinished(revision), List.of()).withMetadata(exportMetadata(formId, principal))
                 .withActualsProvenance(source != null && source.inheritedActuals(), source == null ? null : source.sourceTrialId());
     }
 
@@ -91,21 +93,27 @@ public class ProcessArtifactService {
         plans.requireDraftReadAccess(formId, principal);
         var plan = plans.find(formId);
         requireVersion(versionNo, plan.versionNo());
-        return exportChecks.view(productName(formId), "已保存正式工艺草稿 V" + plan.versionNo(), plan, null, List.of()).withMetadata(exportMetadata(formId, principal));
+        var output=jdbc.query("select finished_output_quantity,finished_output_unit from experiment_form where id=?",(rs,n)->new com.lhr.rnd.model.TrialScheme.FinishedOutput(rs.getBigDecimal(1),rs.getString(2),null),formId).get(0);
+        return exportChecks.view(productName(formId), "已保存正式工艺草稿 V" + plan.versionNo(), plan, ProcessFinishedOutput.view(plan,output,"已保存正式草稿"), List.of()).withMetadata(exportMetadata(formId, principal));
     }
 
     @Transactional(readOnly = true)
     public ProcessExportView trialView(String formId, String trialId, int versionNo, SessionPrincipal principal) {
         var trial = trials.find(formId, trialId, principal);
         requireVersion(versionNo, trial.versionNo());
-        // A/B schemes do not own a packed-finished measurement; never borrow the shared experiment's value.
-        return exportChecks.view(productName(formId), "试验方案 " + trial.name() + " V" + trial.versionNo(), trial.plan(), null, List.of()).withMetadata(exportMetadata(formId, principal))
+        return exportChecks.view(productName(formId), "试验方案 " + trial.name() + " V" + trial.versionNo(), trial.plan(), ProcessFinishedOutput.view(trial.plan(),trial.finishedOutput(),"当前试验方案"), List.of()).withMetadata(exportMetadata(formId, principal))
                 .withActualsProvenance(trial.inheritedActuals(), trial.sourceTrialId());
     }
 
     private ProcessExportView.Metadata exportMetadata(String formId, SessionPrincipal principal) {
         var specification = jdbc.queryForObject("select version.specification from experiment_form form join sample_version version on version.id = form.version_id where form.id = ?", String.class, formId);
         return new ProcessExportView.Metadata(specification, principal.name(), java.time.LocalDate.now().toString());
+    }
+    private ProcessExportView.FinishedQuantity revisionFinished(ProcessRevision revision) {
+        var json=jdbc.queryForObject("select finished_output_json from experiment_process_revision where id=?",String.class,revision.id());
+        if(json==null)return null; // Legacy revisions must not borrow mutable current form data.
+        try { return ProcessFinishedOutput.view(revision.snapshot(),new com.fasterxml.jackson.databind.ObjectMapper().readValue(json,com.lhr.rnd.model.TrialScheme.FinishedOutput.class),"正式版本快照"); }
+        catch(java.io.IOException e){throw new IllegalStateException("读取正式成品记录失败",e);}
     }
 
     public ProcessExportView.Check check(ProcessExportView view, String type) { return exportChecks.check(view, type); }
@@ -141,6 +149,30 @@ public class ProcessArtifactService {
                 (rs, row) -> map(rs), revisionId);
     }
 
+    @Transactional(readOnly=true)
+    public List<ProcessArtifact> listForSop(String formId,String revisionId,SessionPrincipal principal){
+        sopAccess.require(formId,revisionId,"GET","/artifacts",principal);
+        return jdbc.query("select * from experiment_process_artifact where process_revision_id=? and artifact_type='SOP_DOCX' order by generated_at desc,id desc",(rs,n)->map(rs),revisionId);
+    }
+
+    @Transactional
+    public ProcessArtifact generateForSop(String formId,String revisionId,String type,SessionPrincipal principal){
+        var revision=sopAccess.require(formId,revisionId,"POST","/artifacts",principal);
+        if(!ProcessArtifact.SOP_DOCX.equals(type))throw new BusinessException("SOP_TYPE_FORBIDDEN","此入口只能生成正式SOP");
+        var source=promotions.sourceForSop(formId,revisionId);
+        var view=exportChecks.view(productName(formId),"正式工艺 R"+revision.revisionNo(),revision.snapshot(),null,List.of())
+                .withMetadata(exportMetadata(formId,principal)).withActualsProvenance(source!=null&&source.inheritedActuals(),source==null?null:source.sourceTrialId());
+        return generateInternal(formId,revisionId,type,principal,view);
+    }
+
+    @Transactional(readOnly=true)
+    public ArtifactDownload downloadForSop(String formId,String revisionId,String artifactId,SessionPrincipal principal){
+        sopAccess.require(formId,revisionId,"GET","/artifacts/"+artifactId+"/download",principal);
+        if(jdbc.queryForObject("select count(*) from experiment_process_artifact where id=? and process_revision_id=? and artifact_type='SOP_DOCX'",Integer.class,artifactId,revisionId)==0)
+            throw new BusinessException("SOP_TYPE_FORBIDDEN","此入口只能下载对应版本的正式SOP");
+        return downloadInternal(formId,revisionId,artifactId);
+    }
+
     @Transactional(readOnly = true)
     public List<ProcessArtifactPublic> listReadyPublic(String formId, String revisionId, SessionPrincipal principal) {
         requireReadAccess(formId, revisionId, principal);
@@ -153,11 +185,14 @@ public class ProcessArtifactService {
 
     @Transactional
     public ProcessArtifact generate(String formId, String revisionId, String artifactType, SessionPrincipal principal) {
-        cleanupLedger.reconcileStale();
         requireWriteAccess(formId, principal);
+        return generateInternal(formId,revisionId,artifactType,principal,revisionView(formId,revisionId,principal));
+    }
+
+    private ProcessArtifact generateInternal(String formId,String revisionId,String artifactType,SessionPrincipal principal,ProcessExportView exportView){
+        cleanupLedger.reconcileStale();
         var revision = revisionService.find(formId, revisionId);
         validateType(artifactType);
-        var exportView = revisionView(formId, revisionId, principal);
         exportChecks.requireReady(exportView, artifactType);
         if (recipeService.aggregate(revision.snapshot()).stream().map(ProcessRecipeService.RecipeLine::weightKg)
                 .reduce(BigDecimal.ZERO, BigDecimal::add).signum() <= 0) {
@@ -212,6 +247,9 @@ public class ProcessArtifactService {
     @Transactional(readOnly = true)
     public ArtifactDownload download(String formId, String revisionId, String artifactId, SessionPrincipal principal) {
         requireReadAccess(formId, revisionId, principal);
+        return downloadInternal(formId,revisionId,artifactId);
+    }
+    private ArtifactDownload downloadInternal(String formId,String revisionId,String artifactId){
         var revision = revisionService.find(formId, revisionId);
         var rows = jdbc.query("select * from experiment_process_artifact where id = ? and process_revision_id = ?",
                 (rs, row) -> map(rs), artifactId, revisionId);

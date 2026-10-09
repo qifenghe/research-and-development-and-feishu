@@ -7,10 +7,16 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleValidation(org.springframework.web.bind.MethodArgumentNotValidException exception) {
+        return ResponseEntity.badRequest().body(ApiResponse.failure("INVALID_REQUEST", "请补充或修正必填内容：" +
+                exception.getBindingResult().getFieldErrors().stream().map(e -> e.getDefaultMessage()).distinct().collect(java.util.stream.Collectors.joining("；"))));
+    }
+
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException exception) {
         return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
+                .status("MATERIAL_INTAKE_FORBIDDEN".equals(exception.code()) ? HttpStatus.FORBIDDEN : HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.failure(exception.code(), exception.getMessage()));
     }
 

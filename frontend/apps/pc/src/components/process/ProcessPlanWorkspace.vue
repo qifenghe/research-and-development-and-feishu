@@ -13,14 +13,16 @@
       </div>
       <a-space>
         <a-button @click="recipeOpen = true">配方汇总</a-button>
+        <a-button v-if="!readonly && formId && plan.status==='DRAFT'" @click="openIntake">整理新增物料</a-button>
         <ProcessYieldComparison :form-id="formId" />
-        <ProcessExportPreview :form-id="formId" :version-no="plan.versionNo" :source-label="`正式工艺草稿 V${plan.versionNo}`" :disabled="plan.status !== 'DRAFT' || saveState === 'dirty' || saveState === 'saving' || saveState === 'error'" @locate="locateExportIssue" />
+        <ProcessExportPreview :plan="plan" :before-check="saveForPreview" :locally-dirty="saveState==='dirty' || saveState==='error'" :form-id="formId" :version-no="plan.versionNo" :source-label="`正式工艺草稿 V${plan.versionNo}`" :disabled="plan.status !== 'DRAFT' || saveState === 'saving'" @locate="locateExportIssue" />
         <a-button :disabled="readonly || plan.status !== 'DRAFT'" :loading="saveState === 'saving'" @click="saveNow()">保存草稿</a-button>
         <a-button type="primary" :disabled="readonly || !formId || plan.status !== 'DRAFT' || saveState === 'saving'" @click="openSubmit">正式提交</a-button>
       </a-space>
     </header>
 
     <RecipeSummaryDrawer v-model:open="recipeOpen" :plan="plan" :source-label="`${plan.status === 'SUBMITTED' ? '正式版本' : '正式工艺草稿'} V${plan.versionNo}`" :dirty="['dirty', 'saving', 'error'].includes(saveState)" />
+    <MaterialIntakeDialog v-if="formId" v-model="intakeOpen" :plan="plan" :form-id="formId" :source-version="plan.versionNo" />
     <div class="workspace-main">
       <div v-if="!activeMajorKey" class="view">
         <div class="view-bar"><div><b>大工序编排</b><small>拖拽或键盘排序；模板可重复使用</small></div></div>
@@ -111,6 +113,8 @@ import RndOutputCenter from "./RndOutputCenter.vue";
 import ProcessYieldComparison from "./ProcessYieldComparison.vue";
 import ProcessExportPreview from "./ProcessExportPreview.vue";
 import RecipeSummaryDrawer from "./RecipeSummaryDrawer.vue";
+import MaterialIntakeDialog from '../materials/MaterialIntakeDialog.vue';
+import {initializeTemporaryDefinitions} from '@rnd/shared';
 import type { ExportIssue } from "../../services/processExportApi";
 import { diffProcessPlans } from "./processPlanDiff";
 import { ProcessPlanSaveCoordinator, type ProcessPlanSaveState } from "./processPlanAutosave";
@@ -132,6 +136,8 @@ const activeMajorKey = ref<string>();
 function locateExportIssue(issue: ExportIssue) { activeMajorKey.value = plan.value.majorProcesses.find(m => m.sequence === issue.majorSequence)?.key; }
 const saveState = ref<ProcessPlanSaveState>("idle");
 const recipeOpen = ref(false);
+const intakeOpen=ref(false);
+async function openIntake(){try{const candidate=initializeTemporaryDefinitions(clonePlan(plan.value));if(JSON.stringify(candidate)!==JSON.stringify(plan.value))replacePlan(candidate);await saveNow(true);if(!['dirty','saving','error'].includes(saveState.value))intakeOpen.value=true;}catch{/* saveNow reports errors, keep dialog closed */}}
 const revisions = ref<ProcessRevisionSummary[]>([]);
 const selectedRevision = ref<ProcessRevision>();
 const selectedRevisionSource = ref<ProcessRevision>();
@@ -227,6 +233,7 @@ async function saveNow(silent = false) {
     throw error;
   }
 }
+async function saveForPreview(){try{await saveNow(true);return !['dirty','saving','error'].includes(saveState.value);}catch{return false;}}
 
 async function openSubmit() {
   try {

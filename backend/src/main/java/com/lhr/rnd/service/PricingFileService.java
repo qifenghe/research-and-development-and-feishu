@@ -104,6 +104,10 @@ public class PricingFileService {
 
     /** Clean formal-process mode. Legacy template generation above remains unchanged. */
     public byte[] renderBasis(ProcessExportView view, boolean preview) {
+        if(!preview)new ProcessExportCheckService().requireReady(view,"PRICING_XLSX");
+        return CompanyPricingRenderer.render(view,preview);
+    }
+    private byte[] legacyRenderBasis(ProcessExportView view, boolean preview) {
         var checks = new ProcessExportCheckService();
         if (!preview) checks.requireReady(view, "PRICING_XLSX");
         try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {

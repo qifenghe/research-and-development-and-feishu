@@ -16,6 +16,17 @@ import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SopDocumentRendererTest {
+    @Test void packagingIsPrintedAsCountNotKilograms() throws Exception {
+        var base=view(false); var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        var tree=mapper.valueToTree(base.snapshot());
+        ((com.fasterxml.jackson.databind.node.ArrayNode)tree.at("/majorProcesses/0/steps/0/materials")).add(mapper.readTree("""
+            {"id":"BAG","sequence":9,"materialRole":"PACKAGING","sourceType":"EXTERNAL","materialName":"包装袋","quantity":277,"quantityUnit":"个"}
+            """));
+        var result=new ProcessExportCheckService().view(base.productName(),base.sourceLabel(),mapper.treeToValue(tree,ProcessPlan.class),null,List.of());
+        try(var doc=new XWPFDocument(new ByteArrayInputStream(new SopDocumentRenderer().render(result,new SopDocumentRenderer.Metadata(null,null,null,"研发",null,true))))) {
+            assertThat(doc.getTables().stream().map(t->t.getText()).collect(Collectors.joining("\n"))).contains("包装物","277 个");
+        }
+    }
     @Test void rendersAllParametersAdditionTimingAndIncompleteParameterWarnings() throws Exception {
         var base=view(false);
         var mapper=new com.fasterxml.jackson.databind.ObjectMapper();

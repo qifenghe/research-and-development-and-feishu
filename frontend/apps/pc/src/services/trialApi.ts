@@ -19,6 +19,7 @@ export interface TrialPlannedData {
 }
 
 export interface TrialScheme {
+  finishedOutput?: {quantity:number|null;unit:string;remark:string|null}|null;
   id: string;
   experimentFormId: string;
   versionNo: number;
@@ -62,6 +63,7 @@ export interface TrialPromotionSource {
 }
 
 export interface SaveTrialRequest {
+  finishedOutput?: TrialScheme['finishedOutput'];
   versionNo: number;
   name: string;
   purpose: string | null;

@@ -19,9 +19,11 @@ public final class ProcessRecipeService {
         for (var major : values(plan == null ? null : plan.majorProcesses())) {
             for (var step : values(major.steps())) {
                 for (var material : values(step.materials())) {
-                    if (!"EXTERNAL".equals(material.sourceType())) continue;
+                    if (!"EXTERNAL".equals(material.sourceType()) || "PACKAGING".equals(material.materialRole())) continue;
                     var name = normalizedName(material.materialName());
-                    var key = MaterialKey.of(material.formulaMaterialId(), material.materialCode(), name);
+                    var key = !blank(material.catalogMaterialId())?new MaterialKey(-2,material.materialCode()):
+                            !blank(material.temporaryMaterialId())?new MaterialKey(-1,material.temporaryMaterialId()):
+                            MaterialKey.of(material.formulaMaterialId(), material.materialCode(), name);
                     var aggregate = groups.computeIfAbsent(key, ignored -> new Aggregate(material.formulaMaterialId(),
                             material.materialCode(), name));
                     aggregate.weight = aggregate.weight.add(weight(material.weightKg()));

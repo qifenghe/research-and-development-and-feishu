@@ -15,6 +15,23 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TrialSchemeCopyServiceTest {
     private final TrialSchemeCopyService service = new TrialSchemeCopyService();
 
+    @Test void copiedTrialRemapsTemporaryIds() throws Exception {
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        mapper.disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        var source=mapper.readValue("""
+         {"id":"p","majorProcesses":[{"id":"major","sequence":1,"steps":[{"id":"s","sequence":1,"materials":[
+         {"id":"a","sequence":1,"sourceType":"EXTERNAL","materialName":"牛肉","temporaryMaterialId":"TMP-1","temporaryClassificationId":"CAT-RAW","temporarySpecification":"20mm"},
+         {"id":"b","sequence":2,"sourceType":"EXTERNAL","materialName":"牛肉","temporaryMaterialId":"TMP-1","temporaryClassificationId":"CAT-RAW","temporarySpecification":"20mm"}]}]}]}
+         """,ProcessPlan.class);
+        var copy=service.copy(source,TrialScheme.PlannedData.empty(),true,Map.of()).plan();
+        var rows=mapper.valueToTree(copy).at("/majorProcesses/0/steps/0/materials");
+        assertThat(rows.get(0).path("temporaryMaterialId").asText()).isNotBlank().isNotEqualTo("TMP-1");
+        assertThat(rows.get(1).path("temporaryMaterialId").asText()).isEqualTo(rows.get(0).path("temporaryMaterialId").asText());
+        assertThat(rows.get(0).path("temporarySpecification").asText()).isEqualTo("20mm");
+        var saved=service.normalizeForSave(copy,TrialScheme.PlannedData.empty(),copy,Map.of(),java.util.Set.of(),java.util.Set.of()).plan();
+        assertThat(mapper.valueToTree(saved).at("/majorProcesses/0/steps/0/materials/0/temporaryMaterialId").asText()).isEqualTo(rows.get(0).path("temporaryMaterialId").asText());
+    }
+
     @Test
     void deletedLegacyParametersDoNotBecomeOrphanPlansOnRepeatedNormalizationAndCopy() throws Exception {
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();

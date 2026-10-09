@@ -1,0 +1,63 @@
+import {test,expect,type Page} from '@playwright/test';
+import {sampleRequestTemplateGroups} from '../packages/shared/src/sample-request-template';
+import {templateRequirementFixture} from './sample-request-fixture';
+const base=process.env.INTAKE_LIVE_BASE;
+test.skip(!base,'仅在显式提供的临时验收数据库运行，不写业务预览库');
+async function login(page:Page,username:string){
+ await page.goto(base+'/admin/login');
+ await page.getByLabel('账号',{exact:true}).fill(username);
+ await page.getByLabel('密码',{exact:true}).fill('123456');
+ await page.getByRole('button',{name:/登.*录/}).click();
+ await expect(page).not.toHaveURL(/login$/);
+ return {Authorization:'Bearer '+await page.evaluate(()=>localStorage.getItem('rnd_access_token'))};
+}
+test('真实内勤代录→总监驳回→内勤原单重提→总监通过',async({page})=>{
+ test.setTimeout(60000);
+ const assistant=await login(page,'rnd_assistant');
+ await page.goto(base+'/admin/demand/new');
+ for(const group of sampleRequestTemplateGroups)for(const field of group.fields){
+  if(field.key==='referenceSampleProvided')await page.getByRole('radio',{name:'否',exact:true}).check();
+  else await page.getByLabel(field.label,{exact:true}).fill(String((templateRequirementFixture as any)[field.key]??'无'));
+ }
+ const product='代录闭环验收-'+Date.now();
+ await page.getByLabel('产品名称',{exact:true}).fill(product);
+ await page.getByLabel('产品类型',{exact:true}).fill('预制菜');
+ await page.getByLabel('销售申请人',{exact:true}).fill('销售张');
+ const createdResponse=page.waitForResponse(r=>r.url().endsWith('/api/v1/sample-requests')&&r.request().method()==='POST');
+ await page.getByRole('button',{name:'提交需求',exact:true}).click();
+ const created=(await (await createdResponse).json()).data;
+ expect(created.recorderName).toBe('赵内勤');expect(created.creatorName).toBe('销售张');
+ const forbidden=await page.request.post(base+'/api/v1/sample-requests/'+created.id+'/reject',{headers:assistant,data:{versionNo:0,comment:'越权'}});
+ expect(forbidden.status()).toBe(403);
+ await login(page,'rnd_director');await page.goto(base+'/admin/demand/review');
+ const row=page.getByRole('row').filter({hasText:product});
+ await row.getByRole('button',{name:'驳回重填',exact:true}).click();
+ await page.getByLabel('驳回批语',{exact:true}).fill('请明确20×30毫米块型');
+ const rejectedResponse=page.waitForResponse(r=>r.url().endsWith('/reject'));
+ await page.getByRole('button',{name:'确认驳回',exact:true}).click();
+ expect((await rejectedResponse).ok()).toBe(true);await expect(page.getByRole('dialog')).toHaveCount(0);
+ await login(page,'rnd_assistant');await page.goto(base+'/admin/demand/'+created.id);
+ await expect(page.getByText('请明确20×30毫米块型',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'修改并重新提交',exact:true}).click();
+ await page.getByLabel('销售申请人',{exact:true}).fill('销售李');
+ await page.getByLabel('块型',{exact:true}).fill('20×30毫米');
+ const resubmitResponse=page.waitForResponse(r=>r.url().endsWith('/resubmit'));
+ await page.getByRole('button',{name:'重新提交审核',exact:true}).click();
+ const revised=(await (await resubmitResponse).json()).data;
+ expect(revised.id).toBe(created.id);expect(revised.sampleNo).toBe(created.sampleNo);
+ expect(revised.recorderName).toBe('赵内勤');expect(revised.reviewVersion).toBe(2);
+ const director=await login(page,'rnd_director');await page.goto(base+'/admin/demand/review');
+ const approval=page.waitForResponse(r=>r.url().endsWith('/approve'));
+ await page.getByRole('row').filter({hasText:product}).getByRole('button',{name:'审核通过',exact:true}).click();
+ expect((await approval).ok()).toBe(true);
+ const duplicate=await page.request.post(base+'/api/v1/sample-requests/'+created.id+'/approve',{headers:director,data:{versionNo:2,reviewerName:'伪造总监'}});
+ expect(duplicate.status()).toBe(400);
+ const detail=(await (await page.request.get(base+'/api/v1/sample-requests/'+created.id,{headers:director})).json()).data;
+ expect(detail.status).toBe('PENDING_ASSIGNMENT');expect(detail.reviewHistory).toHaveLength(4);
+ expect(detail.reviewHistory[3].actorName).toBe('赵总监');
+ const tasks=(await (await page.request.get(base+'/api/v1/rnd-tasks',{headers:director})).json()).data;
+ expect((Array.isArray(tasks)?tasks:tasks.items).filter((t:any)=>t.productName===product)).toHaveLength(1);
+ await page.goto(base+'/admin/demand/'+created.id);
+ await expect(page.getByText('销售李',{exact:true})).toBeVisible();
+ await page.screenshot({path:'test-results/demand-intake-live-history.png',fullPage:true});
+});

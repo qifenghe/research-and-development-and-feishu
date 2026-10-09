@@ -70,7 +70,7 @@ const FIELD_LABELS: Record<string, string> = {
   "customerFeedback.feedbackAt": "反馈时间",
 };
 
-const PRICING_FILE_STATUS_LABELS: Record<string, string> = {
+export const PRICING_FILE_STATUS_LABELS: Record<string, string> = {
   DRAFT_PACKAGING: "待确认包装",
   PENDING_PRICING_REVIEW: "待核价审核",
   PRICING_APPROVED: "核价审核通过",

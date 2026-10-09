@@ -33,8 +33,12 @@ export function createSampleApi(client: ApiClient) {
     },
     create: (payload: CreateSampleRequestPayload) =>
       client.post<SampleRequest>("/sample-requests", payload),
-    approve: (id: string, reviewerName: string) =>
-      client.post(`/sample-requests/${id}/approve`, { reviewerName }),
+    approve: (id: string, reviewerName?: string, versionNo?: number) =>
+      client.post(`/sample-requests/${id}/approve`, { reviewerName, versionNo }),
+    reject: (id:string, versionNo:number, comment:string) =>
+      client.post<SampleRequest>(`/sample-requests/${id}/reject`, {versionNo,comment}),
+    resubmit: (id:string, versionNo:number, request:CreateSampleRequestPayload) =>
+      client.put<SampleRequest>(`/sample-requests/${id}/resubmit`, {versionNo,request}),
     detail: (id: string) => client.get<SampleRequest>(`/sample-requests/${id}`),
     versionTimeline: (projectId: string) =>
       client.get<import("../types").SampleVersionTimelineItem[]>(

@@ -12,6 +12,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class MaterialClassificationControllerTest extends MaterialCatalogControllerTest {
  @Autowired JdbcTemplate db;
+ @Test void directoryMigrationPreservesWaterAndPackagingReferences(){
+  var source=new org.springframework.jdbc.datasource.DriverManagerDataSource("jdbc:h2:mem:directory_"+UUID.randomUUID()+";DB_CLOSE_DELAY=-1","sa","");
+  var sql=new JdbcTemplate(source);
+  try {
+   org.flywaydb.core.Flyway.configure().dataSource(source).target("37").load().migrate();
+   sql.update("insert into material_catalog(id,code,name,category,unit,classification_id,status,version,created_at,updated_at) values('WATER-ID','WATER-CODE','水','PROCESS_WATER','kg','CAT-PROCESS_WATER','ACTIVE',0,current_timestamp,current_timestamp)");
+   sql.update("insert into material_catalog(id,code,name,category,unit,classification_id,status,version,created_at,updated_at) values('PACK-ID','PACK-CODE','袋','PACKAGING','个','CAT-PACKAGING','ACTIVE',0,current_timestamp,current_timestamp)");
+   org.flywaydb.core.Flyway.configure().dataSource(source).load().migrate();
+   assertThat(sql.queryForObject("select parent_id from material_classification where id='CAT-PROCESS_WATER'",String.class)).isEqualTo("CAT-RAW");
+   assertThat(sql.queryForObject("select p.name from material_classification c join material_classification p on p.id=c.parent_id where c.id='CAT-PACKAGING'",String.class)).isEqualTo("包材");
+   var catalog=new com.lhr.rnd.service.MaterialCatalogService(sql,null);
+   assertThat(catalog.list("WATER-CODE",null,null,1,20,"CAT-RAW").items()).singleElement().satisfies(m->{assertThat(m.id()).isEqualTo("WATER-ID");assertThat(m.category()).isEqualTo("PROCESS_WATER");assertThat(m.classificationId()).isEqualTo("CAT-PROCESS_WATER");});
+   assertThat(catalog.list("PACK-CODE",null,null,1,20,"CAT-PACKAGING-ROOT").items()).singleElement().satisfies(m->{assertThat(m.id()).isEqualTo("PACK-ID");assertThat(m.category()).isEqualTo("PACKAGING");assertThat(m.unit()).isEqualTo("个");});
+  } finally {sql.execute("SHUTDOWN");}
+ }
  @Test void migrationPreservesExistingMaterialIdentityAndType(){
   String url="jdbc:h2:mem:classification_"+UUID.randomUUID()+";DB_CLOSE_DELAY=-1";
   var source=new org.springframework.jdbc.datasource.DriverManagerDataSource(url,"sa","");var connection=new JdbcTemplate(source);

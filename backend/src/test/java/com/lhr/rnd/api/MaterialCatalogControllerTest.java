@@ -14,6 +14,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties="rnd.session.auth-required=true") @AutoConfigureMockMvc @ActiveProfiles("test")
 class MaterialCatalogControllerTest {
+ @Test void packagingAllowsPieceUnitZhi() throws Exception {
+  mvc.perform(post("/api/v1/materials").header("Authorization","Bearer "+token("SYSTEM_ADMIN")).contentType(MediaType.APPLICATION_JSON)
+   .content(item("ZHI-"+UUID.randomUUID(),"PACKAGING","只"))).andExpect(status().isOk()).andExpect(jsonPath("$.data.unit").value("只"));
+ }
  @Test void listReturnsServerCapabilities() throws Exception {
   mvc.perform(get("/api/v1/materials").header("Authorization","Bearer "+token("RND_ASSISTANT")))
    .andExpect(jsonPath("$.data.access.create").value(true)).andExpect(jsonPath("$.data.access.classifications").value(false));

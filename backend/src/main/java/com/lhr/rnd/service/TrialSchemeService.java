@@ -97,7 +97,7 @@ public class TrialSchemeService {
         var id = "TRIAL-" + UUID.randomUUID();
         var now = LocalDateTime.now();
         var plan = trialPlan(normalized.plan(), formId);
-        validateName(command.name());
+        var name=creationName(formId,command.name());
         validateLength(command.purpose(), 1000, "TRIAL_PURPOSE_INVALID", "试验目的不能超过1000个字符");
         jdbc.update("""
                 insert into experiment_trial_scheme(id, experiment_form_id, version_no, name, source_trial_id, archived,
@@ -105,7 +105,7 @@ public class TrialSchemeService {
                 plan_json, planned_data_json, inherited_actuals, inherited_measurement_ids_json, inherited_measurement_fingerprints_json, major_origins_json,
                 created_by, created_by_user_id, created_at, updated_by, updated_by_user_id, updated_at)
                 values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, id, formId, 1, clean(command.name()), null, false, cleanNullable(command.purpose()), cleanNullable(command.variables()),
+                """, id, formId, 1, name, null, false, cleanNullable(command.purpose()), cleanNullable(command.variables()),
                 TrialScheme.Conclusion.PENDING.name(), null, null, null, null, json(plan), json(normalized.plannedData()), false,
                 json(Set.of()), json(Set.of()), json(normalized.majorOrigins()), principal.name(), principal.userId(), now, principal.name(), principal.userId(), now);
         return findInternal(formId, id, false).trial();
@@ -131,6 +131,10 @@ public class TrialSchemeService {
                 command.difficulty() == null ? null : command.difficulty().name(), json(plan), json(normalized.plannedData()),
                 json(normalized.majorOrigins()), principal.name(), principal.userId(), LocalDateTime.now(), trialId, formId, command.versionNo());
         if (updated != 1) throw conflict();
+        var finished=command.finishedOutput()==null?stored.trial().finishedOutput():command.finishedOutput();
+        if(finished!=null && "kg".equals(finished.unit())) finished=new TrialScheme.FinishedOutput(ProcessFinishedOutput.weight(plan),"kg",finished.remark());
+        validateFinished(finished);
+        jdbc.update("update experiment_trial_scheme set finished_output_json=? where id=?",finished==null?null:json(finished),trialId);
         return findInternal(formId, trialId, false).trial();
     }
 
@@ -138,7 +142,7 @@ public class TrialSchemeService {
     public TrialScheme copy(String formId, String trialId, CopyCommand command, SessionPrincipal principal) {
         requireMutationAccess(formId, principal);
         if (command == null) throw invalid("TRIAL_REQUEST_REQUIRED", "复制请求不能为空");
-        validateName(command.name());
+        var name=creationName(formId,command.name());
         var source = findInternal(formId, trialId, true);
         if (source.trial().versionNo() != command.versionNo()) throw conflict();
         var copied = copyService.copy(source.trial().plan(), source.trial().plannedData(), command.includeActuals(), source.trial().majorOrigins());
@@ -151,10 +155,11 @@ public class TrialSchemeService {
                 plan_json, planned_data_json, inherited_actuals, inherited_measurement_ids_json, inherited_measurement_fingerprints_json, major_origins_json,
                 created_by, created_by_user_id, created_at, updated_by, updated_by_user_id, updated_at)
                 values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, id, formId, 1, clean(command.name()), trialId, false, source.trial().purpose(), source.trial().variables(),
+                """, id, formId, 1, name, trialId, false, source.trial().purpose(), source.trial().variables(),
                 TrialScheme.Conclusion.PENDING.name(), null, null, null, null, json(plan), json(copied.plannedData()), command.includeActuals(),
                 json(copied.inheritedMeasurementIds()), json(copied.inheritedMeasurementFingerprints()), json(copied.majorOrigins()), principal.name(), principal.userId(), now,
                 principal.name(), principal.userId(), now);
+        if(command.includeActuals()&&source.trial().finishedOutput()!=null)jdbc.update("update experiment_trial_scheme set finished_output_json=? where id=?",json(source.trial().finishedOutput()),id);
         return findInternal(formId, id, false).trial();
     }
 
@@ -215,7 +220,7 @@ public class TrialSchemeService {
                 read(rs.getString("plan_json"), ProcessPlan.class), read(rs.getString("planned_data_json"), TrialScheme.PlannedData.class),
                 rs.getBoolean("inherited_actuals"), read(rs.getString("major_origins_json"), new TypeReference<Map<String, String>>() {}),
                 rs.getString("created_by"), rs.getTimestamp("created_at").toLocalDateTime(), rs.getString("updated_by"),
-                rs.getTimestamp("updated_at").toLocalDateTime());
+                rs.getTimestamp("updated_at").toLocalDateTime(),rs.getString("finished_output_json")==null?null:read(rs.getString("finished_output_json"),TrialScheme.FinishedOutput.class));
     }
 
     private void requireReadAccess(String formId, SessionPrincipal principal) {
@@ -250,7 +255,18 @@ public class TrialSchemeService {
     }
 
     private void validateName(String name) {
+
         if (blank(name) || clean(name).length() > 120) throw invalid("TRIAL_NAME_INVALID", "方案名称不能为空且不能超过120个字符");
+    }
+    private String creationName(String formId,String requested){
+        var names=jdbc.query("select name from experiment_trial_scheme where experiment_form_id=?",(r,n)->r.getString(1),formId);
+        long maximum=0;
+        for(var value:names){var match=java.util.regex.Pattern.compile("^方案\\s*([A-Z]{1,8})$").matcher(value.trim());if(match.matches()){long number=0;for(char c:match.group(1).toCharArray())number=number*26+c-'A'+1;maximum=Math.max(maximum,number);}}
+        boolean repeated=!blank(requested)&&names.stream().anyMatch(n->n.replaceAll("\\s", "").equals(requested.trim().replaceAll("\\s", "")));
+        if(blank(requested)||repeated&&requested.trim().matches("方案\\s*[A-Z]{1,8}")){
+            long next=maximum+1;var letters=new StringBuilder();while(next>0){next--;letters.append((char)('A'+next%26));next/=26;}return "方案 "+letters.reverse();
+        }
+        validateName(requested);return clean(requested);
     }
 
     private void validateLength(String value, int maximum, String code, String message) {
@@ -292,7 +308,15 @@ public class TrialSchemeService {
     public record CreateCommand(String name, String purpose, String variables, ProcessPlan plan, TrialScheme.PlannedData plannedData) {}
     public record SaveCommand(int versionNo, String name, String purpose, String variables, TrialScheme.Conclusion conclusion,
                               String recommendationReason, BigDecimal qualityScore, String qualityNotes, TrialScheme.Difficulty difficulty,
-                              ProcessPlan plan, TrialScheme.PlannedData plannedData) {}
+                              ProcessPlan plan, TrialScheme.PlannedData plannedData,TrialScheme.FinishedOutput finishedOutput) {
+        public SaveCommand(int versionNo,String name,String purpose,String variables,TrialScheme.Conclusion conclusion,String recommendationReason,BigDecimal qualityScore,String qualityNotes,TrialScheme.Difficulty difficulty,ProcessPlan plan,TrialScheme.PlannedData plannedData){this(versionNo,name,purpose,variables,conclusion,recommendationReason,qualityScore,qualityNotes,difficulty,plan,plannedData,null);}
+    }
+    private void validateFinished(TrialScheme.FinishedOutput output){
+        if(output==null)return;
+        if(output.unit()==null||!List.of("袋","盒","份","个","盘","kg").contains(output.unit()))throw invalid("TRIAL_FINISHED_INVALID","请选择成品单位");
+        if(output.quantity()!=null&&(output.quantity().signum()<0||!"kg".equals(output.unit())&&output.quantity().stripTrailingZeros().scale()>0))throw invalid("TRIAL_FINISHED_INVALID","成品计数必须为非负整数");
+        validateLength(output.remark(),2000,"TRIAL_FINISHED_INVALID","成品备注不能超过2000字");
+    }
     public record CopyCommand(int versionNo, String name, boolean includeActuals) {}
     public record ArchiveCommand(int versionNo, boolean archived) {}
     public record ConfirmCommand(int trialVersionNo) {}

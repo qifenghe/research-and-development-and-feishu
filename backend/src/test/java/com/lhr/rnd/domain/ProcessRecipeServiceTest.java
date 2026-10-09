@@ -11,6 +11,17 @@ import static org.assertj.core.groups.Tuple.tuple;
 
 class ProcessRecipeServiceTest {
     private final ProcessRecipeService service = new ProcessRecipeService();
+    @Test void temporaryIdsPreventSameNameDifferentSpecificationMerge() throws Exception {
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        var input=mapper.readValue("""
+         {"majorProcesses":[{"sequence":1,"steps":[{"sequence":1,"materials":[
+         {"sequence":1,"sourceType":"EXTERNAL","materialName":"牛肉","weightKg":2,"temporaryMaterialId":"TMP-1"},
+         {"sequence":2,"sourceType":"EXTERNAL","materialName":"牛肉","weightKg":3,"temporaryMaterialId":"TMP-1"},
+         {"sequence":3,"sourceType":"EXTERNAL","materialName":"牛肉","weightKg":4,"temporaryMaterialId":"TMP-2"}]}]}]}
+         """,ProcessPlan.class);
+        assertThat(service.aggregate(input)).extracting(ProcessRecipeService.RecipeLine::weightKg)
+          .containsExactly(new BigDecimal("5.0000"),new BigDecimal("4.0000"));
+    }
 
     @Test
     void aggregatesOnlyExternalMaterialsByFormulaIdAndKeepsStepSources() {

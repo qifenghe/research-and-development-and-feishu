@@ -22,12 +22,21 @@ public class ProcessExportCheckService {
         var ingredients = new ArrayList<ProcessExportView.Ingredient>();
         var majors = new ArrayList<ProcessExportView.Major>();
         var external = BigDecimal.ZERO;
+        var packagingLines = new ArrayList<>(values(packaging));
         boolean completeExternal = true;
         for (var major : values(plan.majorProcesses()).stream().sorted(Comparator.comparingInt(ProcessPlan.MajorProcess::sequence)).toList()) {
             boolean supported = "PRIMARY_INPUT".equals(major.yieldBasis()) || "NONE".equals(major.yieldBasis());
             if (!supported) issues.add(issue("UNSUPPORTED_YIELD_BASIS", path(major.sequence(), null) + ".yieldBasis", "旧版得率口径待确认：仅支持主料投入或不参与得率，不能将 TOTAL_INPUT 当作主料口径", major.sequence(), null));
             for (var step : values(major.steps())) for (var material : values(step.materials())) {
                 if (!"EXTERNAL".equals(material.sourceType())) continue;
+                if ("PACKAGING".equals(material.materialRole())) {
+                    packagingLines.add(new PricingPackagingItem(material.id(), null, packagingLines.size()+1,
+                            PricingPackagingSource.MANUAL, material.materialCode(), material.materialName(),
+                            material.quantity(), material.catalogSpecification(), null, material.remark(),
+                            material.quantity()!=null && !blank(material.quantityUnit()) ? PricingPackagingStatus.CONFIRMED : PricingPackagingStatus.PENDING_CONFIRMATION,
+                            null, material.quantityUnit()));
+                    continue;
+                }
                 ingredients.add(new ProcessExportView.Ingredient(blank(material.materialCode()) ? material.formulaMaterialId() : material.materialCode(), material.materialName(), material.materialRole(), material.weightKg(), major.sequence(), step.sequence()));
                 if (material.weightKg() == null || material.weightKg().signum() < 0) {
                     completeExternal = false;
@@ -59,7 +68,7 @@ public class ProcessExportCheckService {
             issues.add(issue("EXTERNAL_MATERIAL_WEIGHT_REQUIRED", "materials", "外部物料总重量必须大于0", null, null));
         var batch = calculations.calculatePreviewBatch(plan);
         return new ProcessExportView(productName, sourceLabel, plan, completeExternal && !ingredients.isEmpty() ? external : null, batch,
-                List.copyOf(ingredients), List.copyOf(majors), finished, List.copyOf(values(packaging)), List.copyOf(issues), null);
+                List.copyOf(ingredients), List.copyOf(majors), finished, List.copyOf(packagingLines), List.copyOf(issues), null);
     }
 
     public ProcessExportView.Check check(ProcessExportView view, String type) {

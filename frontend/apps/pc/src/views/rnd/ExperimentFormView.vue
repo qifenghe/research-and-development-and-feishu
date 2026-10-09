@@ -108,6 +108,7 @@
                   :formal-plan="processPlan"
                   :readonly="readOnly || !!processDraftConflict"
                   @promoted="onTrialPromoted"
+                  @source-change="selectedTrial=$event"
                 />
               </a-tab-pane>
             </a-tabs>
@@ -121,24 +122,25 @@
           <a-card title="成品产出" class="page-card">
             <a-form layout="vertical">
               <a-row :gutter="16">
-                <a-col :span="8"><a-form-item label="成品重量"><a-input-number v-model:value="form.finishedOutputWeightKg" :disabled="editingBlocked" :min="0" :precision="4" addon-after="kg" style="width:100%" /></a-form-item></a-col>
-                <a-col :span="8"><a-form-item label="成品数量"><a-input-number v-model:value="form.finishedOutputQuantity" :disabled="editingBlocked || form.finishedOutputUnit === 'kg'" :min="form.finishedOutputUnit === 'kg' ? 0.0001 : 1" :precision="form.finishedOutputUnit === 'kg' ? 4 : 0" :step="1" style="width:100%" /><small v-if="form.finishedOutputUnit === 'kg'">与成品重量同步，不作为袋数</small></a-form-item></a-col>
-                <a-col :span="8"><a-form-item label="成品单位"><a-select :value="form.finishedOutputUnit" @change="changeOutputUnit" :disabled="editingBlocked" :options="outputUnitOptions" /></a-form-item></a-col>
+                <a-col :span="8"><a-form-item label="成品重量"><a-input-number :value="displayOutputWeight" :disabled="editingBlocked || activeHasProcessData" :min="0" :precision="4" addon-after="kg" style="width:100%" @update:value="form.finishedOutputWeightKg=$event" /><small v-if="activeHasProcessData">由当前来源的终端成品产出自动汇总；未标记成品时待补充。</small></a-form-item></a-col>
+                <a-col :span="8"><a-form-item label="成品数量"><a-input-number :value="displayOutput.quantity" :disabled="editingBlocked || displayOutput.unit === 'kg' || workspaceMode==='trials' && (!selectedTrial || selectedTrial.archived)" :min="0" :precision="displayOutput.unit === 'kg' ? 4 : 0" :step="1" style="width:100%" @update:value="updateDisplayedOutput({quantity:$event})" /><small v-if="displayOutput.unit === 'kg'">与成品重量同步，不作为袋数</small></a-form-item></a-col>
+                <a-col :span="8"><a-form-item label="成品单位"><a-select :value="displayOutput.unit" @change="updateDisplayedOutput({unit:$event})" :disabled="editingBlocked || workspaceMode==='trials' && (!selectedTrial || selectedTrial.archived)" :options="outputUnitOptions" /></a-form-item></a-col>
               </a-row>
             </a-form>
-            <a-form-item label="备注"><a-textarea v-model:value="form.remark" :rows="2" :disabled="editingBlocked" /></a-form-item>
+            <a-form-item label="备注"><a-textarea :value="displayOutput.remark" :rows="2" :disabled="editingBlocked || workspaceMode==='trials' && (!selectedTrial || selectedTrial.archived)" @update:value="updateDisplayedOutput({remark:$event})" /></a-form-item>
           </a-card>
 
-          <a-card title="正式工艺 / 实验单基础数据预览（非当前试验方案）" class="page-card">
+          <a-card :title="`基础数据预览 · ${activeSourceLabel}`" class="page-card">
             <a-table :columns="previewMaterialColumns" :data-source="pricingPreviewMaterials" row-key="key" :pagination="false" size="small" />
             <a-descriptions :column="2" size="small" bordered style="margin-top:12px">
-              <a-descriptions-item label="总投入">{{ pricingPreview.totalInputWeightKg.toFixed(3) }}kg</a-descriptions-item>
-              <a-descriptions-item label="成品重量">{{ form.finishedOutputWeightKg == null ? '待填写' : `${Number(form.finishedOutputWeightKg).toFixed(3)}kg` }}</a-descriptions-item>
-              <a-descriptions-item label="成品数量">{{ form.finishedOutputQuantity ?? '待填写' }}{{ form.finishedOutputQuantity == null ? '' : form.finishedOutputUnit }}</a-descriptions-item>
-              <a-descriptions-item v-if="form.finishedOutputUnit !== 'kg'" :label="`平均每${form.finishedOutputUnit}重量`">{{ pricingPreview.averageUnitWeightKg.toFixed(3) }}kg</a-descriptions-item>
+              <a-descriptions-item label="总投入">{{ activeHasProcessData && activeSummary.foodInputKg==null ? '待补充' : `${pricingPreview.totalInputWeightKg.toFixed(3)}kg` }}</a-descriptions-item>
+              <a-descriptions-item label="成品重量">{{ displayOutputWeight == null ? '待补充' : `${Number(displayOutputWeight).toFixed(3)}kg` }}</a-descriptions-item>
+              <a-descriptions-item label="成品数量">{{ displayOutput.quantity ?? '待填写' }}{{ displayOutput.quantity == null ? '' : displayOutput.unit }}</a-descriptions-item>
+              <a-descriptions-item v-if="displayOutput.unit !== 'kg'" :label="`平均每${displayOutput.unit}重量`">{{ displayOutputWeight==null || !displayOutput.quantity ? '待补充':`${pricingPreview.averageUnitWeightKg.toFixed(3)}kg` }}</a-descriptions-item>
               <a-descriptions-item label="得率基准">{{ pricingPreview.yieldBasisWeightKg.toFixed(3) }}kg</a-descriptions-item>
               <a-descriptions-item label="研发参考得率">{{ pricingPreview.yieldPercent.toFixed(2) }}%</a-descriptions-item>
             </a-descriptions>
+            <div v-if="activeSummary.packaging.length" style="margin-top:12px"><b>包材用量（不计入食品重量）</b><p v-for="item in activeSummary.packaging" :key="item.materialKey">{{ item.name }}：{{ item.quantity ?? '待补充' }} {{ item.unit || '待选单位' }}</p></div>
           </a-card>
 
           <a-card title="照片附件" class="page-card">
@@ -208,6 +210,8 @@ import { cloneVueValue } from "../../components/process/cloneVueValue";
 import ProcessPlanWorkspace from "../../components/process/ProcessPlanWorkspace.vue";
 import ProcessPlanSnapshot from "../../components/process/ProcessPlanSnapshot.vue";
 import TrialWorkbench from "../../components/trials/TrialWorkbench.vue";
+import type {TrialScheme} from '../../services/trialApi';
+import {summarizeProcessSource} from '../../../../../packages/shared/src/process-source-summary';
 import { RequestGeneration } from "../../components/process/requestGeneration";
 import { useAuthStore } from "../../stores/auth";
 import { api } from "../../services/api";
@@ -290,7 +294,16 @@ const editingBlocked = computed(() => readOnly.value || !!processDraftConflict.v
 const serverProcessHydrationToken = ref(0);
 const workspaceMode = ref<"formal" | "trials">("formal");
 const processWorkspace = ref<{ flushSave: (silent?: boolean) => Promise<void>; restoreLocalDirty: (plan: ProcessPlanDraft) => void; hydrateServer: (plan: ProcessPlanDraft) => void }>();
-const trialWorkbench = ref<{ openCreatedTrial: (trialId: string) => Promise<void> }>();
+const trialWorkbench = ref<{ openCreatedTrial: (trialId: string) => Promise<void>;updateFinishedOutput:(output:NonNullable<TrialScheme['finishedOutput']>)=>void }>();
+const selectedTrial=ref<TrialScheme>();
+const activePlan=computed(()=>workspaceMode.value==='trials'?selectedTrial.value?.plan||createEmptyProcessPlan():processPlan.value);
+const activeHasProcessData=computed(()=>workspaceMode.value==='trials'||hasLayeredProcessData(activePlan.value));
+const activeSummary=computed(()=>summarizeProcessSource(activePlan.value));
+const activeSourceLabel=computed(()=>workspaceMode.value==='trials'?selectedTrial.value?`${selectedTrial.value.name} V${selectedTrial.value.versionNo}`:'试验方案待选择':`正式工艺 V${processPlan.value.versionNo}`);
+const displayOutputWeight=computed(()=>activeHasProcessData.value?activeSummary.value.finishedWeightKg??null:form.finishedOutputWeightKg);
+const displayOutput=computed(()=>{const output=workspaceMode.value==='trials'?selectedTrial.value?.finishedOutput:{quantity:form.finishedOutputQuantity,unit:form.finishedOutputUnit,remark:form.remark};const unit=output?.unit||'袋';return {quantity:unit==='kg'?displayOutputWeight.value:output?.quantity??null,unit,remark:output?.remark||''};});
+function updateDisplayedOutput(patch:Partial<NonNullable<TrialScheme['finishedOutput']>>){const output={...displayOutput.value,...patch};if(output.unit==='kg')output.quantity=displayOutputWeight.value;if(workspaceMode.value==='trials')trialWorkbench.value?.updateFinishedOutput(output);else {form.finishedOutputQuantity=output.quantity;form.finishedOutputUnit=output.unit as typeof form.finishedOutputUnit;form.remark=output.remark||'';}}
+watch(()=>summarizeProcessSource(processPlan.value).finishedWeightKg,weight=>{if(hasLayeredProcessData(processPlan.value)&&!readOnly.value)form.finishedOutputWeightKg=weight??null;});
 const showLegacyProcessEditor = computed(() => processPlan.value.legacy && !processPlan.value.majorProcesses.some((item) => item.steps.length));
 const canUseTrials = computed(() => ["RND_ENGINEER", "RND_DIRECTOR"].includes(auth.role) && Boolean(detail.value?.currentExperimentForm?.id));
 const processRecipe = computed(() => aggregateProcessRecipe(processPlan.value));
@@ -315,19 +328,19 @@ const yieldBasisWeight = computed(() => yieldBasisWeightKg(effectiveMaterials.va
   primaryMaterial: item.primaryMaterial,
 })), yieldCalculationMode.value));
 const pricingPreview = computed(() => calculatePricingPreview({
-  totalInputWeightKg: totalFormulaWeight.value,
-  yieldBasisWeightKg: yieldBasisWeight.value,
-  finishedOutputWeightKg: form.finishedOutputWeightKg,
-  finishedOutputQuantity: form.finishedOutputQuantity,
+  totalInputWeightKg: activeHasProcessData.value?activeSummary.value.foodInputKg??0:totalFormulaWeight.value,
+  yieldBasisWeightKg: workspaceMode.value==='trials'?aggregateProcessRecipe(activePlan.value).filter(m=>m.canonicalMaterialRole==='PRIMARY').reduce((n,m)=>n+m.weightKg,0):yieldBasisWeight.value,
+  finishedOutputWeightKg: displayOutputWeight.value,
+  finishedOutputQuantity: displayOutput.value.quantity,
 }));
 const draftStatusLabel = computed(() => ({ idle: "", local: "已本地保存", syncing: "正在自动保存", saved: "已自动保存", error: "保存失败，已保留本地内容" }[draftSyncState.value]));
 const localDraftKey = computed(() => experimentDraftKey(auth.principal?.userId || auth.user?.id || auth.displayName, activeTaskId.value));
-const pricingPreviewMaterials = computed(() => effectiveMaterials.value.map((item, index) => ({
+const pricingPreviewMaterials = computed(() => (workspaceMode.value==='trials'?aggregateProcessRecipe(activePlan.value).map((item,index)=>({key:index,materialCategory:item.canonicalMaterialRole==='PRIMARY'?'RAW':'AUXILIARY',primaryMaterial:item.canonicalMaterialRole==='PRIMARY',materialName:item.materialName,weightKg:item.weightKg})):effectiveMaterials.value).map((item, index) => ({
   key: item.key,
-  role: `${categoryLabel(item.materialCategory)}${item.primaryMaterial ? " · 主料" : ""}`,
+  role: `${categoryLabel(item.materialCategory as MaterialRow['materialCategory'])}${item.primaryMaterial ? " · 主料" : ""}`,
   materialName: item.materialName || "未命名",
   weightKg: `${(item.weightKg ?? 0).toFixed(3)}kg`,
-  ratio: `${formulaRatioValues.value[index]?.toFixed(2) ?? "0.00"}%`,
+  ratio: activeHasProcessData.value && activeSummary.value.foodInputKg==null?'待补充':`${(workspaceMode.value==='trials'?(activeSummary.value.foodInputKg?((item.weightKg??0)/activeSummary.value.foodInputKg*100):0):formulaRatioValues.value[index])?.toFixed(2) ?? "0.00"}%`,
 })));
 const outputUnitOptions = ["袋", "盒", "份", "个", "盘", "kg"].map((value) => ({ label: value, value }));
 function changeOutputUnit(unit: typeof form.finishedOutputUnit) {
@@ -786,12 +799,20 @@ async function saveDraft(options: { silent?: boolean } = {}) {
   }
 }
 
-function onTrialPromoted(revision: { snapshot: ProcessPlanDraft }) {
+async function onTrialPromoted(revision: { snapshot: ProcessPlanDraft }, output?:TrialScheme['finishedOutput']) {
+  if(autoSaveTimer) window.clearTimeout(autoSaveTimer);
+  autoSaveTimer=undefined;
+  suppressAutoSave=true;
+  form.finishedOutputQuantity=output?.quantity??null;
+  form.finishedOutputUnit=(output?.unit||'袋') as typeof form.finishedOutputUnit;
+  form.remark=output?.remark||'';
   const promoted = normalizeProcessPlan(cloneVueValue(revision.snapshot));
   processPlan.value = promoted;
   processWorkspace.value?.hydrateServer(cloneVueValue(promoted));
   serverProcessHydrationToken.value++;
   workspaceMode.value = "formal";
+  await nextTick();
+  suppressAutoSave=false;
   persistLocalDraft();
 }
 

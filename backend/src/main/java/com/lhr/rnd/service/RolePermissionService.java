@@ -88,6 +88,7 @@ public class RolePermissionService {
         return List.of(
                 new RolePermissionConfig("RND_ASSISTANT", List.of(
                         rule("POST", "/api/v1/sample-requests", "创建样品需求", 10),
+                        rule("PUT", "/api/v1/sample-requests/*/resubmit", "修改被驳回需求并重新提交", 11),
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 20),
                         rule("GET", "/api/v1/sample-requests/*", "查看样品需求详情", 25),
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 26),
@@ -115,11 +116,13 @@ public class RolePermissionService {
                         rule("POST", "/api/v1/demo/seed-feedback", "初始化寄样反馈演示数据", 200)
                 )),
                 new RolePermissionConfig("RND_DIRECTOR", List.of(
+                        rule("GET", "/api/v1/sops", "查看SOP列表", 75),
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
                         rule("GET", "/api/v1/sample-requests/*", "查看样品需求详情", 15),
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 16),
                         rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 20),
                         rule("POST", "/api/v1/sample-requests/*/approve", "审核样品需求", 30),
+                        rule("POST", "/api/v1/sample-requests/*/reject", "驳回需求并附批语", 31),
                         rule("GET", "/api/v1/rnd-tasks/pool", "查看研发任务池", 40),
                         rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 50),
                         rule("GET", "/api/v1/rnd-tasks/*/detail", "查看研发任务详情", 60),
@@ -177,6 +180,7 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 140)
                 )),
                 new RolePermissionConfig("RND_ENGINEER", List.of(
+                        rule("GET", "/api/v1/sops", "查看SOP列表", 15),
                         rule("GET", "/api/v1/sample-requests", "查看样品需求列表", 10),
                         rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 12),
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 15),
@@ -226,6 +230,7 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 100)
                 )),
                 new RolePermissionConfig("TESTER", List.of(
+                        rule("GET", "/api/v1/sops", "查看SOP列表", 11),
                         rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 3),
                         rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 8),
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 5),
@@ -242,6 +247,7 @@ public class RolePermissionService {
                         rule("GET", "/api/v1/archive-files/*/download", "下载归档文件", 50)
                 )),
                 new RolePermissionConfig("QA_TESTER", List.of(
+                        rule("GET", "/api/v1/sops", "查看SOP列表", 11),
                         rule("GET", "/api/v1/dashboard/overview", "查看工作台汇总", 3),
                         rule("GET", "/api/v1/rnd-tasks", "查看研发任务列表", 8),
                         rule("GET", "/api/v1/sample-projects/*/version-timeline", "查看版本时间线", 5),
@@ -292,15 +298,44 @@ public class RolePermissionService {
             if (!hasAnyRole(config.roleCode(), "RND_DIRECTOR", "RND_ENGINEER", "RND_ASSISTANT", "FINANCE", "MANAGER")) return config;
             var rules = new java.util.ArrayList<>(config.permissions());
             if (hasAnyRole(config.roleCode(), "RND_DIRECTOR", "RND_ENGINEER", "RND_ASSISTANT")) {
+                rules.add(rule("GET", "/api/v1/material-intakes", "查看物料入库申请", 250));
+                rules.add(rule("GET", "/api/v1/material-intakes/*", "查看物料入库申请详情", 251));
+                rules.add(rule("POST", "/api/v1/material-intakes", "创建物料入库申请", 252));
+                rules.add(rule("PUT", "/api/v1/material-intakes/*", "编辑物料入库申请", 253));
+                rules.add(rule("POST", "/api/v1/material-intakes/*/submit", "提交物料入库申请", 254));
+                if ("RND_DIRECTOR".equals(config.roleCode())) {
+                    rules.add(rule("POST", "/api/v1/material-intakes/*/approve", "审核物料入库", 255));
+                    rules.add(rule("POST", "/api/v1/material-intakes/*/return", "退回物料申请", 256));
+                }
                 rules.add(rule("GET", "/api/v1/materials", "查询物料库", 210));
                 rules.add(rule("GET", "/api/v1/material-classifications", "查询物料分类", 214));
             }
             if (hasAnyRole(config.roleCode(), "RND_ASSISTANT")) {
+                rules.add(rule("GET", "/api/v1/sops", "查看正式SOP列表", 220));
+                rules.add(rule("GET", "/api/v1/sop-amendments", "查看本人SOP修订单", 221));
+                rules.add(rule("GET", "/api/v1/sop-amendments/*", "查看本人SOP修订单", 222));
+                rules.add(rule("POST", "/api/v1/sop-amendments", "创建SOP修订单", 223));
+                rules.add(rule("PUT", "/api/v1/sop-amendments/*", "保存本人SOP修订单", 224));
+                rules.add(rule("POST", "/api/v1/sop-amendments/*/submit", "提交SOP修订审核", 225));
+                rules.add(rule("POST", "/api/v1/sop-amendments/*/cancel", "作废本人SOP修订单", 226));
                 rules.add(rule("POST", "/api/v1/materials", "新增物料", 211));
                 rules.add(rule("PUT", "/api/v1/materials/*", "编辑物料", 212));
                 rules.add(rule("POST", "/api/v1/materials/*/status", "启停物料", 213));
             }
             var path = "/api/v1/pricing-files/*/basis";
+            if (hasAnyRole(config.roleCode(), "RND_ASSISTANT", "RND_DIRECTOR")) {
+                var sop="/api/v1/sops/*/revisions/*";
+                rules.add(rule("GET",sop,"查看正式SOP快照",229));
+                rules.add(rule("GET",sop+"/artifacts","查看正式SOP文件",230));
+                rules.add(rule("POST",sop+"/artifacts","生成正式SOP文件",231));
+                rules.add(rule("GET",sop+"/artifacts/*/download","下载正式SOP文件",232));
+            }
+            if (hasAnyRole(config.roleCode(), "RND_DIRECTOR")) {
+                rules.add(rule("GET", "/api/v1/sop-amendments", "查看SOP修订单", 221));
+                rules.add(rule("GET", "/api/v1/sop-amendments/*", "查看SOP修订单", 222));
+                rules.add(rule("POST", "/api/v1/sop-amendments/*/return", "退回SOP修订", 227));
+                rules.add(rule("POST", "/api/v1/sop-amendments/*/approve", "审核发布SOP修订", 228));
+            }
             rules.add(rule("GET", path, "查看核价确认数据", 86));
             if (hasAnyRole(config.roleCode(), "RND_DIRECTOR", "RND_ENGINEER")) {
                 rules.add(rule("PUT", path, "保存核价草稿", 87));

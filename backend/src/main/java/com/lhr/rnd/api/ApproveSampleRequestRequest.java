@@ -1,6 +1,6 @@
 package com.lhr.rnd.api;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.PositiveOrZero;
 
-public record ApproveSampleRequestRequest(@NotBlank String reviewerName) {
+public record ApproveSampleRequestRequest(String reviewerName, @PositiveOrZero Integer versionNo) {
 }

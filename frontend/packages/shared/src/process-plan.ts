@@ -1,12 +1,17 @@
 import type { ExperimentProcessStep } from "./types";
 import type { StepParameterDraft } from "./step-parameters";
 
-export type ProcessMaterialRole = "PRIMARY" | "AUXILIARY" | "PROCESS_WATER";
+export type ProcessMaterialRole = "PRIMARY" | "AUXILIARY" | "PROCESS_WATER" | "PACKAGING";
 export type ProcessOutputType = "QUALIFIED" | "REUSABLE" | "TAILING" | "SAMPLE" | "WASTE" | "HOLD";
 export type ProcessStepOutputType = "INTERMEDIATE" | "FINISHED" | ProcessOutputType;
 export type ProcessStepType = "NORMAL" | "WEIGH" | "MATERIAL_CHANGE" | "SAMPLE" | "WASTE";
 
 export interface ProcessStepMaterialDraft {
+  quantity?: number;
+  quantityUnit?: string;
+  temporaryMaterialId?: string;
+  temporaryClassificationId?: string;
+  temporarySpecification?: string;
   refreshCatalogSnapshot?:boolean;
   id?: string;
   key: string;
@@ -440,9 +445,10 @@ export function aggregateProcessRecipe(plan: ProcessPlanDraft): ProcessRecipeLin
   for (const major of plan.majorProcesses || []) {
     for (const step of major.steps || []) {
       for (const material of step.materials || []) {
-        if (material.sourceType !== "EXTERNAL") continue;
+        if (material.sourceType !== "EXTERNAL" || material.materialRole==='PACKAGING') continue;
         const materialName = normalizeMaterialName(material.materialName);
-        const group = recipeGroup(material.formulaMaterialId, material.materialCode, materialName);
+        const group = material.catalogMaterialId?{key:`C:${material.catalogMaterialId}`}:material.temporaryMaterialId?{key:`T:${material.temporaryMaterialId}`}:
+          recipeGroup(material.formulaMaterialId, material.materialCode, materialName);
         const current = groups.get(group.key) || {
           formulaMaterialId: material.formulaMaterialId,
           materialCode: material.materialCode,

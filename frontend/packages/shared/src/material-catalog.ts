@@ -2,8 +2,8 @@ export interface MaterialCatalogItem { id:string; code:string; name:string; cate
 export interface MaterialClassification { id:string; parentId?:string|null; name:string; businessType:string; sortOrder:number; status:string; version:number }
 export interface MaterialIdentity { id?:string; materialCode?:string; materialName?:string; catalogMaterialId?:string; catalogSpecification?:string; catalogUnit?:string; formulaMaterialId?:string; sourceStepOutputId?:string; refreshCatalogSnapshot?:boolean; selectionToken?:string }
 let selectionSerial=0;
-export function selectCatalogMaterial<T extends MaterialIdentity>(row:T,item:MaterialCatalogItem) {
- if(item.status!=='ACTIVE'||item.category==='PACKAGING'||item.unit!=='kg')throw new Error('请选择启用的kg原辅料');
+export function selectCatalogMaterial<T extends MaterialIdentity>(row:T,item:MaterialCatalogItem,purpose:'ingredient'|'packaging'='ingredient') {
+ if(item.status!=='ACTIVE'||(purpose==='packaging'?item.category!=='PACKAGING':item.category==='PACKAGING'||item.unit!=='kg'))throw new Error(purpose==='packaging'?'请选择启用的包装物':'请选择启用的kg原辅料');
  return {...row,materialCode:item.code,materialName:item.name,catalogMaterialId:item.id,catalogSpecification:item.specification,
   catalogUnit:item.unit,formulaMaterialId:undefined,sourceStepOutputId:undefined,refreshCatalogSnapshot:true,selectionToken:`${Date.now()}-${++selectionSerial}`};
 }

@@ -131,7 +131,7 @@ class ProcessArtifactServiceTest {
                 assertThat(sheet.getRow(findRow(sheet, "主流程实际得率")).getCell(2).getStringCellValue()).isEqualTo("待填写");
             }
             try (var book = new XSSFWorkbook(new ByteArrayInputStream(service.preview(view, "PRICING_XLSX").content()))) {
-                assertThat(book.getSheetAt(0).getRow(3).getCell(1).getStringCellValue()).isEqualTo("待填写");
+                assertThat(book.getSheetAt(0).getRow(38).getCell(5).getCellType()).isEqualTo(org.apache.poi.ss.usermodel.CellType.BLANK);
             }
             try (var doc = new XWPFDocument(new ByteArrayInputStream(service.preview(view, "SOP_DOCX").content()))) {
                 var text = doc.getParagraphs().stream().map(org.apache.poi.xwpf.usermodel.XWPFParagraph::getText).collect(java.util.stream.Collectors.joining("\n"))

@@ -26,8 +26,10 @@ public record TrialScheme(
         String createdBy,
         LocalDateTime createdAt,
         String updatedBy,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        FinishedOutput finishedOutput
 ) {
+    public record FinishedOutput(BigDecimal quantity,String unit,String remark) {}
     public enum Conclusion { PENDING, ADJUST, REJECT, RECOMMEND }
     public enum Difficulty { EASY, MEDIUM, HARD }
 

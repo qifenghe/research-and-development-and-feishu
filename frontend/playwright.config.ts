@@ -14,7 +14,7 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         channel: "chrome",
-        baseURL: "http://127.0.0.1:5173/admin/",
+        baseURL: `${process.env.PC_BASE_URL ?? 'http://127.0.0.1:5173'}/admin/`,
       },
     },
     {

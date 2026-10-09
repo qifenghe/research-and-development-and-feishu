@@ -183,7 +183,9 @@ class ProcessSubmissionValidatorTest {
         assertThat(validator.validate(aboveToleranceExplained).warnings()).extracting(ProcessSubmissionCheck.Issue::code)
                 .contains("MATERIAL_BALANCE_EXCEEDED");
         assertThat(validator.validate(aboveToleranceUnexplained).errors()).extracting(ProcessSubmissionCheck.Issue::code)
-                .contains("MATERIAL_BALANCE_UNEXPLAINED");
+                .doesNotContain("MATERIAL_BALANCE_UNEXPLAINED");
+        assertThat(validator.validate(aboveToleranceUnexplained).ready()).isTrue();
+        assertThat(validator.validate(aboveToleranceUnexplained).warnings()).extracting(ProcessSubmissionCheck.Issue::code).contains("MATERIAL_BALANCE_UNEXPLAINED");
     }
 
     @Test

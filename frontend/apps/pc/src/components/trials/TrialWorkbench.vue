@@ -12,12 +12,14 @@
         <a-button size="small" :disabled="!editable" @click="openCopy">复制</a-button>
         <a-button size="small" :disabled="readonly || busy || !currentTrial" @click="toggleArchive">{{ currentTrial?.archived ? "恢复" : "归档" }}</a-button>
         <a-button size="small" :loading="saving" :disabled="!editable || !dirty" @click="saveTrial()">保存方案</a-button>
-        <ProcessExportPreview v-if="currentTrial" :form-id="formId" :trial-id="currentTrial.id" :version-no="currentTrial.versionNo" :source-label="`${currentTrial.name} V${currentTrial.versionNo}`" :disabled="dirty || busy" @locate="activeMajorKey = currentTrial?.plan.majorProcesses.find(m => m.sequence === $event.majorSequence)?.key" />
+        <ProcessExportPreview v-if="currentTrial" :plan="currentTrial.plan" :before-check="saveTrial" :locally-dirty="dirty" :form-id="formId" :trial-id="currentTrial.id" :version-no="currentTrial.versionNo" :source-label="`${currentTrial.name} V${currentTrial.versionNo}`" :disabled="busy" @locate="activeMajorKey = currentTrial?.plan.majorProcesses.find(m => m.sequence === $event.majorSequence)?.key" />
         <a-button size="small" type="primary" :disabled="!editable" @click="openPromotionPreview">提交为正式工艺</a-button>
+        <a-button size="small" :disabled="!editable" @click="openIntake">整理新增物料</a-button>
       </a-space>
     </header>
 
     <RecipeSummaryDrawer v-if="currentTrial" v-model:open="recipeOpen" :plan="currentTrial.plan" :source-label="`试验方案 ${currentTrial.name} V${currentTrial.versionNo}${currentTrial.inheritedActuals ? '（含继承实测）' : ''}`" :dirty="dirty" />
+    <MaterialIntakeDialog v-if="currentTrial && formId" v-model="intakeOpen" :plan="currentTrial.plan" :form-id="formId" :trial-id="currentTrial.id" :source-version="currentTrial.versionNo" />
     <a-spin :spinning="loading">
       <a-empty v-if="!currentTrial" description="尚无试验方案。新建方案后可独立编排，不会写入正式工艺。" />
       <template v-else>
@@ -126,6 +128,9 @@
 <script setup lang="ts">
 import ProcessExportPreview from "../process/ProcessExportPreview.vue";
 import RecipeSummaryDrawer from "../process/RecipeSummaryDrawer.vue";
+import MaterialIntakeDialog from '../materials/MaterialIntakeDialog.vue';
+import {initializeTemporaryDefinitions} from '@rnd/shared';
+import {summarizeProcessSource} from '../../../../../packages/shared/src/process-source-summary';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from "vue-router";
 import { message, Modal } from "ant-design-vue";
@@ -139,7 +144,7 @@ import { deviationUnit, plannedActualRows } from "./trialComparison";
 import { clearTrialDraft, createStructureOnlyTrialSource, prepareTrialPlanForSave, pruneParameterPlans, readTrialDraft, trialDraftKey, TrialRequestFence, writeTrialDraft } from "./trialDraft";
 
 const props = defineProps<{ formId?: string; userId: string; formalPlan: ProcessPlanDraft; readonly?: boolean }>();
-const emit = defineEmits<{ promoted: [revision: ProcessRevision] }>();
+const emit = defineEmits<{ promoted: [revision: ProcessRevision, output:TrialScheme['finishedOutput']]; 'source-change':[trial:TrialScheme|undefined] }>();
 const trials = ref<TrialScheme[]>([]);
 const currentTrial = ref<TrialScheme>();
 const persistedTrial = ref<TrialScheme>();
@@ -152,8 +157,12 @@ const mutating = ref(false);
 const promoting = ref(false);
 const dirty = ref(false);
 const recipeOpen = ref(false);
+const intakeOpen=ref(false);
+async function openIntake(){if(!currentTrial.value)return;const candidate=initializeTemporaryDefinitions(plainClone(currentTrial.value.plan));if(JSON.stringify(candidate)!==JSON.stringify(currentTrial.value.plan)){currentTrial.value.plan=candidate;dirty.value=true;}if(await saveTrial())intakeOpen.value=true;}
 const newTrialOpen = ref(false);
 const newTrialName = ref("方案 A");
+function suggestNextName(){let maximum=0;for(const t of trials.value){const letters=/^方案\s*([A-Z]{1,8})$/.exec(t.name.trim())?.[1];if(letters){let n=0;for(const c of letters)n=n*26+c.charCodeAt(0)-64;maximum=Math.max(maximum,n);}}let n=maximum+1,result='';while(n>0){n--;result=String.fromCharCode(65+n%26)+result;n=Math.floor(n/26);}return `方案 ${result}`;}
+watch(newTrialOpen,value=>{if(value)newTrialName.value=suggestNextName();});
 const newTrialPurpose = ref("");
 const newTrialVariables = ref("");
 const copyOpen = ref(false);
@@ -178,6 +187,8 @@ const promotionFence = new TrialRequestFence();
 
 const busy = computed(() => loading.value || saving.value || mutating.value || promoting.value);
 const editable = computed(() => !props.readonly && !busy.value && Boolean(currentTrial.value) && !currentTrial.value?.archived);
+watch(currentTrial,value=>emit('source-change',value?plainClone(value):undefined),{deep:true,immediate:true});
+function updateFinishedOutput(output:NonNullable<TrialScheme['finishedOutput']>){if(!currentTrial.value||!editable.value)return;currentTrial.value.finishedOutput=plainClone(output);markDirty();}
 const activeMajor = computed(() => currentTrial.value?.plan.majorProcesses.find(major => major.key === activeMajorKey.value));
 const conclusionOptions = [{ value: "PENDING", label: "待结论" }, { value: "ADJUST", label: "继续调整" }, { value: "REJECT", label: "淘汰" }, { value: "RECOMMEND", label: "推荐提交" }];
 const difficultyOptions = [{ value: "EASY", label: "容易" }, { value: "MEDIUM", label: "中等" }, { value: "HARD", label: "困难" }];
@@ -192,7 +203,7 @@ onMounted(() => { window.addEventListener("beforeunload", beforeUnload); window.
 onBeforeUnmount(() => { listFence.invalidate(); detailFence.invalidate(); mutationFence.invalidate(); promotionFence.invalidate(); window.removeEventListener("beforeunload", beforeUnload); window.removeEventListener("pagehide", persistCache); });
 onBeforeRouteLeave(prepareTransition);
 onBeforeRouteUpdate(prepareTransition);
-defineExpose({ openCreatedTrial });
+defineExpose({ openCreatedTrial,updateFinishedOutput });
 
 async function loadTrials(formId: string) {
   const token = listFence.begin(formId, "list");
@@ -305,7 +316,7 @@ async function saveTrial() {
     const acknowledgement = await trialApi.save(formId, trial.id, {
       versionNo: trial.versionNo, name: trial.name.trim(), purpose: text(trial.purpose), variables: text(trial.variables), conclusion: trial.conclusion,
       recommendationReason: text(trial.recommendationReason), qualityScore: trial.qualityScore, qualityNotes: text(trial.qualityNotes), difficulty: trial.difficulty,
-      plan: prepareTrialPlanForSave(trial.plan), plannedData: plainClone(trial.plannedData),
+      plan: prepareTrialPlanForSave(trial.plan), plannedData: plainClone(trial.plannedData),finishedOutput:trial.finishedOutput?.unit==='kg'?{...trial.finishedOutput,quantity:summarizeProcessSource(trial.plan).finishedWeightKg??null}:trial.finishedOutput,
     });
     if (!mutationFence.isCurrent(token) || currentTrial.value?.id !== trial.id || formId !== props.formId) return false;
     const key = cacheKey(trial.id);
@@ -340,7 +351,7 @@ async function createTrial() {
   finally { if (mutationFence.isCurrent(token)) mutating.value = false; }
 }
 
-function openCopy() { if (!currentTrial.value) return; copyName.value = `${currentTrial.value.name}（副本）`; copyActuals.value = false; copyOpen.value = true; }
+function openCopy() { if (!currentTrial.value) return; copyName.value = suggestNextName(); copyActuals.value = false; copyOpen.value = true; }
 async function copyTrial() {
   const formId = props.formId; const trial = currentTrial.value;
   if (!formId || !trial || !copyName.value.trim()) return;
@@ -414,7 +425,7 @@ async function promoteTrial() {
   try {
     const revision = await trialApi.promote(formId, trial.id, { trialVersionNo: trial.versionNo, expectedProcessVersionNo: expectedProcessVersionNo.value, previewToken: preview.previewToken, confirmed: true, changeReason: text(promotionChangeReason.value), idempotencyKey: promotionIdempotencyKey.value });
     if (!promotionFence.isCurrent(token) || currentTrial.value?.id !== trial.id) return;
-    promotionOpen.value = false; promotionPreview.value = undefined; emit("promoted", revision); message.success("试验方案已提交，正式工艺已刷新");
+    promotionOpen.value = false; promotionPreview.value = undefined; emit("promoted", revision,trial.finishedOutput?plainClone(trial.finishedOutput):undefined); message.success("试验方案已提交，正式工艺已刷新");
   } catch (error) { if (promotionFence.isCurrent(token)) message.error(errorMessage(error, "正式提交失败；请按当前预览重试或重新预览")); }
   finally { if (promotionFence.isCurrent(token)) promoting.value = false; }
 }

@@ -214,7 +214,7 @@ public class SampleWorkflowService {
         if (revision != null) {
             for (var major : revision.snapshot().majorProcesses().stream().sorted(java.util.Comparator.comparingInt(ProcessPlan.MajorProcess::sequence)).toList())
                 for (var step : major.steps().stream().sorted(java.util.Comparator.comparingInt(ProcessPlan.MinorStep::sequence)).toList()) {
-                    for (var m : step.materials()) if ("EXTERNAL".equals(m.sourceType()))
+                    for (var m : step.materials()) if ("EXTERNAL".equals(m.sourceType()) && !"PACKAGING".equals(m.materialRole()))
                         materials.add(new com.lhr.rnd.model.PricingBasisDraft.Material(m.id(), major.id(), step.id(), m.id(), major.processName(), m.materialCode(), m.materialName(), m.materialRole(), "EXTERNAL", m.weightKg(), null, m.weightKg(), null, null, null, m.remark(),step.sequence()+". "+step.stepName()));
                     if (step.outputs() != null) for (var out : step.outputs()) if (out.primaryOutput()) mainOutput = out.weightKg();
                 }
@@ -798,9 +798,8 @@ public class SampleWorkflowService {
     }
 
     public synchronized List<SampleRequest> requests(String status, String keyword) {
-        if (sampleRequestRepository != null) sampleRequestRepository.findAll().stream()
-                .map(this::hydrateRequest).forEach(value -> requests.putIfAbsent(value.id(), value));
-        return requests.values().stream()
+        var source=sampleRequestRepository == null ? requests.values().stream() : sampleRequestRepository.findAll().stream().map(this::hydrateRequest);
+        return source
                 .filter(request -> matchesStatus(status, request.status().name()))
                 .filter(request -> matchesKeyword(
                         keyword,
@@ -1440,15 +1439,27 @@ public class SampleWorkflowService {
     }
 
     public synchronized SampleRequest requestDetail(String requestId) {
-        var request = requests.get(requestId);
-        if (request == null && sampleRequestRepository != null) {
-            request = sampleRequestRepository.findById(requestId).map(this::hydrateRequest).orElse(null);
-            if (request != null) requests.put(request.id(), request);
-        }
+        var request = sampleRequestRepository == null ? requests.get(requestId)
+                : sampleRequestRepository.findById(requestId).map(this::hydrateRequest).orElse(null);
         if (request == null) {
             throw new BusinessException("SAMPLE_REQUEST_NOT_FOUND", "样品需求不存在");
         }
         return request;
+    }
+
+    @Transactional
+    public synchronized SampleRequest reviseRequest(String id,CreateSampleRequestCommand command,SampleStatus status) {
+        var old=requestDetail(id);
+        var c=command;
+        var next=c==null ? new SampleRequest(old.id(),old.sampleNo(),old.productName(),old.productType(),old.customerName(),old.specification(),
+                old.applicationScenario(),old.flavorRequirement(),old.creatorName(),status,old.createdAt(),old.referenceSampleProvided(),old.cutShape(),old.mainMaterialRequirement(),
+                old.textureRequirement(),old.packagingRequirement(),old.storageRequirement(),old.customerTargetPrice(),old.monthlyDemand(),old.specialRequirements(),old.referenceMarketPrice(),old.additionalNotes())
+                : new SampleRequest(old.id(),old.sampleNo(),c.productName(),c.productType(),c.customerName(),c.specification(),c.applicationScenario(),c.flavorRequirement(),
+                c.creatorName(),status,old.createdAt(),c.referenceSampleProvided(),c.cutShape(),c.mainMaterialRequirement(),c.textureRequirement(),c.packagingRequirement(),
+                c.storageRequirement(),c.customerTargetPrice(),c.monthlyDemand(),c.specialRequirements(),c.referenceMarketPrice(),c.additionalNotes());
+        persistRequest(next);
+        requests.put(id,next);
+        return next;
     }
 
     private SampleRequest hydrateRequest(SampleRequestEntity entity) {
@@ -2046,6 +2057,11 @@ public class SampleWorkflowService {
                 bagsPerBox(versionWithMaterials.specification()),
                 packagingTemplateItems("DEFAULT_BAG")
         );
+        var formalPackagingRevision=latestFormalPricingRevision(lockedForm);
+        if(formalPackagingRevision!=null) {
+            var actual=new ProcessExportCheckService().view(version.productName(),"正式工艺",formalPackagingRevision.snapshot(),null,List.of()).packaging();
+            if(!actual.isEmpty())suggestedItems=actual.stream().map(p->new PricingPackagingItem(java.util.UUID.randomUUID().toString().replace("-",""),record.id(),p.sequence(),com.lhr.rnd.model.PricingPackagingSource.MANUAL,p.materialCode(),p.materialName(),p.quantity(),p.packageSpec(),p.conversionRule(),p.remark(),com.lhr.rnd.model.PricingPackagingStatus.PENDING_CONFIRMATION,null,p.quantityUnit())).toList();
+        }
         persistPricingPackagingItems(record.id(), suggestedItems);
         return record;
     }

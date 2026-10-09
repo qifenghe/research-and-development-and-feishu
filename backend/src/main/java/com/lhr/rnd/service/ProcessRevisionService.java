@@ -22,18 +22,20 @@ public class ProcessRevisionService {
     private final ProcessPlanService planService;
     private final ObjectMapper objectMapper;
     private final AuditLogService auditLogService;
+    private final FormalRevisionWriter writer;
     private final ProcessSubmissionValidator validator = new ProcessSubmissionValidator();
 
     public ProcessRevisionService(
             JdbcTemplate jdbc,
             ProcessPlanService planService,
             ObjectMapper objectMapper,
-            AuditLogService auditLogService
+            AuditLogService auditLogService, FormalRevisionWriter writer
     ) {
         this.jdbc = jdbc;
         this.planService = planService;
         this.objectMapper = objectMapper;
         this.auditLogService = auditLogService;
+        this.writer = writer;
     }
 
     @Transactional
@@ -83,19 +85,8 @@ public class ProcessRevisionService {
         var normalized = normalize(new ProcessPlan(plan.id(), plan.experimentFormId(), plan.versionNo(), "SUBMITTED",
                 plan.majorProcesses(), plan.batchYieldPercent(), plan.balanceToleranceKg(), plan.legacy(),
                 sourceRevisionId, changeReason));
-        var snapshotJson = serialize(normalized);
-        var now = LocalDateTime.now();
-        var revisionNo = jdbc.queryForObject(
-                "select coalesce(max(revision_no), 0) + 1 from experiment_process_revision where experiment_form_id = ?",
-                Integer.class, formId);
-        var id = "PREV-" + UUID.randomUUID();
-        try {
-            jdbc.update("insert into experiment_process_revision(id, process_plan_id, experiment_form_id, revision_no, source_revision_id, change_reason, submitted_by, submitted_at, snapshot_json, snapshot_hash) values (?,?,?,?,?,?,?,?,?,?)",
-                    id, normalized.id(), formId, revisionNo, sourceRevisionId, changeReason, command.submittedBy().trim(), now,
-                    snapshotJson, sha256(snapshotJson));
-        } catch (DuplicateKeyException exception) {
-            throw new BusinessException("PROCESS_PLAN_VERSION_CONFLICT", "工艺方案已被更新，请刷新后重试");
-        }
+        var published=writer.appendTrusted(formId,normalized,sourceRevisionId,changeReason,command.submittedBy().trim());
+        var id=published.id();var revisionNo=published.revisionNo();
         auditLogService.record("PROCESS_PLAN", formId, "PROCESS_PLAN_SUBMITTED", trustedOperator == null ? command.submittedBy().trim() : trustedOperator, trustedUserId,
                 "revisionId=%s;revisionNo=%d;changeReason=%s".formatted(id, revisionNo, valueOrEmpty(changeReason)));
         return find(formId, id);
@@ -104,10 +95,21 @@ public class ProcessRevisionService {
     @Transactional(readOnly = true)
     public List<ProcessRevision.ProcessRevisionSummary> list(String formId) {
         planService.find(formId);
+        return summaryRows(formId);
+    }
+
+    private List<ProcessRevision.ProcessRevisionSummary> summaryRows(String formId) {
         return jdbc.query("select * from experiment_process_revision where experiment_form_id = ? order by revision_no desc",
                 (rs, row) -> new ProcessRevision.ProcessRevisionSummary(rs.getString("id"), rs.getInt("revision_no"),
                         rs.getString("source_revision_id"), rs.getString("change_reason"), rs.getString("submitted_by"),
                         rs.getTimestamp("submitted_at").toLocalDateTime().toString(), rs.getString("snapshot_hash")), formId);
+    }
+
+    /** Catalogue already starts from existing forms; do not load their editable graphs. */
+    @Transactional(readOnly = true)
+    public List<ProcessRevision.ProcessRevisionSummary> catalogList(String formId, SessionPrincipal principal) {
+        requireFormalReadAccess(formId, principal);
+        return isTester(principal) ? list(formId, principal) : summaryRows(formId);
     }
 
     @Transactional(readOnly = true)

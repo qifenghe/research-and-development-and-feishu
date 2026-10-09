@@ -62,7 +62,7 @@
           <span>来源 {{ material.sourceType || "EXTERNAL" }}</span><span>角色 {{ material.materialRole }}</span>
           <span>编码 {{ display(material.materialCode) }}</span><span v-if="material.catalogSpecification">规格 {{ material.catalogSpecification }}</span>
           <span>记录 ID {{ display(material.id) }}</span><span>来源产出 ID {{ display(material.sourceStepOutputId) }}</span>
-          <span>重量 {{ kg(material.weightKg) }}</span><span>状态 {{ material.materialState }}</span><span>备注 {{ display(material.remark) }}</span>
+          <span v-if="material.materialRole==='PACKAGING'">包装用量 {{ material.quantity ?? '待补充' }} {{ material.quantityUnit || material.catalogUnit || '待选单位' }}</span><span v-else>重量 {{ kg(material.weightKg) }}</span><span>状态 {{ material.materialState }}</span><span>备注 {{ display(material.remark) }}</span>
           <span>加入时机 {{ display(material.additionTiming) }}</span><span>加入方式 {{ display(material.additionMethod) }}</span>
         </div>
 

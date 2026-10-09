@@ -1,6 +1,6 @@
 <template>
   <div>
-    <a-page-header title="工作台" :sub-title="dashboardSubtitle" />
+    <a-page-header title="工作台" :sub-title="dashboardSubtitle"><template #extra><a-button v-if="canAccessRoute(auth.role,'/flowchart','pc')" @click="router.push('/flowchart')">使用说明</a-button></template></a-page-header>
 
     <a-spin :spinning="loading">
       <a-row v-if="primaryActions.length" :gutter="16" style="margin-bottom: 16px">

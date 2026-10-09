@@ -6,6 +6,43 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class MaterialReferenceServiceTest {
+ @Test void packagingQuantitySurvivesCatalogResolutionAndTrialCopy() throws Exception {
+  when(catalog.find("BAG1")).thenReturn(new MaterialCatalogItem("BAG1","BAG","袋子","PACKAGING","500g","个","ACTIVE",0));
+  var mapper=new com.fasterxml.jackson.databind.ObjectMapper().disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+  var material=mapper.readValue("""
+   {"id":"bag","sequence":1,"materialRole":"PACKAGING","materialName":"伪造","sourceType":"EXTERNAL",
+   "catalogMaterialId":"BAG1","quantity":277,"quantityUnit":"个"}
+   """,com.lhr.rnd.model.ProcessPlan.StepMaterial.class);
+  var resolved=service.resolveMaterial(material,null);
+  assertThat(resolved.materialName()).isEqualTo("袋子");
+  assertThat(mapper.valueToTree(resolved).path("quantity").decimalValue()).isEqualByComparingTo("277");
+  assertThat(mapper.valueToTree(resolved).path("quantityUnit").asText()).isEqualTo("个");
+  assertThat(resolved.weightKg()).isNull();
+  var step=new com.lhr.rnd.model.ProcessPlan.MinorStep("s",1,"PACK","包装","NORMAL",null,null,null,null,null,null,null,null,java.util.List.of(resolved));
+  var major=new com.lhr.rnd.model.ProcessPlan.MajorProcess("major",1,"PACK","包装",null,"PRIMARY_INPUT",null,java.util.List.of(step),java.util.List.of(),java.util.List.of(),null);
+  var plan=new com.lhr.rnd.model.ProcessPlan("p","f",1,"DRAFT",java.util.List.of(major),null,false);
+  var copy=new com.lhr.rnd.domain.TrialSchemeCopyService().copy(plan,com.lhr.rnd.model.TrialScheme.PlannedData.empty(),true,java.util.Map.of()).plan();
+  var copied=mapper.valueToTree(copy.majorProcesses().get(0).steps().get(0).materials().get(0));
+  assertThat(copied.path("quantity").decimalValue()).isEqualByComparingTo("277");
+  assertThat(copied.path("quantityUnit").asText()).isEqualTo("个");
+  assertThat(new com.lhr.rnd.domain.ProcessRecipeService().aggregate(copy)).isEmpty();
+ }
+ @Test void packagingCannotReferenceFoodIntermediate() throws Exception {
+  var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+  var material=mapper.readValue("{\"materialRole\":\"PACKAGING\",\"sourceType\":\"STEP_OUTPUT\",\"sourceStepOutputId\":\"food\"}",com.lhr.rnd.model.ProcessPlan.StepMaterial.class);
+  assertThatThrownBy(()->service.resolveMaterial(material,null)).isInstanceOf(BusinessException.class);
+ }
+ @Test void intermediateClearsExternalIdentityButKeepsFlowAndQuantity(){
+  var m=new com.lhr.rnd.model.ProcessPlan.StepMaterial("m",1,"PRIMARY","BEEF","牛肉","SOLID",java.math.BigDecimal.TEN,"old-formula",null,
+   "STEP_OUTPUT","out",null,null,"MC1","旧规格","kg");
+  var resolved=service.resolveMaterial(m,null);
+  assertThat(resolved.materialCode()).isNull();
+  assertThat(resolved.formulaMaterialId()).isNull();
+  assertThat(resolved.catalogMaterialId()).isNull();
+  assertThat(resolved.sourceStepOutputId()).isEqualTo("out");
+  assertThat(resolved.materialName()).isEqualTo("牛肉");
+  assertThat(resolved.weightKg()).isEqualByComparingTo("10");
+ }
  @Test void deletingFirstLegacyRowRetainsRemainingSnapshotByIdentity() throws Exception {
   var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
   mapper.disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);

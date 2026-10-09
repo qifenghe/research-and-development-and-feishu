@@ -32,6 +32,70 @@ class ProcessPlanControllerTest {
     @Autowired MockMvc mockMvc;
     @Autowired JdbcTemplate jdbc;
 
+    @Test void directorApprovesTemporaryMaterialOnceAndPreservesInputWeight() throws Exception {
+        var actor=ownerPrincipal();
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        var draft="""
+          {"versionNo":0,"status":"DRAFT","majorProcesses":[{"sequence":1,"processName":"试验","steps":[{"sequence":1,"stepName":"领料","materials":[
+          {"sequence":1,"materialRole":"PRIMARY","sourceType":"EXTERNAL","materialName":"试验新料","materialState":"SOLID","weightKg":10,
+          "temporaryMaterialId":"TMP-INTAKE","temporaryClassificationId":"CAT-RAW","temporarySpecification":"20mm"}]}]}]}
+          """;
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan",FORM_ID).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor).contentType(MediaType.APPLICATION_JSON).content(draft)).andExpect(status().isOk());
+        var create=mockMvc.perform(post("/api/v1/material-intakes").requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor).contentType(MediaType.APPLICATION_JSON).content("""
+          {"formId":"FORM-PROCESS-CONTROLLER","sourceVersion":1,"lines":[{"temporaryMaterialId":"TMP-INTAKE","code":"INTAKE-TEST-01"}]}
+          """)).andExpect(status().isOk()).andReturn();
+        var data=mapper.readTree(create.getResponse().getContentAsString()).path("data");
+        var id=data.path("id").asText();
+        mockMvc.perform(post("/api/v1/material-intakes/{id}/submit",id).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor).contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":0}")).andExpect(status().isOk());
+        var director=new SessionPrincipal("DIRECTOR-INTAKE","director","总监",null,"RND_DIRECTOR",Instant.now().plusSeconds(3600));
+        var decision="{\"expectedVersion\":1,\"decisions\":[{\"lineId\":\"TMP-INTAKE\",\"mode\":\"CREATE\"}]}";
+        mockMvc.perform(post("/api/v1/material-intakes/{id}/approve",id).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor).contentType(MediaType.APPLICATION_JSON).content(decision)).andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/material-intakes/{id}/approve",id).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,director).contentType(MediaType.APPLICATION_JSON).content(decision)).andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("APPROVED"));
+        mockMvc.perform(post("/api/v1/material-intakes/{id}/approve",id).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,director).contentType(MediaType.APPLICATION_JSON).content(decision)).andExpect(status().is4xxClientError());
+        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan",FORM_ID).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor)).andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].materials[0].materialCode").value("INTAKE-TEST-01"))
+          .andExpect(jsonPath("$.data.majorProcesses[0].steps[0].materials[0].weightKg").value(10));
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("select count(*) from material_catalog where code='INTAKE-TEST-01'",Integer.class)).isEqualTo(1);
+        var live=mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan",FORM_ID).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor)).andReturn();
+        var source=(com.fasterxml.jackson.databind.node.ObjectNode)mapper.readTree(live.getResponse().getContentAsString()).path("data");
+        var rows=(com.fasterxml.jackson.databind.node.ArrayNode)source.at("/majorProcesses/0/steps/0/materials");
+        for(int i=1;i<=2;i++)rows.add(mapper.readTree("{\"sequence\":"+(i+1)+",\"sourceType\":\"EXTERNAL\",\"materialRole\":\"AUXILIARY\",\"materialName\":\"回滚料"+i+"\",\"weightKg\":1,\"temporaryMaterialId\":\"TMP-ROLL-"+i+"\",\"temporaryClassificationId\":\"CAT-RAW\"}"));
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan",FORM_ID).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor).contentType(MediaType.APPLICATION_JSON).content(source.toString())).andExpect(status().isOk());
+        var batch=mockMvc.perform(post("/api/v1/material-intakes").requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor).contentType(MediaType.APPLICATION_JSON).content("{\"formId\":\"FORM-PROCESS-CONTROLLER\",\"sourceVersion\":3,\"lines\":[{\"temporaryMaterialId\":\"TMP-ROLL-1\",\"code\":\"INTAKE-ROLL-A\"},{\"temporaryMaterialId\":\"TMP-ROLL-2\",\"code\":\"INTAKE-TEST-01\"}]}")).andExpect(status().isOk()).andReturn();
+        var batchId=mapper.readTree(batch.getResponse().getContentAsString()).path("data").path("id").asText();
+        mockMvc.perform(post("/api/v1/material-intakes/{id}/submit",batchId).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor).contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":0}")).andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/material-intakes/{id}/approve",batchId).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,director).contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":1,\"decisions\":[{\"lineId\":\"TMP-ROLL-1\",\"mode\":\"CREATE\"},{\"lineId\":\"TMP-ROLL-2\",\"mode\":\"CREATE\"}]}")).andExpect(status().is4xxClientError());
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("select count(*) from material_catalog where code='INTAKE-ROLL-A'",Integer.class)).isZero();
+        mockMvc.perform(get("/api/v1/experiment-forms/{formId}/process-plan",FORM_ID).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor)).andExpect(jsonPath("$.data.versionNo").value(3));
+        // Replace the duplicate-new decision with an existing material link; the same pending batch can be approved safely.
+        var existingId=jdbc.queryForObject("select id from material_catalog where code='INTAKE-TEST-01'",String.class);
+        mockMvc.perform(post("/api/v1/material-intakes/{id}/approve",batchId).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,director).contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":1,\"decisions\":[{\"lineId\":\"TMP-ROLL-1\",\"mode\":\"CREATE\"},{\"lineId\":\"TMP-ROLL-2\",\"mode\":\"LINK_EXISTING\",\"catalogMaterialId\":\""+existingId+"\"}]}")).andExpect(status().isOk());
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("select count(*) from material_catalog where code='INTAKE-ROLL-A'",Integer.class)).isEqualTo(1);
+    }
+
+    @Test void changedSourceBlocksApprovalAndReturnRequiresComment() throws Exception {
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();var actor=ownerPrincipal();
+        var draft="""
+         {"versionNo":0,"status":"DRAFT","majorProcesses":[{"sequence":1,"processName":"试验","steps":[{"sequence":1,"stepName":"配料","materials":[
+         {"sequence":1,"sourceType":"EXTERNAL","materialName":"待定料","weightKg":3,"temporaryMaterialId":"TMP-STALE","temporaryClassificationId":"CAT-RAW"}]}]}]}
+         """;
+        var saved=mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan",FORM_ID).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor).contentType(MediaType.APPLICATION_JSON).content(draft)).andExpect(status().isOk()).andReturn();
+        jdbc.update("update experiment_step_material set temporary_classification_id='CAT-PACKAGING' where temporary_material_id='TMP-STALE'");
+        mockMvc.perform(post("/api/v1/material-intakes").requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor).contentType(MediaType.APPLICATION_JSON).content("{\"formId\":\"FORM-PROCESS-CONTROLLER\",\"sourceVersion\":1,\"lines\":[{\"temporaryMaterialId\":\"TMP-STALE\",\"code\":\"BAD-PACK\"}]}")).andExpect(status().is4xxClientError());
+        jdbc.update("update experiment_step_material set temporary_classification_id='CAT-RAW' where temporary_material_id='TMP-STALE'");
+        var create=mockMvc.perform(post("/api/v1/material-intakes").requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor).contentType(MediaType.APPLICATION_JSON).content("""
+         {"formId":"FORM-PROCESS-CONTROLLER","sourceVersion":1,"lines":[{"temporaryMaterialId":"TMP-STALE","code":"INTAKE-STALE"}]}
+         """)).andExpect(status().isOk()).andReturn();
+        var id=mapper.readTree(create.getResponse().getContentAsString()).path("data").path("id").asText();
+        mockMvc.perform(post("/api/v1/material-intakes/{id}/submit",id).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor).contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":0}")).andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/experiment-forms/{formId}/process-plan",FORM_ID).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,actor).contentType(MediaType.APPLICATION_JSON).content(mapper.readTree(saved.getResponse().getContentAsString()).path("data").toString())).andExpect(status().isOk());
+        var director=new SessionPrincipal("DIRECTOR-INTAKE","director","总监",null,"RND_DIRECTOR",Instant.now().plusSeconds(3600));
+        mockMvc.perform(post("/api/v1/material-intakes/{id}/approve",id).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,director).contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":1,\"decisions\":[{\"lineId\":\"TMP-STALE\",\"mode\":\"CREATE\"}]}")).andExpect(status().is4xxClientError());
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("select count(*) from material_catalog where code='INTAKE-STALE'",Integer.class)).isZero();
+        mockMvc.perform(post("/api/v1/material-intakes/{id}/return",id).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,director).contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":1,\"comment\":\"\"}")).andExpect(status().is4xxClientError());
+        mockMvc.perform(post("/api/v1/material-intakes/{id}/return",id).requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE,director).contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":1,\"comment\":\"请补充规格\"}")).andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("RETURNED")).andExpect(jsonPath("$.data.comment").value("请补充规格"));
+    }
+
     @BeforeEach
     void seedForm() {
         var accountNow = LocalDateTime.now();
@@ -503,6 +567,65 @@ class ProcessPlanControllerTest {
                         .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
                         .contentType(MediaType.APPLICATION_JSON).content(com.lhr.rnd.MaterialCatalogFixtures.json(jdbc, readyDraft)))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void sopCatalogSearchesFormalVersionsAndExcludesDrafts() throws Exception {
+        mockMvc.perform(get("/api/v1/sops").param("keyword", "牛腩")
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        var id = submitSopFixture();
+        mockMvc.perform(get("/api/v1/sops").param("keyword", " 牛腩 ")
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].formId").value(FORM_ID))
+                .andExpect(jsonPath("$.data.items[0].revisionId").value(id))
+                .andExpect(jsonPath("$.data.items[0].specification").value("1kg"))
+                .andExpect(jsonPath("$.data.items[0].canGenerate").value(true))
+                .andExpect(jsonPath("$.data.items[0].revisions[0].canGenerate").value(true));
+        mockMvc.perform(get("/api/v1/sops").param("keyword", "%")
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+    }
+
+    @Test
+    void sopCatalogHidesOtherOwnersAndUnassignedTesterVersions() throws Exception {
+        var id = submitSopFixture();
+        var other = new SessionPrincipal("OTHER", "other", "会话研发", null, "RND_ENGINEER", Instant.now().plusSeconds(60));
+        mockMvc.perform(get("/api/v1/sops").param("keyword", "牛腩")
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, other))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        var tester = new SessionPrincipal("SOP-TESTER", "tester", "测试员", null, "TESTER", Instant.now().plusSeconds(60));
+        mockMvc.perform(get("/api/v1/sops").param("keyword", "牛腩")
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, tester))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        jdbc.update("insert into user_account(id,username,password_hash,name,role,status,created_at,updated_at) select ?,?,?,?,?,?,?,? where not exists(select 1 from user_account where id=?)",
+                "SOP-TESTER", "sop_tester", "x", "测试员", "TESTER", "ACTIVE", LocalDateTime.now(), LocalDateTime.now(), "SOP-TESTER");
+        jdbc.update("insert into test_assignment(id,experiment_form_id,task_id,version_id,process_revision_id,tester_name,tester_user_id,status,assigned_at) values (?,?,?,?,?,?,?,?,?)",
+                "SOP-ASSIGN", FORM_ID, "TASK-PROCESS-CONTROLLER", "VER-PROCESS-CONTROLLER", id, "测试员", "SOP-TESTER", "PENDING", LocalDateTime.now());
+        jdbc.update("insert into experiment_process_revision(id,process_plan_id,experiment_form_id,revision_no,change_reason,submitted_by,submitted_at,snapshot_json,snapshot_hash) select ?,process_plan_id,experiment_form_id,2,change_reason,submitted_by,submitted_at,snapshot_json,snapshot_hash from experiment_process_revision where id=?", "SOP-NEWER", id);
+        mockMvc.perform(get("/api/v1/sops").param("keyword", "牛腩")
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].revisionId").value("SOP-NEWER"))
+                .andExpect(jsonPath("$.data.items[0].revisions.length()").value(2));
+        mockMvc.perform(get("/api/v1/sops").param("keyword", "牛腩")
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, tester))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].revisionId").value(id))
+                .andExpect(jsonPath("$.data.items[0].revisions.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].canGenerate").value(false));
+        mockMvc.perform(get("/api/v1/sops").param("keyword", "牛腩").param("page", "2").param("size", "1")
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1)).andExpect(jsonPath("$.data.items").isEmpty());
+    }
+
+    private String submitSopFixture() throws Exception {
+        saveReadyDraft();
+        var json = mockMvc.perform(post("/api/v1/experiment-forms/{formId}/process-plan/submit", FORM_ID)
+                .requestAttr(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE, ownerPrincipal())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"versionNo\":1,\"confirmed\":true,\"changeReason\":\"SOP列表测试\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return new com.fasterxml.jackson.databind.ObjectMapper().readTree(json).path("data").path("id").asText();
     }
 
     private SessionPrincipal ownerPrincipal() {

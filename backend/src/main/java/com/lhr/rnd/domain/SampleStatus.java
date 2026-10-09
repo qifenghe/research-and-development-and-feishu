@@ -2,6 +2,7 @@ package com.lhr.rnd.domain;
 
 public enum SampleStatus {
     PENDING_REVIEW,
+    REJECTED,
     PENDING_ASSIGNMENT,
     PENDING_ACCEPTANCE,
     SAMPLING,
