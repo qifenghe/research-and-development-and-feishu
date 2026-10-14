@@ -101,6 +101,10 @@ public class SopAmendmentService {
   if(!Objects.equals(frozen,hash(serialize(a.snapshot()))))throw failure("SOP_SNAPSHOT_DAMAGED","待审核内容已变化，不能发布");
   var snapshot=normalize(a,a.snapshot());ready(snapshot);
   var revision=writer.append(a.formId(),snapshot,a.sourceRevisionId(),a.reason(),actor);
+  var compiler=db.query("select actor_name,acted_at from sop_amendment_history where amendment_id=? and action='SUBMITTED' order by version_no desc limit 1",
+      (rs,n)->com.lhr.rnd.model.DocumentSignature.pending(rs.getString(1),rs.getTimestamp(2).toLocalDateTime().toString()),id).get(0);
+  db.update("update experiment_process_revision set compiled_by=?,compiled_at=?,reviewed_by=?,reviewed_at=current_timestamp where id=?",
+      compiler.compiledBy(),java.time.LocalDateTime.parse(compiler.compiledAt()),actor.name(),revision.id());
   db.update("update sop_amendment set status='PUBLISHED',version_no=?,published_revision_id=?,updated_at=current_timestamp where id=?",version+1,revision.id(),id);
   db.update("delete from sop_amendment_active where amendment_id=?",id);history(id,version+1,"PUBLISHED",actor,a.reason());
   return new Publication(get(id,actor),revision);

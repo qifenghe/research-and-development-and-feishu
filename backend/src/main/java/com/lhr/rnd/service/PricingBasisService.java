@@ -53,6 +53,11 @@ public class PricingBasisService {
         else jdbc.update("update pricing_basis_snapshot set draft_json=?, version_no=version_no+1,confirmed_by=null,confirmed_at=null where pricing_file_id=?",encode(d),id);
         return load(id,seed);
     }
+    @Transactional public View save(String id,int expected,PricingBasisDraft d,PricingBasisDraft seed,String actor) {
+        if(str(actor).isBlank()) throw fail("SESSION_PRINCIPAL_REQUIRED","请重新登录");
+        if(d==null) throw fail("PRICING_BASIS_SOURCE_CHANGED","核价内容不能为空");
+        return save(id,expected,d.withSignature(com.lhr.rnd.model.DocumentSignature.pending(actor,LocalDateTime.now().toString())),seed);
+    }
     public void requireReady(PricingBasisDraft d,PricingBasisDraft seed) {
         source(d,seed);
         var result=calculator.calculate(d);

@@ -134,7 +134,7 @@ const canDownload = computed(() => [
   "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER", "ADMIN", "SYSTEM_ADMIN",
 ].includes(auth.role ?? ""));
 const canReview = computed(() => (
-  (auth.role === "RND_DIRECTOR" || auth.role === "RND_ENGINEER")
+  auth.role === "RND_DIRECTOR"
   && detail.value?.pricingFile.status === "PENDING_PRICING_REVIEW"
 ));
 const canEditPackaging = computed(() => ["RND_DIRECTOR", "RND_ENGINEER", "SUPER_ADMIN"].includes(auth.role ?? ""));

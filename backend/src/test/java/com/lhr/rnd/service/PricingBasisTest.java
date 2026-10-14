@@ -9,6 +9,15 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
 class PricingBasisTest {
+    @Test void pricingPreviewIncludesCompilerDateAndPendingDirectorReview() throws Exception {
+        var view = ProcessExportCheckServiceTest.view(ProcessExportCheckServiceTest.plan("72", "90", "PRIMARY_INPUT"))
+                .withMetadata(new ProcessExportView.Metadata("1kg/袋", "张研发", "2026-10-10"));
+        try (var book = new XSSFWorkbook(new ByteArrayInputStream(new PricingFileService().renderBasis(view, true)))) {
+            var text = new StringBuilder(); var formatter = new org.apache.poi.ss.usermodel.DataFormatter();
+            for (var sheet : book) for (var row : sheet) for (var cell : row) text.append(formatter.formatCellValue(cell)).append('|');
+            assertThat(text.toString()).contains("编写人", "张研发", "修改日期", "2026-10-10", "研发批准", "待审核");
+        }
+    }
     @Test void excludedUnobservedPrimaryWeightsRenderPendingWhileObservedZeroStaysNumeric() throws Exception {
         for (var weight : new String[]{null, "0", "5"}) {
             var bytes = new PricingFileService().renderBasis(ProcessExportCheckServiceTest.view(ProcessExportCheckServiceTest.nonePlan(weight)), true);
@@ -33,8 +42,8 @@ class PricingBasisTest {
             for (var sheet : workbook) {
                 for (var row : sheet) for (var cell : row) text.append(data.formatCellValue(cell,workbook.getCreationHelper().createFormulaEvaluator())).append('|');
                 assertThat(sheet.getPrintSetup().getFitWidth()).isEqualTo((short)1);
-                assertThat(sheet.getRepeatingRows()).isNotNull();
-                assertThat(workbook.getPrintArea(workbook.getSheetIndex(sheet))).isNotBlank();
+                assertThat(sheet.getRepeatingRows()).isNull();
+                assertThat(workbook.getPrintArea(workbook.getSheetIndex(sheet))).isNull(); // identical to the original workbook
             }
             assertThat(text.toString()).contains("原材料清单", "102", "72", "74", "方案A V3", "个", "1kg", "编写人", "日期", "规格")
                     .doesNotContain("source=", "revisionId=", "成本", "单价", "毛利", "税", "100kg折算", "100kg归一化", "宁德时代", "162.6");
@@ -70,10 +79,9 @@ class PricingBasisTest {
         var bytes = new PricingFileService().renderBasis(view, false);
         try (var book = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
             assertThat(book.getSheetAt(0).getLastRowNum()).isGreaterThan(40);
-            assertThat(book.getSheetAt(0).getRepeatingRows().getLastRow()).isEqualTo(10);
-            assertThat(book.getSheetAt(0).getRepeatingRows().getFirstRow()).isEqualTo(10);
-            assertThat(book.getSheetAt(0).getRow(13).getHeightInPoints()).isGreaterThan(38);
-            assertThat(book.getSheetAt(0).getFooter().getRight()).contains("&P", "&N");
+            assertThat(book.getNumberOfSheets()).isGreaterThanOrEqualTo(2);
+            for(var s:book){assertThat(s.getLastRowNum()).isEqualTo(52);assertThat(s.getRepeatingRows()).isNull();assertThat(s.getNumMergedRegions()).isEqualTo(37);}
+            assertThat(book.getSheetAt(0).getRow(13).getHeightInPoints()).isEqualTo(24);
         }
         var path = Path.of("target/task-4-export-qa"); Files.createDirectories(path);
         Files.write(path.resolve("long-chinese-37-ingredient-basis.xlsx"), bytes);

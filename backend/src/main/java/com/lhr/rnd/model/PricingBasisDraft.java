@@ -7,7 +7,17 @@ import java.util.List;
 public record PricingBasisDraft(int schemaVersion, String sourceRevisionId, Header header,
         List<Material> materials, BigDecimal mainOutputKg, List<String> mainMaterialIds,
         String mainScopeBasis, BigDecimal finishedNetKg, BigDecimal unitWeightKg,
-        Integer bagsPerBox, Integer actualBags, List<Packaging> packaging) {
+        Integer bagsPerBox, Integer actualBags, List<Packaging> packaging, DocumentSignature signature) {
+    public PricingBasisDraft(int schemaVersion, String sourceRevisionId, Header header, List<Material> materials,
+            BigDecimal mainOutputKg, List<String> mainMaterialIds, String mainScopeBasis, BigDecimal finishedNetKg,
+            BigDecimal unitWeightKg, Integer bagsPerBox, Integer actualBags, List<Packaging> packaging) {
+        this(schemaVersion, sourceRevisionId, header, materials, mainOutputKg, mainMaterialIds, mainScopeBasis, finishedNetKg, unitWeightKg, bagsPerBox, actualBags, packaging, null);
+    }
+    public PricingBasisDraft withSignature(DocumentSignature value) {
+        var h = header;
+        if (h != null) h = new Header(h.companyName(), h.productName(), h.specification(), h.ownerName(), value.compiledBy(), h.category(), h.documentNumber(), h.version(), h.effectiveDate());
+        return new PricingBasisDraft(schemaVersion, sourceRevisionId, h, materials, mainOutputKg, mainMaterialIds, mainScopeBasis, finishedNetKg, unitWeightKg, bagsPerBox, actualBags, packaging, value);
+    }
     public record Header(String companyName, String productName, String specification,
             String ownerName, String authorName, String category, String documentNumber,
             String version, String effectiveDate) {}

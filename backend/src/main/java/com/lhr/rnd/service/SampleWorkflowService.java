@@ -154,7 +154,8 @@ public class SampleWorkflowService {
         requireBasisAccess(id, principal, true);
         var view=pricingBasisService.load(id,pricingBasisSource(id));
         if(view.version()!=expectedVersion || view.stale()) throw new BusinessException("PRICING_BASIS_CONFLICT","核价数据或来源已更新，请重新加载");
-        return new PricingMaterialListRenderer().render(view.draft(),view.calculation(),true);
+        var preview = view.draft().signature() == null ? view.draft().withSignature(com.lhr.rnd.model.DocumentSignature.pending(principal.name(),now().toString())) : view.draft();
+        return new PricingMaterialListRenderer().render(preview,view.calculation(),true);
     }
 
     @Transactional
@@ -186,7 +187,7 @@ public class SampleWorkflowService {
     @Transactional
     public PricingBasisService.View savePricingBasis(String id, int expectedVersion, com.lhr.rnd.model.PricingBasisDraft draft, SessionPrincipal principal) {
         requireBasisAccess(id, principal, true);
-        return pricingBasisService.save(id, expectedVersion, draft, pricingBasisSource(id));
+        return pricingBasisService.save(id, expectedVersion, draft, pricingBasisSource(id), principal.name());
     }
 
     @Transactional
@@ -2124,11 +2125,18 @@ public class SampleWorkflowService {
                         new com.lhr.rnd.model.ProcessExportView.FinishedQuantity(lockedForm.finishedOutputWeightKg(),
                                 lockedForm.finishedOutputQuantity(), lockedForm.finishedOutputUnit(), "已锁定实验单独立实测"),
                         trialPromotionService == null ? null : trialPromotionService.sourceForLockedPricing(lockedForm, revision));
-        var generatedRecord = pricingFile.generated(generated.fileName(), generated.content().length);
+        var signature = basis != null && basis.signature() != null ? basis.signature() : com.lhr.rnd.model.DocumentSignature.pending(operatorName, now().toString());
+        var signedContent = WorkbookSignatureWriter.stamp(generated.content(),signature);
+        var generatedRecord = pricingFile.generated(generated.fileName(), signedContent.length);
         if (revision != null) {
             generatedRecord = generatedRecord.withProcessRevision(revision.id());
         }
-        persistGeneratedPricingFile(generatedRecord, generated.content(), archiveReservation);
+        persistGeneratedPricingFile(generatedRecord, signedContent, archiveReservation);
+        if(pricingFileRepository != null) {
+            var entity=pricingFileRepository.findById(pricingFileId).orElseThrow();
+            entity.bindCompiler(signature.compiledBy(),signature.compiledAt()==null?null:LocalDateTime.parse(signature.compiledAt()));
+            pricingFileRepository.save(entity);
+        }
         archiveMetadataReady[0] = true;
         if (auditLogService != null) {
             auditLogService.record("PRICING_FILE", pricingFileId, "PACKAGING_CONFIRMED", operatorName,
@@ -2306,7 +2314,7 @@ public class SampleWorkflowService {
             String comment
     ) {
         var pricingFile = requiredPricingFile(pricingFileId);
-        ensurePricingReviewer(pricingFile, reviewerName, reviewerRole);
+        if(!hasRole(reviewerRole,"RND_DIRECTOR")) throw new BusinessException("PRICING_FILE_REVIEW_FORBIDDEN","核价文件最终审核仅由研发总监完成");
         if (pricingFile.status() == PricingFileStatus.FINANCE_NOTIFIED
                 || pricingFile.status() == PricingFileStatus.FINANCE_RECEIVED
                 || pricingFile.status() == PricingFileStatus.PRICING_APPROVED
@@ -2336,6 +2344,16 @@ public class SampleWorkflowService {
                 normalizedComment.isEmpty() ? null : normalizedComment,
                 rejected ? normalizedComment : null
         );
+        if(approved && pricingFileRepository != null && archiveFileRepository != null) {
+            var entity=pricingFileRepository.findById(pricingFileId).orElseThrow();
+            var signature=new com.lhr.rnd.model.DocumentSignature(entity.getCompiledBy(),entity.getCompiledAt()==null?null:entity.getCompiledAt().toString(),reviewerName,reviewedAt.toString());
+            var oldArchive=archiveFileRepository.findFirstByBusinessTypeAndBusinessIdOrderByArchivedAtDesc("PRICING_FILE",pricingFileId).orElseThrow(()->new BusinessException("PRICING_FILE_ARCHIVE_NOT_FOUND","核价文件归档不存在"));
+            var bytes=WorkbookSignatureWriter.stamp(archiveStorageService.read(oldArchive.getFilePath()),signature);
+            var reservation=reservePricingArchiveAttempt(pricingFileId);var metadataReady=new boolean[]{false};
+            registerPricingArchiveCompletion(reservation,metadataReady);
+            reviewed=reviewed.withContentLength(bytes.length);
+            persistPricingArchive(reviewed,bytes,reservation);metadataReady[0]=true;
+        }
         persistPricingReview(reviewed);
         var result = reviewed;
         FinanceNotification financeNotification = null;
@@ -3344,6 +3362,7 @@ public class SampleWorkflowService {
                 reviewedPricingFile.reviewComment(),
                 reviewedPricingFile.rejectionReason()
         );
+        entity.updateContentLength(reviewedPricingFile.contentLength());
         pricingFileRepository.save(entity);
     }
 
@@ -3466,7 +3485,12 @@ public class SampleWorkflowService {
                 .filter(file -> file.versionId().equals(versionId))
                 .max(Comparator.comparing(PricingFileRecord::generatedAt))
                 .orElse(null);
-        return latest == null || latest.status() == PricingFileStatus.PRICING_REJECTED;
+        if (latest == null || latest.status() == PricingFileStatus.PRICING_REJECTED) return true;
+        // A submitted/approved pricing file closes only its own formal process revision.
+        // A newly published SOP needs a separate pricing version, never a rewrite of the old file.
+        if (latest.status() == PricingFileStatus.DRAFT_PACKAGING) return false;
+        var formal = latestFormalPricingRevision(lockedExperimentForm(versionId));
+        return formal != null && !Objects.equals(formal.id(), latest.processRevisionId());
     }
 
     private List<PricingFileRecord> allPricingFiles() {

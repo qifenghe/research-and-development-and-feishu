@@ -60,6 +60,12 @@ public class PricingFileEntity {
 
     @Column(name = "process_revision_id")
     private String processRevisionId;
+    @Column(name = "compiled_by") private String compiledBy;
+    @Column(name = "compiled_at") private LocalDateTime compiledAt;
+    public String getCompiledBy() { return compiledBy; }
+    public LocalDateTime getCompiledAt() { return compiledAt; }
+    public void bindCompiler(String name, LocalDateTime at) { compiledBy=name; compiledAt=at; }
+    public void updateContentLength(long length) { contentLength=length; }
 
     protected PricingFileEntity() {
     }

@@ -27,7 +27,7 @@ const summary=computed(()=>props.plan?summarizeProcessSource(props.plan):{foodIn
 const checks = ref<Partial<Record<ExportType, ExportCheck>>>({});
 const downloading = ref<ExportType>();
 const fence = new RequestGeneration();
-const types = [{ value: "FORMULA_XLSX" as const, label: "研发配方" }, { value: "SOP_DOCX" as const, label: "研发SOP" }, { value: "PRICING_XLSX" as const, label: "核价基础数据" }];
+const types = [{ value: "FORMULA_XLSX" as const, label: "研发配方" }, { value: "SOP_XLSX" as const, label: "研发SOP（Excel）" }, { value: "PRICING_XLSX" as const, label: "核价基础数据" }];
 watch(() => [props.formId, props.trialId, props.versionNo, props.sourceLabel, props.disabled,props.locallyDirty], reset);
 onBeforeUnmount(reset);
 function reset() { fence.invalidate(); open.value = false; checks.value = {}; downloading.value = undefined; loading.value = false; error.value = ""; }

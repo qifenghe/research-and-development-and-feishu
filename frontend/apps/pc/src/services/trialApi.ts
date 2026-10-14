@@ -78,6 +78,7 @@ export interface SaveTrialRequest {
 }
 
 export const trialApi = {
+  initialize: (formId:string,plan?:ProcessPlanDraft,initialFinishedOutput?:TrialScheme['finishedOutput'])=>client.post<TrialScheme>(`/experiment-forms/${formId}/trials`,{initialize:true,plan,initialFinishedOutput}),
   list: (formId: string) => client.get<TrialScheme[]>(`/experiment-forms/${formId}/trials`),
   find: (formId: string, trialId: string) => client.get<TrialScheme>(`/experiment-forms/${formId}/trials/${trialId}`),
   create: (formId: string, request: { name: string; purpose: string | null; variables: string | null; plan: ProcessPlanDraft; plannedData: TrialPlannedData }) =>

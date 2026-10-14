@@ -84,7 +84,7 @@ public class ProcessArtifactService {
         var source = promotions.source(formId, revisionId, principal);
         return exportChecks.view(productName(formId), "正式工艺 R" + revision.revisionNo()
                 + (source == null ? "" : " / 试验方案 " + source.trialName() + " V" + source.trialVersionNo()),
-                revision.snapshot(), revisionFinished(revision), List.of()).withMetadata(exportMetadata(formId, principal))
+                revision.snapshot(), revisionFinished(revision), List.of()).withMetadata(exportMetadata(formId, principal)).withSignature(revisionSignature(revision))
                 .withActualsProvenance(source != null && source.inheritedActuals(), source == null ? null : source.sourceTrialId());
     }
 
@@ -109,6 +109,10 @@ public class ProcessArtifactService {
         var specification = jdbc.queryForObject("select version.specification from experiment_form form join sample_version version on version.id = form.version_id where form.id = ?", String.class, formId);
         return new ProcessExportView.Metadata(specification, principal.name(), java.time.LocalDate.now().toString());
     }
+    private com.lhr.rnd.model.DocumentSignature revisionSignature(ProcessRevision revision) {
+        return jdbc.query("select compiled_by,compiled_at,reviewed_by,reviewed_at from experiment_process_revision where id=?", (rs,n) ->
+                new com.lhr.rnd.model.DocumentSignature(rs.getString(1),rs.getTimestamp(2)==null?null:rs.getTimestamp(2).toLocalDateTime().toString(),rs.getString(3),rs.getTimestamp(4)==null?null:rs.getTimestamp(4).toLocalDateTime().toString()),revision.id()).get(0);
+    }
     private ProcessExportView.FinishedQuantity revisionFinished(ProcessRevision revision) {
         var json=jdbc.queryForObject("select finished_output_json from experiment_process_revision where id=?",String.class,revision.id());
         if(json==null)return null; // Legacy revisions must not borrow mutable current form data.
@@ -126,11 +130,13 @@ public class ProcessArtifactService {
             if ("PRICING_XLSX".equals(type)) bytes = new PricingFileService().renderBasis(view, true);
             else if (ProcessArtifact.FORMULA_XLSX.equals(type)) bytes = formulaBytes(view, null, null, null,
                     LocalDateTime.now(), view.metadata() == null ? null : view.metadata().compiledBy(), true);
-            else {
+            else if (ProcessArtifact.SOP_XLSX.equals(type)) {
+                bytes = new SopExcelRenderer().render(view,null,null,true);
+            } else {
                 bytes = new SopDocumentRenderer().render(view, new SopDocumentRenderer.Metadata(null, null, null,
                         view.metadata() == null ? null : view.metadata().compiledBy(), LocalDateTime.now(), true));
             }
-            var label = "SOP_DOCX".equals(type) ? "研发SOP" : "FORMULA_XLSX".equals(type) ? "研发配方" : "核价基础数据";
+            var label = "SOP_DOCX".equals(type) || "SOP_XLSX".equals(type) ? "研发SOP" : "FORMULA_XLSX".equals(type) ? "研发配方" : "核价基础数据";
             return new ArtifactDownload(view.productName() + "-" + view.sourceLabel().replace('/', '-') + "-" + label + "-预览." + ("SOP_DOCX".equals(type) ? "docx" : "xlsx"),
                     "SOP_DOCX".equals(type) ? DOCX_CONTENT_TYPE : XLSX_CONTENT_TYPE, bytes);
         } catch (java.io.IOException e) { throw new IllegalStateException("Failed to render preview", e); }
@@ -152,23 +158,23 @@ public class ProcessArtifactService {
     @Transactional(readOnly=true)
     public List<ProcessArtifact> listForSop(String formId,String revisionId,SessionPrincipal principal){
         sopAccess.require(formId,revisionId,"GET","/artifacts",principal);
-        return jdbc.query("select * from experiment_process_artifact where process_revision_id=? and artifact_type='SOP_DOCX' order by generated_at desc,id desc",(rs,n)->map(rs),revisionId);
+        return jdbc.query("select * from experiment_process_artifact where process_revision_id=? and artifact_type in ('SOP_DOCX','SOP_XLSX','FORMULA_XLSX') order by generated_at desc,id desc",(rs,n)->map(rs),revisionId);
     }
 
     @Transactional
     public ProcessArtifact generateForSop(String formId,String revisionId,String type,SessionPrincipal principal){
         var revision=sopAccess.require(formId,revisionId,"POST","/artifacts",principal);
-        if(!ProcessArtifact.SOP_DOCX.equals(type))throw new BusinessException("SOP_TYPE_FORBIDDEN","此入口只能生成正式SOP");
+        if(!ProcessArtifact.SOP_DOCX.equals(type)&&!ProcessArtifact.SOP_XLSX.equals(type))throw new BusinessException("SOP_TYPE_FORBIDDEN","此入口只能生成正式SOP");
         var source=promotions.sourceForSop(formId,revisionId);
-        var view=exportChecks.view(productName(formId),"正式工艺 R"+revision.revisionNo(),revision.snapshot(),null,List.of())
-                .withMetadata(exportMetadata(formId,principal)).withActualsProvenance(source!=null&&source.inheritedActuals(),source==null?null:source.sourceTrialId());
+        var view=exportChecks.view(productName(formId),"正式工艺 R"+revision.revisionNo(),revision.snapshot(),revisionFinished(revision),List.of())
+                .withMetadata(exportMetadata(formId,principal)).withSignature(revisionSignature(revision)).withActualsProvenance(source!=null&&source.inheritedActuals(),source==null?null:source.sourceTrialId());
         return generateInternal(formId,revisionId,type,principal,view);
     }
 
     @Transactional(readOnly=true)
     public ArtifactDownload downloadForSop(String formId,String revisionId,String artifactId,SessionPrincipal principal){
         sopAccess.require(formId,revisionId,"GET","/artifacts/"+artifactId+"/download",principal);
-        if(jdbc.queryForObject("select count(*) from experiment_process_artifact where id=? and process_revision_id=? and artifact_type='SOP_DOCX'",Integer.class,artifactId,revisionId)==0)
+        if(jdbc.queryForObject("select count(*) from experiment_process_artifact where id=? and process_revision_id=? and artifact_type in ('SOP_DOCX','SOP_XLSX','FORMULA_XLSX')",Integer.class,artifactId,revisionId)==0)
             throw new BusinessException("SOP_TYPE_FORBIDDEN","此入口只能下载对应版本的正式SOP");
         return downloadInternal(formId,revisionId,artifactId);
     }
@@ -220,9 +226,10 @@ public class ProcessArtifactService {
         byte[] bytes = null;
         try {
             bytes = ProcessArtifact.FORMULA_XLSX.equals(artifactType)
-                    ? formulaBytes(exportView, "R" + revision.revisionNo(), "V" + documentVersion, revision.changeReason(), generatedAt, principal.name(), false)
+                    ? formulaBytes(exportView, "R" + revision.revisionNo(), "V" + documentVersion, revision.changeReason(), LocalDateTime.parse(revision.submittedAt()), exportView.signature().compiledBy(), false)
+                    : ProcessArtifact.SOP_XLSX.equals(artifactType) ? new SopExcelRenderer().render(exportView,"R"+revision.revisionNo(),"V"+documentVersion,false)
                     : new SopDocumentRenderer().render(exportView, new SopDocumentRenderer.Metadata("R" + revision.revisionNo(), "V" + documentVersion,
-                            revision.changeReason(), principal.name(), generatedAt, false));
+                            revision.changeReason(), exportView.signature().compiledBy(), LocalDateTime.parse(revision.submittedAt()), false));
             cleanupLedger.renew(reservation);
             storage.store(storageKey, bytes);
             if (!cleanupLedger.lockForReady(reservation)) {
@@ -380,8 +387,12 @@ public class ProcessArtifactService {
         if (!blank(formalRevision)) rowIndex = formulaMetadataRow(sheet, rowIndex, "正式工艺修订", formalRevision, label, text);
         if (!blank(documentVersion)) rowIndex = formulaMetadataRow(sheet, rowIndex, "文件版本", documentVersion, label, text);
         if (!blank(changeReason)) rowIndex = formulaMetadataRow(sheet, rowIndex, "变更原因", changeReason, label, text);
-        if (!blank(generatedBy)) rowIndex = formulaMetadataRow(sheet, rowIndex, "编制人", generatedBy, label, text);
-        rowIndex = formulaMetadataRow(sheet, rowIndex, "编制时间", generatedAt == null ? view.metadata() == null ? "" : view.metadata().date() : TIME.format(generatedAt), label, text);
+        var signature = view.signature();
+        rowIndex = formulaMetadataRow(sheet, rowIndex, "编制人", signature.compilerLabel(), label, text);
+        rowIndex = formulaMetadataRow(sheet, rowIndex, "编制时间", ExportDisplayFormat.dateTime(signature.compiledAt()), label, text);
+        rowIndex = formulaMetadataRow(sheet, rowIndex, "编制日期", signature.compiledDate(), label, text);
+        rowIndex = formulaMetadataRow(sheet, rowIndex, "审核人", signature.reviewerLabel(), label, text);
+        rowIndex = formulaMetadataRow(sheet, rowIndex, "审核日期", signature.reviewedDate(), label, text);
         rowIndex = formulaMetadataRow(sheet, rowIndex, "外部原料实际总投入", view.externalInputKg() == null ? "待填写" : ExportDisplayFormat.actualKg(view.externalInputKg()), label, text);
         rowIndex = formulaMetadataRow(sheet, rowIndex, "主流程实际得率", ExportDisplayFormat.percent(view.mainYieldPercent()), label, text);
         return rowIndex + 1;
@@ -460,13 +471,13 @@ public class ProcessArtifactService {
     }
 
     private void validateType(String type) {
-        if (!ProcessArtifact.FORMULA_XLSX.equals(type) && !ProcessArtifact.SOP_DOCX.equals(type)) {
+        if (!ProcessArtifact.FORMULA_XLSX.equals(type) && !ProcessArtifact.SOP_DOCX.equals(type) && !ProcessArtifact.SOP_XLSX.equals(type)) {
             throw new BusinessException("PROCESS_ARTIFACT_TYPE_INVALID", "只支持生成研发配方或研发SOP");
         }
     }
 
     private String storageKey(String revisionId, String type, String id) {
-        return "process-artifacts/" + revisionId + "/" + type.toLowerCase() + "/" + id + (ProcessArtifact.FORMULA_XLSX.equals(type) ? ".xlsx" : ".docx");
+        return "process-artifacts/" + revisionId + "/" + type.toLowerCase() + "/" + id + (ProcessArtifact.SOP_DOCX.equals(type) ? ".docx" : ".xlsx");
     }
 
     private String summary(ProcessRevision revision, String type) {
@@ -482,12 +493,12 @@ public class ProcessArtifactService {
 
     private String fileName(String productName, int revisionNo, ProcessArtifact artifact) {
         var label = ProcessArtifact.FORMULA_XLSX.equals(artifact.artifactType()) ? "研发配方" : "研发SOP";
-        var ext = ProcessArtifact.FORMULA_XLSX.equals(artifact.artifactType()) ? ".xlsx" : ".docx";
+        var ext = ProcessArtifact.SOP_DOCX.equals(artifact.artifactType()) ? ".docx" : ".xlsx";
         return productName + "-工艺V" + revisionNo + "-" + label + "V" + artifact.documentVersion() + ext;
     }
 
     private String contentType(String type) {
-        return ProcessArtifact.FORMULA_XLSX.equals(type) ? XLSX_CONTENT_TYPE : DOCX_CONTENT_TYPE;
+        return ProcessArtifact.SOP_DOCX.equals(type) ? DOCX_CONTENT_TYPE : XLSX_CONTENT_TYPE;
     }
 
     private void set(Row row, int start, String... values) {

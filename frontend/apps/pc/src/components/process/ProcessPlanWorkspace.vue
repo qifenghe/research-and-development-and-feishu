@@ -1,6 +1,6 @@
 <template>
   <section class="workspace">
-    <header class="workspace-top">
+    <header v-if="!historyOnly" class="workspace-top">
       <div class="title">
         <span class="eyebrow">研发工艺工作台</span>
         <h2>工艺、配方与 SOP</h2>
@@ -24,11 +24,11 @@
     <RecipeSummaryDrawer v-model:open="recipeOpen" :plan="plan" :source-label="`${plan.status === 'SUBMITTED' ? '正式版本' : '正式工艺草稿'} V${plan.versionNo}`" :dirty="['dirty', 'saving', 'error'].includes(saveState)" />
     <MaterialIntakeDialog v-if="formId" v-model="intakeOpen" :plan="plan" :form-id="formId" :source-version="plan.versionNo" />
     <div class="workspace-main">
-      <div v-if="!activeMajorKey" class="view">
+      <div v-if="!historyOnly && !activeMajorKey" class="view">
         <div class="view-bar"><div><b>大工序编排</b><small>拖拽或键盘排序；模板可重复使用</small></div></div>
         <MajorProcessBoard :model-value="plan" :readonly="readonly || plan.status !== 'DRAFT'" :selected-key="activeMajorKey" @update:model-value="replacePlan" @select="openMajor" />
       </div>
-      <div v-else class="view">
+      <div v-else-if="!historyOnly" class="view">
         <div class="breadcrumb">
           <a-button type="link" @click="activeMajorKey = undefined">‹ 返回大工序</a-button>
           <span>工艺工作台 / {{ activeMajor?.processName }}</span>
@@ -128,6 +128,7 @@ const props = defineProps<{
   readonly?: boolean;
   serverHydrationToken?: number;
   canRecoverDisplacedDraft?: boolean;
+  historyOnly?:boolean;
 }>();
 const emit = defineEmits<{ "update:modelValue": [value: ProcessPlanDraft]; "request-save": []; saved: [value: ProcessPlanDraft]; "trial-created": [trialId: string] }>();
 const clonePlan = (value: ProcessPlanDraft) => cloneVueValue(value);

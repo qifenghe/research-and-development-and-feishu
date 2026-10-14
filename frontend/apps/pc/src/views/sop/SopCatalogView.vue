@@ -1,6 +1,6 @@
 <template>
   <section class="sop-page">
-    <header><h1>SOP 管理</h1><p>按产品查找正式工艺，查看操作要求并导出 Word。草稿与试验方案不在此列表。</p></header>
+    <header><h1>SOP 管理与成果归集</h1><p>按产品查找正式版本，集中查看配方、SOP、核价与历史文件。草稿与试验方案不在此列表。</p></header>
     <a-radio-group v-if="canAmend" v-model:value="tab" style="margin-bottom:18px" @change="load"><a-radio-button value="formal">正式 SOP</a-radio-button><a-radio-button value="amendments">调整与审核</a-radio-button></a-radio-group>
     <div v-if="tab==='amendments'" class="catalog-card"><form class="search" @submit.prevent="search"><a-input v-model:value="keyword" placeholder="搜索产品名称" /><a-button html-type="submit">搜索</a-button></form><a-alert v-if="listError" type="error" :message="listError" /><a-spin :spinning="loading"><table><thead><tr><th>来源</th><th>调整原因</th><th>状态</th><th>调整人</th><th>操作</th></tr></thead><tbody><tr v-for="a in amendments" :key="a.id"><td>{{ items.find(i=>i.formId===a.formId)?.productName||a.formId }}</td><td>{{ a.reason }}</td><td>{{ amendmentStatus(a.status) }}</td><td>{{ a.createdBy }}</td><td><a-button type="link" @click="router.push(`/sops/amendments/${a.id}`)">查看 / 处理</a-button></td></tr></tbody></table><a-empty v-if="!loading&&!amendments.length" description="暂无调整单" /></a-spin></div>
     <div v-else class="catalog-card">
@@ -11,7 +11,7 @@
           <thead><tr><th>产品名称 / 规格</th><th>正式工艺</th><th>研发负责人</th><th>提交时间</th><th>操作</th></tr></thead>
           <tbody><template v-for="item in items" :key="item.formId">
             <tr><td><strong>{{ item.productName }}</strong><small>{{ item.specification || '未填写规格' }}</small></td><td><a-tag color="blue">R{{ item.revisionNo }}</a-tag><small>最新可见版本</small></td><td>{{ item.owner || '—' }}</td><td>{{ time(item.updatedAt) }}</td>
-              <td><div class="actions"><a-button type="link" @click="openDetails(item,item.revisions[0])">查看 SOP</a-button><a-button type="link" :disabled="exporting" @click="openAndExport(item)">导出 Word</a-button><a-button type="link" @click="toggleHistory(item.formId)">历史版本</a-button><a-button v-if="auth.role==='RND_ASSISTANT'" type="link" @click="adjustmentItem=item;adjustmentReason='';adjustmentOpen=true">依据车间数据调整</a-button></div></td></tr>
+              <td><div class="actions"><a-button type="link" @click="openDetails(item,item.revisions[0])">查看成套文件 / SOP</a-button><a-button type="link" :disabled="exporting" @click="openAndExport(item)">导出 Excel</a-button><a-button type="link" @click="toggleHistory(item.formId)">历史版本</a-button><a-button v-if="auth.role==='RND_ASSISTANT'" type="link" @click="adjustmentItem=item;adjustmentReason='';adjustmentOpen=true">依据车间数据调整</a-button></div></td></tr>
             <tr v-if="expanded.has(item.formId)" class="history"><td colspan="5">
               <div v-for="revision in item.revisions" :key="revision.id" class="history-line"><a-tag>R{{ revision.revisionNo }}</a-tag><span>{{ time(revision.submittedAt) }} · {{ revision.submittedBy }}</span><span>{{ revision.changeReason || '无变更说明' }}</span><a-button size="small" @click="openDetails(item,revision)">查看 R{{ revision.revisionNo }}</a-button></div>
             </td></tr>
@@ -22,12 +22,13 @@
       <a-pagination v-if="total>20" v-model:current="page" :total="total" :page-size="20" :show-size-changer="false" @change="load" />
     </div>
     <a-modal :open="adjustmentOpen" title="创建 SOP 调整单" :confirm-loading="creating" @cancel="adjustmentOpen=false" @ok="createAdjustment"><p>从 {{ adjustmentItem?.productName }} 最新正式版本创建独立草稿，不更改研发记录。</p><a-textarea v-model:value="adjustmentReason" :maxlength="2000" placeholder="调整原因（必填）" /><a-alert v-if="createError" :message="createError" type="error" /></a-modal>
-    <a-modal :open="detailOpen" :title="`${selected?.productName || ''} · SOP · R${selectedRevision?.revisionNo || ''}`" :footer="null" width="960px" @cancel="closeDetails">
-      <div class="detail-actions"><span>正式工艺快照 · {{ selected?.specification || '未填写规格' }}</span><a-button v-if="canEnterExperiment" @click="enterExperiment">进入对应打样</a-button><a-button type="primary" :loading="exporting" :disabled="detailLoading||!snapshot||Boolean(detailError)" @click="exportCurrent()">导出 Word</a-button></div>
-      <p class="notice">研发记录简要查看，不代表生产批准；完整记录请导出 Word。</p>
+    <a-modal :open="detailOpen" :title="`${selected?.productName || ''} · 成套文件 / SOP · R${selectedRevision?.revisionNo || ''}`" :footer="null" width="1100px" @cancel="closeDetails">
+      <div class="detail-actions"><span>正式工艺快照 · {{ selected?.specification || '未填写规格' }}</span><a-button v-if="canEnterExperiment" @click="enterExperiment">进入对应打样</a-button><a-button type="primary" :loading="exporting" :disabled="detailLoading||!snapshot||Boolean(detailError)" @click="exportCurrent()">导出 Excel</a-button></div>
+      <p class="notice">完整 SOP 按公司原表导出 Excel；旧 Word 文件保留在文件历史中。</p>
       <a-alert v-if="detailError" type="error" show-icon :message="detailError" />
       <a-alert v-if="exportError" type="warning" show-icon :message="exportError" />
       <a-button v-if="canRegenerate&&selectedRevision?.canGenerate" :loading="exporting" @click="exportCurrent(true)">重新生成并导出</a-button>
+      <RndOutputCenter v-if="snapshot&&selected&&selectedRevision" :key="`${selected.formId}-${selectedRevision.id}`" :form-id="selected.formId" :selected-revision-id="selectedRevision.id" :revisions="selected.revisions" :readonly="true" :catalog-access="auth.role==='RND_ASSISTANT'" @update:selected-revision-id="selectBundleRevision" />
       <a-spin :spinning="detailLoading"><SopSnapshot v-if="snapshot" :plan="snapshot" /></a-spin>
     </a-modal>
   </section>
@@ -42,6 +43,7 @@ import {sopAmendmentApi,type SopAmendment} from '../../services/sopAmendmentApi'
 import {exportApi} from '../../services/processExportApi';
 import {useAuthStore} from '../../stores/auth';
 import SopSnapshot from './SopSnapshot.vue';
+import RndOutputCenter from '../../components/process/RndOutputCenter.vue';
 const router=useRouter(),auth=useAuthStore();
 const tab=ref('formal'),amendments=ref<SopAmendment[]>([]),adjustmentOpen=ref(false),adjustmentItem=ref<SopCatalogItem>(),adjustmentReason=ref(''),creating=ref(false),createError=ref('');
 const canAmend=computed(()=>['RND_ASSISTANT','RND_DIRECTOR'].includes(auth.role));
@@ -65,6 +67,7 @@ async function load(){
  finally{if(request===listRequest)loading.value=false;}
 }
 function closeDetails(){detailRequest++;detailOpen.value=false;exporting.value=false;snapshot.value=undefined;}
+function selectBundleRevision(id?:string){const revision=selected.value?.revisions.find(r=>r.id===id);if(selected.value&&revision)void openDetails(selected.value,revision);}
 async function openDetails(item:SopCatalogItem,revision:SopRevision){
  const request=++detailRequest;selected.value=item;selectedRevision.value=revision;detailOpen.value=true;detailLoading.value=true;snapshot.value=undefined;detailError.value='';exportError.value='';exporting.value=false;canRegenerate.value=false;
  try{const result=await (auth.role==='RND_ASSISTANT'?sopAmendmentApi.source(item.formId,revision.id):api.task.getProcessRevision(item.formId,revision.id));if(request!==detailRequest)return false;snapshot.value=result.snapshot;return true;}
@@ -80,13 +83,13 @@ async function exportCurrent(force=false){
   const assistant=auth.role==='RND_ASSISTANT';
   const artifacts=await (assistant?sopAmendmentApi.artifacts(item.formId,revision.id):api.task.getProcessArtifacts(item.formId,revision.id));
   if(request!==detailRequest)return;
-  let artifact:{id:string;status:string;failureReason?:string|null;documentVersion:string|number}|undefined=force?undefined:artifacts.find(a=>a.artifactType==='SOP_DOCX'&&a.status==='READY');
+  let artifact:{id:string;status:string;failureReason?:string|null;documentVersion:string|number}|undefined=force?undefined:artifacts.find(a=>a.artifactType==='SOP_XLSX'&&a.status==='READY');
   if(!artifact){
    if(!revision.canGenerate)throw new Error('该版本尚未生成 SOP，请联系负责研发或研发总监生成。');
-   const check=assistant?{ready:true,issues:[]}:await exportApi.revisionCheck(item.formId,revision.id,'SOP_DOCX');
+   const check=assistant?{ready:true,issues:[]}:await exportApi.revisionCheck(item.formId,revision.id,'SOP_XLSX');
    if(request!==detailRequest)return;
    if(!check.ready)throw new Error('请先在打样中完善：'+check.issues.map(i=>i.message).join('；'));
-   artifact=await (assistant?sopAmendmentApi.generate(item.formId,revision.id):api.task.generateProcessArtifact(item.formId,revision.id,'SOP_DOCX'));
+   artifact=await (assistant?sopAmendmentApi.generate(item.formId,revision.id):api.task.generateProcessArtifact(item.formId,revision.id,'SOP_XLSX'));
    if(request!==detailRequest)return;
    if(!artifact||artifact.status!=='READY')throw new Error(artifact?.failureReason||'SOP 生成失败，请重试');
   }
@@ -94,7 +97,7 @@ async function exportCurrent(force=false){
   if(request!==detailRequest)return;
   canRegenerate.value=false;
   const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;
-  link.download=`${item.productName.replace(/[\\/:*?"<>|]/g,'-')}-SOP-R${revision.revisionNo}-${artifact.documentVersion}.docx`;
+  link.download=`${item.productName.replace(/[\\/:*?"<>|]/g,'-')}-SOP-R${revision.revisionNo}-${artifact.documentVersion}.xlsx`;
   document.body.append(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1000);
  }catch(e){if(request===detailRequest){
   const damaged=e instanceof ApiError&&['PROCESS_ARTIFACT_FILE_NOT_FOUND','PROCESS_ARTIFACT_INTEGRITY_ERROR','PROCESS_ARTIFACT_NOT_READY'].includes(e.code||'');

@@ -355,6 +355,8 @@ export interface PricingFileRecord {
   fileName: string;
   status: PricingFileStatus;
   generatedAt: string;
+  processRevisionId?: string | null;
+  contentLength?: number;
   reviewedBy?: string;
   reviewedAt?: string;
   reviewComment?: string;

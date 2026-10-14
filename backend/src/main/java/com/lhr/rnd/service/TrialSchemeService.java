@@ -112,6 +112,33 @@ public class TrialSchemeService {
     }
 
     @Transactional
+    public TrialScheme initialize(String formId, SessionPrincipal principal) {
+        return initialize(formId,null,null,principal);
+    }
+    @Transactional
+    public TrialScheme initialize(String formId, ProcessPlan candidate, TrialScheme.FinishedOutput initialOutput, SessionPrincipal principal) {
+        requireMutationAccess(formId, principal); // Locks the form before testing for an existing scheme.
+        var existing=list(formId,principal);
+        if(!existing.isEmpty())return existing.stream().filter(t->!t.archived()).findFirst().orElse(existing.get(0));
+        var formal=processPlanService.find(formId);
+        if(candidate!=null && candidate.versionNo()!=formal.versionNo())throw conflict();
+        var draft=candidate==null?formal:candidate;
+        var source="SUBMITTED".equals(formal.status())
+                ? copyService.copy(formal,TrialScheme.PlannedData.empty(),false,Map.of())
+                : copyService.normalizeNew(draft,TrialScheme.PlannedData.empty());
+        var trial=create(formId,new CreateCommand(null,null,null,source.plan(),source.plannedData()),principal);
+        if(!"SUBMITTED".equals(formal.status())){
+            var output=initialOutput!=null?initialOutput:jdbc.query("select finished_output_quantity,finished_output_unit from experiment_form where id=?",
+                    (rs,n)->new TrialScheme.FinishedOutput(rs.getBigDecimal(1),rs.getString(2),null),formId).get(0);
+            if(output.unit()==null||!List.of("袋","盒","份","个","盘","kg").contains(output.unit()))throw invalid("TRIAL_OUTPUT_UNIT_INVALID","成品单位无效");
+            if("kg".equals(output.unit()))output=new TrialScheme.FinishedOutput(ProcessFinishedOutput.weight(trial.plan()),"kg",output.remark());
+            com.lhr.rnd.domain.FinishedOutputValidator.validate(ProcessFinishedOutput.weight(trial.plan()),output.quantity(),output.unit());
+            jdbc.update("update experiment_trial_scheme set finished_output_json=? where id=?",json(output),trial.id());
+        }
+        return findInternal(formId,trial.id(),false).trial();
+    }
+
+    @Transactional
     public TrialScheme save(String formId, String trialId, SaveCommand command, SessionPrincipal principal) {
         requireMutationAccess(formId, principal);
         if (command == null) throw invalid("TRIAL_REQUEST_REQUIRED", "试验方案请求不能为空");

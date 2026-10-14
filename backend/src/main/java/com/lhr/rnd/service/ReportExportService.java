@@ -92,12 +92,16 @@ public class ReportExportService {
 
     @Transactional
     public ReportExportFile exportExperimentForm(String experimentFormId) {
+        return exportExperimentForm(experimentFormId,null);
+    }
+    @Transactional
+    public ReportExportFile exportExperimentForm(String experimentFormId, SessionPrincipal principal) {
         var form = experimentFormRepository.findById(experimentFormId)
                 .orElseThrow(() -> new BusinessException("EXPERIMENT_FORM_NOT_FOUND", "实验单不存在"));
         var materials = experimentMaterialRepository.findByExperimentFormIdOrderBySequenceAsc(experimentFormId);
         var processSteps = experimentProcessRepository.findByExperimentFormIdOrderBySequenceAsc(experimentFormId);
 
-        var content = workbook(output -> {
+        var content = workbook(principal, output -> {
             var sheet = output.createSheet("实验单");
             put(sheet.createRow(0), "打样实验单");
             put(sheet.createRow(2), "产品名称", form.getProductName(), "样品编号", form.getSampleNo());
@@ -142,9 +146,13 @@ public class ReportExportService {
 
     @Transactional
     public ReportExportFile exportRndTasks(String keyword, String status, LocalDate startDate, LocalDate endDate) {
+        return exportRndTasks(keyword,status,startDate,endDate,null);
+    }
+    @Transactional
+    public ReportExportFile exportRndTasks(String keyword, String status, LocalDate startDate, LocalDate endDate, SessionPrincipal principal) {
         var normalizedKeyword = keyword == null ? "" : keyword.trim();
         var normalizedStatus = status == null ? "" : status.trim();
-        var content = workbook(output -> {
+        var content = workbook(principal, output -> {
             var sheet = output.createSheet("打样任务列表");
             put(sheet.createRow(0), "打样任务列表");
             put(sheet.createRow(1), "任务编号", "样品编号", "产品名称", "版本", "状态", "负责人", "截止日期", "创建时间");
@@ -171,9 +179,13 @@ public class ReportExportService {
 
     @Transactional
     public ReportExportFile exportTestRecord(String testRecordId) {
+        return exportTestRecord(testRecordId,null);
+    }
+    @Transactional
+    public ReportExportFile exportTestRecord(String testRecordId, SessionPrincipal principal) {
         var record = testRecordRepository.findById(testRecordId)
                 .orElseThrow(() -> new BusinessException("TEST_RECORD_NOT_FOUND", "测试记录不存在"));
-        var content = workbook(output -> {
+        var content = workbook(principal, output -> {
             var sheet = output.createSheet("测试单");
             put(sheet.createRow(0), "内部测试单");
             put(sheet.createRow(2), "测试人", field(record, "testerName"), "测试结果", field(record, "result"));
@@ -192,9 +204,13 @@ public class ReportExportService {
 
     @Transactional
     public ReportExportFile exportShipments(String keyword, String status, LocalDate startDate, LocalDate endDate) {
+        return exportShipments(keyword,status,startDate,endDate,null);
+    }
+    @Transactional
+    public ReportExportFile exportShipments(String keyword, String status, LocalDate startDate, LocalDate endDate, SessionPrincipal principal) {
         var normalizedKeyword = keyword == null ? "" : keyword.trim();
         var normalizedStatus = status == null ? "" : status.trim();
-        var content = workbook(output -> {
+        var content = workbook(principal, output -> {
             var sheet = output.createSheet("寄样反馈列表");
             put(sheet.createRow(0), "寄样反馈列表");
             put(sheet.createRow(1), "寄样编号", "样品编号", "产品名称", "版本", "状态", "数量", "收件人", "快递单号", "寄样时间");
@@ -269,9 +285,10 @@ public class ReportExportService {
         ));
     }
 
-    private byte[] workbook(WorkbookWriter writer) {
+    private byte[] workbook(SessionPrincipal principal, WorkbookWriter writer) {
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
             writer.write(workbook);
+            WorkbookSignatureWriter.append(workbook,com.lhr.rnd.model.DocumentSignature.pending(principal==null?null:principal.name(),LocalDateTime.now(clock).toString()));
             for (int sheetIndex = 0; sheetIndex < workbook.getNumberOfSheets(); sheetIndex++) {
                 var sheet = workbook.getSheetAt(sheetIndex);
                 for (int column = 0; column < 12; column++) {

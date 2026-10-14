@@ -49,6 +49,16 @@ test('packaging picker queries packaging rather than ingredient-only catalog',as
  assert.equal(query.category,'PACKAGING');assert.notEqual(query.ingredientsOnly,'true');assert.equal(child.$.setupState.items[0].id,'b');app.unmount();
  }finally{materialCatalogApi.list=original;materialCatalogApi.classifications=categories;}
 });
+test('material picker hides inactive classifications including active children of inactive roots',async()=>{
+ const {default:Component}=await server.ssrLoadModule('/src/components/materials/MaterialPicker.vue');Component.render=()=>null;
+ const app=renderer.createApp(Component);app.provide(Symbol.for('v-scx'),{modules:new Set()});const child:any=app.mount(make());
+ child.$.setupState.classifications=[
+  {id:'off',name:'停用原料',businessType:'RAW',status:'INACTIVE',sortOrder:0},
+  {id:'child',parentId:'off',name:'子类',businessType:'RAW',status:'ACTIVE',sortOrder:0},
+  {id:'on',name:'启用原料',businessType:'RAW',status:'ACTIVE',sortOrder:1},
+  {id:'off-child',parentId:'on',name:'停用子类',businessType:'RAW',status:'INACTIVE',sortOrder:0}
+ ];await flush();assert.deepEqual(child.$.setupState.options,[{value:'on',label:'启用原料'}]);app.unmount();
+});
 test('reusing a temporary packaging identity carries its role and unit without copying count',async()=>{
  const {default:Component}=await server.ssrLoadModule('/src/components/process/MinorStepWorkspace.vue');Component.render=()=>null;
  const source={key:'bag',sequence:1,sourceType:'EXTERNAL',temporaryMaterialId:'TMP-BAG',materialName:'袋',materialRole:'PACKAGING',quantity:277,quantityUnit:'只'};
@@ -110,4 +120,57 @@ test("formal generation is blocked by type checks without hiding an older ready 
   const setup=child.$.setupState; await setup.loadArtifacts();
   assert.equal(setup.readyArtifactFor("FORMULA_XLSX").id,"archived");
   await setup.generate("FORMULA_XLSX"); assert.equal(calls,0); app.unmount();
+});
+
+test("output center groups only pricing files pinned to the selected formal revision",async()=>{
+ const {api}=await server.ssrLoadModule('/src/services/api.ts');
+ const {exportApi}=await server.ssrLoadModule('/src/services/processExportApi.ts');
+ api.task.getProcessArtifacts=async()=>[{id:'formula',processRevisionId:'R1',artifactType:'FORMULA_XLSX',documentVersion:'1',status:'READY',generatedAt:'2026-10-13T09:00:00'},
+ {id:'sop',processRevisionId:'R1',artifactType:'SOP_DOCX',documentVersion:'2',status:'READY',generatedAt:'2026-10-13T09:00:00'}];
+ api.shipment.pricingFiles=async()=>[{id:'P1',processRevisionId:'R1',productName:'同名产品',status:'PENDING_PRICING_REVIEW',contentLength:100,pricingVersion:'P0'},
+ {id:'wrong',processRevisionId:'R2',productName:'同名产品',status:'RECEIVED_FINANCE',contentLength:100},
+ {id:'legacy',productName:'同名产品',status:'RECEIVED_FINANCE',contentLength:100}];
+ exportApi.revisionCheck=async()=>({ready:true,issues:[]});
+ const {default:C}=await server.ssrLoadModule('/src/components/process/RndOutputCenter.vue');C.render=()=>null;
+ const app=renderer.createApp(C,{formId:'F',selectedRevisionId:'R1',revisions:[{id:'R1',revisionNo:1}]});app.provide(Symbol.for('v-scx'),{modules:new Set()});
+ const child:any=app.mount(make());await child.$.setupState.loadArtifacts();await flush();
+ assert.deepEqual(child.$.setupState.pricingFiles.map((p:any)=>p.id),['P1']);
+ assert.equal(child.$.setupState.completedFileCount,3);
+ assert.match(child.$.setupState.pricingStatusLabel('PENDING_PRICING_REVIEW'),/待.*审核/);
+ app.unmount();
+});
+
+test("switching formal versions discards delayed pricing responses from the previous revision",async()=>{
+ const {api}=await server.ssrLoadModule('/src/services/api.ts');const {exportApi}=await server.ssrLoadModule('/src/services/processExportApi.ts');
+ api.task.getProcessArtifacts=async()=>[];exportApi.revisionCheck=async()=>({ready:true,issues:[]});
+ let resolve!:(v:any)=>void;const old=new Promise<any[]>(done=>resolve=done);let calls=0;
+ api.shipment.pricingFiles=()=>++calls===1?old:Promise.resolve([{id:'P2',processRevisionId:'R2',status:'DRAFT_PACKAGING',contentLength:0}]);
+ const {default:C}=await server.ssrLoadModule('/src/components/process/RndOutputCenter.vue');C.render=()=>null;
+ const scope=ref({formId:'F',selectedRevisionId:'R1',revisions:[{id:'R1',revisionNo:1},{id:'R2',revisionNo:2}]});let child:any;
+ const app=renderer.createApp({setup:()=>()=>h(C,{...scope.value,ref:(v:any)=>child=v})});app.provide(Symbol.for('v-scx'),{modules:new Set()});app.mount(make());await flush();
+ scope.value={...scope.value,selectedRevisionId:'R2'};await flush();await child.$.setupState.loadArtifacts();
+ resolve([{id:'P1',processRevisionId:'R1',status:'RECEIVED_FINANCE',contentLength:100}]);await flush();
+ assert.deepEqual(child.$.setupState.pricingFiles.map((p:any)=>p.id),['P2']);assert.equal(child.$.setupState.completedFileCount,0);app.unmount();
+});
+
+test("unavailable pricing access leaves formula archives visible and blocks draft downloads",async()=>{
+ const {api}=await server.ssrLoadModule('/src/services/api.ts');const {exportApi}=await server.ssrLoadModule('/src/services/processExportApi.ts');
+ api.task.getProcessArtifacts=async()=>[{id:'old',artifactType:'FORMULA_XLSX',status:'READY',documentVersion:'1'}];
+ api.shipment.pricingFiles=async()=>{throw new Error('无核价权限');};exportApi.revisionCheck=async()=>({ready:true,issues:[]});
+ let downloads=0;api.shipment.downloadPricingFile=async()=>{downloads++;return new Blob();};
+ const {default:C}=await server.ssrLoadModule('/src/components/process/RndOutputCenter.vue');C.render=()=>null;
+ const app=renderer.createApp(C,{formId:'F',selectedRevisionId:'R1',revisions:[{id:'R1',revisionNo:1}]});app.provide(Symbol.for('v-scx'),{modules:new Set()});const child:any=app.mount(make());await child.$.setupState.loadArtifacts();
+ assert.equal(child.$.setupState.readyArtifactFor('FORMULA_XLSX').id,'old');assert.match(child.$.setupState.pricingError,/无核价权限/);
+ await child.$.setupState.downloadPricing({id:'draft',processRevisionId:'R1',status:'DRAFT_PACKAGING',contentLength:0});assert.equal(downloads,0);app.unmount();
+});
+
+test("assistant bundle uses the authorized formal catalog endpoint and remains read only",async()=>{
+ const {api}=await server.ssrLoadModule('/src/services/api.ts');const {sopAmendmentApi}=await server.ssrLoadModule('/src/services/sopAmendmentApi.ts');
+ api.task.getProcessArtifacts=async()=>{throw new Error('私有研发接口禁止访问');};
+ sopAmendmentApi.artifacts=async()=>[{id:'formula',processRevisionId:'R1',artifactType:'FORMULA_XLSX',documentVersion:'1',status:'READY',generatedAt:'2026-10-13T09:00:00'}];
+ api.shipment.pricingFiles=async()=>[];
+ const {default:C}=await server.ssrLoadModule('/src/components/process/RndOutputCenter.vue');C.render=()=>null;
+ const app=renderer.createApp(C,{formId:'F',selectedRevisionId:'R1',revisions:[{id:'R1',revisionNo:1}],readonly:true,catalogAccess:true});app.provide(Symbol.for('v-scx'),{modules:new Set()});const child:any=app.mount(make());await child.$.setupState.loadArtifacts();
+ assert.equal(child.$.setupState.loadError,'');assert.equal(child.$.setupState.readyArtifactFor('FORMULA_XLSX')?.id,'formula');
+ app.unmount();
 });

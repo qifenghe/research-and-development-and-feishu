@@ -37,6 +37,7 @@ public class TrialSchemeController {
     @PostMapping
     public ApiResponse<TrialScheme> create(@PathVariable String formId, @RequestBody CreateTrialRequest body,
                                            HttpServletRequest request) {
+        if(body.initialize())return ApiResponse.success(service.initialize(formId,body.plan(),body.initialFinishedOutput(),principal(request)));
         return ApiResponse.success(service.create(formId, new TrialSchemeService.CreateCommand(
                 body.name(), body.purpose(), body.variables(), body.plan(), body.plannedData()), principal(request)));
     }
@@ -100,7 +101,7 @@ public class TrialSchemeController {
     }
 
     public record CreateTrialRequest(String name, String purpose, String variables, ProcessPlan plan,
-                                     TrialScheme.PlannedData plannedData) {}
+                                     TrialScheme.PlannedData plannedData,boolean initialize,TrialScheme.FinishedOutput initialFinishedOutput) {}
     public record SaveTrialRequest(int versionNo, String name, String purpose, String variables, TrialScheme.Conclusion conclusion,
                                    String recommendationReason, BigDecimal qualityScore, String qualityNotes,
                                    TrialScheme.Difficulty difficulty, ProcessPlan plan, TrialScheme.PlannedData plannedData) {}

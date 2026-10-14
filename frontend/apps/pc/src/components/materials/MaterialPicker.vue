@@ -23,7 +23,7 @@ const props=withDefaults(defineProps<{currentMaterial?:MaterialIdentity;readonly
 const emit=defineEmits<{select:[item:MaterialCatalogItem]}>();
 const open=ref(false),query=ref(''),classificationId=ref<string>(),page=ref(1),total=ref(0),busy=ref(false),error=ref(''),canCreate=ref(false);
 const items=ref<MaterialCatalogItem[]>([]),classifications=ref<MaterialClassification[]>([]),gate=new LatestMaterialQuery();
-const options=computed(()=>classificationOptions(classifications.value.filter(c=>props.purpose==='packaging'?c.businessType==='PACKAGING':c.businessType!=='PACKAGING')));
+const options=computed(()=>classificationOptions(classifications.value.filter(c=>props.purpose==='packaging'?c.businessType==='PACKAGING':c.businessType!=='PACKAGING'),true));
 const columns=[{title:'编码',dataIndex:'code'},{title:'名称',dataIndex:'name'},{title:'规格',dataIndex:'specification'},{title:'单位',dataIndex:'unit'},{title:'',key:'action',width:70}];
 async function show(){if(props.readonly)return;open.value=true;page.value=1;query.value='';classificationId.value=undefined;await load();}
 async function load(){busy.value=true;error.value='';try{await gate.run(()=>loadIngredientOptions(()=>materialCatalogApi.list({query:query.value,classificationId:classificationId.value,page:page.value,size:20,status:'ACTIVE',category:props.purpose==='packaging'?'PACKAGING':undefined,ingredientsOnly:props.purpose==='packaging'?undefined:'true'}),()=>materialCatalogApi.classifications()),r=>{items.value=r.data.items;total.value=r.data.total;canCreate.value=!!r.data.access?.create;classifications.value=r.categories;busy.value=false;});}catch(e){busy.value=false;error.value=e instanceof Error?e.message:'物料加载失败';}}

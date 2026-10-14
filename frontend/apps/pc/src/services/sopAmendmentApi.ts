@@ -1,4 +1,4 @@
-import type {ProcessPlanDraft} from '@rnd/shared';
+import type {ProcessArtifact,ProcessPlanDraft} from '@rnd/shared';
 import {client} from './api';
 import type {SopDifference} from './sopAmendmentDraft';
 export interface SopAmendment {
@@ -18,7 +18,7 @@ export const sopAmendmentApi={
  returnForChanges:(id:string,versionNo:number,comment:string)=>client.post<SopAmendment>(`${path(id)}/return`,{versionNo,comment}),
  approve:(id:string,versionNo:number)=>client.post<{amendment:SopAmendment;revision:{id:string;revisionNo:number}}>(`${path(id)}/approve`,{versionNo,confirmed:true}),
  source:(formId:string,revisionId:string)=>client.get<{snapshot:ProcessPlanDraft}>(`/sops/${encodeURIComponent(formId)}/revisions/${encodeURIComponent(revisionId)}`),
- artifacts:(formId:string,revisionId:string)=>client.get<{id:string;artifactType:string;status:string;failureReason?:string;documentVersion:string}[]>(`/sops/${encodeURIComponent(formId)}/revisions/${encodeURIComponent(revisionId)}/artifacts`),
- generate:(formId:string,revisionId:string)=>client.post<{id:string;status:string;failureReason?:string;documentVersion:string}>(`/sops/${encodeURIComponent(formId)}/revisions/${encodeURIComponent(revisionId)}/artifacts`,{artifactType:'SOP_DOCX'}),
+ artifacts:(formId:string,revisionId:string)=>client.get<ProcessArtifact[]>(`/sops/${encodeURIComponent(formId)}/revisions/${encodeURIComponent(revisionId)}/artifacts`),
+ generate:(formId:string,revisionId:string)=>client.post<{id:string;status:string;failureReason?:string;documentVersion:string}>(`/sops/${encodeURIComponent(formId)}/revisions/${encodeURIComponent(revisionId)}/artifacts`,{artifactType:'SOP_XLSX'}),
  download:(formId:string,revisionId:string,artifactId:string)=>client.get<Blob>(`/sops/${encodeURIComponent(formId)}/revisions/${encodeURIComponent(revisionId)}/artifacts/${encodeURIComponent(artifactId)}/download`),
 };

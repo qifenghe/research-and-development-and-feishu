@@ -13,7 +13,7 @@
         <a-button size="small" :disabled="readonly || busy || !currentTrial" @click="toggleArchive">{{ currentTrial?.archived ? "恢复" : "归档" }}</a-button>
         <a-button size="small" :loading="saving" :disabled="!editable || !dirty" @click="saveTrial()">保存方案</a-button>
         <ProcessExportPreview v-if="currentTrial" :plan="currentTrial.plan" :before-check="saveTrial" :locally-dirty="dirty" :form-id="formId" :trial-id="currentTrial.id" :version-no="currentTrial.versionNo" :source-label="`${currentTrial.name} V${currentTrial.versionNo}`" :disabled="busy" @locate="activeMajorKey = currentTrial?.plan.majorProcesses.find(m => m.sequence === $event.majorSequence)?.key" />
-        <a-button size="small" type="primary" :disabled="!editable" @click="openPromotionPreview">提交为正式工艺</a-button>
+        <a-button size="small" type="primary" :disabled="!editable" @click="openPromotionPreview">提交为正式版本</a-button>
         <a-button size="small" :disabled="!editable" @click="openIntake">整理新增物料</a-button>
       </a-space>
     </header>
@@ -143,7 +143,7 @@ import TrialComparison from "./TrialComparison.vue";
 import { deviationUnit, plannedActualRows } from "./trialComparison";
 import { clearTrialDraft, createStructureOnlyTrialSource, prepareTrialPlanForSave, pruneParameterPlans, readTrialDraft, trialDraftKey, TrialRequestFence, writeTrialDraft } from "./trialDraft";
 
-const props = defineProps<{ formId?: string; userId: string; formalPlan: ProcessPlanDraft; readonly?: boolean }>();
+const props = defineProps<{ formId?: string; userId: string; formalPlan: ProcessPlanDraft; readonly?: boolean; unifiedEntry?:boolean;initialFinishedOutput?:TrialScheme['finishedOutput'] }>();
 const emit = defineEmits<{ promoted: [revision: ProcessRevision, output:TrialScheme['finishedOutput']]; 'source-change':[trial:TrialScheme|undefined] }>();
 const trials = ref<TrialScheme[]>([]);
 const currentTrial = ref<TrialScheme>();
@@ -203,7 +203,7 @@ onMounted(() => { window.addEventListener("beforeunload", beforeUnload); window.
 onBeforeUnmount(() => { listFence.invalidate(); detailFence.invalidate(); mutationFence.invalidate(); promotionFence.invalidate(); window.removeEventListener("beforeunload", beforeUnload); window.removeEventListener("pagehide", persistCache); });
 onBeforeRouteLeave(prepareTransition);
 onBeforeRouteUpdate(prepareTransition);
-defineExpose({ openCreatedTrial,updateFinishedOutput });
+defineExpose({ openCreatedTrial,updateFinishedOutput,flushSave:saveTrial });
 
 async function loadTrials(formId: string) {
   const token = listFence.begin(formId, "list");
@@ -212,7 +212,12 @@ async function loadTrials(formId: string) {
     const value = await trialApi.list(formId);
     if (!listFence.isCurrent(token) || formId !== props.formId) return;
     trials.value = value.map(normalizeTrial);
-    const selected = trials.value.find(item => !item.archived) || trials.value[0];
+    let selected = trials.value.find(item => !item.archived) || trials.value[0];
+    if(!selected && props.unifiedEntry && !props.readonly){
+      const initial=await trialApi.initialize(formId,prepareTrialPlanForSave(props.formalPlan),props.initialFinishedOutput);
+      if(!listFence.isCurrent(token)||formId!==props.formId)return;
+      selected=normalizeTrial(initial);trials.value=[selected];
+    }
     if (selected) await loadTrial(selected.id);
   } catch (error) {
     if (listFence.isCurrent(token)) message.error(errorMessage(error, "无法加载试验方案"));

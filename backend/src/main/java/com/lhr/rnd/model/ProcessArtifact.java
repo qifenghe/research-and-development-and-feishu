@@ -18,6 +18,7 @@ public record ProcessArtifact(
 ) {
     public static final String FORMULA_XLSX = "FORMULA_XLSX";
     public static final String SOP_DOCX = "SOP_DOCX";
+    public static final String SOP_XLSX = "SOP_XLSX";
     public static final String READY = "READY";
     public static final String FAILED = "FAILED";
 }

@@ -75,7 +75,7 @@ public class ProcessExportCheckService {
         validateType(type);
         var issues = new ArrayList<>(view.issues());
         if (view.majors().isEmpty()) issues.add(issue("MAJOR_PROCESS_REQUIRED", "majorProcesses", "至少需要一个大工序", null, null));
-        if ("SOP_DOCX".equals(type)) {
+        if ("SOP_DOCX".equals(type) || "SOP_XLSX".equals(type)) {
             for (var major : values(view.snapshot().majorProcesses())) for (var step : values(major.steps())) {
                 if (blank(step.instruction())) issues.add(issue("STEP_INSTRUCTION_REQUIRED", path(major.sequence(), step.sequence()) + ".instruction", "SOP 操作要求待填写", major.sequence(), step.sequence()));
                 for (var parameter : com.lhr.rnd.domain.StepParameterService.effective(step)) parameterIssues(issues, major, step, parameter);
@@ -111,7 +111,7 @@ public class ProcessExportCheckService {
         if (!result.ready()) throw new BusinessException("PROCESS_EXPORT_NOT_READY", result.issues().get(0).message());
     }
     public void validateType(String type) {
-        if (!List.of("FORMULA_XLSX", "SOP_DOCX", "PRICING_XLSX").contains(type == null ? "" : type)) throw new BusinessException("PROCESS_ARTIFACT_TYPE_INVALID", "不支持的成果类型");
+        if (!List.of("FORMULA_XLSX", "SOP_DOCX", "SOP_XLSX", "PRICING_XLSX").contains(type == null ? "" : type)) throw new BusinessException("PROCESS_ARTIFACT_TYPE_INVALID", "不支持的成果类型");
     }
     private static ProcessExportView.Issue issue(String code, String path, String message, Integer major, Integer step) { return new ProcessExportView.Issue(code, path, message, major, step); }
     private void parameterIssues(List<ProcessExportView.Issue> issues, ProcessPlan.MajorProcess major, ProcessPlan.MinorStep step, ProcessPlan.StepParameter parameter) {

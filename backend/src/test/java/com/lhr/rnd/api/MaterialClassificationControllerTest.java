@@ -11,6 +11,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class MaterialClassificationControllerTest extends MaterialCatalogControllerTest {
+ @Test void disabledClassificationAndChildrenAreHiddenFromNonAdmin() throws Exception {
+  var admin=token("SYSTEM_ADMIN");var reader=token("RND_ASSISTANT");
+  var root=classification(admin,null,"RAW","隐藏"+UUID.randomUUID());var child=classification(admin,root,"RAW","子类");
+  mvc.perform(post("/api/v1/material-classifications/"+root+"/status").header("Authorization","Bearer "+admin).contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"INACTIVE\",\"expectedVersion\":0}")).andExpect(status().isOk());
+  var response=mvc.perform(get("/api/v1/material-classifications").header("Authorization","Bearer "+reader)).andExpect(status().isOk()).andReturn();
+  assertThat(response.getResponse().getContentAsString()).doesNotContain(root,child);
+  var full=mvc.perform(get("/api/v1/material-classifications").header("Authorization","Bearer "+admin)).andReturn();
+  assertThat(full.getResponse().getContentAsString()).contains(root,child);
+ }
  @Autowired JdbcTemplate db;
  @Test void directoryMigrationPreservesWaterAndPackagingReferences(){
   var source=new org.springframework.jdbc.datasource.DriverManagerDataSource("jdbc:h2:mem:directory_"+UUID.randomUUID()+";DB_CLOSE_DELAY=-1","sa","");

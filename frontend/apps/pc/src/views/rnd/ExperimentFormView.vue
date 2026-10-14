@@ -85,33 +85,36 @@
                 </a-space>
               </template>
             </a-alert>
-            <p class="workspace-usage">试验方案：独立打样、调整参数与对比结果；正式版本：确认后提交的工艺及其历史。试验不会自动覆盖正式工艺草稿。</p>
-            <a-tabs v-model:active-key="workspaceMode">
-              <a-tab-pane key="formal" tab="正式版本">
+            <p class="workspace-usage">在当前方案中填写工序、物料与实测数据，保存后可继续调整；确认满意后点击“提交为正式版本”。已提交记录在下方正式版本历史中查看、导出。</p>
+                <TrialWorkbench
+                  v-if="hydrated && canUseTrials && !processDraftConflict && !resolvingProcessConflict"
+                  ref="trialWorkbench"
+                  :form-id="detail?.currentExperimentForm?.id"
+                  :user-id="auth.principal?.userId || auth.user?.id || auth.displayName"
+                  :formal-plan="processPlan"
+                  :initial-finished-output="{quantity:form.finishedOutputQuantity,unit:form.finishedOutputUnit,remark:form.remark}"
+                  :unified-entry="true"
+                  :readonly="readOnly || !!processDraftConflict"
+                  @promoted="onTrialPromoted"
+                  @source-change="selectedTrial=$event"
+                />
+                <ProcessPlanSnapshot v-else-if="hydrated && !canUseTrials" :plan="processPlan" />
+            <a-collapse ghost style="margin-top:16px">
+              <a-collapse-panel key="history" header="正式版本历史 · 查看与导出">
                 <ProcessPlanWorkspace
                   ref="processWorkspace"
                   v-model="processPlan"
                   :form-id="detail?.currentExperimentForm?.id"
-                  :readonly="readOnly || !!processDraftConflict"
+                  :readonly="true"
+                  :history-only="true"
                   :server-hydration-token="serverProcessHydrationToken"
                   :can-recover-displaced-draft="canUseTrials"
                   @request-save="saveDraft"
                   @saved="persistLocalDraft"
                   @trial-created="onRecoveredTrialCreated"
                 />
-              </a-tab-pane>
-              <a-tab-pane v-if="canUseTrials" key="trials" tab="试验方案">
-                <TrialWorkbench
-                  ref="trialWorkbench"
-                  :form-id="detail?.currentExperimentForm?.id"
-                  :user-id="auth.principal?.userId || auth.user?.id || auth.displayName"
-                  :formal-plan="processPlan"
-                  :readonly="readOnly || !!processDraftConflict"
-                  @promoted="onTrialPromoted"
-                  @source-change="selectedTrial=$event"
-                />
-              </a-tab-pane>
-            </a-tabs>
+              </a-collapse-panel>
+            </a-collapse>
             <a-collapse v-if="showLegacyProcessEditor" ghost style="margin-top:12px">
               <a-collapse-panel key="legacy" header="历史兼容数据（旧版工序编辑器）">
                 <ProcessTabsEditor v-model="processSteps" :readonly="editingBlocked" :create-row="blankProcess" />
@@ -294,7 +297,7 @@ const editingBlocked = computed(() => readOnly.value || !!processDraftConflict.v
 const serverProcessHydrationToken = ref(0);
 const workspaceMode = ref<"formal" | "trials">("formal");
 const processWorkspace = ref<{ flushSave: (silent?: boolean) => Promise<void>; restoreLocalDirty: (plan: ProcessPlanDraft) => void; hydrateServer: (plan: ProcessPlanDraft) => void }>();
-const trialWorkbench = ref<{ openCreatedTrial: (trialId: string) => Promise<void>;updateFinishedOutput:(output:NonNullable<TrialScheme['finishedOutput']>)=>void }>();
+const trialWorkbench = ref<{ openCreatedTrial: (trialId: string) => Promise<void>;updateFinishedOutput:(output:NonNullable<TrialScheme['finishedOutput']>)=>void;flushSave:()=>Promise<boolean> }>();
 const selectedTrial=ref<TrialScheme>();
 const activePlan=computed(()=>workspaceMode.value==='trials'?selectedTrial.value?.plan||createEmptyProcessPlan():processPlan.value);
 const activeHasProcessData=computed(()=>workspaceMode.value==='trials'||hasLayeredProcessData(activePlan.value));
@@ -306,6 +309,7 @@ function updateDisplayedOutput(patch:Partial<NonNullable<TrialScheme['finishedOu
 watch(()=>summarizeProcessSource(processPlan.value).finishedWeightKg,weight=>{if(hasLayeredProcessData(processPlan.value)&&!readOnly.value)form.finishedOutputWeightKg=weight??null;});
 const showLegacyProcessEditor = computed(() => processPlan.value.legacy && !processPlan.value.majorProcesses.some((item) => item.steps.length));
 const canUseTrials = computed(() => ["RND_ENGINEER", "RND_DIRECTOR"].includes(auth.role) && Boolean(detail.value?.currentExperimentForm?.id));
+watch(canUseTrials,enabled=>{workspaceMode.value=enabled?'trials':'formal';},{immediate:true});
 const processRecipe = computed(() => aggregateProcessRecipe(processPlan.value));
 const hasProcessPlanData = computed(() => hasLayeredProcessData(processPlan.value));
 const effectiveMaterials = computed<MaterialRow[]>(() => hasProcessPlanData.value ? processRecipe.value.map((item, index) => ({
@@ -470,7 +474,7 @@ function confirmArrangement() {
     });
   }
   experimentPhase.value = "form";
-  workspaceMode.value = "formal";
+  workspaceMode.value = canUseTrials.value ? "trials" : "formal";
 }
 
 function categoryLabel(category: MaterialCategory) {
@@ -772,6 +776,10 @@ async function saveDraft(options: { silent?: boolean } = {}) {
     });
     if (!requestGeneration.isCurrent(generation) || taskId !== activeTaskId.value) return false;
     detail.value = { ...detail.value!, currentExperimentForm: saved };
+    if(workspaceMode.value==='trials' && trialWorkbench.value && selectedTrial.value && !selectedTrial.value.archived){
+      if(!await trialWorkbench.value.flushSave())throw new Error('当前方案未保存成功，修改已保留，请重试');
+      if(!requestGeneration.isCurrent(generation))return false;
+    }
     if (!hasProcessPlanData.value) materials.value.forEach(row=>{
       const index=submittedRows.findIndex(item=>item.key===row.key);
       const ack=saved.materials?.find(item=>item.sequence===index+1);
@@ -810,7 +818,7 @@ async function onTrialPromoted(revision: { snapshot: ProcessPlanDraft }, output?
   processPlan.value = promoted;
   processWorkspace.value?.hydrateServer(cloneVueValue(promoted));
   serverProcessHydrationToken.value++;
-  workspaceMode.value = "formal";
+  workspaceMode.value = canUseTrials.value ? "trials" : "formal";
   await nextTick();
   suppressAutoSave=false;
   persistLocalDraft();

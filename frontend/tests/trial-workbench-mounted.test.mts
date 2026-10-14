@@ -157,6 +157,13 @@ test('new and copied schemes suggest next alphabetic name including archives',as
  const {app,setup}=await mountSetup('/src/components/trials/TrialWorkbench.vue',{userId:'u',formalPlan:createEmptyProcessPlan()});
  try{setup.trials=[{...trial('trial-a'),name:'方案 Z',archived:true}];setup.currentTrial=trial('trial-b');setup.newTrialOpen=true;await flush();assert.equal(setup.newTrialName,'方案 AA');setup.openCopy();assert.equal(setup.copyName,'方案 AA');}finally{app.unmount();}
 });
+test('unified entry initializes an empty trial list instead of leaving an unused formal editor',async()=>{
+ const api=(await server.ssrLoadModule('/src/services/trialApi.ts')).trialApi;
+ const original={list:api.list,initialize:api.initialize,find:api.find};let initialized=0;
+ api.list=async()=>[];api.initialize=async(id:string)=>{assert.equal(id,'FORM-UNIFIED');initialized++;return trial('trial-initial');};api.find=async()=>trial('trial-initial');
+ const {app,setup}=await mountSetup('/src/components/trials/TrialWorkbench.vue',{formId:'FORM-UNIFIED',userId:'u',formalPlan:createEmptyProcessPlan(),unifiedEntry:true});
+ try{await flush();assert.equal(initialized,1);assert.equal(setup.currentTrial.id,'trial-initial');}finally{app.unmount();Object.assign(api,original);}
+});
 async function mountSetup(path: string, props: any) {
   const component = (await server.ssrLoadModule(path)).default;
   component.render = () => null;
@@ -199,6 +206,19 @@ test('promoted finished records replace old form values before pending autosave 
   assert.ok(writes.every(c=>c.finishedOutputQuantity===277));
   await setup.autoSave();assert.equal(writes.at(-1).finishedOutputQuantity,277);
   const reloaded=await api.task.detail();assert.equal(reloaded.currentExperimentForm.finishedOutputQuantity,277);
+ }finally{app.unmount();}
+});
+test('newly created form switches source to trials and failed trial flush marks parent save as error',async()=>{
+ localStorage.clear();const api=(await server.ssrLoadModule('/src/services/api.ts')).api;
+ api.task.detail=async()=>({task:{status:'SAMPLING',productName:'初始任务',versionCode:'A0'},version:{specification:''}});
+ api.sample.processSteps=async()=>[];
+ api.task.saveExperimentDraft=async()=>({id:'NEW-FORM',status:'DRAFT',materials:[],processSteps:[]});
+ const {app,setup}=await mountSetup('/src/views/rnd/ExperimentFormView.vue',{});
+ try{
+  setup.auth.principal={role:'RND_DIRECTOR',name:'总监'};await flush();
+  assert.equal(setup.workspaceMode,'formal');await setup.saveDraft({silent:true});await flush();assert.equal(setup.workspaceMode,'trials');
+  setup.selectedTrial=trial('trial-a');setup.trialWorkbench={flushSave:async()=>false};
+  assert.equal(await setup.saveDraft({silent:true}),false);assert.equal(setup.draftSyncState,'error');
  }finally{app.unmount();}
 });
 

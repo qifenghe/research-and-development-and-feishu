@@ -19,6 +19,9 @@ class SopAmendmentPublishTest extends SopAmendmentServiceTest {
   assertThat(result.revision().sourceRevisionId()).isEqualTo(r.id());
   assertThat(result.revision().snapshot().majorProcesses().get(0).steps().get(0).instruction()).isEqualTo("沥水5分钟");
   assertThat(result.revision().submittedBy()).isEqualTo("总监");
+  assertThat(db.queryForObject("select compiled_by from experiment_process_revision where id=?",String.class,result.revision().id())).isEqualTo(assistant.name());
+  assertThat(db.queryForObject("select reviewed_by from experiment_process_revision where id=?",String.class,result.revision().id())).isEqualTo(director.name());
+  assertThat(db.queryForObject("select reviewed_at from experiment_process_revision where id=?",java.sql.Timestamp.class,result.revision().id())).isNotNull();
   assertThat(plans.find(r.experimentFormId())).isEqualTo(original);
   assertThatThrownBy(()->amendments.approve(pending.id(),pending.versionNo(),true,director)).isInstanceOf(BusinessException.class);
   assertThat(db.queryForObject("select count(*) from experiment_process_revision where experiment_form_id=?",Integer.class,r.experimentFormId())).isEqualTo(2);

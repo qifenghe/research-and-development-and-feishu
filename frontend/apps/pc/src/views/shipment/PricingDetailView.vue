@@ -55,7 +55,7 @@ const canEditPackaging = computed(() => canEditPricingBasis(detail.value?.availa
 const canDownload = computed(() => !isPackagingDraft.value && [
   "RND_ASSISTANT", "RND_DIRECTOR", "RND_ENGINEER", "FINANCE", "MANAGER", "ADMIN", "SYSTEM_ADMIN", "SUPER_ADMIN",
 ].includes(auth.role ?? ""));
-const canReview = computed(() => (auth.role === "RND_DIRECTOR" || auth.role === "RND_ENGINEER")
+const canReview = computed(() => auth.role === "RND_DIRECTOR"
   && detail.value?.pricingFile.status === "PENDING_PRICING_REVIEW");
 
 async function load() {

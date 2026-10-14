@@ -16,6 +16,10 @@ public class MaterialClassificationService {
  public record Write(String parentId,String name,String businessType,Integer sortOrder,Integer expectedVersion){}
  private final RowMapper<MaterialClassification> mapper=(r,n)->new MaterialClassification(r.getString("id"),r.getString("parent_id"),r.getString("name"),r.getString("business_type"),r.getInt("sort_order"),r.getString("status"),r.getInt("version"));
  public List<MaterialClassification> list(){return db.query("select * from material_classification order by sort_order,name,id",mapper);}
+ public List<MaterialClassification> visibleList(SessionPrincipal actor){
+  if(actor!=null&&"SYSTEM_ADMIN".equals(actor.role()))return list();
+  return db.query("select c.* from material_classification c left join material_classification p on p.id=c.parent_id where c.status='ACTIVE' and (c.parent_id is null or p.status='ACTIVE') order by c.sort_order,c.name,c.id",mapper);
+ }
  public MaterialClassification find(String id){return read(id,false);}
  private MaterialClassification read(String id,boolean lock){return db.query("select * from material_classification where id=?"+(lock?" for update":""),mapper,id).stream().findFirst().orElseThrow(()->invalid("分类不存在"));}
  /** All assignment/status transactions lock root then child, so parent disable cannot race assignment. */

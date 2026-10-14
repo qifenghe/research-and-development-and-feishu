@@ -132,6 +132,7 @@ class ReportExportControllerTest {
         createExperimentForm();
 
         var response = mockMvc.perform(get("/api/v1/reports/rnd-tasks/export")
+                        .requestAttr("sessionPrincipal", new SessionPrincipal("REPORT-COMPILER", "report_compiler", "李内勤", null, "RND_ASSISTANT", null))
                         .param("keyword", "大肠头"))
                 .andExpect(status().isOk())
                 .andReturn()
@@ -142,6 +143,9 @@ class ReportExportControllerTest {
             assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).isEqualTo("打样任务列表");
             assertThat(sheet.getRow(2).getCell(2).getStringCellValue()).isEqualTo("500g香卤大肠头");
             assertThat(sheet.getRow(2).getCell(5).getStringCellValue()).isEqualTo("张研发");
+            var text = new StringBuilder(); var formatter = new org.apache.poi.ss.usermodel.DataFormatter();
+            for (var row : sheet) for (var cell : row) text.append(formatter.formatCellValue(cell)).append('|');
+            assertThat(text.toString()).contains("编制人", "李内勤", "编制日期", "审核人", "研发总监（待审核）", "审核日期");
         }
     }
 

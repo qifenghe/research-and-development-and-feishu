@@ -49,6 +49,31 @@ import static org.mockito.Mockito.verify;
 @SpringBootTest
 @ActiveProfiles("test")
 class ProcessArtifactServiceTest {
+    @Test void assistantSopGenerationUsesFrozenFinishedQuantity() throws Exception {
+        var r=formalRevision();
+        jdbc.update("update experiment_process_revision set finished_output_json=? where id=?","{\"quantity\":18,\"unit\":\"袋\"}",r.id());
+        var actor=new SessionPrincipal("USER-SOP-FROZEN", "sop_frozen", "内勤验收", null, "RND_ASSISTANT", null);
+        jdbc.update("insert into user_account(id,username,password_hash,name,role,status,created_at,updated_at) select ?,?,?,?,?,?,?,? where not exists(select 1 from user_account where id=?)",actor.userId(),actor.username(),"x",actor.name(),actor.role(),"ACTIVE",LocalDateTime.now(),LocalDateTime.now(),actor.userId());
+        var a=service.generateForSop(FORM_ID,r.id(),"SOP_XLSX",actor);
+        assertThat(a.status()).isEqualTo("READY");
+        try(var w=new XSSFWorkbook(new ByteArrayInputStream(service.downloadForSop(FORM_ID,r.id(),a.id(),actor).content()))) {
+            assertThat(w.getSheetAt(1).getRow(20).getCell(7).getNumericCellValue()).isEqualTo(9);
+            assertThat(w.getSheetAt(1).getRow(21).getCell(7).getNumericCellValue()).isEqualTo(18);
+            assertThat(w.getSheetAt(1).getRow(11).getCell(5).getStringCellValue()).isEqualTo("袋");
+        }
+    }
+    @Test void excelSopPreviewReturnsExcelBytesAndExtensionWithoutCreatingAnArchive() throws Exception {
+        var view=SopExcelTemplateTest.example();
+        var before=jdbc.queryForObject("select count(*) from experiment_process_artifact",Integer.class);
+        var file=service.preview(view,"SOP_XLSX");
+        assertThat(file.fileName()).endsWith(".xlsx");
+        assertThat(file.contentType()).isEqualTo("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        try(var w=new XSSFWorkbook(new ByteArrayInputStream(file.content()))) {
+            assertThat(w.getSheetAt(0).getSheetName()).isEqualTo("人环机法");
+            assertThat(w.getNumberOfSheets()).isEqualTo(6);
+        }
+        assertThat(jdbc.queryForObject("select count(*) from experiment_process_artifact",Integer.class)).isEqualTo(before);
+    }
     private static final String FORM_ID = "FORM-PROCESS-ARTIFACT";
     private static final SessionPrincipal ENGINEER = new SessionPrincipal("USER-ARTIFACT", "artifact", "制品研发", "ou-artifact", "RND_ENGINEER", null);
 

@@ -54,6 +54,9 @@ public record PricingFileRecord(
                 processRevisionId
         );
     }
+    public PricingFileRecord withContentLength(long length) {
+        return new PricingFileRecord(id,versionId,sampleNo,productName,versionCode,pricingVersion,fileName,status,length,generatedAt,reviewedBy,reviewedAt,reviewComment,rejectionReason,processRevisionId);
+    }
 
     public PricingFileRecord generated(String nextFileName, long nextContentLength) {
         return new PricingFileRecord(

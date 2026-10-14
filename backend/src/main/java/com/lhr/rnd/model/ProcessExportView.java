@@ -8,8 +8,14 @@ public record ProcessExportView(String productName, String sourceLabel, ProcessP
         BigDecimal externalInputKg, BigDecimal mainYieldPercent, List<Ingredient> ingredients,
         List<Major> majors, FinishedQuantity finishedQuantity, List<PricingPackagingItem> packaging,
         List<Issue> issues, Metadata metadata) {
-    public record Metadata(String specification, String compiledBy, String date, boolean inheritedActuals, String sourceTrialId) {
+    public record Metadata(String specification, String compiledBy, String date, boolean inheritedActuals, String sourceTrialId, DocumentSignature signature) {
+        public Metadata(String specification, String compiledBy, String date, boolean inheritedActuals, String sourceTrialId) { this(specification, compiledBy, date, inheritedActuals, sourceTrialId, null); }
         public Metadata(String specification, String compiledBy, String date) { this(specification, compiledBy, date, false, null); }
+    }
+    public DocumentSignature signature() { return metadata != null && metadata.signature() != null ? metadata.signature() : DocumentSignature.pending(metadata == null ? null : metadata.compiledBy(), metadata == null ? null : metadata.date()); }
+    public ProcessExportView withSignature(DocumentSignature signature) {
+        var m = metadata == null ? new Metadata(null, null, null) : metadata;
+        return withMetadata(new Metadata(m.specification(), signature.compiledBy(), signature.compiledAt(), m.inheritedActuals(), m.sourceTrialId(), signature));
     }
     public boolean inheritedActuals() { return metadata != null && metadata.inheritedActuals(); }
     public String actualPrefix() { return inheritedActuals() ? "方案记录" : "本次实验"; }
@@ -17,7 +23,7 @@ public record ProcessExportView(String productName, String sourceLabel, ProcessP
     public ProcessExportView withActualsProvenance(boolean inherited, String sourceTrialId) {
         var meta = metadata == null ? new Metadata(null, null, null) : metadata;
         return new ProcessExportView(productName, sourceLabel + (inherited ? "（含继承实测）" : ""), snapshot, externalInputKg, mainYieldPercent, ingredients,
-                majors, finishedQuantity, packaging, issues, new Metadata(meta.specification(), meta.compiledBy(), meta.date(), inherited, sourceTrialId));
+                majors, finishedQuantity, packaging, issues, new Metadata(meta.specification(), meta.compiledBy(), meta.date(), inherited, sourceTrialId, meta.signature()));
     }
     public ProcessExportView withMetadata(Metadata metadata) {
         return new ProcessExportView(productName, sourceLabel, snapshot, externalInputKg, mainYieldPercent, ingredients,

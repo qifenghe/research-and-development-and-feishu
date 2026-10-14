@@ -90,6 +90,17 @@ class SopAmendmentServiceTest {
   assertThat(artifacts.downloadForSop(r.experimentFormId(),r.id(),file.id(),assistant).content()).isNotEmpty();
   assertThatThrownBy(()->artifacts.generateForSop(r.experimentFormId(),r.id(),"FORMULA_XLSX",assistant)).isInstanceOf(BusinessException.class);
  }
+ @Test void assistantFormalBundleReadsArchivedFormulaWithoutGrantingGenerationOrOtherRevisionAccess(){
+  var r=seed();var formula=artifacts.generate(r.experimentFormId(),r.id(),"FORMULA_XLSX",director);
+  assertThat(formula.status()).isEqualTo("READY");
+  var before=artifacts.download(r.experimentFormId(),r.id(),formula.id(),director).content();
+  assertThat(artifacts.listForSop(r.experimentFormId(),r.id(),assistant)).anyMatch(f->f.id().equals(formula.id()));
+  assertThat(artifacts.downloadForSop(r.experimentFormId(),r.id(),formula.id(),assistant).content()).isEqualTo(before);
+  var other=seed();
+  assertThatThrownBy(()->artifacts.downloadForSop(other.experimentFormId(),other.id(),formula.id(),assistant)).isInstanceOf(BusinessException.class);
+  assertThatThrownBy(()->artifacts.generateForSop(r.experimentFormId(),r.id(),"FORMULA_XLSX",assistant)).isInstanceOf(BusinessException.class);
+  assertThatThrownBy(()->artifacts.list(r.experimentFormId(),r.id(),assistant)).isInstanceOf(BusinessException.class);
+ }
  ProcessPlan change(ProcessPlan plan,String field,String value) throws Exception {
   var tree=mapper.valueToTree(plan);((com.fasterxml.jackson.databind.node.ObjectNode)tree.at("/majorProcesses/0/steps/0")).put(field,value);
   return mapper.treeToValue(tree,ProcessPlan.class);

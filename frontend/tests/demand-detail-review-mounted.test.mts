@@ -1,0 +1,30 @@
+import './mobile-dom-bootstrap.mts';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {createRequire} from 'node:module';
+import {createRenderer,nextTick} from '../apps/pc/node_modules/vue/index.mjs';
+import {createServer} from '../apps/pc/node_modules/vite/dist/node/index.js';
+import {createRouter,createMemoryHistory} from '../apps/pc/node_modules/vue-router/dist/vue-router.mjs';
+const make=()=>({parent:null,children:[],props:{}});
+const renderer=createRenderer<any,any>({patchProp(){},insert(c,p){c.parent=p;p.children.push(c);},remove(){},createElement:make,createText:make,createComment:make,setText(){},setElementText(){},parentNode:n=>n.parent,nextSibling:()=>null,querySelector:()=>null,setScopeId(){},insertStaticContent:()=>[make(),make()]});
+let server:any;
+const flush=async()=>{await Promise.resolve();await nextTick();await Promise.resolve();await nextTick();};
+test.before(async()=>{Object.assign(globalThis.document,{getElementsByTagName:()=>[]});const configFile=fileURLToPath(new URL('../apps/pc/vite.config.ts',import.meta.url));server=await createServer({root:dirname(configFile),configFile,server:{middlewareMode:true},appType:'custom',logLevel:'silent'});});
+test.after(async()=>server.close());
+async function mount(role='RND_DIRECTOR'){
+ const {message}=createRequire(new URL('../apps/pc/package.json',import.meta.url))('ant-design-vue');message.success=()=>{};
+ const {api}=await server.ssrLoadModule('/src/services/api.ts');
+ let data:any={id:'REQ-T',productName:'测试产品',sampleNo:'Y-T',status:'PENDING_REVIEW',reviewVersion:3,reviewHistory:[]};
+ const calls:any[]=[];api.sample.detail=async()=>data;
+ api.sample.approve=async(...args:any[])=>{calls.push(args);data={...data,status:'PENDING_ASSIGNMENT',reviewHistory:[{action:'APPROVED'}]};};
+ api.sample.reject=async(...args:any[])=>{calls.push(args);data={...data,status:'REJECTED',reviewHistory:[{action:'REJECTED',comment:args[2]}]};};
+ const {createPinia}=await server.ssrLoadModule('pinia');const {useAuthStore}=await server.ssrLoadModule('/src/stores/auth.ts');const pinia=createPinia();useAuthStore(pinia).principal={userId:'T',name:'测试',role};
+ const router=createRouter({history:createMemoryHistory(),routes:[{path:'/demand/:id',component:{render:()=>null}}]});await router.push('/demand/REQ-T');
+ const {default:Component}=await server.ssrLoadModule('/src/views/demand/DemandDetailView.vue');Component.render=()=>null;
+ const app=renderer.createApp(Component);app.use(pinia);app.use(router);app.provide(Symbol.for('v-scx'),{modules:new Set()});const child:any=app.mount(make());await flush();return {s:child.$.setupState,calls,app};
+}
+test('detail approval uses loaded version and refreshes status and history',async()=>{const {s,calls,app}=await mount();assert.equal(s.canReview,true);s.openApprove();assert.equal(calls.length,0);await s.approve();assert.deepEqual(calls,[['REQ-T',undefined,3]]);assert.equal(s.detail.status,'PENDING_ASSIGNMENT');assert.equal(s.detail.reviewHistory[0].action,'APPROVED');assert.equal(s.canReview,false);app.unmount();});
+test('detail rejection requires comment and refreshes rejection history',async()=>{const {s,calls,app}=await mount();s.openReject();s.comment='  ';await s.reject();assert.equal(calls.length,0);assert.ok(s.rejectError);s.comment='  补齐包装要求  ';await s.reject();assert.deepEqual(calls,[['REQ-T',3,'补齐包装要求']]);assert.equal(s.detail.status,'REJECTED');assert.equal(s.detail.reviewHistory[0].comment,'补齐包装要求');app.unmount();});
+test('unauthorized detail cannot approve or reject even by invoking handler',async()=>{const {s,calls,app}=await mount('RND_ASSISTANT');assert.equal(s.canReview,false);await s.approve();s.comment='退回';await s.reject();assert.equal(calls.length,0);app.unmount();});

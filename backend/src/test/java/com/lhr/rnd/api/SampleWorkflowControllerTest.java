@@ -2014,7 +2014,7 @@ class SampleWorkflowControllerTest {
 
         insertFormalPricingRevision(formId, "PREV-PRICING-2", 2, "70");
         mockMvc.perform(post("/api/v1/pricing-files/{id}/review", firstPricingId)
-                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_DIRECTOR"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"decision\":\"REJECT\",\"comment\":\"重新核价\",\"rejectionReason\":\"工艺版本更新\"}"))
                 .andExpect(status().isOk())
@@ -2026,6 +2026,26 @@ class SampleWorkflowControllerTest {
         assertThat(workflowService.downloadPricingFile(firstPricingId).content()).isEqualTo(firstPricingBytes);
         assertPricingWorkbookRevision(workflowService.downloadPricingFile(firstPricingId).content(), "PREV-PRICING-1", "80");
         assertPricingWorkbookRevision(workflowService.downloadPricingFile(secondPricingId).content(), "PREV-PRICING-2", "70");
+    }
+
+    @Test
+    void newFormalRevisionCanBePricedAfterEarlierApprovalWithoutOverwritingItsArchive() throws Exception {
+        var versionId=createLockedSampleVersion();
+        var formId=valueByColumn("experiment_form","version_id",versionId,"id");
+        insertFormalPricingRevision(formId,"PREV-APPROVED-1",1,"80");
+        var first=generatePricingFile(versionId);approvePricingFile(first);
+        var frozen=workflowService.downloadPricingFile(first).content();
+        mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files",versionId))
+                .andExpect(jsonPath("$.code").value("PRICING_FILE_REVIEW_IN_PROGRESS"));
+        insertFormalPricingRevision(formId,"PREV-APPROVED-2",2,"70");
+        assertThat(workflowService.pricingReadyVersions()).anyMatch(v->v.versionId().equals(versionId));
+        var second=generatePricingFile(versionId);
+        assertThat(valueById("pricing_file",second,"process_revision_id")).isEqualTo("PREV-APPROVED-2");
+        assertThat(valueById("pricing_file",first,"process_revision_id")).isEqualTo("PREV-APPROVED-1");
+        assertThat(workflowService.downloadPricingFile(first).content()).isEqualTo(frozen);
+        assertPricingWorkbookRevision(workflowService.downloadPricingFile(second).content(),"PREV-APPROVED-2","70");
+        mockMvc.perform(post("/api/v1/sample-versions/{id}/pricing-files",versionId))
+                .andExpect(jsonPath("$.code").value("PRICING_FILE_REVIEW_IN_PROGRESS"));
     }
 
     @Test
@@ -2383,7 +2403,7 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.code").value("PRICING_FILE_REVIEW_FORBIDDEN"));
 
         mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
-                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_DIRECTOR"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"张研发\",\"comment\":\"配方与出成数据确认无误\"}"))
                 .andExpect(status().isOk())
@@ -2398,13 +2418,22 @@ class SampleWorkflowControllerTest {
 
         var reviewedAt = valueById("pricing_file", pricingFileId, "reviewed_at");
         mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
-                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_DIRECTOR"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"张研发\",\"comment\":\"重复提交\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("FINANCE_NOTIFIED"));
         assertThat(valueById("pricing_file", pricingFileId, "reviewed_at")).isEqualTo(reviewedAt);
         assertThat(countByColumn("finance_notification", "pricing_file_id", pricingFileId)).isEqualTo(1);
+    }
+
+    @Test void productOwnerCanPrepareButOnlyDirectorCanSignPricingReview() throws Exception {
+        var pricingFileId = generatePricingFile(createLockedSampleVersion());
+        mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"decision\":\"APPROVE\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PRICING_FILE_REVIEW_FORBIDDEN"));
     }
 
     @Test
@@ -2418,7 +2447,7 @@ class SampleWorkflowControllerTest {
                 .andExpect(jsonPath("$.code").value("SESSION_PRINCIPAL_REQUIRED"));
 
         mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
-                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_DIRECTOR"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"伪造审核人\",\"comment\":\"核价无误\"}"))
                 .andExpect(status().isOk())
@@ -2641,7 +2670,7 @@ class SampleWorkflowControllerTest {
         disableWorkflowAction("PENDING_PRICING_REVIEW", "APPROVE_PRICING", "PRICING_APPROVED");
 
         mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
-                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_DIRECTOR"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"decision\":\"APPROVE\",\"comment\":\"请核价\"}"))
                 .andExpect(status().isBadRequest())
@@ -3369,7 +3398,7 @@ class SampleWorkflowControllerTest {
 
     private void approvePricingFile(String pricingFileId) throws Exception {
         mockMvc.perform(post("/api/v1/pricing-files/{id}/review", pricingFileId)
-                        .requestAttr("sessionPrincipal", principal("张研发", "RND_ENGINEER"))
+                        .requestAttr("sessionPrincipal", principal("张研发", "RND_DIRECTOR"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"decision\":\"APPROVE\",\"reviewerName\":\"张研发\",\"comment\":\"核价无误\"}"))
                 .andExpect(status().isOk())

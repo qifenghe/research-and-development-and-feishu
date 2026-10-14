@@ -8,7 +8,7 @@ import java.util.List;
 public class MaterialClassificationController {
  private final MaterialClassificationService service;
  public MaterialClassificationController(MaterialClassificationService service){this.service=service;}
- @GetMapping public ApiResponse<List<MaterialClassification>> list(){return ApiResponse.success(service.list());}
+ @GetMapping public ApiResponse<List<MaterialClassification>> list(HttpServletRequest r){return ApiResponse.success(service.visibleList(principal(r)));}
  @PostMapping public ApiResponse<MaterialClassification> create(@RequestBody MaterialClassificationService.Write w,HttpServletRequest r){return ApiResponse.success(service.create(w,principal(r)));}
  @PutMapping("/{id}") public ApiResponse<MaterialClassification> update(@PathVariable String id,@RequestBody MaterialClassificationService.Write w,HttpServletRequest r){return ApiResponse.success(service.update(id,w,principal(r)));}
  public record Status(String status,Integer expectedVersion){}

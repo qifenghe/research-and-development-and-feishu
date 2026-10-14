@@ -71,11 +71,17 @@ public final class SopDocumentRenderer {
         var revision = new ArrayList<String>();
         if (!ExportDisplayFormat.blank(metadata.formalRevision())) revision.add("正式工艺修订：" + metadata.formalRevision());
         if (!ExportDisplayFormat.blank(metadata.documentVersion())) revision.add("文件版本：" + metadata.documentVersion());
-        if (!ExportDisplayFormat.blank(metadata.compiledBy())) revision.add("编制人：" + metadata.compiledBy());
+        if (view.metadata() == null || view.metadata().signature() == null) {
+            if (!ExportDisplayFormat.blank(metadata.compiledBy())) revision.add("编制人：" + metadata.compiledBy());
+        }
         var date = metadata.compiledAt() == null ? view.metadata() == null ? "" : view.metadata().date()
                 : ExportDisplayFormat.dateTime(metadata.compiledAt().toString());
-        if (!ExportDisplayFormat.blank(date)) revision.add("编制时间：" + date);
+        if ((view.metadata() == null || view.metadata().signature() == null) && !ExportDisplayFormat.blank(date)) revision.add("编制时间：" + date);
         if (!revision.isEmpty()) paragraph(document, String.join("  ", revision));
+        var signature = view.metadata() != null && view.metadata().signature() != null ? view.signature()
+                : com.lhr.rnd.model.DocumentSignature.pending(metadata.compiledBy(), date);
+        paragraph(document, "编制人：" + signature.compilerLabel() + "  编制日期：" + signature.compiledDate());
+        paragraph(document, "审核人：" + signature.reviewerLabel() + "  审核日期：" + signature.reviewedDate());
         if (!ExportDisplayFormat.blank(metadata.changeReason())) paragraph(document, "变更原因：" + metadata.changeReason());
     }
 

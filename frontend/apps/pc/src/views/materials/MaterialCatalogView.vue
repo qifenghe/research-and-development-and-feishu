@@ -17,7 +17,7 @@
       </div>
      </div>
     </div>
-    <label class="inactive-toggle"><input v-model="showInactive" type="checkbox" />显示停用分类</label>
+    <label v-if="access.classifications" class="inactive-toggle"><input v-model="showInactive" type="checkbox" />显示停用分类</label>
    </aside>
    <main><div class="list-heading"><strong>{{classificationId?classLabel(classificationId):'全部物料'}}</strong><span>共 {{total}} 项</span></div><div class="filters"><a-input-search v-model:value="query" placeholder="搜索物料编码或名称" allow-clear @search="search" /><a-select v-model:value="status" :options="statuses" @change="search" /></div>
     <a-table :columns="columns" :data-source="items" row-key="id" :loading="busy" :scroll="{x:970}" :pagination="{current:page,pageSize:20,total,showSizeChanger:false}" @change="paginationChanged">

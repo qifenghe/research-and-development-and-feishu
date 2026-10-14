@@ -37,6 +37,31 @@ class TrialSchemeServiceTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired ProcessPlanService processPlans;
     @Autowired MaterialCatalogService catalog;
+    @Test void initialSchemePreservesDraftActualsAndIsIdempotent() {
+        var formal=processPlans.save(FORM_ID,graph("INITIAL","10.2"),OWNER);
+        jdbc.update("update experiment_form set finished_output_quantity=25,finished_output_unit='袋' where id=?",FORM_ID);
+        var first=service.initialize(FORM_ID,OWNER);
+        assertThat(first.name()).isEqualTo("方案 A");
+        assertThat(first.finishedOutput().quantity()).isEqualByComparingTo("25");
+        assertThat(first.finishedOutput().unit()).isEqualTo("袋");
+        assertThat(first.plan().majorProcesses().get(0).steps().get(0).materials().get(0).weightKg()).isEqualByComparingTo(formal.majorProcesses().get(0).steps().get(0).materials().get(0).weightKg());
+        assertThat(service.initialize(FORM_ID,OWNER).id()).isEqualTo(first.id());
+        assertThat(service.list(FORM_ID,OWNER)).hasSize(1);
+        assertThat(processPlans.find(FORM_ID)).isEqualTo(formal);
+    }
+    @Test void initialSchemeUsesExistingSchemeWithoutCreatingAnother() {
+        var existing=service.create(FORM_ID,new TrialSchemeService.CreateCommand("方案 B",null,null,graph("OLD","12"),TrialScheme.PlannedData.empty()),OWNER);
+        assertThat(service.initialize(FORM_ID,OWNER).id()).isEqualTo(existing.id());
+        assertThat(service.list(FORM_ID,OWNER)).hasSize(1);
+    }
+    @Test void initialSchemeCarriesLocalOutputAndRejectsStaleProcessVersion() {
+        var formal=processPlans.save(FORM_ID,graph("CACHE","10"),OWNER);
+        var stale=new ProcessPlan(formal.id(),FORM_ID,formal.versionNo()-1,formal.status(),formal.majorProcesses(),formal.batchYieldPercent(),formal.balanceToleranceKg(),formal.legacy());
+        assertThatThrownBy(()->service.initialize(FORM_ID,stale,null,OWNER)).isInstanceOf(BusinessException.class);
+        assertThat(service.list(FORM_ID,OWNER)).isEmpty();
+        var first=service.initialize(FORM_ID,formal,new TrialScheme.FinishedOutput(new BigDecimal("27"),"盒","本地备注"),OWNER);
+        assertThat(first.finishedOutput()).isEqualTo(new TrialScheme.FinishedOutput(new BigDecimal("27"),"盒","本地备注"));
+    }
     @Test void kgQuantityIsDerivedFromCurrentTerminalOutput() throws Exception {
         var mapper=new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules().disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         var a=service.create(FORM_ID,new TrialSchemeService.CreateCommand("公斤",null,null,graph("KG", "10"),TrialScheme.PlannedData.empty()),OWNER);

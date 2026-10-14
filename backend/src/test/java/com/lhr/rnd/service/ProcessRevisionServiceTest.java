@@ -45,6 +45,16 @@ class ProcessRevisionServiceTest {
     }
 
     @Test
+    void directorFormalSubmissionIsNotAnImplicitApproval() {
+        var saved=saveReadyDraft();
+        var principal=new SessionPrincipal("DIR-ACCEPTANCE","RND_DIRECTOR","总监甲",null,"RND_DIRECTOR",java.time.Instant.now().plusSeconds(3600));
+        var revision=service.submit(FORM_ID,new ProcessRevisionService.SubmitCommand(saved.versionNo(),true,"正式提交","客户端署名"),principal);
+        assertThat(jdbc.queryForObject("select compiled_by from experiment_process_revision where id=?",String.class,revision.id())).isEqualTo("总监甲");
+        assertThat(jdbc.queryForObject("select reviewed_by from experiment_process_revision where id=?",String.class,revision.id())).isNull();
+        assertThat(jdbc.queryForObject("select reviewed_at from experiment_process_revision where id=?",java.sql.Timestamp.class,revision.id())).isNull();
+    }
+
+    @Test
     void submitsAnImmutableNormalizedSnapshotAndRejectsStaleOrUnconfirmedSubmission() {
         var saved = saveReadyDraft();
 

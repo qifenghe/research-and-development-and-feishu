@@ -1,5 +1,5 @@
 import { client } from "./api";
-export type ExportType = "FORMULA_XLSX" | "SOP_DOCX" | "PRICING_XLSX";
+export type ExportType = "FORMULA_XLSX" | "SOP_DOCX" | "SOP_XLSX" | "PRICING_XLSX";
 export interface ExportIssue { code: string; path: string; message: string; majorSequence?: number | null; stepSequence?: number | null }
 export interface ExportCheck { ready: boolean; issues: ExportIssue[] }
 export interface ExportScope { formId: string; trialId?: string; versionNo: number }

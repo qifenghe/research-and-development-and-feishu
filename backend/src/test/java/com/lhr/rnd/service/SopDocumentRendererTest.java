@@ -16,6 +16,14 @@ import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SopDocumentRendererTest {
+    @Test void unreviewedSopNamesTheDirectorReviewStageWithoutInventingADate() throws Exception {
+        var bytes = new SopDocumentRenderer().render(view(false), new SopDocumentRenderer.Metadata("R1", "V1", null,
+                "研发张三", LocalDateTime.of(2026, 10, 10, 9, 0), false));
+        try (var doc = new XWPFDocument(new ByteArrayInputStream(bytes))) {
+            var text = doc.getParagraphs().stream().map(p -> p.getText()).collect(Collectors.joining("\n"));
+            assertThat(text).contains("编制人：研发张三", "2026-10-10", "审核人：研发总监（待审核）", "审核日期：待审核");
+        }
+    }
     @Test void packagingIsPrintedAsCountNotKilograms() throws Exception {
         var base=view(false); var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
         var tree=mapper.valueToTree(base.snapshot());

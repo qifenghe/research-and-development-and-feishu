@@ -28,13 +28,13 @@ public class ReportExportController {
     }
 
     @GetMapping("/experiment-forms/{id}/export")
-    public ResponseEntity<byte[]> exportExperimentForm(@PathVariable String id) {
-        return file(reportExportService.exportExperimentForm(id));
+    public ResponseEntity<byte[]> exportExperimentForm(@PathVariable String id, HttpServletRequest request) {
+        return file(reportExportService.exportExperimentForm(id,principal(request)));
     }
 
     @GetMapping("/test-records/{id}/export")
-    public ResponseEntity<byte[]> exportTestRecord(@PathVariable String id) {
-        return file(reportExportService.exportTestRecord(id));
+    public ResponseEntity<byte[]> exportTestRecord(@PathVariable String id, HttpServletRequest request) {
+        return file(reportExportService.exportTestRecord(id,principal(request)));
     }
 
     @GetMapping("/pricing-files/{id}/export")
@@ -52,9 +52,9 @@ public class ReportExportController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate, HttpServletRequest request
     ) {
-        return file(reportExportService.exportRndTasks(keyword, status, startDate, endDate));
+        return file(reportExportService.exportRndTasks(keyword, status, startDate, endDate,principal(request)));
     }
 
     @GetMapping("/shipments/export")
@@ -62,9 +62,9 @@ public class ReportExportController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate, HttpServletRequest request
     ) {
-        return file(reportExportService.exportShipments(keyword, status, startDate, endDate));
+        return file(reportExportService.exportShipments(keyword, status, startDate, endDate,principal(request)));
     }
 
     private ResponseEntity<byte[]> file(ReportExportFile file) {
@@ -73,5 +73,8 @@ public class ReportExportController {
                 .contentType(MediaType.parseMediaType(file.contentType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
                 .body(file.content());
+    }
+    private SessionPrincipal principal(HttpServletRequest request) {
+        return (SessionPrincipal)request.getAttribute(SessionAuthenticationInterceptor.SESSION_PRINCIPAL_ATTRIBUTE);
     }
 }

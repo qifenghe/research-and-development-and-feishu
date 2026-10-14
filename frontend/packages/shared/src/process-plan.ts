@@ -176,7 +176,7 @@ export interface ProcessRevision extends ProcessRevisionSummary {
   snapshot: ProcessPlanDraft;
 }
 
-export type ProcessArtifactType = "FORMULA_XLSX" | "SOP_DOCX";
+export type ProcessArtifactType = "FORMULA_XLSX" | "SOP_DOCX" | "SOP_XLSX";
 export type ProcessArtifactStatus = "READY" | "FAILED";
 
 export interface ProcessArtifact {

@@ -46,6 +46,7 @@ public class ProcessRevisionService {
     @Transactional
     public ProcessRevision submit(String formId, SubmitCommand command, SessionPrincipal principal) {
         requireFormalWriteAccess(formId, principal);
+        // Formal snapshot confirmation is not an approval decision, even when submitted by a director.
         return submitInternal(formId, new SubmitCommand(command.versionNo(), command.confirmed(), command.changeReason(), principal.name()), principal.name(), principal.userId());
     }
 

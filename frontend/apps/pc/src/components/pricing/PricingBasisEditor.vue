@@ -8,8 +8,8 @@
     <a-alert v-if="!editable" type="info" message="当前仅可查看，确认操作由研发总监或产品负责人完成。" />
     <fieldset :disabled="!editable || session.busy">
      <section><h3>1. 文件信息</h3><div class="fields">
-      <label v-for="field in headerFields" :key="field.key">{{field.label}}<a-input v-model:value="session.draft.header[field.key]" :disabled="disabled || field.key==='productName'" :placeholder="field.key==='effectiveDate'?'YYYY-MM-DD':'待填写'" /></label>
-     </div><p class="muted">研发批准由后续审核产生，此处不填写批准人。</p></section>
+      <label v-for="field in headerFields" :key="field.key">{{field.label}}<a-input v-model:value="session.draft.header[field.key]" :disabled="disabled || field.key==='productName' || field.key==='authorName'" :placeholder="field.key==='effectiveDate'?'YYYY-MM-DD':'待填写'" /></label>
+     </div><p class="muted">编制人由保存时的登录账号自动记录；审核人及审核日期由研发总监审核通过后记录，下载不会改变署名。</p></section>
      <section><h3>2. 原辅料清单</h3><p class="muted">逐行选择重量口径。利用率是处理损耗，不是工序得率；中间产物不重复领料。</p>
       <div v-for="(m,index) in session.draft.materials" :key="m.id" class="ingredient">
        <h4 v-if="index===0 || m.majorId!==session.draft.materials[index-1]?.majorId">{{m.stage || '未命名工序'}}</h4>
