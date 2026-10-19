@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+credentials.txt
+images.tar
+images.tar.gz
+app.jar
+html/
+backups/
+data/
+__pycache__/
+*.pyc

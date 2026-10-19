@@ -1,0 +1,4 @@
+Base: main 9af994e
+Deployment: 2026-10-19
+Architecture: linux/amd64
+Changes: see production-deployment.patch and source archive.
