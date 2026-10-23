@@ -1,0 +1,235 @@
+--- a/backend/src/main/java/com/lhr/rnd/service/DefaultWebAccountBootstrapService.java
++++ b/backend/src/main/java/com/lhr/rnd/service/DefaultWebAccountBootstrapService.java
+@@ -13,6 +13,8 @@
+ 
+ @Service
+ public class DefaultWebAccountBootstrapService {
++    @org.springframework.beans.factory.annotation.Value("${rnd.auth.bootstrap-users:true}")
++    private boolean bootstrapEnabled = true;
+     private final Clock clock;
+     private final UserAccountRepository userAccountRepository;
+     private final PasswordHashService passwordHashService;
+@@ -37,6 +39,7 @@
+ 
+     @Transactional
+     public List<UserAccountEntity> seedDefaultAccounts() {
++        if (!bootstrapEnabled) return List.of();
+         return defaultAccounts().stream()
+                 .map(this::seed)
+                 .toList();
+--- a/backend/src/test/java/com/lhr/rnd/persistence/SchemaMigrationTest.java
++++ b/backend/src/test/java/com/lhr/rnd/persistence/SchemaMigrationTest.java
+@@ -565,7 +565,7 @@
+         assertThat(legacyJdbcTemplate.queryForObject(
+                 "select count(*) from \"flyway_schema_history\" where \"version\" is not null and \"success\" = true",
+                 Integer.class
+-        )).isEqualTo(23);
++        )).isEqualTo(24);
+     }
+ 
+     @Test
+--- a/frontend/apps/pc/src/views/LoginView.vue
++++ b/frontend/apps/pc/src/views/LoginView.vue
+@@ -2,36 +2,19 @@
+   <div class="login-page">
+     <a-card class="login-card">
+       <div class="login-brand"><img :src="longhuiLogo" alt="龙汇食品" /><h1>龙汇研发管理系统</h1><p>从需求到配方 · 让研发有据可循</p></div>
+-      <a-alert
+-        type="info"
+-        show-icon
+-        message="当前为网页端账号登录"
+-        description="飞书免登录入口暂时隐藏，后期上线飞书时再作为外部身份绑定。"
+-        style="margin-bottom: 16px"
+-      />
++
+ 
+       <a-form layout="vertical" :model="form" @finish="login">
+         <a-form-item label="账号" name="username" :rules="[{ required: true, message: '请输入账号' }]">
+-          <a-input v-model:value="form.username" placeholder="例如 rnd_assistant" autocomplete="username" />
++          <a-input v-model:value="form.username" placeholder="请输入账号" autocomplete="username" />
+         </a-form-item>
+         <a-form-item label="密码" name="password" :rules="[{ required: true, message: '请输入密码' }]">
+-          <a-input-password v-model:value="form.password" placeholder="默认测试密码 123456" autocomplete="current-password" />
++          <a-input-password v-model:value="form.password" placeholder="请输入密码" autocomplete="current-password" />
+         </a-form-item>
+         <a-button type="primary" html-type="submit" block :loading="auth.loading">登录</a-button>
+       </a-form>
+ 
+-      <a-divider>测试账号</a-divider>
+-      <div class="quick-accounts">
+-        <a-button
+-          v-for="account in accounts"
+-          :key="account.username"
+-          block
+-          class="quick-account"
+-          @click="fill(account.username)"
+-        >
+-          {{ account.label }} · {{ account.name }}
+-        </a-button>
+-      </div>
++
+     </a-card>
+   </div>
+ </template>
+@@ -49,22 +32,9 @@
+ const route = useRoute();
+ 
+ const form = reactive({
+-  username: "rnd_assistant",
+-  password: "123456",
++  username: "",
++  password: "",
+ });
+-
+-const accounts = [
+-  { label: "研发内勤", name: "赵内勤", username: "rnd_assistant" },
+-  { label: "研发总监", name: "赵总监", username: "rnd_director" },
+-  { label: "研发人员", name: "张研发", username: "rnd_engineer" },
+-  { label: "内部测试", name: "李测试", username: "tester" },
+-  { label: "财务", name: "钱财务", username: "finance" },
+-];
+-
+-function fill(username: string) {
+-  form.username = username;
+-  form.password = "123456";
+-}
+ 
+ function resolveInternalRedirect(value: unknown): string {
+   if (typeof value !== "string") return "/dashboard";
+--- a/frontend/apps/mobile/src/views/LoginView.vue
++++ b/frontend/apps/mobile/src/views/LoginView.vue
+@@ -14,7 +14,7 @@
+           v-model="form.username"
+           name="username"
+           label="账号"
+-          placeholder="例如 rnd_assistant"
++          placeholder="请输入账号"
+           autocomplete="username"
+           :rules="[{ required: true, message: '请输入账号' }]"
+         />
+@@ -23,7 +23,7 @@
+           name="password"
+           label="密码"
+           type="password"
+-          placeholder="默认测试密码 123456"
++          placeholder="请输入密码"
+           autocomplete="current-password"
+           :rules="[{ required: true, message: '请输入密码' }]"
+         />
+@@ -36,18 +36,7 @@
+       </div>
+     </van-form>
+ 
+-    <van-collapse v-model="expandedHelpers" inset class="test-helpers">
+-      <van-collapse-item title="测试辅助" name="test-helpers">
+-        <van-cell
+-          v-for="account in accounts"
+-          :key="account.username"
+-          is-link
+-          :title="account.label"
+-          :label="`${account.name} · ${account.username}`"
+-          @click="fill(account.username)"
+-        />
+-      </van-collapse-item>
+-    </van-collapse>
++
+   </div>
+ </template>
+ 
+@@ -62,25 +51,11 @@
+ const router = useRouter();
+ 
+ const form = reactive({
+-  username: "rnd_assistant",
+-  password: "123456",
++  username: "",
++  password: "",
+ });
+ 
+-const expandedHelpers = ref<string[]>([]);
+ const loginError = ref("");
+-
+-const accounts = [
+-  { label: "研发内勤", name: "赵内勤", username: "rnd_assistant" },
+-  { label: "研发总监", name: "赵总监", username: "rnd_director" },
+-  { label: "研发人员", name: "张研发", username: "rnd_engineer" },
+-  { label: "内部测试", name: "李测试", username: "tester" },
+-  { label: "财务", name: "钱财务", username: "finance" },
+-];
+-
+-function fill(username: string) {
+-  form.username = username;
+-  form.password = "123456";
+-}
+ 
+ async function login() {
+   loginError.value = "";
+--- a/frontend/apps/pc/vite.config.ts
++++ b/frontend/apps/pc/vite.config.ts
+@@ -1,6 +1,9 @@
+ import { defineConfig } from "vite";
+ import vue from "@vitejs/plugin-vue";
+ import { resolve } from "node:path";
++import { fileURLToPath } from "node:url";
++
++const __dirname = fileURLToPath(new URL(".", import.meta.url));
+ 
+ export default defineConfig({
+   base: "/admin/",
+--- a/frontend/apps/mobile/vite.config.ts
++++ b/frontend/apps/mobile/vite.config.ts
+@@ -3,6 +3,9 @@
+ import Components from "unplugin-vue-components/vite";
+ import { VantResolver } from "unplugin-vue-components/resolvers";
+ import { resolve } from "node:path";
++import { fileURLToPath } from "node:url";
++
++const __dirname = fileURLToPath(new URL(".", import.meta.url));
+ 
+ export default defineConfig({
+   base: "/m/",
+--- /dev/null
++++ b/backend/src/main/resources/db/migration/V15_1__widen_role_permission_identifier.sql
+@@ -0,0 +1,2 @@
++-- Allow existing long permission identifiers before V16 on a fresh PostgreSQL database.
++alter table role_permission alter column id type varchar(128);
+--- /dev/null
++++ b/backend/src/main/resources/db/migration/V45__widen_role_permission_identifier_for_existing_databases.sql
+@@ -0,0 +1,2 @@
++-- Apply the same widening when upgrading a database that already passed V16.
++alter table role_permission alter column id type varchar(128);
+--- /dev/null
++++ b/backend/src/test/java/com/lhr/rnd/api/ProductionLoginBootstrapTest.java
+@@ -0,0 +1,32 @@
++package com.lhr.rnd.api;
++
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.http.MediaType;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.test.context.ActiveProfiles;
++import org.springframework.test.web.servlet.MockMvc;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
++
++@SpringBootTest(properties = {
++    "spring.datasource.url=jdbc:h2:mem:production_login;MODE=PostgreSQL;DATABASE_TO_LOWER=FALSE;DB_CLOSE_DELAY=-1",
++    "rnd.auth.bootstrap-users=false", "rnd.feedback.bootstrap-demo=false",
++    "rnd.feishu.bootstrap-users=false", "rnd.feishu.enabled=false"
++})
++@AutoConfigureMockMvc
++@ActiveProfiles("test")
++class ProductionLoginBootstrapTest {
++    @Autowired MockMvc mvc;
++    @Autowired JdbcTemplate jdbc;
++    @Test void defaultPasswordMustNotLoginWhenBootstrapIsDisabled() throws Exception {
++        long before = jdbc.queryForObject("select count(*) from user_account", Long.class);
++        mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
++            .content("{\"username\":\"rnd_assistant\",\"password\":\"123456\"}"))
++            .andExpect(jsonPath("$.code").value("AUTH_CREDENTIAL_INVALID"));
++        assertEquals(before, jdbc.queryForObject("select count(*) from user_account", Long.class));
++    }
++}

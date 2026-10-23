@@ -1,0 +1,7 @@
+*
+!app.jar
+!nginx.conf
+!html/
+!html/**
+!Dockerfile.backend
+!Dockerfile.web
