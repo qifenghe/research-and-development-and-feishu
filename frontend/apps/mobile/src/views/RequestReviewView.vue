@@ -1,6 +1,6 @@
 <template>
-  <div>
-    <PageHeader title="审核需求" subtitle="研发总监审核内勤提交的样品需求" />
+  <div :aria-busy="loading">
+    <PageHeader title="需求审核" subtitle="研发总监审核内勤提交的样品需求" />
 
     <van-pull-refresh v-model="refreshing" @refresh="load">
       <van-empty v-if="loadError" class="mobile-empty" image="error" :description="loadError">

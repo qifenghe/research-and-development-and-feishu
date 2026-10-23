@@ -22,6 +22,7 @@ for(const target of ['pc','mobile'])test(`${target} real form sends template ans
  Object.assign(s.form,{productName:'牛腩',productType:'预制菜',customerName:'客户',specification:'500g/袋',applicationScenario:'餐饮',flavorRequirement:'香辣',referenceSampleProvided:false,cutShape:'20×30×40 mm',mainMaterialRequirement:'牛腩',textureRequirement:'软烂',packagingRequirement:'真空袋',storageRequirement:'冷冻',customerTargetPrice:'18元/袋，未税',monthlyDemand:'3吨/月',specialRequirements:'无',referenceMarketPrice:'',additionalNotes:'',creatorName:target==='pc'?'实际销售':'测试内勤'});
  let payload:any;api.sample.create=async(p:any)=>{payload=p;throw Error('暂时无法保存');};
  await s.submit();assert.equal(payload.referenceSampleProvided,false);assert.equal(payload.monthlyDemand,'3吨/月');assert.equal(payload.creatorName,target==='pc'?'实际销售':'测试内勤');assert.equal(s.form.cutShape,'20×30×40 mm');assert.match(s.submitError,/暂时无法保存/);
- payload=undefined;s.form.cutShape=' ';await s.submit();assert.equal(payload,undefined);
+ payload=undefined;s.form.cutShape=' ';if(target==='mobile')s.expandedGroups=[];await s.submit();assert.equal(payload,undefined);
+ if(target==='mobile')assert.ok(s.expandedGroups.includes('产品要求'),'invalid field must be visible even if its group was collapsed');
  }finally{app?.unmount();await server.close();}
 });

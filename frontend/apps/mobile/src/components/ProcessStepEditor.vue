@@ -22,7 +22,7 @@
         <span>当前工序</span>
         <strong>{{ currentIndex + 1 }} / {{ model.length }}</strong>
       </div>
-      <van-progress :percentage="progress" :show-pivot="false" color="#246BFE" />
+      <van-progress :percentage="progress" :show-pivot="false" color="var(--mobile-primary)" />
       <div v-if="currentStep" class="process-execute-card">
         <p class="process-execute-card__eyebrow">工序 {{ currentIndex + 1 }}</p>
         <h2>{{ currentStep.processName || "未命名工序" }}</h2>

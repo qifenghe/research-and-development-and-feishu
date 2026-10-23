@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div :aria-busy="loading">
     <PageHeader :title="pageTitle" :subtitle="pageSubtitle" />
 
     <van-search

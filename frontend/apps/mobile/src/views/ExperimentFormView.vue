@@ -21,7 +21,7 @@
         <section v-else class="content-section">
           <van-notice-bar
             v-if="readOnly"
-            color="#246BFE"
+            color="var(--mobile-primary)"
             background="#EAF2FF"
             left-icon="info-o"
             text="当前版本已提交，仅供查看。"

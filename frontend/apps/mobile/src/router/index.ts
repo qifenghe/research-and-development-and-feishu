@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
 import { canAccessRoute } from "@rnd/shared";
 import { useAuthStore } from "../stores/auth";
+import {nextTick} from 'vue';
+import {waitForMobileContent} from '../utils/scrollReady';
 import MobileLayout from "../layouts/MobileLayout.vue";
 import ExperimentFormView from "../views/ExperimentFormView.vue";
 import TaskDetailView from "../views/TaskDetailView.vue";
@@ -48,6 +50,11 @@ const routes: RouteRecordRaw[] = [
 
 const router = createRouter({
   history: createWebHistory("/m/"),
+  scrollBehavior: async (to,_from,savedPosition) => {
+    if(!savedPosition)return {left:0,top:0};
+    await nextTick();await waitForMobileContent();
+    return router.currentRoute.value.fullPath===to.fullPath?savedPosition:false;
+  },
   routes,
 });
 

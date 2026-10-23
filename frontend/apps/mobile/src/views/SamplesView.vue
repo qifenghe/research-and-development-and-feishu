@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div :aria-busy="loading">
     <PageHeader title="样品" />
 
     <van-search v-model="keyword" shape="round" placeholder="搜索产品名称 / 样品编号" @search="load" @update:model-value="load" />

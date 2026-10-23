@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div :aria-busy="loading">
     <PageHeader title="录入客户反馈" subtitle="登记寄样并录入客户试吃结论" />
 
     <van-pull-refresh v-model="refreshing" @refresh="load">

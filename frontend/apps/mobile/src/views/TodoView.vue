@@ -1,12 +1,12 @@
 <template>
-  <div>
+  <div :aria-busy="loading">
     <van-skeleton title :row="4" :loading="loading">
       <van-empty v-if="loadError" class="mobile-empty" image="error" :description="loadError">
         <van-button type="primary" @click="load">重新加载</van-button>
       </van-empty>
 
       <template v-else>
-      <PageHeader :title="'我的待办'" :subtitle="`${auth.displayName} / ${roleLabel}`">
+      <PageHeader :title="'工作台'" :subtitle="`${auth.displayName} · ${roleLabel}`">
         <template #stats>
           <span
             v-for="stat in todoStats"

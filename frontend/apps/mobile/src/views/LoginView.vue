@@ -1,12 +1,7 @@
 <template>
   <div class="login-page" data-testid="login-office-shell">
-    <header class="login-brand">
-      <span class="login-brand__mark">研</span>
-      <div>
-        <h1>研发样品管理</h1>
-        <p>样品、测试与核价协同</p>
-      </div>
-    </header>
+    <BrandHeader login />
+    <div class="login-intro"><span>研发协作 · 移动工作台</span><h2>欢迎回来</h2><p>使用系统账号登录，继续你的研发工作。</p></div>
 
     <van-form @submit="login">
       <van-cell-group inset>
@@ -14,7 +9,7 @@
           v-model="form.username"
           name="username"
           label="账号"
-          placeholder="例如 rnd_assistant"
+          placeholder="请输入账号"
           autocomplete="username"
           :rules="[{ required: true, message: '请输入账号' }]"
         />
@@ -23,7 +18,7 @@
           name="password"
           label="密码"
           type="password"
-          placeholder="默认测试密码 123456"
+          placeholder="请输入密码"
           autocomplete="current-password"
           :rules="[{ required: true, message: '请输入密码' }]"
         />
@@ -53,6 +48,7 @@
 
 <script setup lang="ts">
 import { reactive, ref } from "vue";
+import BrandHeader from '../components/BrandHeader.vue';
 import { useRouter } from "vue-router";
 import { showFailToast, showSuccessToast } from "vant";
 import { ApiError } from "@rnd/shared";

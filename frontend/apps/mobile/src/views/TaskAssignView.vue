@@ -1,6 +1,6 @@
 <template>
-  <div>
-    <PageHeader title="任务分发" subtitle="研发总监从人员列表中选择具体研发人员" />
+  <div :aria-busy="loading">
+    <PageHeader title="待分配任务" subtitle="研发总监从人员列表中选择具体研发人员" />
 
     <van-pull-refresh v-model="refreshing" @refresh="load">
       <van-empty v-if="loadError" class="mobile-empty" image="error" :description="loadError">

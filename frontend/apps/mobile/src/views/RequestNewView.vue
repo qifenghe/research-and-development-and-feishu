@@ -4,8 +4,8 @@
   <van-notice-bar v-if="submitError" :text="submitError" />
   <van-notice-bar v-if="success" text="需求已提交，等待研发总监审核" />
   <van-form @submit="submit">
-   <section v-for="group in sampleRequestTemplateGroups" :key="group.title">
-    <p class="form-section-title">{{group.title}}</p>
+   <van-collapse v-model="expandedGroups" class="request-sections">
+   <van-collapse-item v-for="group in sampleRequestTemplateGroups" :key="group.title" :name="group.title" :title="group.title">
     <van-cell-group inset>
      <template v-for="field in group.fields" :key="field.key">
       <van-field v-if="field.key==='referenceSampleProvided'" :name="field.key" :label="field.label" required :error-message="errors[field.key]">
@@ -14,7 +14,8 @@
       <van-field v-else v-model="form[field.key]" :name="field.key" :label="field.label" :placeholder="field.placeholder" :required="field.required" :error-message="errors[field.key]" type="textarea" rows="1" autosize :maxlength="sampleRequestMaxLength(field.key)" />
      </template>
     </van-cell-group>
-   </section>
+   </van-collapse-item>
+   </van-collapse>
    <p class="form-section-title">系统分类与申请信息</p>
    <van-cell-group inset><van-field v-model="form.productType" label="产品类型" placeholder="如：预制菜" required :error-message="errors.productType" /><van-field :model-value="auth.displayName" label="申请人" readonly /></van-cell-group>
    <div class="form-actions"><van-button block type="primary" native-type="submit" :loading="loading">提交需求</van-button></div>
@@ -30,6 +31,7 @@ import {api} from '../services/api';
 const auth=useAuthStore(),loading=ref(false),submitError=ref(''),success=ref(false);
 const errors=ref<Record<string,string>>({});
 const form=reactive({...emptySampleRequestTemplate(),productType:'',creatorName:auth.displayName});
+const expandedGroups=ref<string[]>([sampleRequestTemplateGroups[0]!.title]);
 watch(form,()=>{
  if(!Object.keys(errors.value).length)return;
  const current=validateSampleRequestTemplate(form);
@@ -44,7 +46,7 @@ async function submit(){
  if(!form.productType.trim())errors.value.productType='请填写产品类型';
  else if(form.productType.trim().length>100)errors.value.productType='产品类型不能超过100字';
  submitError.value='';success.value=false;
- if(Object.keys(errors.value).length){submitError.value='请补充或修正标出的项目';return;}
+ if(Object.keys(errors.value).length){expandedGroups.value=[...new Set([...expandedGroups.value,...sampleRequestTemplateGroups.filter(group=>group.fields.some(field=>errors.value[field.key])).map(group=>group.title)])];submitError.value='请补充或修正标出的项目';return;}
  loading.value=true;
  try{await api.sample.create({...form,creatorName:auth.displayName});Object.assign(form,emptySampleRequestTemplate(),{productType:'',creatorName:auth.displayName});success.value=true;}
  catch(e){submitError.value=e instanceof Error?e.message:'提交失败，填写内容已保留';}

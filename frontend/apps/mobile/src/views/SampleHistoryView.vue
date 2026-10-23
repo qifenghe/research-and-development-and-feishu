@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div :aria-busy="loading">
     <PageHeader :title="productName" subtitle="版本时间线 · 只读" compact />
 
     <VersionTimeline :entries="timelineEntries" />
